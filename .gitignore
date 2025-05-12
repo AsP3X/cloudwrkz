@@ -1,6 +1,13 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
+cloudwrkz/.next
+cloudwrkz/node_modules
+cloudwrkz/.env
+cloudwrkz/.env_local
+
+.pnpm-store
+
 /node_modules
 /.pnp
 .pnp.*
