@@ -6,7 +6,16 @@
 	"image": "mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm",
 	"customizations": {
 		"vscode": {
-			"extensions":["monokai.theme-monokai-pro-vscode", "dbaeumer.vscode-eslint", "bradlc.vscode-tailwindcss", "rangav.vscode-thunder-client"]
+			"extensions": [
+				"monokai.theme-monokai-pro-vscode",
+				"dbaeumer.vscode-eslint",
+				"bradlc.vscode-tailwindcss",
+				"rangav.vscode-thunder-client"
+			],
+			"settings": {
+				"editor.formatOnSave": true,
+				"workbench.sideBar.location": "right"
+			}
 		}
 	}
 }
