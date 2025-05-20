@@ -46,3 +46,23 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+*.swp
+*.swo
+
+# Generated files
+/generated/
+/cloudwrkz/generated/
+**/*.generated.*
+
+# OS specific
+Thumbs.db
+.directory
+
+# Logs
+logs/
+*.log
