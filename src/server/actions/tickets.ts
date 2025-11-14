@@ -57,7 +57,7 @@ export async function createTicket(input: TicketInput): Promise<ActionResult<{ i
       };
     }
 
-    const ticketType: TicketType = input.type || "SUPPORT";
+    const ticketType: TicketType = input.type || "BUG";
     const prefix = getTicketTypePrefix(ticketType);
 
     // Find the highest sequence number for this prefix

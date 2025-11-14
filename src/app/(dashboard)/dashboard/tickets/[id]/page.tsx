@@ -7,8 +7,12 @@ import { getTicket } from "@/server/actions/tickets";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { TicketCommentForm } from "@/components/features/tickets/TicketCommentForm";
+import { TicketAssignmentFields } from "@/components/features/tickets/TicketAssignmentFields";
+import { TicketStatusPriorityFields } from "@/components/features/tickets/TicketStatusPriorityFields";
 import { getTicketTypeLabel, type TicketType } from "@/lib/utils/tickets";
 import { notFound } from "next/navigation";
+import { getAgents } from "@/server/actions/users";
+import { getGroups } from "@/server/actions/groups";
 
 interface TicketDetailPageProps {
   params: Promise<{ id: string }>;
@@ -57,6 +61,11 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
   if (!canView) {
     redirect(ROUTES.DASHBOARD);
   }
+
+  // Get agents and groups for editable assignment fields (only for agents/admins/moderators)
+  const isAgent = user.role === "AGENT" || user.role === "ADMIN" || user.role === "MODERATOR";
+  const agents = isAgent ? await getAgents() : [];
+  const groups = isAgent ? await getGroups() : [];
 
   const formatDate = (date: Date) => {
     return new Date(date).toLocaleString("en-US", {
@@ -292,37 +301,6 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                 </p>
               </div>
 
-              {/* Divider */}
-              <div className="border-t border-neutral-200 pt-4"></div>
-
-              {/* Status */}
-              <div>
-                <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
-                  Status
-                </label>
-                <span
-                  className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(
-                    ticket.status
-                  )}`}
-                >
-                  {ticket.status.replace("_", " ")}
-                </span>
-              </div>
-
-              {/* Priority */}
-              <div>
-                <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
-                  Priority
-                </label>
-                <span
-                  className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${getPriorityColor(
-                    ticket.priority
-                  )}`}
-                >
-                  {ticket.priority}
-                </span>
-              </div>
-
               {/* Type */}
               <div>
                 <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
@@ -332,6 +310,48 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                   {getTicketTypeLabel(ticket.type as TicketType)}
                 </span>
               </div>
+
+              {/* Divider */}
+              <div className="border-t border-neutral-200 pt-4"></div>
+
+              {/* Status and Priority - Editable for agents */}
+              {isAgent ? (
+                <TicketStatusPriorityFields
+                  ticketId={ticket.id}
+                  status={ticket.status}
+                  priority={ticket.priority}
+                />
+              ) : (
+                <>
+                  {/* Status */}
+                  <div>
+                    <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                      Status
+                    </label>
+                    <span
+                      className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(
+                        ticket.status
+                      )}`}
+                    >
+                      {ticket.status.replace("_", " ")}
+                    </span>
+                  </div>
+
+                  {/* Priority */}
+                  <div>
+                    <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                      Priority
+                    </label>
+                    <span
+                      className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${getPriorityColor(
+                        ticket.priority
+                      )}`}
+                    >
+                      {ticket.priority}
+                    </span>
+                  </div>
+                </>
+              )}
 
               {/* Divider */}
               <div className="border-t border-neutral-200 pt-4"></div>
@@ -346,47 +366,60 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                 </p>
               </div>
 
-              {/* Assigned To */}
-              {ticket.assignedTo ? (
-                <div>
-                  <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
-                    Assigned To
-                  </label>
-                  <p className="text-sm text-neutral-900">
-                    {ticket.assignedTo.name || ticket.assignedTo.email}
-                  </p>
-                </div>
+              {/* Assigned To and Assigned To Group - Editable for agents */}
+              {isAgent ? (
+                <TicketAssignmentFields
+                  ticketId={ticket.id}
+                  assignedToId={ticket.assignedToId}
+                  assignedToGroupId={ticket.assignedToGroupId}
+                  agents={agents}
+                  groups={groups}
+                />
               ) : (
-                <div>
-                  <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
-                    Assigned To
-                  </label>
-                  <p className="text-sm text-neutral-500 italic">Unassigned</p>
-                </div>
-              )}
-
-              {/* Assigned To Group */}
-              {ticket.assignedToGroup ? (
-                <div>
-                  <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
-                    Assigned To Group
-                  </label>
-                  <p className="text-sm text-neutral-900">
-                    {ticket.assignedToGroup.name}
-                  </p>
-                  {ticket.assignedToGroup.description && (
-                    <p className="text-xs text-neutral-500 mt-1">
-                      {ticket.assignedToGroup.description}
-                    </p>
+                <>
+                  {/* Assigned To */}
+                  {ticket.assignedTo ? (
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                        Assigned To
+                      </label>
+                      <p className="text-sm text-neutral-900">
+                        {ticket.assignedTo.name || ticket.assignedTo.email}
+                      </p>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                        Assigned To
+                      </label>
+                      <p className="text-sm text-neutral-500 italic">Unassigned</p>
+                    </div>
                   )}
-                </div>
-              ) : (
-                <div>
-                  <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
-                    Assigned To Group
-                  </label>
-                  <p className="text-sm text-neutral-500 italic">No group assignment</p>
-                </div>
+
+                  {/* Assigned To Group */}
+                  {ticket.assignedToGroup ? (
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                        Assigned To Group
+                      </label>
+                      <p className="text-sm text-neutral-900">
+                        {ticket.assignedToGroup.name}
+                      </p>
+                      {ticket.assignedToGroup.description && (
+                        <p className="text-xs text-neutral-500 mt-1">
+                          {ticket.assignedToGroup.description}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                        Assigned To Group
+                      </label>
+                      <p className="text-sm text-neutral-500 italic">No group assignment</p>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* Divider */}

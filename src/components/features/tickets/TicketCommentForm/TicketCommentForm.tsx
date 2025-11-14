@@ -187,11 +187,20 @@ export const TicketCommentForm = ({ ticketId, userRole }: TicketCommentFormProps
         {isAgent ? (
           <div className="relative inline-flex" ref={dropdownRef}>
             <div className="flex rounded-md shadow-sm">
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={isSubmitting}
+                loading={isSubmitting}
+                className="rounded-r-none border-r border-primary-700"
+              >
+                {isSubmitting ? "Posting..." : "Post"}
+              </Button>
               <button
                 type="button"
                 onClick={handleDropdownToggle}
                 disabled={isSubmitting}
-                className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-primary-700 bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                className="inline-flex items-center px-3 rounded-r-md border border-l-0 border-primary-700 bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
                 aria-label="Quick actions"
               >
                 <svg
@@ -208,19 +217,10 @@ export const TicketCommentForm = ({ ticketId, userRole }: TicketCommentFormProps
                   />
                 </svg>
               </button>
-              <Button
-                type="submit"
-                variant="primary"
-                disabled={isSubmitting}
-                loading={isSubmitting}
-                className="rounded-l-none border-l border-primary-700"
-              >
-                {isSubmitting ? "Posting..." : "Post"}
-              </Button>
             </div>
 
             {isDropdownOpen && (
-              <div className="absolute left-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
+              <div className="absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
                 <div className="py-1" role="menu" aria-orientation="vertical">
                   <button
                     type="button"

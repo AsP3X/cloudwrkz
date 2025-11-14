@@ -15,7 +15,7 @@ export const createTicketSchema = z.object({
     .trim()
     .optional()
     .or(z.literal("")),
-  type: z.enum(["BUG", "FEATURE", "QUESTION", "SUPPORT", "TASK"]).default("SUPPORT"),
+  type: z.enum(["BUG", "FEATURE", "QUESTION", "SUPPORT", "TASK"]).default("BUG"),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).default("MEDIUM"),
   createdForUserId: z.string().optional().or(z.literal("")), // For agents to create tickets for other users
   assignedToId: z.string().optional().or(z.literal("")), // For agents to assign tickets to agents

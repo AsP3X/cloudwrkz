@@ -232,6 +232,8 @@ export const TicketFilterDialog = ({
       // Mark this preset as the last used
       localStorage.setItem(LAST_USED_PRESET_KEY, newPreset.id);
       setLastUsedPresetId(newPreset.id);
+      // Dispatch custom event to notify other components
+      window.dispatchEvent(new Event("localStorageChange"));
       // Immediately apply the preset filters
       applyPresetFilters(newPreset.filters);
     } catch (error) {
@@ -254,6 +256,8 @@ export const TicketFilterDialog = ({
       try {
         localStorage.setItem(LAST_USED_PRESET_KEY, presetId);
         setLastUsedPresetId(presetId);
+        // Dispatch custom event to notify other components
+        window.dispatchEvent(new Event("localStorageChange"));
       } catch (error) {
         console.error("Failed to save last used preset:", error);
       }
@@ -270,6 +274,8 @@ export const TicketFilterDialog = ({
     try {
       localStorage.removeItem(LAST_USED_PRESET_KEY);
       setLastUsedPresetId("");
+      // Dispatch custom event to notify other components
+      window.dispatchEvent(new Event("localStorageChange"));
     } catch (error) {
       console.error("Failed to clear last used preset:", error);
     }
@@ -301,6 +307,8 @@ export const TicketFilterDialog = ({
       try {
         localStorage.removeItem(LAST_USED_PRESET_KEY);
         setLastUsedPresetId("");
+        // Dispatch custom event to notify other components
+        window.dispatchEvent(new Event("localStorageChange"));
       } catch (error) {
         console.error("Failed to clear last used preset:", error);
       }
@@ -308,6 +316,8 @@ export const TicketFilterDialog = ({
 
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      // Dispatch custom event to notify other components (preset list changed)
+      window.dispatchEvent(new Event("localStorageChange"));
     } catch (error) {
       console.error("Failed to delete filter preset:", error);
     }

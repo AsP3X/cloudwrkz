@@ -164,7 +164,7 @@ model Ticket {
   ticketNumber String        @unique // e.g., #INC-000001, #SRC-000001
   title       String
   description String?
-  type        TicketType      @default(SUPPORT)
+  type        TicketType      @default(BUG)
   status      TicketStatus    @default(OPEN)
   priority    TicketPriority  @default(MEDIUM)
   

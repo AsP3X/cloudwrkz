@@ -14,8 +14,8 @@ import { ROUTES } from "@/lib/constants/routes";
 import { TICKET_TYPE_LABELS, type TicketType } from "@/lib/utils/tickets";
 
 const TICKET_TYPE_OPTIONS: Array<{ value: TicketType; label: string }> = [
-  { value: "SUPPORT", label: TICKET_TYPE_LABELS.SUPPORT },
   { value: "BUG", label: TICKET_TYPE_LABELS.BUG },
+  { value: "SUPPORT", label: TICKET_TYPE_LABELS.SUPPORT },
   { value: "FEATURE", label: TICKET_TYPE_LABELS.FEATURE },
   { value: "QUESTION", label: TICKET_TYPE_LABELS.QUESTION },
   { value: "TASK", label: TICKET_TYPE_LABELS.TASK },
@@ -86,10 +86,10 @@ export const TicketForm = ({ isAgent = false, users = [], agents = [], groups = 
   } = useForm<CreateTicketInput>({
     resolver: zodResolver(createTicketSchema),
     defaultValues: {
-      type: "SUPPORT",
+      type: "BUG",
       priority: "MEDIUM",
       createdForUserId: "",
-      assignedToId: "",
+      assignedToId: isAgent && agents.length > 0 ? "myself" : "",
       assignedToGroupId: "",
     },
   });
