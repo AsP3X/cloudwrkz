@@ -10,42 +10,70 @@ A modern Next.js 15 application with Tailwind CSS and PostgreSQL.
 - **Type Safety**: TypeScript
 - **Package Manager**: pnpm
 
-## Getting Started
-
-### Prerequisites
+## Prerequisites
 
 - Node.js 18+ 
 - pnpm installed (`npm install -g pnpm`)
-- PostgreSQL database
+- Docker and Docker Compose (for database)
 
-### Installation
+## Getting Started
 
-1. Install dependencies:
+### 1. Install Dependencies
+
 ```bash
 pnpm install
 ```
 
-2. Copy the environment file:
+### 2. Start PostgreSQL Database
+
+Using Docker Compose:
+
+```bash
+docker-compose up -d
+```
+
+This will start:
+- PostgreSQL database on port `5432`
+- pgAdmin (optional database management UI) on port `5050`
+
+To stop the database:
+```bash
+docker-compose down
+```
+
+To stop and remove volumes (⚠️ deletes all data):
+```bash
+docker-compose down -v
+```
+
+### 3. Environment Setup
+
+The `.env.local` file is already configured for Docker Compose. If you need to customize:
+
 ```bash
 cp .env.example .env.local
 ```
 
-3. Update `.env.local` with your database connection string:
-```
-DATABASE_URL="postgresql://user:password@localhost:5432/cloudwrkz?schema=public"
-```
+Update `.env.local` with your settings.
 
-4. Generate Prisma Client:
+### 4. Database Migration
+
+Generate Prisma Client:
 ```bash
 pnpm db:generate
 ```
 
-5. Push the database schema:
+Push the database schema:
 ```bash
 pnpm db:push
 ```
 
-### Development
+Or create a migration:
+```bash
+pnpm db:migrate
+```
+
+### 5. Development
 
 Run the development server:
 ```bash
@@ -54,6 +82,22 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
+## Database Management
+
+### Access pgAdmin
+
+1. Start docker-compose: `docker-compose up -d`
+2. Open [http://localhost:5050](http://localhost:5050)
+3. Login with:
+   - Email: `admin@cloudwrkz.local`
+   - Password: `admin`
+4. Add server:
+   - Host: `postgres` (or `localhost` if connecting from host)
+   - Port: `5432`
+   - Database: `cloudwrkz`
+   - Username: `cloudwrkz`
+   - Password: `cloudwrkz_dev_password`
+
 ### Database Commands
 
 - Generate Prisma Client: `pnpm db:generate`
@@ -61,7 +105,18 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 - Create migration: `pnpm db:migrate`
 - Open Prisma Studio: `pnpm db:studio`
 
-### Project Structure
+### Direct PostgreSQL Access
+
+```bash
+# Connect via Docker
+docker exec -it cloudwrkz-postgres psql -U cloudwrkz -d cloudwrkz
+
+# Or connect from host (if psql is installed)
+psql -h localhost -U cloudwrkz -d cloudwrkz
+# Password: cloudwrkz_dev_password
+```
+
+## Project Structure
 
 ```
 src/
@@ -73,8 +128,22 @@ src/
 ├── lib/             # Utilities and helpers
 │   ├── db/          # Database client
 │   └── utils/       # Utility functions
-└── types/           # TypeScript type definitions
+└── server/          # Server-side code
+    └── actions/     # Server Actions
 ```
+
+## Docker Compose Services
+
+- **postgres**: PostgreSQL 16 database
+  - Port: `5432`
+  - User: `cloudwrkz`
+  - Password: `cloudwrkz_dev_password`
+  - Database: `cloudwrkz`
+
+- **pgadmin**: Database management UI (optional)
+  - Port: `5050`
+  - Email: `admin@cloudwrkz.local`
+  - Password: `admin`
 
 ## Design System
 
