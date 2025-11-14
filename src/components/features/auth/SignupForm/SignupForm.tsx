@@ -63,8 +63,20 @@ export const SignupForm = () => {
     }
   };
 
+  // Prevent any form submission that could expose credentials
+  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    handleSubmit(onSubmit)(e);
+  };
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+    <form 
+      method="POST" 
+      action="#" 
+      onSubmit={handleFormSubmit} 
+      className="space-y-6"
+      noValidate
+    >
       {/* Success Message */}
       {successMessage && (
         <div className="rounded-lg bg-success-50 border-2 border-success-200 p-4">
