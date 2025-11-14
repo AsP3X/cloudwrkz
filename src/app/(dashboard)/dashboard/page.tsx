@@ -21,18 +21,33 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
     allTickets = await getTickets();
     assignedTickets = await getTickets({ assignedToId: user.id });
     
+    // Filter for unresolved tickets only (OPEN, IN_PROGRESS, PENDING)
+    const unresolvedStatuses = ["OPEN", "IN_PROGRESS", "PENDING"];
+    const unresolvedAssigned = assignedTickets.filter((t) => unresolvedStatuses.includes(t.status));
+    const unresolvedUnassigned = allTickets.filter((t) => !t.assignedToId && unresolvedStatuses.includes(t.status));
+    const unresolvedTotal = allTickets.filter((t) => unresolvedStatuses.includes(t.status));
+    
     const openAssigned = assignedTickets.filter((t) => t.status === "OPEN").length;
     const inProgressAssigned = assignedTickets.filter((t) => t.status === "IN_PROGRESS").length;
-    const resolvedAssigned = assignedTickets.filter((t) => t.status === "RESOLVED" || t.status === "CLOSED").length;
-    const unassigned = allTickets.filter((t) => !t.assignedToId).length;
+    const pendingAssigned = assignedTickets.filter((t) => t.status === "PENDING").length;
+    
+    // Count only resolved/closed tickets from the last year
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    const resolvedAssigned = assignedTickets.filter((t) => {
+      if (t.status !== "RESOLVED" && t.status !== "CLOSED") return false;
+      const resolvedDate = t.resolvedAt || t.closedAt;
+      return resolvedDate && new Date(resolvedDate) >= oneYearAgo;
+    }).length;
     
     ticketStats = {
-      assigned: assignedTickets.length,
+      assigned: unresolvedAssigned.length, // Only unresolved assigned tickets
       openAssigned,
       inProgressAssigned,
+      pendingAssigned,
       resolvedAssigned,
-      unassigned,
-      total: allTickets.length,
+      unassigned: unresolvedUnassigned.length, // Only unresolved unassigned tickets
+      total: unresolvedTotal.length, // Only unresolved total tickets
     };
   }
 
@@ -78,7 +93,7 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
                 <p className="text-sm font-medium text-neutral-600">Assigned to Me</p>
                 <p className="text-3xl font-bold text-neutral-900 mt-2">{ticketStats.assigned}</p>
                 <p className="text-xs text-neutral-500 mt-1">
-                  {ticketStats.openAssigned} open, {ticketStats.inProgressAssigned} in progress
+                  {ticketStats.openAssigned} open, {ticketStats.inProgressAssigned} in progress{ticketStats.pendingAssigned > 0 ? `, ${ticketStats.pendingAssigned} pending` : ""}
                 </p>
               </div>
               <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center">
@@ -106,7 +121,7 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
                 <p className="text-sm font-medium text-neutral-600">Unassigned</p>
                 <p className="text-3xl font-bold text-neutral-900 mt-2">{ticketStats.unassigned}</p>
                 <p className="text-xs text-neutral-500 mt-1">
-                  Available for assignment
+                  Unresolved tickets available for assignment
                 </p>
               </div>
               <div className="w-12 h-12 bg-warning-100 rounded-lg flex items-center justify-center">
@@ -159,10 +174,10 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
           <div className="bg-white rounded-xl shadow-soft-lg border border-neutral-200 p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-neutral-600">Total Tickets</p>
+                <p className="text-sm font-medium text-neutral-600">Total Unresolved</p>
                 <p className="text-3xl font-bold text-neutral-900 mt-2">{ticketStats.total}</p>
                 <p className="text-xs text-neutral-500 mt-1">
-                  All system tickets
+                  All unresolved system tickets
                 </p>
               </div>
               <div className="w-12 h-12 bg-secondary-100 rounded-lg flex items-center justify-center">
@@ -232,7 +247,7 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
       </div>
 
       {/* Assigned Tickets */}
-      {ticketsEnabled && assignedTickets.length > 0 && (
+      {ticketsEnabled && ticketStats && ticketStats.assigned > 0 && (
         <div className="bg-white rounded-xl shadow-soft-lg border border-neutral-200 p-6 sm:p-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-neutral-900">My Assigned Tickets</h2>
@@ -244,7 +259,7 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
             </Link>
           </div>
           <div className="space-y-3">
-            {assignedTickets.slice(0, 5).map((ticket) => (
+            {unresolvedAssigned.slice(0, 5).map((ticket) => (
               <Link
                 key={ticket.id}
                 href={`/dashboard/tickets/${ticket.id}`}
@@ -310,7 +325,7 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
             </Link>
           </div>
           <div className="space-y-3">
-            {allTickets.filter((t) => !t.assignedToId).slice(0, 5).map((ticket) => (
+            {unresolvedUnassigned.slice(0, 5).map((ticket) => (
               <Link
                 key={ticket.id}
                 href={`/dashboard/tickets/${ticket.id}`}
@@ -383,12 +398,25 @@ export default async function DashboardPage() {
     const tickets = await getTickets({ createdById: user.id });
     const openTickets = tickets.filter((t: typeof tickets[0]) => t.status === "OPEN").length;
     const inProgressTickets = tickets.filter((t: typeof tickets[0]) => t.status === "IN_PROGRESS").length;
-    const resolvedTickets = tickets.filter((t: typeof tickets[0]) => t.status === "RESOLVED" || t.status === "CLOSED").length;
+    const pendingTickets = tickets.filter((t: typeof tickets[0]) => t.status === "PENDING").length;
+    
+    // Count only resolved/closed tickets from the last year
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    const resolvedTickets = tickets.filter((t: typeof tickets[0]) => {
+      if (t.status !== "RESOLVED" && t.status !== "CLOSED") return false;
+      const resolvedDate = t.resolvedAt || t.closedAt;
+      return resolvedDate && new Date(resolvedDate) >= oneYearAgo;
+    }).length;
+    
+    // Count only unresolved tickets (OPEN, IN_PROGRESS, PENDING)
+    const unresolvedTickets = openTickets + inProgressTickets + pendingTickets;
     
     ticketStats = {
-      total: tickets.length,
+      total: unresolvedTickets, // Changed to show only unresolved tickets
       open: openTickets,
       inProgress: inProgressTickets,
+      pending: pendingTickets,
       resolved: resolvedTickets,
     };
   }
@@ -412,10 +440,10 @@ export default async function DashboardPage() {
           <div className="bg-white rounded-xl shadow-soft-lg border border-neutral-200 p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-neutral-600">My Tickets</p>
+                <p className="text-sm font-medium text-neutral-600">Unresolved Tickets</p>
                 <p className="text-3xl font-bold text-neutral-900 mt-2">{ticketStats.total}</p>
                 <p className="text-xs text-neutral-500 mt-1">
-                  {ticketStats.open} open, {ticketStats.inProgress} in progress
+                  {ticketStats.open} open, {ticketStats.inProgress} in progress{ticketStats.pending > 0 ? `, ${ticketStats.pending} pending` : ""}
                 </p>
               </div>
               <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center">
@@ -526,7 +554,7 @@ export default async function DashboardPage() {
       {ticketsEnabled && ticketStats && ticketStats.total > 0 && (
         <div className="bg-white rounded-xl shadow-soft-lg border border-neutral-200 p-6 sm:p-8">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-neutral-900">Recent Tickets</h2>
+            <h2 className="text-xl font-bold text-neutral-900">Recent Unresolved Tickets</h2>
             <Link
               href="/dashboard/tickets"
               className="text-sm text-primary-600 hover:text-primary-700 font-medium"
@@ -535,7 +563,12 @@ export default async function DashboardPage() {
             </Link>
           </div>
           <div className="space-y-3">
-            {(await getTickets({ createdById: user.id })).slice(0, 5).map((ticket: Awaited<ReturnType<typeof getTickets>>[0]) => (
+            {(await getTickets({ createdById: user.id }))
+              .filter((t: Awaited<ReturnType<typeof getTickets>>[0]) => 
+                ["OPEN", "IN_PROGRESS", "PENDING"].includes(t.status)
+              )
+              .slice(0, 5)
+              .map((ticket: Awaited<ReturnType<typeof getTickets>>[0]) => (
               <Link
                 key={ticket.id}
                 href={`/dashboard/tickets/${ticket.id}`}

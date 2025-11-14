@@ -35,3 +35,31 @@ export async function getAgents() {
 
   return agents;
 }
+
+/**
+ * Get all users for filtering (for agents/admins)
+ * Returns all active users
+ */
+export async function getAllUsers() {
+  await requireAuth();
+
+  const users = await prisma.user.findMany({
+    where: {
+      status: {
+        in: ["ACTIVE", "PENDING"],
+      },
+    },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+    },
+    orderBy: [
+      { name: "asc" },
+      { email: "asc" },
+    ],
+  });
+
+  return users;
+}

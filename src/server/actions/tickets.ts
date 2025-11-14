@@ -126,13 +126,26 @@ export async function getTickets(filters?: {
   type?: string;
   assignedToId?: string;
   createdById?: string;
+  createdFrom?: string; // ISO date string
+  createdTo?: string; // ISO date string
+  updatedFrom?: string; // ISO date string
+  updatedTo?: string; // ISO date string
+  sortBy?: "createdAt" | "updatedAt";
+  sortOrder?: "asc" | "desc";
 }) {
   const user = await requireAuth();
 
   const where: any = {};
 
   if (filters?.status) {
-    where.status = filters.status;
+    // Handle special "UNRESOLVED" status filter
+    if (filters.status === "UNRESOLVED") {
+      where.status = {
+        in: ["OPEN", "IN_PROGRESS", "PENDING"],
+      };
+    } else {
+      where.status = filters.status;
+    }
   }
   if (filters?.priority) {
     where.priority = filters.priority;
@@ -146,6 +159,38 @@ export async function getTickets(filters?: {
   if (filters?.createdById) {
     where.createdById = filters.createdById;
   }
+
+  // Date filtering for created date
+  if (filters?.createdFrom || filters?.createdTo) {
+    where.createdAt = {};
+    if (filters.createdFrom) {
+      where.createdAt.gte = new Date(filters.createdFrom);
+    }
+    if (filters.createdTo) {
+      // Add one day to include the entire end date
+      const endDate = new Date(filters.createdTo);
+      endDate.setHours(23, 59, 59, 999);
+      where.createdAt.lte = endDate;
+    }
+  }
+
+  // Date filtering for updated date
+  if (filters?.updatedFrom || filters?.updatedTo) {
+    where.updatedAt = {};
+    if (filters.updatedFrom) {
+      where.updatedAt.gte = new Date(filters.updatedFrom);
+    }
+    if (filters.updatedTo) {
+      // Add one day to include the entire end date
+      const endDate = new Date(filters.updatedTo);
+      endDate.setHours(23, 59, 59, 999);
+      where.updatedAt.lte = endDate;
+    }
+  }
+
+  // Determine sort order
+  const sortBy = filters?.sortBy || "createdAt";
+  const sortOrder = filters?.sortOrder || "desc";
 
   return prisma.ticket.findMany({
     where,
@@ -171,7 +216,7 @@ export async function getTickets(filters?: {
       },
     },
     orderBy: {
-      createdAt: "desc",
+      [sortBy]: sortOrder,
     },
   });
 }

@@ -4,12 +4,27 @@ import { ROUTES } from "@/lib/constants/routes";
 import { isModuleEnabled } from "@/server/actions/modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { getTickets } from "@/server/actions/tickets";
+import { getAllUsers } from "@/server/actions/users";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { getTicketTypeLabel, type TicketType } from "@/lib/utils/tickets";
+import { TicketFilterButton } from "@/components/features/tickets/TicketFilterButton";
 
-export default async function TicketsPage() {
+interface TicketsPageProps {
+  searchParams: Promise<{
+    status?: string;
+    createdBy?: string;
+    createdFrom?: string;
+    createdTo?: string;
+    updatedFrom?: string;
+    updatedTo?: string;
+    sort?: string;
+  }>;
+}
+
+export default async function TicketsPage({ searchParams }: TicketsPageProps) {
   const user = await getCurrentUser();
+  const params = await searchParams;
 
   if (!user || (user.role !== "USER" && user.role !== "AGENT")) {
     redirect(ROUTES.LOGIN);
@@ -29,23 +44,74 @@ export default async function TicketsPage() {
     );
   }
 
-  // Agents can see all tickets, users only see their own
-  const tickets = user.role === "AGENT" 
-    ? await getTickets() 
-    : await getTickets({ createdById: user.id });
+  // Parse sort parameter
+  const sortParam = params.sort || "createdAt-desc";
+  const [sortBy, sortOrder] = sortParam.split("-") as ["createdAt" | "updatedAt", "asc" | "desc"];
+
+  // Build filters
+  const filters: any = {
+    sortBy: sortBy || "createdAt",
+    sortOrder: sortOrder || "desc",
+  };
+
+  if (params.status) {
+    filters.status = params.status;
+  }
+  if (params.createdBy) {
+    filters.createdById = params.createdBy;
+  }
+  if (params.createdFrom) {
+    filters.createdFrom = params.createdFrom;
+  }
+  if (params.createdTo) {
+    filters.createdTo = params.createdTo;
+  }
+  if (params.updatedFrom) {
+    filters.updatedFrom = params.updatedFrom;
+  }
+  if (params.updatedTo) {
+    filters.updatedTo = params.updatedTo;
+  }
+
+  // For regular users, always filter by their own tickets
+  if (user.role !== "AGENT") {
+    filters.createdById = user.id;
+  }
+
+  // Get users for filter dropdown (only for agents)
+  const users = user.role === "AGENT" ? await getAllUsers() : [];
+
+  // Get tickets with filters
+  const tickets = await getTickets(filters);
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-neutral-900">My Tickets</h1>
-          <p className="text-neutral-600 mt-1">Manage and track your support tickets</p>
+          <h1 className="text-3xl font-bold text-neutral-900">
+            {user.role === "AGENT" ? "All Tickets" : "My Tickets"}
+          </h1>
+          <p className="text-neutral-600 mt-1">
+            {user.role === "AGENT" 
+              ? "Manage and track all support tickets" 
+              : "Manage and track your support tickets"}
+          </p>
         </div>
-        <Link href="/dashboard/tickets/new">
-          <Button variant="primary">Create Ticket</Button>
-        </Link>
+        <div className="flex items-center gap-3">
+          <TicketFilterButton users={users} isAgent={user.role === "AGENT"} />
+          <Link href="/dashboard/tickets/new">
+            <Button variant="primary">Create Ticket</Button>
+          </Link>
+        </div>
       </div>
+
+      {/* Results Count */}
+      {tickets.length > 0 && (
+        <div className="text-sm text-neutral-600">
+          Showing {tickets.length} ticket{tickets.length !== 1 ? "s" : ""}
+        </div>
+      )}
 
       {/* Tickets List */}
       {tickets.length === 0 ? (
@@ -132,8 +198,13 @@ export default async function TicketsPage() {
                   </div>
                   <div className="ml-4 text-right">
                     <p className="text-sm text-neutral-500">
-                      {new Date(ticket.createdAt).toLocaleDateString()}
+                      Created {new Date(ticket.createdAt).toLocaleDateString()}
                     </p>
+                    {ticket.updatedAt && ticket.updatedAt.getTime() !== ticket.createdAt.getTime() && (
+                      <p className="text-xs text-neutral-400 mt-1">
+                        Updated {new Date(ticket.updatedAt).toLocaleDateString()}
+                      </p>
+                    )}
                     {ticket.assignedTo && (
                       <p className="text-xs text-neutral-400 mt-1">
                         Assigned to {ticket.assignedTo.name || ticket.assignedTo.email}
