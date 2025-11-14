@@ -5,7 +5,7 @@ export type CurrentUser = {
   id: string;
   email: string;
   name: string | null;
-  role: "USER" | "ADMIN" | "MODERATOR";
+  role: "USER" | "ADMIN" | "MODERATOR" | "AGENT";
   status: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
   emailVerified: boolean;
 };
@@ -89,7 +89,7 @@ export async function requireAuth(): Promise<CurrentUser> {
 /**
  * Require specific role - throws error if user doesn't have the required role
  */
-export async function requireRole(requiredRole: "USER" | "ADMIN" | "MODERATOR"): Promise<CurrentUser> {
+export async function requireRole(requiredRole: "USER" | "ADMIN" | "MODERATOR" | "AGENT"): Promise<CurrentUser> {
   const user = await requireAuth();
   
   if (user.role !== requiredRole) {

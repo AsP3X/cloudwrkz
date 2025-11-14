@@ -17,9 +17,9 @@ export default async function DashboardLayout({
     redirect(ROUTES.LOGIN);
   }
 
-  // Only allow USER role to access dashboard
+  // Allow USER and AGENT roles to access dashboard
   // ADMIN and MODERATOR can have separate dashboards later
-  if (user.role !== "USER") {
+  if (user.role !== "USER" && user.role !== "AGENT") {
     redirect(ROUTES.HOME);
   }
 

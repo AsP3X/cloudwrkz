@@ -206,6 +206,7 @@ export async function getTicket(id: string) {
               id: true,
               name: true,
               email: true,
+              role: true,
             },
           },
         },
@@ -229,7 +230,7 @@ export async function updateTicket(
 
     const ticket = await prisma.ticket.findUnique({
       where: { id },
-      select: { createdById: true, resolvedAt: true, closedAt: true },
+      select: { createdById: true, assignedToId: true, resolvedAt: true, closedAt: true },
     });
 
     if (!ticket) {
@@ -239,8 +240,15 @@ export async function updateTicket(
       };
     }
 
-    // Only creator or admin can update (for now, just creator)
-    if (ticket.createdById !== user.id && user.role !== "ADMIN") {
+    // Creator, assigned agent, admin, or moderator can update
+    // Agents can update any ticket (to allow self-assignment and ticket management)
+    const canUpdate = 
+      ticket.createdById === user.id ||
+      user.role === "ADMIN" ||
+      user.role === "MODERATOR" ||
+      user.role === "AGENT"; // Agents can update all tickets
+    
+    if (!canUpdate) {
       return {
         success: false,
         error: "You don't have permission to update this ticket",
@@ -310,7 +318,7 @@ export async function deleteTicket(id: string): Promise<ActionResult> {
 
     const ticket = await prisma.ticket.findUnique({
       where: { id },
-      select: { createdById: true },
+      select: { createdById: true, assignedToId: true },
     });
 
     if (!ticket) {
@@ -320,8 +328,14 @@ export async function deleteTicket(id: string): Promise<ActionResult> {
       };
     }
 
-    // Only creator or admin can delete
-    if (ticket.createdById !== user.id && user.role !== "ADMIN") {
+    // Creator, assigned agent, admin, or moderator can delete
+    const canDelete = 
+      ticket.createdById === user.id ||
+      user.role === "ADMIN" ||
+      user.role === "MODERATOR" ||
+      (user.role === "AGENT" && ticket.assignedToId === user.id);
+    
+    if (!canDelete) {
       return {
         success: false,
         error: "You don't have permission to delete this ticket",

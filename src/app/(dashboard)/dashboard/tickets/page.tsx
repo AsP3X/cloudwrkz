@@ -11,7 +11,7 @@ import { getTicketTypeLabel, type TicketType } from "@/lib/utils/tickets";
 export default async function TicketsPage() {
   const user = await getCurrentUser();
 
-  if (!user || user.role !== "USER") {
+  if (!user || (user.role !== "USER" && user.role !== "AGENT")) {
     redirect(ROUTES.LOGIN);
   }
 
@@ -29,7 +29,10 @@ export default async function TicketsPage() {
     );
   }
 
-  const tickets = await getTickets({ createdById: user.id });
+  // Agents can see all tickets, users only see their own
+  const tickets = user.role === "AGENT" 
+    ? await getTickets() 
+    : await getTickets({ createdById: user.id });
 
   return (
     <div className="space-y-6">

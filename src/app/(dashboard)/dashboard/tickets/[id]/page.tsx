@@ -46,7 +46,15 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
   }
 
   // Check if user has permission to view this ticket
-  if (ticket.createdById !== user.id && user.role !== "ADMIN" && user.role !== "MODERATOR") {
+  // Creator, assigned agent, admin, or moderator can view
+  const canView = 
+    ticket.createdById === user.id ||
+    user.role === "ADMIN" ||
+    user.role === "MODERATOR" ||
+    (user.role === "AGENT" && ticket.assignedToId === user.id) ||
+    user.role === "AGENT"; // Agents can view all tickets
+  
+  if (!canView) {
     redirect(ROUTES.DASHBOARD);
   }
 
@@ -93,6 +101,28 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
     }
   };
 
+  const getRoleBadge = (role: string) => {
+    switch (role) {
+      case "AGENT":
+        return {
+          label: "Agent",
+          className: "bg-primary-100 text-primary-700 border-primary-200",
+        };
+      case "ADMIN":
+        return {
+          label: "Admin",
+          className: "bg-error-100 text-error-700 border-error-200",
+        };
+      case "MODERATOR":
+        return {
+          label: "Moderator",
+          className: "bg-secondary-100 text-secondary-700 border-secondary-200",
+        };
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -128,6 +158,27 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
             </p>
           </div>
         </div>
+        {/* Edit Button for Agents, Admins, and Moderators */}
+        {(user.role === "AGENT" || user.role === "ADMIN" || user.role === "MODERATOR") && (
+          <Link href={`/dashboard/tickets/${ticket.id}/edit`}>
+            <Button variant="primary" size="sm">
+              <svg
+                className="w-4 h-4 mr-2"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                />
+              </svg>
+              Edit Ticket
+            </Button>
+          </Link>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -184,9 +235,18 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                           </span>
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-neutral-900">
-                            {comment.user.name || comment.user.email}
-                          </p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-semibold text-neutral-900">
+                              {comment.user.name || comment.user.email}
+                            </p>
+                            {comment.user.role && getRoleBadge(comment.user.role) && (
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-xs font-medium border ${getRoleBadge(comment.user.role)?.className}`}
+                              >
+                                {getRoleBadge(comment.user.role)?.label}
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-neutral-500">
                             {formatDate(comment.createdAt)}
                           </p>

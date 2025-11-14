@@ -31,7 +31,7 @@ Commands:
   list [--status=STATUS] [--role=ROLE] List users with optional filters
   show <email>                         Show user details
   update-status <email|number> <status> Update user status (PENDING|ACTIVE|SUSPENDED|DELETED)
-  update-role <email|number> <role>    Update user role (USER|ADMIN|MODERATOR)
+  update-role <email|number> <role>    Update user role (USER|ADMIN|MODERATOR|AGENT)
   update-password <email|number> <password> Update user password
 
 User Selection:
@@ -65,7 +65,7 @@ Examples:
   pnpm cli user delete user@example.com
 
 Status Options: PENDING, ACTIVE, SUSPENDED, DELETED
-Role Options: USER, ADMIN, MODERATOR
+Role Options: USER, ADMIN, MODERATOR, AGENT
 `);
   process.exit(0);
 }
@@ -202,7 +202,7 @@ async function handleList() {
       where.status = status;
     } else if (arg.startsWith("--role=")) {
       const role = arg.split("=")[1];
-      if (!["USER", "ADMIN", "MODERATOR"].includes(role)) {
+      if (!["USER", "ADMIN", "MODERATOR", "AGENT"].includes(role)) {
         console.error(`Invalid role: ${role}`);
         process.exit(1);
       }
@@ -377,7 +377,7 @@ async function handleUpdateStatus() {
 async function handleUpdateRole() {
   if (commandArgs.length < 3) {
     console.error("Usage: update-role <email|number> <role>");
-    console.error("Role must be one of: USER, ADMIN, MODERATOR");
+    console.error("Role must be one of: USER, ADMIN, MODERATOR, AGENT");
     console.error("\nTip: Use 'list' command first to see user numbers");
     process.exit(1);
   }
@@ -414,9 +414,9 @@ async function handleUpdateRole() {
     email = selection;
   }
 
-  if (!["USER", "ADMIN", "MODERATOR"].includes(role)) {
+  if (!["USER", "ADMIN", "MODERATOR", "AGENT"].includes(role)) {
     console.error(`Invalid role: ${role}`);
-    console.error("Role must be one of: USER, ADMIN, MODERATOR");
+    console.error("Role must be one of: USER, ADMIN, MODERATOR, AGENT");
     process.exit(1);
   }
 
