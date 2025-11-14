@@ -360,6 +360,12 @@ export async function getTicket(id: string) {
         },
       },
       comments: {
+        where: {
+          // Filter out agent-only comments for non-agents
+          ...(user.role !== "AGENT" && user.role !== "ADMIN" && user.role !== "MODERATOR"
+            ? { isAgentOnly: false }
+            : {}),
+        },
         include: {
           user: {
             select: {
@@ -566,7 +572,8 @@ export async function deleteTicket(id: string): Promise<ActionResult> {
  */
 export async function addTicketComment(
   ticketId: string,
-  content: string
+  content: string,
+  isAgentOnly: boolean = false
 ): Promise<ActionResult<{ id: string }>> {
   try {
     const user = await requireAuth();
@@ -575,6 +582,14 @@ export async function addTicketComment(
       return {
         success: false,
         error: "Comment cannot be empty",
+      };
+    }
+
+    // Only agents, admins, and moderators can create agent-only comments
+    if (isAgentOnly && user.role !== "AGENT" && user.role !== "ADMIN" && user.role !== "MODERATOR") {
+      return {
+        success: false,
+        error: "Only agents can create agent-only comments",
       };
     }
 
@@ -596,6 +611,7 @@ export async function addTicketComment(
         ticketId,
         userId: user.id,
         content: content.trim(),
+        isAgentOnly,
       },
       select: {
         id: true,

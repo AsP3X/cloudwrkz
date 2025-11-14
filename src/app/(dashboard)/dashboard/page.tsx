@@ -16,6 +16,8 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
   let allTickets: Awaited<ReturnType<typeof getTickets>> = [];
   let assignedTickets: Awaited<ReturnType<typeof getTickets>> = [];
   let ticketStats = null;
+  let unresolvedAssigned: Awaited<ReturnType<typeof getTickets>> = [];
+  let unresolvedUnassigned: Awaited<ReturnType<typeof getTickets>> = [];
   
   if (ticketsEnabled) {
     allTickets = await getTickets();
@@ -23,8 +25,8 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
     
     // Filter for unresolved tickets only (OPEN, IN_PROGRESS, PENDING)
     const unresolvedStatuses = ["OPEN", "IN_PROGRESS", "PENDING"];
-    const unresolvedAssigned = assignedTickets.filter((t) => unresolvedStatuses.includes(t.status));
-    const unresolvedUnassigned = allTickets.filter((t) => !t.assignedToId && unresolvedStatuses.includes(t.status));
+    unresolvedAssigned = assignedTickets.filter((t) => unresolvedStatuses.includes(t.status));
+    unresolvedUnassigned = allTickets.filter((t) => !t.assignedToId && unresolvedStatuses.includes(t.status));
     const unresolvedTotal = allTickets.filter((t) => unresolvedStatuses.includes(t.status));
     
     const openAssigned = assignedTickets.filter((t) => t.status === "OPEN").length;

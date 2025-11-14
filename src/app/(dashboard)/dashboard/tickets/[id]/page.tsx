@@ -147,12 +147,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
             </Button>
           </Link>
           <div>
-            <div className="flex items-center gap-3 mb-2">
-              <span className="text-lg font-mono font-semibold text-primary-600">
-                {ticket.ticketNumber}
-              </span>
-              <h1 className="text-3xl font-bold text-neutral-900">{ticket.title}</h1>
-            </div>
+            <h1 className="text-3xl font-bold text-neutral-900 mb-2">{ticket.title}</h1>
             <p className="text-neutral-600">
               Created {formatDate(ticket.createdAt)}
             </p>
@@ -225,12 +220,20 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                 {ticket.comments.map((comment: typeof ticket.comments[0]) => (
                   <div
                     key={comment.id}
-                    className="border-l-4 border-primary-200 pl-4 py-2"
+                    className={`border-l-4 pl-4 py-2 rounded-r-lg ${
+                      comment.isAgentOnly
+                        ? "border-orange-300 bg-orange-50"
+                        : "border-primary-200"
+                    }`}
                   >
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center">
-                          <span className="text-sm font-semibold text-primary-700">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                          comment.isAgentOnly ? "bg-orange-100" : "bg-primary-100"
+                        }`}>
+                          <span className={`text-sm font-semibold ${
+                            comment.isAgentOnly ? "text-orange-700" : "text-primary-700"
+                          }`}>
                             {(comment.user.name || comment.user.email)[0].toUpperCase()}
                           </span>
                         </div>
@@ -239,6 +242,11 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                             <p className="text-sm font-semibold text-neutral-900">
                               {comment.user.name || comment.user.email}
                             </p>
+                            {comment.isAgentOnly && (
+                              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 border border-orange-200">
+                                Agent Only
+                              </span>
+                            )}
                             {comment.user.role && getRoleBadge(comment.user.role) && (
                               <span
                                 className={`px-2 py-0.5 rounded-full text-xs font-medium border ${getRoleBadge(comment.user.role)?.className}`}
@@ -263,7 +271,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
 
             {/* Add Comment Form */}
             <div className="border-t border-neutral-200 pt-6">
-              <TicketCommentForm ticketId={ticket.id} />
+              <TicketCommentForm ticketId={ticket.id} userRole={user.role} />
             </div>
           </div>
         </div>
@@ -274,6 +282,19 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
           <div className="bg-white rounded-xl shadow-soft-lg border border-neutral-200 p-6">
             <h3 className="text-lg font-bold text-neutral-900 mb-4">Ticket Information</h3>
             <div className="space-y-4">
+              {/* Ticket Number */}
+              <div>
+                <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                  Ticket ID
+                </label>
+                <p className="text-sm font-mono font-semibold text-primary-600">
+                  {ticket.ticketNumber}
+                </p>
+              </div>
+
+              {/* Divider */}
+              <div className="border-t border-neutral-200 pt-4"></div>
+
               {/* Status */}
               <div>
                 <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
@@ -341,6 +362,30 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                     Assigned To
                   </label>
                   <p className="text-sm text-neutral-500 italic">Unassigned</p>
+                </div>
+              )}
+
+              {/* Assigned To Group */}
+              {ticket.assignedToGroup ? (
+                <div>
+                  <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                    Assigned To Group
+                  </label>
+                  <p className="text-sm text-neutral-900">
+                    {ticket.assignedToGroup.name}
+                  </p>
+                  {ticket.assignedToGroup.description && (
+                    <p className="text-xs text-neutral-500 mt-1">
+                      {ticket.assignedToGroup.description}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                    Assigned To Group
+                  </label>
+                  <p className="text-sm text-neutral-500 italic">No group assignment</p>
                 </div>
               )}
 
