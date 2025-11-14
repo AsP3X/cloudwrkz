@@ -18,6 +18,7 @@ export type TicketInput = {
   type?: "BUG" | "FEATURE" | "QUESTION" | "SUPPORT" | "TASK";
   priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
   assignedToId?: string;
+  createdForUserId?: string; // For agents to create tickets for other users
   tags?: string[];
 };
 
@@ -83,6 +84,56 @@ export async function createTicket(input: TicketInput): Promise<ActionResult<{ i
 
     const ticketNumber = generateTicketNumber(prefix, nextSequence);
 
+    // For agents, allow creating tickets for other users
+    // For regular users, always use their own ID
+    let createdById = user.id;
+    
+    if (user.role === "AGENT" && input.createdForUserId) {
+      // Verify the user exists
+      const targetUser = await prisma.user.findUnique({
+        where: { id: input.createdForUserId },
+        select: { id: true, status: true },
+      });
+      
+      if (!targetUser || targetUser.status === "DELETED") {
+        return {
+          success: false,
+          error: "Selected user not found or inactive",
+        };
+      }
+      
+      createdById = input.createdForUserId;
+    }
+
+    // Handle "myself" for assignedToId - replace with current user's ID
+    let assignedToId = input.assignedToId;
+    if (assignedToId === "myself") {
+      assignedToId = user.id;
+    }
+
+    // If assignedToId is provided, verify the agent exists and has appropriate role
+    if (assignedToId) {
+      const assignedAgent = await prisma.user.findUnique({
+        where: { id: assignedToId },
+        select: { id: true, role: true, status: true },
+      });
+
+      if (!assignedAgent || assignedAgent.status === "DELETED") {
+        return {
+          success: false,
+          error: "Selected agent not found or inactive",
+        };
+      }
+
+      // Verify the assigned user has a role that can be assigned tickets
+      if (!["AGENT", "ADMIN", "MODERATOR"].includes(assignedAgent.role)) {
+        return {
+          success: false,
+          error: "Selected user cannot be assigned tickets",
+        };
+      }
+    }
+
     const ticket = await prisma.ticket.create({
       data: {
         ticketNumber,
@@ -91,8 +142,8 @@ export async function createTicket(input: TicketInput): Promise<ActionResult<{ i
         type: ticketType,
         priority: input.priority || "MEDIUM",
         status: "OPEN",
-        createdById: user.id,
-        assignedToId: input.assignedToId,
+        createdById,
+        assignedToId: assignedToId || null,
         tags: input.tags || [],
       },
       select: {

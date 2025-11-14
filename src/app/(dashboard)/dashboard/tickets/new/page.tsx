@@ -4,13 +4,14 @@ import { ROUTES } from "@/lib/constants/routes";
 import { isModuleEnabled } from "@/server/actions/modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { TicketForm } from "@/components/features/tickets/TicketForm";
+import { getAllUsers, getAgents } from "@/server/actions/users";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 
 export default async function NewTicketPage() {
   const user = await getCurrentUser();
 
-  if (!user || user.role !== "USER") {
+  if (!user || (user.role !== "USER" && user.role !== "AGENT")) {
     redirect(ROUTES.LOGIN);
   }
 
@@ -31,14 +32,22 @@ export default async function NewTicketPage() {
     );
   }
 
+  // Get users and agents for agent ticket creation (only if agent)
+  const users = user.role === "AGENT" ? await getAllUsers() : [];
+  const agents = user.role === "AGENT" ? await getAgents() : [];
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-neutral-900">Create New Ticket</h1>
+          <h1 className="text-3xl font-bold text-neutral-900">
+            {user.role === "AGENT" ? "Create Ticket" : "Create New Ticket"}
+          </h1>
           <p className="text-neutral-600 mt-1">
-            Submit a support request, report a bug, or request a new feature
+            {user.role === "AGENT" 
+              ? "Create a ticket for yourself or on behalf of another user"
+              : "Submit a support request, report a bug, or request a new feature"}
           </p>
         </div>
         <Link href="/dashboard/tickets">
@@ -48,7 +57,7 @@ export default async function NewTicketPage() {
 
       {/* Form Card */}
       <div className="bg-white rounded-xl shadow-soft-lg border border-neutral-200 p-6 sm:p-8">
-        <TicketForm />
+        <TicketForm isAgent={user.role === "AGENT"} users={users} agents={agents} />
       </div>
 
       {/* Help Section */}

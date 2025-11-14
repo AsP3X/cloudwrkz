@@ -9,6 +9,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { getTicketTypeLabel, type TicketType } from "@/lib/utils/tickets";
 import { TicketFilterButton } from "@/components/features/tickets/TicketFilterButton";
+import { TicketFilterLoader } from "@/components/features/tickets/TicketFilterLoader";
 
 interface TicketsPageProps {
   searchParams: Promise<{
@@ -86,6 +87,9 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
 
   return (
     <div className="space-y-6">
+      {/* Auto-load filter preset for agents */}
+      <TicketFilterLoader isAgent={user.role === "AGENT"} />
+      
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>

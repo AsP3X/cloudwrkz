@@ -28,9 +28,42 @@ const PRIORITY_OPTIONS = [
   { value: "URGENT", label: "Urgent" },
 ];
 
-export const TicketForm = () => {
+interface TicketFormProps {
+  isAgent?: boolean;
+  users?: Array<{
+    id: string;
+    email: string;
+    name: string | null;
+    role: string;
+  }>;
+  agents?: Array<{
+    id: string;
+    email: string;
+    name: string | null;
+    role: string;
+  }>;
+}
+
+export const TicketForm = ({ isAgent = false, users = [], agents = [] }: TicketFormProps) => {
   const router = useRouter();
   const [serverError, setServerError] = React.useState<string | null>(null);
+
+  const userOptions = [
+    { value: "", label: "Myself" },
+    ...users.map((user) => ({
+      value: user.id,
+      label: user.name || user.email,
+    })),
+  ];
+
+  const agentOptions = [
+    { value: "", label: "Unassigned" },
+    { value: "myself", label: "Myself" },
+    ...agents.map((agent) => ({
+      value: agent.id,
+      label: agent.name || agent.email,
+    })),
+  ];
 
   const {
     register,
@@ -41,6 +74,8 @@ export const TicketForm = () => {
     defaultValues: {
       type: "SUPPORT",
       priority: "MEDIUM",
+      createdForUserId: "",
+      assignedToId: "",
     },
   });
 
@@ -48,11 +83,16 @@ export const TicketForm = () => {
     setServerError(null);
 
     try {
+      // Handle "myself" for assignedToId - will be resolved on server
+      const assignedToId = data.assignedToId === "myself" ? "myself" : (data.assignedToId || undefined);
+
       const result = await createTicket({
         title: data.title,
         description: data.description || undefined,
         type: data.type,
         priority: data.priority,
+        createdForUserId: data.createdForUserId || undefined,
+        assignedToId,
       });
 
       if (result.success && result.data) {
@@ -135,7 +175,7 @@ export const TicketForm = () => {
       />
 
       {/* Type and Priority Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className={`grid grid-cols-1 ${isAgent ? 'md:grid-cols-2' : 'md:grid-cols-2'} gap-6`}>
         {/* Type Field */}
         <Select
           label="Ticket Type"
@@ -158,6 +198,35 @@ export const TicketForm = () => {
           {...register("priority")}
         />
       </div>
+
+      {/* Agent-specific fields */}
+      {isAgent && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Created For User (Agents only) */}
+          {users.length > 0 && (
+            <Select
+              label="Create For"
+              options={userOptions}
+              placeholder="Select user"
+              error={errors.createdForUserId?.message}
+              helperText="Create ticket for yourself or another user"
+              {...register("createdForUserId")}
+            />
+          )}
+
+          {/* Assigned Agent (Agents only) */}
+          {agents.length > 0 && (
+            <Select
+              label="Assign To"
+              options={agentOptions}
+              placeholder="Select agent"
+              error={errors.assignedToId?.message}
+              helperText="Assign this ticket to an agent (or leave unassigned)"
+              {...register("assignedToId")}
+            />
+          )}
+        </div>
+      )}
 
       {/* Submit Buttons */}
       <div className="flex items-center justify-end gap-4 pt-4 border-t border-neutral-200">

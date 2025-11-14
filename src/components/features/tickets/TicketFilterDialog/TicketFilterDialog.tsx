@@ -44,6 +44,7 @@ interface TicketFilterDialogProps {
 }
 
 const STORAGE_KEY = "ticket-filter-presets";
+const LAST_USED_PRESET_KEY = "ticket-filter-last-used-preset";
 
 export const TicketFilterDialog = ({
   open,
@@ -70,18 +71,65 @@ export const TicketFilterDialog = ({
   const [presetName, setPresetName] = React.useState("");
   const [savedPresets, setSavedPresets] = React.useState<FilterPreset[]>([]);
   const [selectedPreset, setSelectedPreset] = React.useState<string>("");
+  const [lastUsedPresetId, setLastUsedPresetId] = React.useState<string>("");
 
-  // Load saved presets from localStorage
+  // Load saved presets and last used preset from localStorage
   React.useEffect(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        setSavedPresets(JSON.parse(stored));
+        const presets = JSON.parse(stored);
+        setSavedPresets(presets);
+      }
+
+      const lastUsed = localStorage.getItem(LAST_USED_PRESET_KEY);
+      if (lastUsed) {
+        setLastUsedPresetId(lastUsed);
       }
     } catch (error) {
       console.error("Failed to load filter presets:", error);
     }
   }, []);
+
+  // Track if we're manually clearing to prevent auto-sync
+  const isManuallyClearingRef = React.useRef(false);
+
+  // Sync selected preset with current URL filters (only if not manually clearing)
+  React.useEffect(() => {
+    // Skip sync if we're manually clearing
+    if (isManuallyClearingRef.current) {
+      isManuallyClearingRef.current = false;
+      return;
+    }
+
+    if (savedPresets.length > 0) {
+      // Check if there are any active filters
+      const hasActiveFilters = Object.values(currentFilters).some(
+        (value) => value && value !== "createdAt-desc"
+      );
+
+      if (!hasActiveFilters) {
+        // No active filters, clear selection
+        setSelectedPreset("");
+        return;
+      }
+
+      // Check if current filters match any preset
+      const matchingPreset = savedPresets.find((preset) => {
+        return Object.keys(preset.filters).every((key) => {
+          const presetValue = preset.filters[key] || "";
+          const currentValue = currentFilters[key as keyof typeof currentFilters] || "";
+          return presetValue === currentValue;
+        });
+      });
+      
+      if (matchingPreset) {
+        setSelectedPreset(matchingPreset.id);
+      } else {
+        setSelectedPreset("");
+      }
+    }
+  }, [searchParams, savedPresets, currentFilters]);
 
   // Update local filters when URL params change
   React.useEffect(() => {
@@ -136,6 +184,16 @@ export const TicketFilterDialog = ({
     onOpenChange(false);
   };
 
+  const applyPresetFilters = (presetFilters: Record<string, string>) => {
+    const params = new URLSearchParams();
+    Object.entries(presetFilters).forEach(([key, value]) => {
+      if (value) {
+        params.set(key, value);
+      }
+    });
+    router.push(`/dashboard/tickets?${params.toString()}`);
+  };
+
   const savePreset = () => {
     if (!presetName.trim()) {
       return;
@@ -150,20 +208,68 @@ export const TicketFilterDialog = ({
     const updated = [...savedPresets, newPreset];
     setSavedPresets(updated);
     setPresetName("");
+    setSelectedPreset(newPreset.id);
 
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      // Mark this preset as the last used
+      localStorage.setItem(LAST_USED_PRESET_KEY, newPreset.id);
+      setLastUsedPresetId(newPreset.id);
+      // Immediately apply the preset filters
+      applyPresetFilters(newPreset.filters);
     } catch (error) {
       console.error("Failed to save filter preset:", error);
     }
   };
 
   const loadPreset = (presetId: string) => {
+    // If clicking on the already selected preset, unselect it
+    if (selectedPreset === presetId) {
+      clearPreset();
+      return;
+    }
+
     const preset = savedPresets.find((p) => p.id === presetId);
     if (preset) {
       setFilters(preset.filters);
       setSelectedPreset(presetId);
+      // Mark this preset as the last used
+      try {
+        localStorage.setItem(LAST_USED_PRESET_KEY, presetId);
+        setLastUsedPresetId(presetId);
+      } catch (error) {
+        console.error("Failed to save last used preset:", error);
+      }
+      // Immediately apply the preset filters
+      applyPresetFilters(preset.filters);
     }
+  };
+
+  const clearPreset = () => {
+    // Set flag to prevent sync effect from re-selecting
+    isManuallyClearingRef.current = true;
+    setSelectedPreset("");
+    // Clear the last used preset
+    try {
+      localStorage.removeItem(LAST_USED_PRESET_KEY);
+      setLastUsedPresetId("");
+    } catch (error) {
+      console.error("Failed to clear last used preset:", error);
+    }
+    // Clear filters and navigate to base tickets page
+    const clearedFilters = {
+      status: "",
+      createdBy: "",
+      createdFrom: "",
+      createdTo: "",
+      updatedFrom: "",
+      updatedTo: "",
+      sort: "createdAt-desc",
+    };
+    setFilters(clearedFilters);
+    router.replace("/dashboard/tickets");
+    // Close the dialog to prevent sync effect interference
+    onOpenChange(false);
   };
 
   const deletePreset = (presetId: string) => {
@@ -171,6 +277,15 @@ export const TicketFilterDialog = ({
     setSavedPresets(updated);
     if (selectedPreset === presetId) {
       setSelectedPreset("");
+    }
+    // If deleting the last used preset, clear it
+    if (lastUsedPresetId === presetId) {
+      try {
+        localStorage.removeItem(LAST_USED_PRESET_KEY);
+        setLastUsedPresetId("");
+      } catch (error) {
+        console.error("Failed to clear last used preset:", error);
+      }
     }
 
     try {
@@ -195,10 +310,22 @@ export const TicketFilterDialog = ({
               Saved Filter Presets
             </label>
             <div className="flex flex-wrap gap-2">
+              {selectedPreset && (
+                <button
+                  onClick={clearPreset}
+                  className="px-3 py-1.5 text-sm font-medium text-neutral-600 hover:text-neutral-900 bg-neutral-50 hover:bg-neutral-100 rounded-lg border border-neutral-200 transition-colors"
+                >
+                  Clear Preset
+                </button>
+              )}
               {savedPresets.map((preset) => (
                 <div
                   key={preset.id}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-neutral-100 rounded-lg"
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
+                    selectedPreset === preset.id
+                      ? "bg-primary-100 border border-primary-300"
+                      : "bg-neutral-100"
+                  }`}
                 >
                   <button
                     onClick={() => loadPreset(preset.id)}
