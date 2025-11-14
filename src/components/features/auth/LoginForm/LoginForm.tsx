@@ -204,7 +204,7 @@ export const LoginForm = () => {
 
       {/* Sign Up Link */}
       <p className="text-center text-sm text-neutral-600">
-        Don't have an account?{" "}
+        Don&apos;t have an account?{" "}
         <Link
           href={ROUTES.REGISTER}
           className="text-primary-600 hover:text-primary-700 font-medium"

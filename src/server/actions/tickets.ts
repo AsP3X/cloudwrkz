@@ -229,7 +229,7 @@ export async function updateTicket(
 
     const ticket = await prisma.ticket.findUnique({
       where: { id },
-      select: { createdById: true },
+      select: { createdById: true, resolvedAt: true, closedAt: true },
     });
 
     if (!ticket) {

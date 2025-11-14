@@ -38,12 +38,12 @@ export async function isModuleEnabled(moduleKey: ModuleKey): Promise<boolean> {
     await initializeModules();
   }
 
-  const module = await prisma.module.findUnique({
+  const moduleRecord = await prisma.module.findUnique({
     where: { key: moduleKey },
     select: { enabled: true },
   });
 
-  return module?.enabled ?? false;
+  return moduleRecord?.enabled ?? false;
 }
 
 /**

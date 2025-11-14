@@ -12,7 +12,7 @@ A modern Next.js 15 application with Tailwind CSS and PostgreSQL.
 
 ## Prerequisites
 
-- Node.js 18+ 
+- Node.js 25.2.0 or higher (latest version)
 - pnpm installed (`npm install -g pnpm`)
 - Docker and Docker Compose (for database)
 

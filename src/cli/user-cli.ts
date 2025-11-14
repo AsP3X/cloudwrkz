@@ -232,7 +232,7 @@ async function handleList() {
 
   console.log(`\nFound ${users.length} user(s):\n`);
   console.table(
-    users.map((u) => ({
+    users.map((u: typeof users[0]) => ({
       Email: u.email,
       Name: u.name || "-",
       Role: u.role,

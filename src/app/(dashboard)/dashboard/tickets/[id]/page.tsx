@@ -18,7 +18,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
   const { id } = await params;
   const user = await getCurrentUser();
 
-  if (!user || user.role !== "USER") {
+  if (!user) {
     redirect(ROUTES.LOGIN);
   }
 
@@ -171,7 +171,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
               </div>
             ) : (
               <div className="space-y-6 mb-8">
-                {ticket.comments.map((comment) => (
+                {ticket.comments.map((comment: typeof ticket.comments[0]) => (
                   <div
                     key={comment.id}
                     className="border-l-4 border-primary-200 pl-4 py-2"

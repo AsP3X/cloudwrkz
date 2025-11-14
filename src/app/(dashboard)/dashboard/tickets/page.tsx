@@ -69,7 +69,7 @@ export default async function TicketsPage() {
       ) : (
         <div className="bg-white rounded-xl shadow-soft-lg border border-neutral-200 overflow-hidden">
           <div className="divide-y divide-neutral-200">
-            {tickets.map((ticket) => (
+            {tickets.map((ticket: typeof tickets[0]) => (
               <Link
                 key={ticket.id}
                 href={`/dashboard/tickets/${ticket.id}`}

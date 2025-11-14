@@ -25,7 +25,7 @@ export default async function DashboardLayout({
 
   // Get enabled modules for sidebar
   const modules = await getAllModules();
-  const enabledModuleKeys = modules.filter((m) => m.enabled).map((m) => m.key);
+  const enabledModuleKeys = modules.filter((m: typeof modules[0]) => m.enabled).map((m: typeof modules[0]) => m.key);
 
   return (
     <div className="min-h-screen bg-neutral-50">

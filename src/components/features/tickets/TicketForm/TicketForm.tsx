@@ -59,7 +59,7 @@ export const TicketForm = () => {
         // Redirect to the tickets list page
         router.push(`${ROUTES.DASHBOARD}/tickets`);
         router.refresh();
-      } else {
+      } else if (!result.success) {
         // Handle field-specific errors
         if (result.fieldErrors) {
           // Field errors are handled by react-hook-form via zod

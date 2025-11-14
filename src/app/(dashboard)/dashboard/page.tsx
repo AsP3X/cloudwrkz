@@ -22,9 +22,9 @@ export default async function DashboardPage() {
   let ticketStats = null;
   if (ticketsEnabled) {
     const tickets = await getTickets({ createdById: user.id });
-    const openTickets = tickets.filter(t => t.status === "OPEN").length;
-    const inProgressTickets = tickets.filter(t => t.status === "IN_PROGRESS").length;
-    const resolvedTickets = tickets.filter(t => t.status === "RESOLVED" || t.status === "CLOSED").length;
+    const openTickets = tickets.filter((t: typeof tickets[0]) => t.status === "OPEN").length;
+    const inProgressTickets = tickets.filter((t: typeof tickets[0]) => t.status === "IN_PROGRESS").length;
+    const resolvedTickets = tickets.filter((t: typeof tickets[0]) => t.status === "RESOLVED" || t.status === "CLOSED").length;
     
     ticketStats = {
       total: tickets.length,
@@ -42,7 +42,7 @@ export default async function DashboardPage() {
           Welcome back, {user.name || user.email.split("@")[0]}!
         </h1>
         <p className="text-neutral-600">
-          Here's what's happening with your account today.
+          Here&apos;s what&apos;s happening with your account today.
         </p>
       </div>
 
@@ -176,7 +176,7 @@ export default async function DashboardPage() {
             </Link>
           </div>
           <div className="space-y-3">
-            {(await getTickets({ createdById: user.id })).slice(0, 5).map((ticket) => (
+            {(await getTickets({ createdById: user.id })).slice(0, 5).map((ticket: Awaited<ReturnType<typeof getTickets>>[0]) => (
               <Link
                 key={ticket.id}
                 href={`/dashboard/tickets/${ticket.id}`}
