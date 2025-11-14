@@ -250,7 +250,16 @@ export const TicketFilterDialog = ({
 
     const preset = savedPresets.find((p) => p.id === presetId);
     if (preset) {
-      setFilters(preset.filters);
+      setFilters({
+        status: preset.filters.status || "",
+        createdBy: preset.filters.createdBy || "",
+        assignedToGroup: preset.filters.assignedToGroup || "",
+        createdFrom: preset.filters.createdFrom || "",
+        createdTo: preset.filters.createdTo || "",
+        updatedFrom: preset.filters.updatedFrom || "",
+        updatedTo: preset.filters.updatedTo || "",
+        sort: preset.filters.sort || "createdAt-desc",
+      });
       setSelectedPreset(presetId);
       // Mark this preset as the last used
       try {

@@ -60,7 +60,7 @@ export const TicketAssignmentFields = ({
 
     try {
       const result = await updateTicket(ticketId, {
-        assignedToId: value || null,
+        assignedToId: value === "" ? undefined : value,
       });
 
       if (result.success) {
@@ -82,8 +82,8 @@ export const TicketAssignmentFields = ({
 
     try {
       const result = await updateTicket(ticketId, {
-        assignedToGroupId: value || null,
-      });
+        assignedToGroupId: value === "" ? null : value,
+      } as Parameters<typeof updateTicket>[1]);
 
       if (result.success) {
         router.refresh();

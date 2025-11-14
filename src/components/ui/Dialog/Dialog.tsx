@@ -6,7 +6,17 @@ import type { DialogProps } from "./Dialog.types";
 
 export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
   ({ open, onOpenChange, children, title, description, className, ...props }, ref) => {
-    const dialogRef = React.useRef<HTMLDivElement>(null);
+    const dialogRef = React.useRef<HTMLDivElement | null>(null);
+    const internalRef = React.useCallback((node: HTMLDivElement | null) => {
+      dialogRef.current = node;
+      if (typeof ref === "function") {
+        ref(node);
+      } else if (ref) {
+        // Type assertion needed for readonly refs in forwardRef
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (ref as any).current = node;
+      }
+    }, [ref]);
 
     // Handle escape key
     React.useEffect(() => {
@@ -51,14 +61,7 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
           }}
         >
           <div
-            ref={(node) => {
-              dialogRef.current = node;
-              if (typeof ref === "function") {
-                ref(node);
-              } else if (ref) {
-                ref.current = node;
-              }
-            }}
+            ref={internalRef}
             className={cn(
               "bg-white rounded-xl shadow-soft-xl border border-neutral-200",
               "w-full max-w-2xl max-h-[90vh] overflow-hidden",

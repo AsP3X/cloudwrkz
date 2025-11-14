@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db/prisma";
-import { requireAuth, requireRole } from "@/lib/utils/auth-server";
+import { requireAuth, requireRole, requireAnyRole } from "@/lib/utils/auth-server";
 
 export type GroupInput = {
   name: string;
@@ -115,7 +115,7 @@ export async function getGroup(id: string) {
  */
 export async function createGroup(input: GroupInput): Promise<ActionResult<{ id: string }>> {
   try {
-    await requireRole("ADMIN", "MODERATOR");
+    await requireAnyRole("ADMIN", "MODERATOR");
 
     if (!input.name || input.name.trim().length === 0) {
       return {
@@ -157,7 +157,7 @@ export async function updateGroup(
   input: GroupInput
 ): Promise<ActionResult> {
   try {
-    await requireRole("ADMIN", "MODERATOR");
+    await requireAnyRole("ADMIN", "MODERATOR");
 
     if (!input.name || input.name.trim().length === 0) {
       return {
@@ -193,7 +193,7 @@ export async function updateGroup(
  */
 export async function deleteGroup(id: string): Promise<ActionResult> {
   try {
-    await requireRole("ADMIN", "MODERATOR");
+    await requireAnyRole("ADMIN", "MODERATOR");
 
     await prisma.group.delete({
       where: { id },
@@ -220,7 +220,7 @@ export async function addAgentToGroup(
   agentId: string
 ): Promise<ActionResult> {
   try {
-    await requireRole("ADMIN", "MODERATOR");
+    await requireAnyRole("ADMIN", "MODERATOR");
 
     // Verify the user is an agent
     const agent = await prisma.user.findUnique({
@@ -280,7 +280,7 @@ export async function removeAgentFromGroup(
   agentId: string
 ): Promise<ActionResult> {
   try {
-    await requireRole("ADMIN", "MODERATOR");
+    await requireAnyRole("ADMIN", "MODERATOR");
 
     await prisma.groupMembership.delete({
       where: {

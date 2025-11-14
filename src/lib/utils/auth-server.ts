@@ -98,3 +98,16 @@ export async function requireRole(requiredRole: "USER" | "ADMIN" | "MODERATOR" |
   
   return user;
 }
+
+/**
+ * Require one of multiple roles - throws error if user doesn't have any of the required roles
+ */
+export async function requireAnyRole(...requiredRoles: Array<"USER" | "ADMIN" | "MODERATOR" | "AGENT">): Promise<CurrentUser> {
+  const user = await requireAuth();
+  
+  if (!requiredRoles.includes(user.role)) {
+    throw new Error("Forbidden: Insufficient permissions");
+  }
+  
+  return user;
+}
