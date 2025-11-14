@@ -59,7 +59,7 @@ export async function registerUser(
     const emailVerificationToken = generateToken();
     const emailVerificationExpires = getTokenExpiration(24); // 24 hours
 
-    // Create user
+    // Create user with explicit USER role
     const user = await prisma.user.create({
       data: {
         name,
@@ -68,6 +68,7 @@ export async function registerUser(
         emailVerificationToken,
         emailVerificationExpires,
         status: "PENDING", // User needs to verify email
+        role: "USER", // Explicitly set role to USER
       },
       select: {
         id: true,
@@ -187,11 +188,20 @@ export async function loginUser(
       },
     });
 
-    // TODO: Create session/token
-    // For now, we'll set a simple cookie
-    // In production, use a proper session management solution (NextAuth.js, etc.)
+    // Create session token and store in database
     const cookieStore = await cookies();
     const sessionToken = generateToken();
+    const expiresAt = new Date();
+    expiresAt.setTime(expiresAt.getTime() + (rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000)); // 30 days or 1 day
+    
+    // Store session in database
+    await prisma.session.create({
+      data: {
+        token: sessionToken,
+        userId: user.id,
+        expiresAt,
+      },
+    });
     
     cookieStore.set("session", sessionToken, {
       httpOnly: true,
@@ -200,9 +210,6 @@ export async function loginUser(
       maxAge: rememberMe ? 60 * 60 * 24 * 30 : 60 * 60 * 24, // 30 days or 1 day
       path: "/",
     });
-
-    // Store session in database (simplified - in production use a sessions table)
-    // For now, we'll just revalidate paths
 
     revalidatePath("/");
     revalidatePath("/dashboard");
@@ -233,6 +240,15 @@ export async function loginUser(
 export async function logoutUser(): Promise<ActionResult> {
   try {
     const cookieStore = await cookies();
+    const sessionToken = cookieStore.get("session")?.value;
+    
+    // Delete session from database if token exists
+    if (sessionToken) {
+      await prisma.session.deleteMany({
+        where: { token: sessionToken },
+      });
+    }
+    
     cookieStore.delete("session");
 
     revalidatePath("/");
