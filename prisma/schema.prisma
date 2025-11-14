@@ -49,7 +49,10 @@ model User {
   lastLoginIp String?
   
   // Relations
-  posts     Post[]
+  sessions  Session[]
+  createdTickets Ticket[] @relation("TicketCreator")
+  assignedTickets Ticket[] @relation("TicketAssignee")
+  ticketComments TicketComment[]
   
   // Timestamps
   createdAt DateTime @default(now())
@@ -61,15 +64,116 @@ model User {
   @@map("users")
 }
 
-// Example model - customize as needed
-model Post {
+// Session model for user authentication
+model Session {
   id        String   @id @default(cuid())
-  title     String
-  content   String?
-  authorId  String
-  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([token])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// Module management - controls which modules are enabled
+model Module {
+  id          String   @id @default(cuid())
+  key         String   @unique // e.g., "tickets", "accounting", "timetracking"
+  name        String   // Display name
+  description String?
+  enabled     Boolean  @default(false)
+  config      Json?    // Module-specific configuration
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([key])
+  @@index([enabled])
+  @@map("modules")
+}
+
+// Ticket Priority
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// Ticket Status
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  PENDING
+  RESOLVED
+  CLOSED
+  CANCELLED
+}
+
+// Ticket Type
+enum TicketType {
+  BUG
+  FEATURE
+  QUESTION
+  SUPPORT
+  TASK
+}
+
+// Ticket model for the ticket system module
+model Ticket {
+  id          String         @id @default(cuid())
+  ticketNumber String        @unique // e.g., #INC-000001, #SRC-000001
+  title       String
+  description String?
+  type        TicketType      @default(SUPPORT)
+  status      TicketStatus    @default(OPEN)
+  priority    TicketPriority  @default(MEDIUM)
+  
+  // Relations
+  createdById String
+  createdBy   User            @relation("TicketCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  assignedToId String?
+  assignedTo User?           @relation("TicketAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  
+  // Ticket metadata
+  tags        String[]        @default([])
+  attachments String[]       @default([])
+  
+  // Relations
+  comments    TicketComment[]
+  
+  // Timestamps
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  resolvedAt  DateTime?
+  closedAt    DateTime?
+
+  @@index([createdById])
+  @@index([assignedToId])
+  @@index([status])
+  @@index([priority])
+  @@index([type])
+  @@index([ticketNumber])
+  @@index([createdAt])
+  @@map("tickets")
+}
+
+// Ticket Comments
+model TicketComment {
+  id        String   @id @default(cuid())
+  content   String
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Restrict)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@map("posts")
+  @@index([ticketId])
+  @@index([userId])
+  @@map("ticket_comments")
 }
