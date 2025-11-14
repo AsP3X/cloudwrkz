@@ -54,6 +54,7 @@ model User {
   createdTickets Ticket[] @relation("TicketCreator")
   assignedTickets Ticket[] @relation("TicketAssignee")
   ticketComments TicketComment[]
+  groupMemberships GroupMembership[]
   
   // Timestamps
   createdAt DateTime @default(now())
@@ -124,6 +125,39 @@ enum TicketType {
   TASK
 }
 
+// Agent Groups - only for agents
+model Group {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  
+  // Relations
+  members     GroupMembership[]
+  tickets    Ticket[]
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([name])
+  @@map("groups")
+}
+
+// Many-to-many relationship between Users (agents) and Groups
+model GroupMembership {
+  id        String   @id @default(cuid())
+  userId    String
+  groupId   String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  
+  @@unique([userId, groupId])
+  @@index([userId])
+  @@index([groupId])
+  @@map("group_memberships")
+}
+
 // Ticket model for the ticket system module
 model Ticket {
   id          String         @id @default(cuid())
@@ -139,6 +173,8 @@ model Ticket {
   createdBy   User            @relation("TicketCreator", fields: [createdById], references: [id], onDelete: Restrict)
   assignedToId String?
   assignedTo User?           @relation("TicketAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedToGroupId String?
+  assignedToGroup Group?    @relation(fields: [assignedToGroupId], references: [id], onDelete: SetNull)
   
   // Ticket metadata
   tags        String[]        @default([])
@@ -155,6 +191,7 @@ model Ticket {
 
   @@index([createdById])
   @@index([assignedToId])
+  @@index([assignedToGroupId])
   @@index([status])
   @@index([priority])
   @@index([type])

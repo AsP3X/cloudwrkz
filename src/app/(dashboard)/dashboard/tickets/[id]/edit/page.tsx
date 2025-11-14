@@ -5,6 +5,7 @@ import { isModuleEnabled } from "@/server/actions/modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { getTicket } from "@/server/actions/tickets";
 import { getAgents } from "@/server/actions/users";
+import { getGroups } from "@/server/actions/groups";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { TicketEditForm } from "@/components/features/tickets/TicketEditForm";
@@ -63,8 +64,9 @@ export default async function TicketEditPage({ params }: TicketEditPageProps) {
     redirect(`/dashboard/tickets/${id}`);
   }
 
-  // Get agents for assignment dropdown
+  // Get agents and groups for assignment dropdown
   const agents = await getAgents();
+  const groups = await getGroups();
 
   return (
     <div className="space-y-6">
@@ -114,8 +116,10 @@ export default async function TicketEditPage({ params }: TicketEditPageProps) {
             priority: ticket.priority,
             status: ticket.status,
             assignedToId: ticket.assignedToId,
+            assignedToGroupId: ticket.assignedToGroupId,
           }}
           agents={agents}
+          groups={groups}
         />
       </div>
     </div>

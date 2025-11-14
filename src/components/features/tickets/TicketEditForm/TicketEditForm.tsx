@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/Input";
@@ -45,6 +45,7 @@ interface TicketEditFormProps {
     priority: string;
     status: string;
     assignedToId: string | null;
+    assignedToGroupId: string | null;
   };
   agents: Array<{
     id: string;
@@ -52,9 +53,14 @@ interface TicketEditFormProps {
     name: string | null;
     role: string;
   }>;
+  groups?: Array<{
+    id: string;
+    name: string;
+    description: string | null;
+  }>;
 }
 
-export const TicketEditForm = ({ ticket, agents }: TicketEditFormProps) => {
+export const TicketEditForm = ({ ticket, agents, groups = [] }: TicketEditFormProps) => {
   const router = useRouter();
   const [serverError, setServerError] = React.useState<string | null>(null);
 
@@ -66,8 +72,17 @@ export const TicketEditForm = ({ ticket, agents }: TicketEditFormProps) => {
     })),
   ];
 
+  const groupOptions = [
+    { value: "", label: "No Group" },
+    ...groups.map((group) => ({
+      value: group.id,
+      label: group.name,
+    })),
+  ];
+
   const {
     register,
+    control,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<UpdateTicketInput>({
@@ -85,6 +100,7 @@ export const TicketEditForm = ({ ticket, agents }: TicketEditFormProps) => {
         | "CLOSED"
         | "CANCELLED",
       assignedToId: ticket.assignedToId || "",
+      assignedToGroupId: ticket.assignedToGroupId || "",
     },
   });
 
@@ -99,6 +115,7 @@ export const TicketEditForm = ({ ticket, agents }: TicketEditFormProps) => {
         priority: data.priority,
         status: data.status,
         assignedToId: data.assignedToId || undefined,
+        assignedToGroupId: data.assignedToGroupId || undefined,
       });
 
       if (result.success) {
@@ -221,6 +238,25 @@ export const TicketEditForm = ({ ticket, agents }: TicketEditFormProps) => {
         error={errors.assignedToId?.message}
         helperText="Assign this ticket to an agent, admin, or moderator"
         {...register("assignedToId")}
+      />
+
+      {/* Assigned Group Field */}
+      <Controller
+        name="assignedToGroupId"
+        control={control}
+        render={({ field }) => (
+          <Select
+            label="Assigned To Group"
+            options={groupOptions}
+            placeholder={groups.length > 0 ? "Select a group" : "No groups available"}
+            error={errors.assignedToGroupId?.message}
+            helperText={groups.length > 0
+              ? "Assign this ticket to a group (only agents in the group can access it)"
+              : "No groups available. Contact an administrator to create groups."}
+            {...field}
+            disabled={groups.length === 0}
+          />
+        )}
       />
 
       {/* Submit Buttons */}

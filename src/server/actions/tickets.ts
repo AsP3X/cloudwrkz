@@ -18,12 +18,14 @@ export type TicketInput = {
   type?: "BUG" | "FEATURE" | "QUESTION" | "SUPPORT" | "TASK";
   priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
   assignedToId?: string;
+  assignedToGroupId?: string; // For assigning tickets to groups
   createdForUserId?: string; // For agents to create tickets for other users
   tags?: string[];
 };
 
 export type TicketUpdateInput = Partial<TicketInput> & {
   status?: "OPEN" | "IN_PROGRESS" | "PENDING" | "RESOLVED" | "CLOSED" | "CANCELLED";
+  assignedToGroupId?: string | null;
 };
 
 export type ActionResult<T = void> =
@@ -134,6 +136,19 @@ export async function createTicket(input: TicketInput): Promise<ActionResult<{ i
       }
     }
 
+    // Validate group assignment if provided
+    if (input.assignedToGroupId) {
+      const group = await prisma.group.findUnique({
+        where: { id: input.assignedToGroupId },
+      });
+      if (!group) {
+        return {
+          success: false,
+          error: "Selected group not found",
+        };
+      }
+    }
+
     const ticket = await prisma.ticket.create({
       data: {
         ticketNumber,
@@ -144,6 +159,7 @@ export async function createTicket(input: TicketInput): Promise<ActionResult<{ i
         status: "OPEN",
         createdById,
         assignedToId: assignedToId || null,
+        assignedToGroupId: input.assignedToGroupId || null,
         tags: input.tags || [],
       },
       select: {
@@ -176,6 +192,7 @@ export async function getTickets(filters?: {
   priority?: string;
   type?: string;
   assignedToId?: string;
+  assignedToGroupId?: string;
   createdById?: string;
   createdFrom?: string; // ISO date string
   createdTo?: string; // ISO date string
@@ -188,6 +205,7 @@ export async function getTickets(filters?: {
 
   const where: any = {};
 
+  // Build filter conditions first
   if (filters?.status) {
     // Handle special "UNRESOLVED" status filter
     if (filters.status === "UNRESOLVED") {
@@ -206,6 +224,9 @@ export async function getTickets(filters?: {
   }
   if (filters?.assignedToId) {
     where.assignedToId = filters.assignedToId;
+  }
+  if (filters?.assignedToGroupId) {
+    where.assignedToGroupId = filters.assignedToGroupId;
   }
   if (filters?.createdById) {
     where.createdById = filters.createdById;
@@ -239,6 +260,35 @@ export async function getTickets(filters?: {
     }
   }
 
+  // For agents, apply group membership filter
+  if (user.role === "AGENT") {
+    // Get groups the agent is a member of
+    const memberships = await prisma.groupMembership.findMany({
+      where: { userId: user.id },
+      select: { groupId: true },
+    });
+    const agentGroupIds = memberships.map((m) => m.groupId);
+
+    // Agents can only see tickets that:
+    // 1. Are not assigned to any group (assignedToGroupId is null), OR
+    // 2. Are assigned to a group the agent is a member of
+    const groupFilter = {
+      OR: [
+        { assignedToGroupId: null },
+        ...(agentGroupIds.length > 0 ? [{ assignedToGroupId: { in: agentGroupIds } }] : []),
+      ],
+    };
+
+    // Combine group filter with other filters using AND
+    const otherFilters = { ...where };
+    delete otherFilters.AND; // Remove AND if it exists
+    
+    where.AND = [
+      groupFilter,
+      ...(Object.keys(otherFilters).length > 0 ? [otherFilters] : []),
+    ];
+  }
+
   // Determine sort order
   const sortBy = filters?.sortBy || "createdAt";
   const sortOrder = filters?.sortOrder || "desc";
@@ -260,6 +310,13 @@ export async function getTickets(filters?: {
           email: true,
         },
       },
+      assignedToGroup: {
+        select: {
+          id: true,
+          name: true,
+          description: true,
+        },
+      },
       _count: {
         select: {
           comments: true,
@@ -276,9 +333,9 @@ export async function getTickets(filters?: {
  * Get a single ticket by ID
  */
 export async function getTicket(id: string) {
-  await requireAuth();
+  const user = await requireAuth();
 
-  return prisma.ticket.findUnique({
+  const ticket = await prisma.ticket.findUnique({
     where: { id },
     include: {
       createdBy: {
@@ -293,6 +350,13 @@ export async function getTicket(id: string) {
           id: true,
           name: true,
           email: true,
+        },
+      },
+      assignedToGroup: {
+        select: {
+          id: true,
+          name: true,
+          description: true,
         },
       },
       comments: {
@@ -312,6 +376,30 @@ export async function getTicket(id: string) {
       },
     },
   });
+
+  if (!ticket) {
+    return null;
+  }
+
+  // Check group access for agents
+  if (user.role === "AGENT" && ticket.assignedToGroupId) {
+    // Check if agent is a member of the ticket's group
+    const membership = await prisma.groupMembership.findUnique({
+      where: {
+        userId_groupId: {
+          userId: user.id,
+          groupId: ticket.assignedToGroupId,
+        },
+      },
+    });
+
+    if (!membership) {
+      // Agent is not in the group, deny access
+      return null;
+    }
+  }
+
+  return ticket;
 }
 
 /**
@@ -378,6 +466,21 @@ export async function updateTicket(
     }
     if (input.assignedToId !== undefined) {
       updateData.assignedToId = input.assignedToId || null;
+    }
+    if (input.assignedToGroupId !== undefined) {
+      // Validate group if provided
+      if (input.assignedToGroupId) {
+        const group = await prisma.group.findUnique({
+          where: { id: input.assignedToGroupId },
+        });
+        if (!group) {
+          return {
+            success: false,
+            error: "Selected group not found",
+          };
+        }
+      }
+      updateData.assignedToGroupId = input.assignedToGroupId || null;
     }
     if (input.tags !== undefined) {
       updateData.tags = input.tags;

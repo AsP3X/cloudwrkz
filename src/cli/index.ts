@@ -7,6 +7,7 @@
  * 
  * Usage:
  *   pnpm cli user <command>     User management commands
+ *   pnpm cli group <command>   Group management commands
  *   pnpm cli module <command>   Module management commands (future)
  *   pnpm cli help               Show help
  */
@@ -19,6 +20,7 @@ CloudWrkz CLI Tool
 
 Available command categories:
   user      User management (create, delete, list, show, update-status, update-role, update-password)
+  group     Group management (create, delete, list, show, update, add-agent, remove-agent, list-agents)
   module    Module management (future)
 
 User Selection:
@@ -43,9 +45,16 @@ Examples:
   
   # Show user details
   pnpm cli user show user@example.com
+  
+  # Group management examples
+  pnpm cli group create "Support Team" "Primary support team"
+  pnpm cli group list
+  pnpm cli group add-agent "Support Team" agent@example.com
+  pnpm cli group list-agents "Support Team"
 
 For detailed help on a category:
   pnpm cli user
+  pnpm cli group
 `);
   process.exit(0);
 }
@@ -56,6 +65,10 @@ switch (category) {
   case "user":
     // Import and run user CLI
     import("./user-cli");
+    break;
+  case "group":
+    // Import and run group CLI
+    import("./group-cli");
     break;
   case "module":
     console.log("Module management commands coming soon!");

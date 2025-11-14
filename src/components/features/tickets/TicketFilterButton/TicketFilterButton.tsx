@@ -12,10 +12,15 @@ interface TicketFilterButtonProps {
     name: string | null;
     role: string;
   }>;
+  groups?: Array<{
+    id: string;
+    name: string;
+    description: string | null;
+  }>;
   isAgent: boolean;
 }
 
-export const TicketFilterButton = ({ users, isAgent }: TicketFilterButtonProps) => {
+export const TicketFilterButton = ({ users, groups = [], isAgent }: TicketFilterButtonProps) => {
   const [isOpen, setIsOpen] = React.useState(false);
   const searchParams = useSearchParams();
 
@@ -23,6 +28,7 @@ export const TicketFilterButton = ({ users, isAgent }: TicketFilterButtonProps) 
   const hasActiveFilters =
     searchParams.get("status") ||
     searchParams.get("createdBy") ||
+    searchParams.get("assignedToGroup") ||
     searchParams.get("createdFrom") ||
     searchParams.get("createdTo") ||
     searchParams.get("updatedFrom") ||
@@ -61,6 +67,7 @@ export const TicketFilterButton = ({ users, isAgent }: TicketFilterButtonProps) 
         open={isOpen}
         onOpenChange={setIsOpen}
         users={users}
+        groups={groups}
         isAgent={isAgent}
       />
     </>

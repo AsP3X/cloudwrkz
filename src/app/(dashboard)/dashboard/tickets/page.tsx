@@ -5,6 +5,7 @@ import { isModuleEnabled } from "@/server/actions/modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { getTickets } from "@/server/actions/tickets";
 import { getAllUsers } from "@/server/actions/users";
+import { getGroups } from "@/server/actions/groups";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { getTicketTypeLabel, type TicketType } from "@/lib/utils/tickets";
@@ -15,6 +16,7 @@ interface TicketsPageProps {
   searchParams: Promise<{
     status?: string;
     createdBy?: string;
+    assignedToGroup?: string;
     createdFrom?: string;
     createdTo?: string;
     updatedFrom?: string;
@@ -61,6 +63,9 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
   if (params.createdBy) {
     filters.createdById = params.createdBy;
   }
+  if (params.assignedToGroup) {
+    filters.assignedToGroupId = params.assignedToGroup;
+  }
   if (params.createdFrom) {
     filters.createdFrom = params.createdFrom;
   }
@@ -79,8 +84,9 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
     filters.createdById = user.id;
   }
 
-  // Get users for filter dropdown (only for agents)
+  // Get users and groups for filter dropdown (only for agents)
   const users = user.role === "AGENT" ? await getAllUsers() : [];
+  const groups = user.role === "AGENT" ? await getGroups() : [];
 
   // Get tickets with filters
   const tickets = await getTickets(filters);
@@ -103,7 +109,7 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <TicketFilterButton users={users} isAgent={user.role === "AGENT"} />
+          <TicketFilterButton users={users} groups={groups} isAgent={user.role === "AGENT"} />
           <Link href="/dashboard/tickets/new">
             <Button variant="primary">Create Ticket</Button>
           </Link>

@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/Input";
@@ -42,9 +42,14 @@ interface TicketFormProps {
     name: string | null;
     role: string;
   }>;
+  groups?: Array<{
+    id: string;
+    name: string;
+    description: string | null;
+  }>;
 }
 
-export const TicketForm = ({ isAgent = false, users = [], agents = [] }: TicketFormProps) => {
+export const TicketForm = ({ isAgent = false, users = [], agents = [], groups = [] }: TicketFormProps) => {
   const router = useRouter();
   const [serverError, setServerError] = React.useState<string | null>(null);
 
@@ -65,8 +70,17 @@ export const TicketForm = ({ isAgent = false, users = [], agents = [] }: TicketF
     })),
   ];
 
+  const groupOptions = [
+    { value: "", label: "No Group" },
+    ...groups.map((group) => ({
+      value: group.id,
+      label: group.name,
+    })),
+  ];
+
   const {
     register,
+    control,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<CreateTicketInput>({
@@ -76,6 +90,7 @@ export const TicketForm = ({ isAgent = false, users = [], agents = [] }: TicketF
       priority: "MEDIUM",
       createdForUserId: "",
       assignedToId: "",
+      assignedToGroupId: "",
     },
   });
 
@@ -93,6 +108,7 @@ export const TicketForm = ({ isAgent = false, users = [], agents = [] }: TicketF
         priority: data.priority,
         createdForUserId: data.createdForUserId || undefined,
         assignedToId,
+        assignedToGroupId: data.assignedToGroupId || undefined,
       });
 
       if (result.success && result.data) {
@@ -201,28 +217,51 @@ export const TicketForm = ({ isAgent = false, users = [], agents = [] }: TicketF
 
       {/* Agent-specific fields */}
       {isAgent && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Created For User (Agents only) */}
-          {users.length > 0 && (
-            <Select
-              label="Create For"
-              options={userOptions}
-              placeholder="Select user"
-              error={errors.createdForUserId?.message}
-              helperText="Create ticket for yourself or another user"
-              {...register("createdForUserId")}
-            />
-          )}
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Created For User (Agents only) */}
+            {users.length > 0 && (
+              <Select
+                label="Create For"
+                options={userOptions}
+                placeholder="Select user"
+                error={errors.createdForUserId?.message}
+                helperText="Create ticket for yourself or another user"
+                {...register("createdForUserId")}
+              />
+            )}
 
-          {/* Assigned Agent (Agents only) */}
-          {agents.length > 0 && (
-            <Select
-              label="Assign To"
-              options={agentOptions}
-              placeholder="Select agent"
-              error={errors.assignedToId?.message}
-              helperText="Assign this ticket to an agent (or leave unassigned)"
-              {...register("assignedToId")}
+            {/* Assigned Agent (Agents only) */}
+            {agents.length > 0 && (
+              <Select
+                label="Assign To"
+                options={agentOptions}
+                placeholder="Select agent"
+                error={errors.assignedToId?.message}
+                helperText="Assign this ticket to an agent (or leave unassigned)"
+                {...register("assignedToId")}
+              />
+            )}
+          </div>
+
+          {/* Assigned Group (Agents only) */}
+          {isAgent && (
+            <Controller
+              name="assignedToGroupId"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  label="Assign To Group"
+                  options={groupOptions}
+                  placeholder={groups.length > 0 ? "Select group" : "No groups available"}
+                  error={errors.assignedToGroupId?.message}
+                  helperText={groups.length > 0 
+                    ? "Assign this ticket to a group (only agents in the group can access it)"
+                    : "No groups available. Contact an administrator to create groups."}
+                  {...field}
+                  disabled={groups.length === 0}
+                />
+              )}
             />
           )}
         </div>

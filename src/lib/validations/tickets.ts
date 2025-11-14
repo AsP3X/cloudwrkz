@@ -19,6 +19,7 @@ export const createTicketSchema = z.object({
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).default("MEDIUM"),
   createdForUserId: z.string().optional().or(z.literal("")), // For agents to create tickets for other users
   assignedToId: z.string().optional().or(z.literal("")), // For agents to assign tickets to agents
+  assignedToGroupId: z.string().optional().or(z.literal("")), // For assigning tickets to groups
 });
 
 export type CreateTicketInput = z.infer<typeof createTicketSchema>;
@@ -42,6 +43,7 @@ export const updateTicketSchema = z.object({
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]),
   status: z.enum(["OPEN", "IN_PROGRESS", "PENDING", "RESOLVED", "CLOSED", "CANCELLED"]),
   assignedToId: z.string().optional().or(z.literal("")),
+  assignedToGroupId: z.string().optional().or(z.literal("")), // For assigning tickets to groups
 });
 
 export type UpdateTicketInput = z.infer<typeof updateTicketSchema>;

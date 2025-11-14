@@ -40,6 +40,11 @@ interface TicketFilterDialogProps {
     name: string | null;
     role: string;
   }>;
+  groups?: Array<{
+    id: string;
+    name: string;
+    description: string | null;
+  }>;
   isAgent: boolean;
 }
 
@@ -50,6 +55,7 @@ export const TicketFilterDialog = ({
   open,
   onOpenChange,
   users,
+  groups = [],
   isAgent,
 }: TicketFilterDialogProps) => {
   const router = useRouter();
@@ -59,6 +65,7 @@ export const TicketFilterDialog = ({
   const currentFilters = {
     status: searchParams.get("status") || "",
     createdBy: searchParams.get("createdBy") || "",
+    assignedToGroup: searchParams.get("assignedToGroup") || "",
     createdFrom: searchParams.get("createdFrom") || "",
     createdTo: searchParams.get("createdTo") || "",
     updatedFrom: searchParams.get("updatedFrom") || "",
@@ -144,9 +151,18 @@ export const TicketFilterDialog = ({
     })),
   ];
 
+  const groupOptions = [
+    { value: "", label: "All Groups" },
+    ...groups.map((group) => ({
+      value: group.id,
+      label: group.name,
+    })),
+  ];
+
   const hasActiveFilters =
     filters.status ||
     filters.createdBy ||
+    filters.assignedToGroup ||
     filters.createdFrom ||
     filters.createdTo ||
     filters.updatedFrom ||
@@ -174,6 +190,7 @@ export const TicketFilterDialog = ({
     setFilters({
       status: "",
       createdBy: "",
+      assignedToGroup: "",
       createdFrom: "",
       createdTo: "",
       updatedFrom: "",
@@ -260,6 +277,7 @@ export const TicketFilterDialog = ({
     const clearedFilters = {
       status: "",
       createdBy: "",
+      assignedToGroup: "",
       createdFrom: "",
       createdTo: "",
       updatedFrom: "",
@@ -363,7 +381,7 @@ export const TicketFilterDialog = ({
         )}
 
         {/* Quick Filters */}
-        <div className={`grid grid-cols-1 ${isAgent ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-4`}>
+        <div className={`grid grid-cols-1 ${isAgent ? 'md:grid-cols-2' : 'md:grid-cols-2'} gap-4`}>
           <Select
             key={`status-${filters.status}`}
             label="Status"
@@ -378,7 +396,9 @@ export const TicketFilterDialog = ({
             defaultValue={filters.sort}
             onChange={(e) => updateFilters({ sort: e.target.value })}
           />
-          {isAgent && (
+        </div>
+        {isAgent && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Select
               key={`user-${filters.createdBy}`}
               label="Created By"
@@ -386,8 +406,17 @@ export const TicketFilterDialog = ({
               defaultValue={filters.createdBy}
               onChange={(e) => updateFilters({ createdBy: e.target.value })}
             />
-          )}
-        </div>
+            {groups.length > 0 && (
+              <Select
+                key={`group-${filters.assignedToGroup}`}
+                label="Assigned To Group"
+                options={groupOptions}
+                defaultValue={filters.assignedToGroup}
+                onChange={(e) => updateFilters({ assignedToGroup: e.target.value })}
+              />
+            )}
+          </div>
+        )}
 
         {/* Date Filters */}
         <div className="space-y-4">

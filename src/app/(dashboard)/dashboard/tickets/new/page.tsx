@@ -5,6 +5,7 @@ import { isModuleEnabled } from "@/server/actions/modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { TicketForm } from "@/components/features/tickets/TicketForm";
 import { getAllUsers, getAgents } from "@/server/actions/users";
+import { getGroups } from "@/server/actions/groups";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 
@@ -32,9 +33,10 @@ export default async function NewTicketPage() {
     );
   }
 
-  // Get users and agents for agent ticket creation (only if agent)
+  // Get users, agents, and groups for agent ticket creation (only if agent)
   const users = user.role === "AGENT" ? await getAllUsers() : [];
   const agents = user.role === "AGENT" ? await getAgents() : [];
+  const groups = user.role === "AGENT" ? await getGroups() : [];
 
   return (
     <div className="space-y-6">
@@ -57,7 +59,7 @@ export default async function NewTicketPage() {
 
       {/* Form Card */}
       <div className="bg-white rounded-xl shadow-soft-lg border border-neutral-200 p-6 sm:p-8">
-        <TicketForm isAgent={user.role === "AGENT"} users={users} agents={agents} />
+        <TicketForm isAgent={user.role === "AGENT"} users={users} agents={agents} groups={groups} />
       </div>
 
       {/* Help Section */}
