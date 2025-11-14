@@ -50,3 +50,27 @@ export const loginSchema = z.object({
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;
+
+/**
+ * User profile update schema
+ */
+export const updateProfileSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .refine((val) => val === "" || val.length >= 2, {
+      message: "Name must be at least 2 characters",
+    })
+    .refine((val) => val === "" || val.length <= 100, {
+      message: "Name must be less than 100 characters",
+    })
+    .optional(),
+  bio: z
+    .string()
+    .trim()
+    .max(500, "Bio must be less than 500 characters")
+    .optional()
+    .nullable(),
+});
+
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
