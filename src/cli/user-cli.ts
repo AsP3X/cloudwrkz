@@ -33,6 +33,9 @@ Commands:
   update-status <email|number> <status> Update user status (PENDING|ACTIVE|SUSPENDED|DELETED)
   update-role <email|number> <role>    Update user role (USER|ADMIN|MODERATOR|AGENT)
   update-password <email|number> <password> Update user password
+  cookie-accept <email|number>         Accept cookie consent for a user
+  cookie-revoke <email|number>         Revoke cookie consent for a user
+  cookie-status <email|number>         Check cookie consent status for a user
 
 User Selection:
   You can select users by email or by number. Use 'list' command first to see user numbers.
@@ -60,6 +63,11 @@ Examples:
   # Update password (by email or number)
   pnpm cli user update-password user@example.com NewPassword123
   pnpm cli user update-password 1 SecureNewPass123  # Select first user from list
+  
+  # Cookie consent management (by email or number)
+  pnpm cli user cookie-accept user@example.com
+  pnpm cli user cookie-revoke user@example.com
+  pnpm cli user cookie-status user@example.com
   
   # Delete user
   pnpm cli user delete user@example.com
@@ -95,6 +103,15 @@ async function main() {
         break;
       case "update-password":
         await handleUpdatePassword();
+        break;
+      case "cookie-accept":
+        await handleCookieAccept();
+        break;
+      case "cookie-revoke":
+        await handleCookieRevoke();
+        break;
+      case "cookie-status":
+        await handleCookieStatus();
         break;
       default:
         console.error(`Unknown command: ${command}`);
@@ -219,6 +236,8 @@ async function handleList() {
       role: true,
       status: true,
       emailVerified: true,
+      cookieConsentAccepted: true,
+      cookieConsentAcceptedAt: true,
       createdAt: true,
       lastLoginAt: true,
     },
@@ -238,6 +257,7 @@ async function handleList() {
       Role: u.role,
       Status: u.status,
       Verified: u.emailVerified ? "✓" : "✗",
+      "Cookie Consent": u.cookieConsentAccepted ? "✓" : "✗",
       Created: u.createdAt.toLocaleDateString(),
       "Last Login": u.lastLoginAt?.toLocaleDateString() || "Never",
     }))
@@ -263,6 +283,8 @@ async function handleShow() {
       emailVerified: true,
       avatar: true,
       bio: true,
+      cookieConsentAccepted: true,
+      cookieConsentAcceptedAt: true,
       createdAt: true,
       updatedAt: true,
       lastLoginAt: true,
@@ -290,6 +312,10 @@ async function handleShow() {
   console.log(`Role:            ${user.role}`);
   console.log(`Status:          ${user.status}`);
   console.log(`Email Verified:  ${user.emailVerified ? "Yes" : "No"}`);
+  console.log(`Cookie Consent:  ${user.cookieConsentAccepted ? "Yes" : "No"}`);
+  if (user.cookieConsentAcceptedAt) {
+    console.log(`Consent Date:    ${user.cookieConsentAcceptedAt.toLocaleString()}`);
+  }
   console.log(`Avatar:          ${user.avatar || "-"}`);
   console.log(`Bio:             ${user.bio || "-"}`);
   console.log(`Created:         ${user.createdAt.toLocaleString()}`);
@@ -504,6 +530,200 @@ async function handleUpdatePassword() {
   });
 
   console.log(`✅ Password updated for user ${user.email}${user.name ? ` (${user.name})` : ""}`);
+}
+
+async function handleCookieAccept() {
+  if (commandArgs.length < 2) {
+    console.error("Usage: cookie-accept <email|number>");
+    console.error("\nTip: Use 'list' command first to see user numbers");
+    process.exit(1);
+  }
+
+  const selection = commandArgs[1];
+  let email: string;
+
+  // Check if selection is a number (for selecting from list)
+  const userIndex = parseInt(selection) - 1;
+  
+  if (!isNaN(userIndex) && userIndex >= 0) {
+    // Selection is a number - fetch users and select by index
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        cookieConsentAccepted: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (userIndex >= users.length) {
+      console.error(`Invalid user number: ${selection}. Only ${users.length} user(s) found.`);
+      console.error("\nRun 'pnpm cli user list' to see available users.");
+      process.exit(1);
+    }
+
+    email = users[userIndex].email;
+    console.log(`Selected user: ${email}${users[userIndex].name ? ` (${users[userIndex].name})` : ""} - Current consent: ${users[userIndex].cookieConsentAccepted ? "Accepted" : "Not accepted"}`);
+  } else {
+    // Selection is an email
+    email = selection;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, email: true, name: true, cookieConsentAccepted: true },
+  });
+
+  if (!user) {
+    console.error(`User with email ${email} not found`);
+    process.exit(1);
+  }
+
+  if (user.cookieConsentAccepted) {
+    console.log(`User ${user.email}${user.name ? ` (${user.name})` : ""} has already accepted cookie consent`);
+    return;
+  }
+
+  await prisma.user.update({
+    where: { email },
+    data: {
+      cookieConsentAccepted: true,
+      cookieConsentAcceptedAt: new Date(),
+    },
+  });
+
+  console.log(`✅ Cookie consent accepted for user ${user.email}${user.name ? ` (${user.name})` : ""}`);
+}
+
+async function handleCookieRevoke() {
+  if (commandArgs.length < 2) {
+    console.error("Usage: cookie-revoke <email|number>");
+    console.error("\nTip: Use 'list' command first to see user numbers");
+    process.exit(1);
+  }
+
+  const selection = commandArgs[1];
+  let email: string;
+
+  // Check if selection is a number (for selecting from list)
+  const userIndex = parseInt(selection) - 1;
+  
+  if (!isNaN(userIndex) && userIndex >= 0) {
+    // Selection is a number - fetch users and select by index
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        cookieConsentAccepted: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (userIndex >= users.length) {
+      console.error(`Invalid user number: ${selection}. Only ${users.length} user(s) found.`);
+      console.error("\nRun 'pnpm cli user list' to see available users.");
+      process.exit(1);
+    }
+
+    email = users[userIndex].email;
+    console.log(`Selected user: ${email}${users[userIndex].name ? ` (${users[userIndex].name})` : ""} - Current consent: ${users[userIndex].cookieConsentAccepted ? "Accepted" : "Not accepted"}`);
+  } else {
+    // Selection is an email
+    email = selection;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, email: true, name: true, cookieConsentAccepted: true },
+  });
+
+  if (!user) {
+    console.error(`User with email ${email} not found`);
+    process.exit(1);
+  }
+
+  if (!user.cookieConsentAccepted) {
+    console.log(`User ${user.email}${user.name ? ` (${user.name})` : ""} has not accepted cookie consent yet`);
+    return;
+  }
+
+  await prisma.user.update({
+    where: { email },
+    data: {
+      cookieConsentAccepted: false,
+      cookieConsentAcceptedAt: null,
+    },
+  });
+
+  console.log(`✅ Cookie consent revoked for user ${user.email}${user.name ? ` (${user.name})` : ""}`);
+  console.log(`   The user will see the cookie banner again on their next visit.`);
+}
+
+async function handleCookieStatus() {
+  if (commandArgs.length < 2) {
+    console.error("Usage: cookie-status <email|number>");
+    console.error("\nTip: Use 'list' command first to see user numbers");
+    process.exit(1);
+  }
+
+  const selection = commandArgs[1];
+  let email: string;
+
+  // Check if selection is a number (for selecting from list)
+  const userIndex = parseInt(selection) - 1;
+  
+  if (!isNaN(userIndex) && userIndex >= 0) {
+    // Selection is a number - fetch users and select by index
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        name: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (userIndex >= users.length) {
+      console.error(`Invalid user number: ${selection}. Only ${users.length} user(s) found.`);
+      console.error("\nRun 'pnpm cli user list' to see available users.");
+      process.exit(1);
+    }
+
+    email = users[userIndex].email;
+    console.log(`Selected user: ${email}${users[userIndex].name ? ` (${users[userIndex].name})` : ""}`);
+  } else {
+    // Selection is an email
+    email = selection;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      cookieConsentAccepted: true,
+      cookieConsentAcceptedAt: true,
+    },
+  });
+
+  if (!user) {
+    console.error(`User with email ${email} not found`);
+    process.exit(1);
+  }
+
+  console.log("\n🍪 Cookie Consent Status:\n");
+  console.log(`User:            ${user.email}${user.name ? ` (${user.name})` : ""}`);
+  console.log(`Status:          ${user.cookieConsentAccepted ? "✅ Accepted" : "❌ Not accepted"}`);
+  if (user.cookieConsentAcceptedAt) {
+    console.log(`Accepted Date:   ${user.cookieConsentAcceptedAt.toLocaleString()}`);
+    const daysSince = Math.floor((Date.now() - user.cookieConsentAcceptedAt.getTime()) / (1000 * 60 * 60 * 24));
+    console.log(`Days Since:      ${daysSince} day(s) ago`);
+  } else {
+    console.log(`Accepted Date:   Never`);
+  }
 }
 
 main();

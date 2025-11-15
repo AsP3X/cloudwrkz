@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { APP_CONFIG } from "@/lib/constants/config";
+import { CookiesDisclaimer } from "@/components/ui/CookiesDisclaimer";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -21,7 +22,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={inter.variable}>
-      <body className="min-h-screen">{children}</body>
+      <body className="min-h-screen">
+        {children}
+        <CookiesDisclaimer />
+      </body>
     </html>
   );
 }

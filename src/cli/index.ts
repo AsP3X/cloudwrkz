@@ -19,7 +19,7 @@ if (args.length === 0 || args[0] === "help" || args[0] === "--help" || args[0] =
 CloudWrkz CLI Tool
 
 Available command categories:
-  user      User management (create, delete, list, show, update-status, update-role, update-password)
+  user      User management (create, delete, list, show, update-status, update-role, update-password, cookie-accept, cookie-revoke, cookie-status)
   group     Group management (create, delete, list, show, update, add-agent, remove-agent, list-agents)
   module    Module management (future)
 

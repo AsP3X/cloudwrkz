@@ -48,6 +48,8 @@ model User {
   // Metadata
   lastLoginAt DateTime?
   lastLoginIp String?
+  cookieConsentAccepted Boolean @default(false)
+  cookieConsentAcceptedAt DateTime?
   
   // Relations
   sessions  Session[]

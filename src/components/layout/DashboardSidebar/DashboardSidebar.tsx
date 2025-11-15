@@ -129,7 +129,11 @@ export const DashboardSidebar = ({ enabledModuleKeys }: DashboardSidebarProps) =
           {/* Navigation */}
           <nav className="flex-1 px-4 py-6 space-y-2">
             {navigation.map((item) => {
-              const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+              // Dashboard should only match exactly, not sub-routes like /dashboard/tickets
+              const isActive =
+                item.href === ROUTES.DASHBOARD
+                  ? pathname === item.href
+                  : pathname === item.href || pathname.startsWith(item.href + "/");
               return (
                 <Link
                   key={item.name}
