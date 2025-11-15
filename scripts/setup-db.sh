@@ -71,37 +71,59 @@ else
     info "psql found: $(which psql)"
 fi
 
+# Try connecting to Docker network hostname first (if inside container)
+step "Checking for Docker network connection (db hostname)..."
+# First try as cloudwrkz user (if database was created with new credentials)
+if PGPASSWORD="cloudwrkz_dev_password" psql -h db -U cloudwrkz -d cloudwrkz -c "SELECT version();" &>/dev/null 2>&1; then
+    export PGPASSWORD="cloudwrkz_dev_password"
+    PSQL_CMD="psql -h db -U cloudwrkz -d cloudwrkz"
+    USE_DOCKER=true
+    CONNECTION_METHOD="Docker network (db hostname, cloudwrkz user)"
+    POSTGRES_VERSION=$(PGPASSWORD="cloudwrkz_dev_password" psql -h db -U cloudwrkz -d cloudwrkz -c "SELECT version();" -t 2>/dev/null | head -n1 | xargs)
+    success "Connected via ${CONNECTION_METHOD}"
+# If that fails, try as postgres superuser (for initial setup)
+elif PGPASSWORD="postgres" psql -h db -U postgres -d postgres -c "SELECT version();" &>/dev/null 2>&1; then
+    export PGPASSWORD="postgres"
+    PSQL_CMD="psql -h db -U postgres -d postgres"
+    USE_DOCKER=true
+    CONNECTION_METHOD="Docker network (db hostname, postgres superuser)"
+    POSTGRES_VERSION=$(PGPASSWORD="postgres" psql -h db -U postgres -d postgres -c "SELECT version();" -t 2>/dev/null | head -n1 | xargs)
+    success "Connected via ${CONNECTION_METHOD}"
+fi
+
 # Try local PostgreSQL first
-step "Attempting to connect via local PostgreSQL..."
-
-CONNECTION_METHOD=""
-if command -v sudo &> /dev/null; then
-    if sudo -u postgres psql -c "SELECT version();" &>/dev/null 2>&1; then
-        PSQL_CMD="sudo -u postgres psql"
-        USE_DOCKER=false
-        CONNECTION_METHOD="sudo postgres user"
-        POSTGRES_VERSION=$(sudo -u postgres psql -c "SELECT version();" -t 2>/dev/null | head -n1 | xargs)
-        success "Connected via ${CONNECTION_METHOD}"
-    fi
-fi
-
 if [ -z "$PSQL_CMD" ]; then
-    if psql -U postgres -c "SELECT version();" &>/dev/null 2>&1; then
-        PSQL_CMD="psql -U postgres"
-        USE_DOCKER=false
-        CONNECTION_METHOD="postgres user (direct)"
-        POSTGRES_VERSION=$(psql -U postgres -c "SELECT version();" -t 2>/dev/null | head -n1 | xargs)
-        success "Connected via ${CONNECTION_METHOD}"
-    fi
-fi
+    step "Attempting to connect via local PostgreSQL..."
 
-if [ -z "$PSQL_CMD" ]; then
-    if psql -U "$USER" -d postgres -c "SELECT version();" &>/dev/null 2>&1; then
-        PSQL_CMD="psql -U $USER -d postgres"
-        USE_DOCKER=false
-        CONNECTION_METHOD="current user ($USER)"
-        POSTGRES_VERSION=$(psql -U "$USER" -d postgres -c "SELECT version();" -t 2>/dev/null | head -n1 | xargs)
-        success "Connected via ${CONNECTION_METHOD}"
+    CONNECTION_METHOD=""
+    if command -v sudo &> /dev/null; then
+        if sudo -u postgres psql -c "SELECT version();" &>/dev/null 2>&1; then
+            PSQL_CMD="sudo -u postgres psql"
+            USE_DOCKER=false
+            CONNECTION_METHOD="sudo postgres user"
+            POSTGRES_VERSION=$(sudo -u postgres psql -c "SELECT version();" -t 2>/dev/null | head -n1 | xargs)
+            success "Connected via ${CONNECTION_METHOD}"
+        fi
+    fi
+
+    if [ -z "$PSQL_CMD" ]; then
+        if psql -U postgres -c "SELECT version();" &>/dev/null 2>&1; then
+            PSQL_CMD="psql -U postgres"
+            USE_DOCKER=false
+            CONNECTION_METHOD="postgres user (direct)"
+            POSTGRES_VERSION=$(psql -U postgres -c "SELECT version();" -t 2>/dev/null | head -n1 | xargs)
+            success "Connected via ${CONNECTION_METHOD}"
+        fi
+    fi
+
+    if [ -z "$PSQL_CMD" ]; then
+        if psql -U "$USER" -d postgres -c "SELECT version();" &>/dev/null 2>&1; then
+            PSQL_CMD="psql -U $USER -d postgres"
+            USE_DOCKER=false
+            CONNECTION_METHOD="current user ($USER)"
+            POSTGRES_VERSION=$(psql -U "$USER" -d postgres -c "SELECT version();" -t 2>/dev/null | head -n1 | xargs)
+            success "Connected via ${CONNECTION_METHOD}"
+        fi
     fi
 fi
 
