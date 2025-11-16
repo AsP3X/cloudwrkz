@@ -9,11 +9,11 @@ export default function LoginPage() {
   return (
     <>
       <Header />
-      <main className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-secondary-50 pt-16 pb-20">
+      <main className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-secondary-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950 pt-16 pb-20">
         {/* Background decoration */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-20 left-10 w-72 h-72 bg-primary-200 rounded-full mix-blend-multiply filter blur-xl opacity-20" />
-          <div className="absolute bottom-20 right-10 w-72 h-72 bg-secondary-200 rounded-full mix-blend-multiply filter blur-xl opacity-20" />
+          <div className="absolute top-20 left-10 w-72 h-72 bg-primary-200 dark:bg-primary-900 rounded-full mix-blend-multiply filter blur-xl opacity-20 dark:opacity-5" />
+          <div className="absolute bottom-20 right-10 w-72 h-72 bg-secondary-200 dark:bg-secondary-900 rounded-full mix-blend-multiply filter blur-xl opacity-20 dark:opacity-5" />
         </div>
 
         <div className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -26,22 +26,22 @@ export default function LoginPage() {
               >
                 {APP_CONFIG.name}
               </Link>
-              <h1 className="text-3xl sm:text-4xl font-bold text-neutral-900 mb-3">
+              <h1 className="text-3xl sm:text-4xl font-bold text-neutral-900 dark:text-neutral-100 mb-3">
                 Welcome back
               </h1>
-              <p className="text-neutral-600">
+              <p className="text-neutral-600 dark:text-neutral-400">
                 Sign in to your account to continue
               </p>
             </div>
 
             {/* Login Card */}
-            <div className="bg-white rounded-xl shadow-soft-lg border border-neutral-200 p-8">
+            <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8">
               <LoginForm />
             </div>
 
             {/* Trust Indicators */}
             <div className="mt-8 text-center">
-              <div className="flex items-center justify-center gap-6 text-sm text-neutral-500">
+              <div className="flex items-center justify-center gap-6 text-sm text-neutral-500 dark:text-neutral-400">
                 <div className="flex items-center gap-2">
                   <svg
                     className="w-5 h-5 text-success-500"

@@ -79,10 +79,10 @@ export const SignupForm = () => {
     >
       {/* Success Message */}
       {successMessage && (
-        <div className="rounded-lg bg-success-50 border-2 border-success-200 p-4">
+        <div className="rounded-lg bg-success-50 dark:bg-success-950 border-2 border-success-200 dark:border-success-800 p-4">
           <div className="flex items-start gap-3">
             <svg
-              className="w-5 h-5 text-success-600 mt-0.5 flex-shrink-0"
+              className="w-5 h-5 text-success-600 dark:text-success-400 mt-0.5 flex-shrink-0"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -95,10 +95,10 @@ export const SignupForm = () => {
               />
             </svg>
             <div className="flex-1">
-              <p className="text-sm font-medium text-success-800">
+              <p className="text-sm font-medium text-success-800 dark:text-success-200">
                 {successMessage}
               </p>
-              <p className="mt-1 text-sm text-success-700">
+              <p className="mt-1 text-sm text-success-700 dark:text-success-300">
                 Redirecting to login page...
               </p>
             </div>
@@ -108,10 +108,10 @@ export const SignupForm = () => {
 
       {/* Server Error Message */}
       {serverError && (
-        <div className="rounded-lg bg-error-50 border-2 border-error-200 p-4">
+        <div className="rounded-lg bg-error-50 dark:bg-error-950 border-2 border-error-200 dark:border-error-800 p-4">
           <div className="flex items-start gap-3">
             <svg
-              className="w-5 h-5 text-error-600 mt-0.5 flex-shrink-0"
+              className="w-5 h-5 text-error-600 dark:text-error-400 mt-0.5 flex-shrink-0"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -123,7 +123,7 @@ export const SignupForm = () => {
                 d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
               />
             </svg>
-            <p className="text-sm font-medium text-error-800">{serverError}</p>
+            <p className="text-sm font-medium text-error-800 dark:text-error-200">{serverError}</p>
           </div>
         </div>
       )}
@@ -176,29 +176,29 @@ export const SignupForm = () => {
           <input
             id="agreeToTerms"
             type="checkbox"
-            className="w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500 focus:ring-2"
+            className="w-4 h-4 text-primary-600 dark:text-primary-500 border-neutral-300 dark:border-neutral-700 rounded focus:ring-primary-500 focus:ring-2 bg-white dark:bg-neutral-900"
             {...register("agreeToTerms")}
           />
         </div>
         <div className="ml-3 text-sm">
-          <label htmlFor="agreeToTerms" className="text-neutral-700">
+          <label htmlFor="agreeToTerms" className="text-neutral-700 dark:text-neutral-300">
             I agree to the{" "}
             <Link
               href={ROUTES.TERMS}
-              className="text-primary-600 hover:text-primary-700 font-medium"
+              className="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-medium"
             >
               Terms and Conditions
             </Link>{" "}
             and{" "}
             <Link
               href={ROUTES.PRIVACY}
-              className="text-primary-600 hover:text-primary-700 font-medium"
+              className="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-medium"
             >
               Privacy Policy
             </Link>
           </label>
           {errors.agreeToTerms && (
-            <p className="mt-1 text-sm text-error-600">
+            <p className="mt-1 text-sm text-error-600 dark:text-error-400">
               {errors.agreeToTerms.message}
             </p>
           )}
@@ -220,10 +220,10 @@ export const SignupForm = () => {
       {/* Divider */}
       <div className="relative">
         <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-neutral-200" />
+          <div className="w-full border-t border-neutral-200 dark:border-neutral-800" />
         </div>
         <div className="relative flex justify-center text-sm">
-          <span className="px-2 bg-white text-neutral-500">
+          <span className="px-2 bg-white dark:bg-neutral-900 text-neutral-500 dark:text-neutral-400">
             Or continue with
           </span>
         </div>
@@ -281,11 +281,11 @@ export const SignupForm = () => {
       </div>
 
       {/* Sign In Link */}
-      <p className="text-center text-sm text-neutral-600">
+      <p className="text-center text-sm text-neutral-600 dark:text-neutral-400">
         Already have an account?{" "}
         <Link
           href={ROUTES.LOGIN}
-          className="text-primary-600 hover:text-primary-700 font-medium"
+          className="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-medium"
         >
           Sign in
         </Link>
