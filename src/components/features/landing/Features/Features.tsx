@@ -68,17 +68,17 @@ const features: Feature[] = [
 
 export const Features = () => {
   return (
-    <section id="features" className="py-20 bg-white">
+    <section id="features" className="py-20 bg-white dark:bg-neutral-900">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
-          <h2 className="text-4xl sm:text-5xl font-bold text-neutral-900 mb-4">
+          <h2 className="text-4xl sm:text-5xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">
             Everything You Need to
             <br />
-            <span className="bg-gradient-to-r from-primary-600 to-secondary-600 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-primary-600 to-secondary-600 dark:from-primary-400 dark:to-secondary-400 bg-clip-text text-transparent">
               Succeed
             </span>
           </h2>
-          <p className="text-xl text-neutral-600 max-w-2xl mx-auto">
+          <p className="text-xl text-neutral-600 dark:text-neutral-400 max-w-2xl mx-auto">
             Powerful features designed to help you build, deploy, and scale
             your applications with confidence.
           </p>
@@ -89,18 +89,18 @@ export const Features = () => {
             <div
               key={index}
               className={cn(
-                "p-8 rounded-xl border border-neutral-200 bg-white",
-                "hover:shadow-soft-lg hover:border-primary-200",
+                "p-8 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
+                "hover:shadow-soft-lg hover:border-primary-200 dark:hover:border-primary-800",
                 "transition-all duration-300 group"
               )}
             >
-              <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-primary-100 to-secondary-100 flex items-center justify-center text-primary-600 mb-6 group-hover:scale-110 transition-transform duration-300">
+              <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-primary-100 to-secondary-100 dark:from-primary-900 dark:to-secondary-900 flex items-center justify-center text-primary-600 dark:text-primary-400 mb-6 group-hover:scale-110 transition-transform duration-300">
                 {feature.icon}
               </div>
-              <h3 className="text-xl font-semibold text-neutral-900 mb-3">
+              <h3 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-3">
                 {feature.title}
               </h3>
-              <p className="text-neutral-600 leading-relaxed">
+              <p className="text-neutral-600 dark:text-neutral-400 leading-relaxed">
                 {feature.description}
               </p>
             </div>
