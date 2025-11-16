@@ -39,9 +39,14 @@ export async function registerUser(
 
     const { name, email, password, agreeToTerms } = validationResult.data;
 
-    // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
+    // Check if user already exists (excluding deleted accounts)
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        email,
+        status: {
+          not: "DELETED", // Allow re-registration if account was deleted
+        },
+      },
       select: { id: true },
     });
 
@@ -275,8 +280,13 @@ export async function checkEmailAvailability(
   email: string
 ): Promise<{ available: boolean }> {
   try {
-    const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase().trim() },
+    const user = await prisma.user.findFirst({
+      where: {
+        email: email.toLowerCase().trim(),
+        status: {
+          not: "DELETED", // Allow re-registration if account was deleted
+        },
+      },
       select: { id: true },
     });
 

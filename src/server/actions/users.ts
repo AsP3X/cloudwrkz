@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireAuth } from "@/lib/utils/auth-server";
 import { updateProfileSchema, type UpdateProfileInput } from "@/lib/validations/auth";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 
 export type ActionResult<T = void> =
   | { success: true; data?: T; message?: string }
@@ -160,6 +161,59 @@ export async function updateProfile(
     return {
       success: false,
       error: "An error occurred while updating your profile. Please try again.",
+    };
+  }
+}
+
+/**
+ * Delete current user's account permanently
+ * Immediately deletes the account and all associated data
+ * Cascading deletes will handle:
+ * - Sessions (already deleted explicitly)
+ * - Tickets created by user
+ * - Ticket comments by user
+ * - Group memberships
+ * - Assigned tickets will be unassigned (SetNull)
+ */
+export async function flagAccountForDeletion(): Promise<ActionResult> {
+  try {
+    const user = await requireAuth();
+
+    // Get user ID before deletion
+    const userId = user.id;
+
+    // Delete all user sessions first to log them out immediately
+    await prisma.session.deleteMany({
+      where: { userId },
+    });
+
+    // Clear the session cookie
+    const cookieStore = await cookies();
+    cookieStore.delete("session");
+
+    // Delete the user account - cascading deletes will handle related data
+    // This will delete:
+    // - All tickets created by the user (Cascade)
+    // - All ticket comments by the user (Cascade)
+    // - All group memberships (Cascade)
+    // - Assigned tickets will be unassigned (SetNull)
+    await prisma.user.delete({
+      where: { id: userId },
+    });
+
+    // Revalidate settings page
+    revalidatePath("/dashboard/settings");
+
+    return {
+      success: true,
+      message: "Your account has been permanently deleted. All your data has been removed.",
+    };
+  } catch (error) {
+    console.error("Account deletion error:", error);
+
+    return {
+      success: false,
+      error: "An error occurred while deleting your account. Please try again.",
     };
   }
 }
