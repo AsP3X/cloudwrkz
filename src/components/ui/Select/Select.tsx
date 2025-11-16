@@ -24,10 +24,10 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
         {label && (
           <label
             htmlFor={selectId}
-            className="block text-sm font-medium text-neutral-700 mb-2"
+            className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2"
           >
             {label}
-            {props.required && <span className="text-error-500 ml-1">*</span>}
+            {props.required && <span className="text-error-500 dark:text-error-400 ml-1">*</span>}
           </label>
         )}
         <div className="relative">
@@ -36,12 +36,12 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
             id={selectId}
             className={cn(
               "w-full px-4 py-3 rounded-lg border-2 transition-all duration-200",
-              "focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2",
-              "disabled:bg-neutral-100 disabled:cursor-not-allowed",
-              "appearance-none bg-white pr-10",
+              "focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900",
+              "disabled:bg-neutral-100 dark:disabled:bg-neutral-800 disabled:cursor-not-allowed",
+              "appearance-none bg-white dark:bg-neutral-900 pr-10 text-neutral-900 dark:text-neutral-100",
               error
-                ? "border-error-300 bg-error-50 focus:border-error-500 focus:ring-error-500"
-                : "border-neutral-200 hover:border-neutral-300 focus:border-primary-500",
+                ? "border-error-300 dark:border-error-700 bg-error-50 dark:bg-error-950 focus:border-error-500 dark:focus:border-error-400 focus:ring-error-500 dark:focus:ring-error-400"
+                : "border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700 focus:border-primary-500 dark:focus:border-primary-400",
               className
             )}
             aria-invalid={error ? "true" : "false"}
@@ -61,7 +61,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           </select>
           <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
             <svg
-              className="h-5 w-5 text-neutral-400"
+              className="h-5 w-5 text-neutral-400 dark:text-neutral-500"
               fill="none"
               viewBox="0 0 20 20"
               stroke="currentColor"
@@ -78,7 +78,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
         {error && (
           <p
             id={`${selectId}-error`}
-            className="mt-2 text-sm text-error-600 flex items-center gap-1"
+            className="mt-2 text-sm text-error-600 dark:text-error-400 flex items-center gap-1"
           >
             <svg
               className="w-4 h-4"
@@ -99,7 +99,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
         {helperText && !error && (
           <p
             id={`${selectId}-helper`}
-            className="mt-2 text-sm text-neutral-500"
+            className="mt-2 text-sm text-neutral-500 dark:text-neutral-400"
           >
             {helperText}
           </p>

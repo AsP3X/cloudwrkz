@@ -18,14 +18,14 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     },
     ref
   ) => {
-    const baseStyles = "inline-flex items-center justify-center rounded-md font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
+    const baseStyles = "inline-flex items-center justify-center rounded-md font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-neutral-900 disabled:pointer-events-none disabled:opacity-50";
 
     const variants = {
-      primary: "bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800",
-      secondary: "bg-secondary-600 text-white hover:bg-secondary-700 active:bg-secondary-800",
-      outline: "border-2 border-neutral-300 bg-transparent text-neutral-700 hover:bg-neutral-50 active:bg-neutral-100",
-      ghost: "bg-transparent text-neutral-700 hover:bg-neutral-100 active:bg-neutral-200",
-      danger: "bg-error-600 text-white hover:bg-error-700 active:bg-error-800",
+      primary: "bg-primary-600 dark:bg-primary-500 text-white hover:bg-primary-700 dark:hover:bg-primary-600 active:bg-primary-800 dark:active:bg-primary-700",
+      secondary: "bg-secondary-600 dark:bg-secondary-500 text-white hover:bg-secondary-700 dark:hover:bg-secondary-600 active:bg-secondary-800 dark:active:bg-secondary-700",
+      outline: "border-2 border-neutral-300 dark:border-neutral-700 bg-transparent text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 active:bg-neutral-100 dark:active:bg-neutral-700",
+      ghost: "bg-transparent text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 active:bg-neutral-200 dark:active:bg-neutral-700",
+      danger: "bg-error-600 dark:bg-error-500 text-white hover:bg-error-700 dark:hover:bg-error-600 active:bg-error-800 dark:active:bg-error-700",
     };
 
     const sizes = {

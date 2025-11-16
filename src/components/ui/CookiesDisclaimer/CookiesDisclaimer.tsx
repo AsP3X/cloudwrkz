@@ -186,7 +186,7 @@ export const CookiesDisclaimer: React.FC<CookiesDisclaimerProps> = ({
       aria-live="polite"
     >
       <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-white via-primary-50/30 to-secondary-50/20 border border-primary-200/50 shadow-[0_-4px_24px_rgba(0,0,0,0.15),0_-8px_48px_rgba(0,0,0,0.12)] backdrop-blur-sm">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-white via-primary-50/30 to-secondary-50/20 dark:from-neutral-900 dark:via-primary-900/30 dark:to-secondary-900/20 border border-primary-200/50 dark:border-primary-800/50 shadow-[0_-4px_24px_rgba(0,0,0,0.15),0_-8px_48px_rgba(0,0,0,0.12)] dark:shadow-[0_-4px_24px_rgba(0,0,0,0.5),0_-8px_48px_rgba(0,0,0,0.4)] backdrop-blur-sm">
           {/* Decorative background pattern */}
           <div className="absolute inset-0 opacity-5">
             <div className="absolute inset-0" style={{
@@ -200,7 +200,7 @@ export const CookiesDisclaimer: React.FC<CookiesDisclaimerProps> = ({
             <div className="flex flex-1 items-start gap-4">
               {/* Cookie Icon */}
               <div className="flex-shrink-0">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-secondary-500 shadow-lg ring-2 ring-primary-200/50">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-secondary-500 dark:from-primary-400 dark:to-secondary-400 shadow-lg ring-2 ring-primary-200/50 dark:ring-primary-800/50">
                   <svg
                     className="h-7 w-7"
                     viewBox="0 0 24 24"
@@ -224,17 +224,17 @@ export const CookiesDisclaimer: React.FC<CookiesDisclaimerProps> = ({
 
               {/* Text content */}
               <div className="flex-1">
-                <h3 className="mb-2 text-base font-semibold text-neutral-900 sm:text-lg">
+                <h3 className="mb-2 text-base font-semibold text-neutral-900 dark:text-neutral-100 sm:text-lg">
                   Cookie Preferences
                 </h3>
-                <p className="text-sm leading-relaxed text-neutral-700 sm:text-base">
+                <p className="text-sm leading-relaxed text-neutral-700 dark:text-neutral-300 sm:text-base">
                   {message}
                   {privacyPolicyLink && (
                     <>
                       {" "}
                       <a
                         href={privacyPolicyLink}
-                        className="font-semibold text-primary-600 transition-colors hover:text-primary-700 hover:underline focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded"
+                        className="font-semibold text-primary-600 dark:text-primary-400 transition-colors hover:text-primary-700 dark:hover:text-primary-300 hover:underline focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 focus:ring-offset-2 dark:focus:ring-offset-neutral-900 rounded"
                         target="_blank"
                         rel="noopener noreferrer"
                       >
@@ -260,7 +260,7 @@ export const CookiesDisclaimer: React.FC<CookiesDisclaimerProps> = ({
           </div>
 
           {/* Bottom accent line */}
-          <div className="h-1 bg-gradient-to-r from-primary-500 via-secondary-500 to-primary-500" />
+          <div className="h-1 bg-gradient-to-r from-primary-500 via-secondary-500 to-primary-500 dark:from-primary-400 dark:via-secondary-400 dark:to-primary-400" />
         </div>
       </div>
     </div>

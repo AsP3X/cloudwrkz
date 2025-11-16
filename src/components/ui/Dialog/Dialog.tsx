@@ -63,7 +63,7 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
           <div
             ref={internalRef}
             className={cn(
-              "bg-white rounded-xl shadow-soft-xl border border-neutral-200",
+              "bg-white dark:bg-neutral-900 rounded-xl shadow-soft-xl border border-neutral-200 dark:border-neutral-800",
               "w-full max-w-2xl max-h-[90vh] overflow-hidden",
               "animate-slide-in",
               className
@@ -76,20 +76,20 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
           >
             {/* Header */}
             {(title || description) && (
-              <div className="px-6 py-4 border-b border-neutral-200 flex items-start justify-between">
+              <div className="px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 flex items-start justify-between">
                 <div>
                   {title && (
-                    <h2 id="dialog-title" className="text-xl font-bold text-neutral-900">
+                    <h2 id="dialog-title" className="text-xl font-bold text-neutral-900 dark:text-neutral-100">
                       {title}
                     </h2>
                   )}
                   {description && (
-                    <p className="text-sm text-neutral-600 mt-1">{description}</p>
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">{description}</p>
                   )}
                 </div>
                 <button
                   onClick={() => onOpenChange?.(false)}
-                  className="text-neutral-400 hover:text-neutral-600 transition-colors"
+                  className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
                   aria-label="Close dialog"
                 >
                   <svg
