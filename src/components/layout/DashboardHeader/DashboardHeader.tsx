@@ -33,7 +33,7 @@ export const DashboardHeader = ({ user }: DashboardHeaderProps) => {
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-sm border-b border-neutral-200/50 shadow-sm">
+    <header className="sticky top-0 z-30 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm border-b border-neutral-200/50 dark:border-neutral-800/50 shadow-sm">
       <div className="px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
           {/* Left side - can add breadcrumbs or page title here */}
@@ -43,21 +43,21 @@ export const DashboardHeader = ({ user }: DashboardHeaderProps) => {
           <div className="relative">
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-neutral-50 transition-colors"
+              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
             >
-              <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
-                <span className="text-sm font-semibold text-primary-700">
+              <div className="w-8 h-8 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center">
+                <span className="text-sm font-semibold text-primary-700 dark:text-primary-300">
                   {user.name?.[0]?.toUpperCase() || user.email[0].toUpperCase()}
                 </span>
               </div>
               <div className="hidden sm:block text-left">
-                <p className="text-sm font-medium text-neutral-900">
+                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
                   {user.name || user.email.split("@")[0]}
                 </p>
-                <p className="text-xs text-neutral-500 capitalize">{user.role.toLowerCase()}</p>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 capitalize">{user.role.toLowerCase()}</p>
               </div>
               <svg
-                className="w-4 h-4 text-neutral-500"
+                className="w-4 h-4 text-neutral-500 dark:text-neutral-400"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -78,32 +78,32 @@ export const DashboardHeader = ({ user }: DashboardHeaderProps) => {
                   className="fixed inset-0 z-40"
                   onClick={() => setIsMenuOpen(false)}
                 />
-                <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-neutral-200 py-2 z-50">
-                  <div className="px-4 py-3 border-b border-neutral-200">
-                    <p className="text-sm font-medium text-neutral-900">{user.name || "User"}</p>
-                    <p className="text-xs text-neutral-500 truncate">{user.email}</p>
+                <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-neutral-900 rounded-xl shadow-lg border border-neutral-200 dark:border-neutral-800 py-2 z-50">
+                  <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
+                    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{user.name || "User"}</p>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">{user.email}</p>
                   </div>
                   <div className="py-2">
                     <a
                       href="/dashboard/profile"
-                      className="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors"
+                      className="block px-4 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
                       onClick={() => setIsMenuOpen(false)}
                     >
                       View Profile
                     </a>
                     <a
                       href="/dashboard/settings"
-                      className="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors"
+                      className="block px-4 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
                       onClick={() => setIsMenuOpen(false)}
                     >
                       Settings
                     </a>
                   </div>
-                  <div className="border-t border-neutral-200 pt-2">
+                  <div className="border-t border-neutral-200 dark:border-neutral-800 pt-2">
                     <button
                       onClick={handleLogout}
                       disabled={isLoggingOut}
-                      className="w-full px-4 py-2 text-sm text-left text-error-600 hover:bg-error-50 transition-colors disabled:opacity-50"
+                      className="w-full px-4 py-2 text-sm text-left text-error-600 dark:text-error-400 hover:bg-error-50 dark:hover:bg-error-950 transition-colors disabled:opacity-50"
                     >
                       {isLoggingOut ? "Logging out..." : "Sign out"}
                     </button>

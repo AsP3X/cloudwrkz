@@ -23,7 +23,7 @@ export const Header = () => {
       className={cn(
         "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
         scrolled
-          ? "bg-white/80 backdrop-blur-md shadow-soft"
+          ? "bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md shadow-soft"
           : "bg-transparent"
       )}
     >
@@ -31,7 +31,7 @@ export const Header = () => {
         <div className="flex h-16 items-center justify-between">
           <Link
             href={ROUTES.HOME}
-            className="text-2xl font-bold bg-gradient-to-r from-primary-600 to-secondary-600 bg-clip-text text-transparent"
+            className="text-2xl font-bold bg-gradient-to-r from-primary-600 to-secondary-600 dark:from-primary-400 dark:to-secondary-400 bg-clip-text text-transparent"
           >
             {APP_CONFIG.name}
           </Link>
@@ -39,19 +39,19 @@ export const Header = () => {
           <div className="hidden md:flex items-center space-x-8">
             <Link
               href="#features"
-              className="text-neutral-700 hover:text-primary-600 transition-colors duration-200"
+              className="text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors duration-200"
             >
               Features
             </Link>
             <Link
               href="#about"
-              className="text-neutral-700 hover:text-primary-600 transition-colors duration-200"
+              className="text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors duration-200"
             >
               About
             </Link>
             <Link
               href="#contact"
-              className="text-neutral-700 hover:text-primary-600 transition-colors duration-200"
+              className="text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors duration-200"
             >
               Contact
             </Link>

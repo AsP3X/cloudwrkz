@@ -28,25 +28,25 @@ export const Footer = () => {
   };
 
   return (
-    <footer className="bg-neutral-900 text-neutral-300">
+    <footer className="bg-neutral-900 dark:bg-neutral-950 text-neutral-300 dark:text-neutral-400">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 mb-8">
           {/* Brand */}
           <div className="lg:col-span-2">
             <Link
               href={ROUTES.HOME}
-              className="text-2xl font-bold bg-gradient-to-r from-primary-400 to-secondary-400 bg-clip-text text-transparent mb-4 inline-block"
+              className="text-2xl font-bold bg-gradient-to-r from-primary-400 to-secondary-400 dark:from-primary-300 dark:to-secondary-300 bg-clip-text text-transparent mb-4 inline-block"
             >
               {APP_CONFIG.name}
             </Link>
-            <p className="text-neutral-400 mb-4 max-w-md">
+            <p className="text-neutral-400 dark:text-neutral-500 mb-4 max-w-md">
               Building modern applications with cutting-edge technology.
               Enterprise-ready, developer-friendly.
             </p>
             <div className="flex space-x-4">
               <a
                 href="#"
-                className="w-10 h-10 rounded-lg bg-neutral-800 flex items-center justify-center hover:bg-neutral-700 transition-colors"
+                className="w-10 h-10 rounded-lg bg-neutral-800 dark:bg-neutral-900 flex items-center justify-center hover:bg-neutral-700 dark:hover:bg-neutral-800 transition-colors"
                 aria-label="Twitter"
               >
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -55,7 +55,7 @@ export const Footer = () => {
               </a>
               <a
                 href="#"
-                className="w-10 h-10 rounded-lg bg-neutral-800 flex items-center justify-center hover:bg-neutral-700 transition-colors"
+                className="w-10 h-10 rounded-lg bg-neutral-800 dark:bg-neutral-900 flex items-center justify-center hover:bg-neutral-700 dark:hover:bg-neutral-800 transition-colors"
                 aria-label="GitHub"
               >
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -64,7 +64,7 @@ export const Footer = () => {
               </a>
               <a
                 href="#"
-                className="w-10 h-10 rounded-lg bg-neutral-800 flex items-center justify-center hover:bg-neutral-700 transition-colors"
+                className="w-10 h-10 rounded-lg bg-neutral-800 dark:bg-neutral-900 flex items-center justify-center hover:bg-neutral-700 dark:hover:bg-neutral-800 transition-colors"
                 aria-label="LinkedIn"
               >
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -77,13 +77,13 @@ export const Footer = () => {
           {/* Links */}
           {Object.entries(footerLinks).map(([category, links]) => (
             <div key={category}>
-              <h3 className="text-white font-semibold mb-4">{category}</h3>
+              <h3 className="text-white dark:text-neutral-200 font-semibold mb-4">{category}</h3>
               <ul className="space-y-2">
                 {links.map((link) => (
                   <li key={link.label}>
                     <Link
                       href={link.href}
-                      className="text-neutral-400 hover:text-white transition-colors"
+                      className="text-neutral-400 dark:text-neutral-500 hover:text-white dark:hover:text-neutral-300 transition-colors"
                     >
                       {link.label}
                     </Link>
@@ -95,11 +95,11 @@ export const Footer = () => {
         </div>
 
         {/* Bottom */}
-        <div className="border-t border-neutral-800 pt-8 flex flex-col sm:flex-row justify-between items-center">
-          <p className="text-neutral-400 text-sm">
+        <div className="border-t border-neutral-800 dark:border-neutral-900 pt-8 flex flex-col sm:flex-row justify-between items-center">
+          <p className="text-neutral-400 dark:text-neutral-500 text-sm">
             © {currentYear} {APP_CONFIG.name}. All rights reserved.
           </p>
-          <p className="text-neutral-400 text-sm mt-4 sm:mt-0">
+          <p className="text-neutral-400 dark:text-neutral-500 text-sm mt-4 sm:mt-0">
             Built with ❤️ using Next.js 15
           </p>
         </div>

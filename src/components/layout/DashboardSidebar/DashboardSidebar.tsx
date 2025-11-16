@@ -81,10 +81,10 @@ export const DashboardSidebar = ({ enabledModuleKeys }: DashboardSidebarProps) =
       {/* Mobile menu button */}
       <button
         onClick={() => setIsMobileOpen(!isMobileOpen)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-white shadow-lg border border-neutral-200"
+        className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-white dark:bg-neutral-900 shadow-lg border border-neutral-200 dark:border-neutral-800"
       >
         <svg
-          className="w-6 h-6 text-neutral-700"
+          className="w-6 h-6 text-neutral-700 dark:text-neutral-300"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -110,14 +110,14 @@ export const DashboardSidebar = ({ enabledModuleKeys }: DashboardSidebarProps) =
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed top-0 left-0 z-40 h-screen w-64 bg-white border-r border-neutral-200 transition-transform duration-300 ease-in-out",
+          "fixed top-0 left-0 z-40 h-screen w-64 bg-white dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800 transition-transform duration-300 ease-in-out",
           "lg:translate-x-0",
           isMobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
         <div className="flex flex-col h-full">
           {/* Logo */}
-          <div className="flex items-center h-16 px-6 border-b border-neutral-200">
+          <div className="flex items-center h-16 px-6 border-b border-neutral-200 dark:border-neutral-800">
             <Link
               href={ROUTES.DASHBOARD}
               className="text-xl font-bold bg-gradient-to-r from-primary-600 to-secondary-600 bg-clip-text text-transparent"
@@ -142,11 +142,11 @@ export const DashboardSidebar = ({ enabledModuleKeys }: DashboardSidebarProps) =
                   className={cn(
                     "flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200",
                     isActive
-                      ? "bg-primary-50 text-primary-700 border border-primary-200"
-                      : "text-neutral-700 hover:bg-neutral-50 hover:text-primary-600"
+                      ? "bg-primary-50 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-800"
+                      : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:text-primary-600 dark:hover:text-primary-400"
                   )}
                 >
-                  <span className={cn(isActive ? "text-primary-600" : "text-neutral-500")}>
+                  <span className={cn(isActive ? "text-primary-600 dark:text-primary-400" : "text-neutral-500 dark:text-neutral-400")}>
                     {item.icon}
                   </span>
                   {item.name}
@@ -156,10 +156,10 @@ export const DashboardSidebar = ({ enabledModuleKeys }: DashboardSidebarProps) =
           </nav>
 
           {/* Footer */}
-          <div className="px-4 py-4 border-t border-neutral-200">
+          <div className="px-4 py-4 border-t border-neutral-200 dark:border-neutral-800">
             <Link
               href={ROUTES.HOME}
-              className="flex items-center gap-2 px-4 py-2 text-sm text-neutral-600 hover:text-primary-600 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 text-sm text-neutral-600 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
