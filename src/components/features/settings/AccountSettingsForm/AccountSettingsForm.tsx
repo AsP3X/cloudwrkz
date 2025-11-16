@@ -104,15 +104,15 @@ export const AccountSettingsForm = ({
   return (
     <div className="space-y-6">
       {/* Tab Navigation */}
-      <div className="border-b border-neutral-200">
+      <div className="border-b border-neutral-200 dark:border-neutral-800">
         <nav className="flex gap-6 -mb-px">
           <button
             type="button"
             onClick={() => setActiveTab("email")}
             className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
               activeTab === "email"
-                ? "border-primary-600 text-primary-600"
-                : "border-transparent text-neutral-600 hover:text-neutral-900 hover:border-neutral-300"
+                ? "border-primary-600 dark:border-primary-500 text-primary-600 dark:text-primary-400"
+                : "border-transparent text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 hover:border-neutral-300 dark:hover:border-neutral-700"
             }`}
           >
             Change Email
@@ -122,8 +122,8 @@ export const AccountSettingsForm = ({
             onClick={() => setActiveTab("password")}
             className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
               activeTab === "password"
-                ? "border-primary-600 text-primary-600"
-                : "border-transparent text-neutral-600 hover:text-neutral-900 hover:border-neutral-300"
+                ? "border-primary-600 dark:border-primary-500 text-primary-600 dark:text-primary-400"
+                : "border-transparent text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 hover:border-neutral-300 dark:hover:border-neutral-700"
             }`}
           >
             Change Password
@@ -139,18 +139,18 @@ export const AccountSettingsForm = ({
           noValidate
         >
           {/* Current Email Display */}
-          <div className="bg-neutral-50 rounded-lg border border-neutral-200 p-4">
-            <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+          <div className="bg-neutral-50 dark:bg-neutral-900 rounded-lg border border-neutral-200 dark:border-neutral-800 p-4">
+            <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1 block">
               Current Email
             </label>
             <div className="flex items-center gap-2">
-              <p className="text-sm font-medium text-neutral-900">{currentEmail}</p>
+              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{currentEmail}</p>
               {emailVerified ? (
-                <span className="px-2 py-1 rounded-full text-xs font-medium bg-success-100 text-success-700 border border-success-200">
+                <span className="px-2 py-1 rounded-full text-xs font-medium bg-success-100 dark:bg-success-900 text-success-700 dark:text-success-300 border border-success-200 dark:border-success-800">
                   Verified
                 </span>
               ) : (
-                <span className="px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700 border border-yellow-200">
+                <span className="px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300 border border-yellow-200 dark:border-yellow-800">
                   Not Verified
                 </span>
               )}
@@ -159,10 +159,10 @@ export const AccountSettingsForm = ({
 
           {/* Error Message */}
           {emailError && (
-            <div className="rounded-lg bg-error-50 border-2 border-error-200 p-4">
+            <div className="rounded-lg bg-error-50 dark:bg-error-950 border-2 border-error-200 dark:border-error-800 p-4">
               <div className="flex items-start gap-3">
                 <svg
-                  className="w-5 h-5 text-error-600 mt-0.5 flex-shrink-0"
+                  className="w-5 h-5 text-error-600 dark:text-error-400 mt-0.5 flex-shrink-0"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -174,17 +174,17 @@ export const AccountSettingsForm = ({
                     d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                   />
                 </svg>
-                <p className="text-sm font-medium text-error-800">{emailError}</p>
+                <p className="text-sm font-medium text-error-800 dark:text-error-200">{emailError}</p>
               </div>
             </div>
           )}
 
           {/* Success Message */}
           {emailSuccess && (
-            <div className="rounded-lg bg-success-50 border-2 border-success-200 p-4">
+            <div className="rounded-lg bg-success-50 dark:bg-success-950 border-2 border-success-200 dark:border-success-800 p-4">
               <div className="flex items-start gap-3">
                 <svg
-                  className="w-5 h-5 text-success-600 mt-0.5 flex-shrink-0"
+                  className="w-5 h-5 text-success-600 dark:text-success-400 mt-0.5 flex-shrink-0"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -196,7 +196,7 @@ export const AccountSettingsForm = ({
                     d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                   />
                 </svg>
-                <p className="text-sm font-medium text-success-800">{emailSuccess}</p>
+                <p className="text-sm font-medium text-success-800 dark:text-success-200">{emailSuccess}</p>
               </div>
             </div>
           )}
@@ -243,10 +243,10 @@ export const AccountSettingsForm = ({
         >
           {/* Error Message */}
           {passwordError && (
-            <div className="rounded-lg bg-error-50 border-2 border-error-200 p-4">
+            <div className="rounded-lg bg-error-50 dark:bg-error-950 border-2 border-error-200 dark:border-error-800 p-4">
               <div className="flex items-start gap-3">
                 <svg
-                  className="w-5 h-5 text-error-600 mt-0.5 flex-shrink-0"
+                  className="w-5 h-5 text-error-600 dark:text-error-400 mt-0.5 flex-shrink-0"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -258,17 +258,17 @@ export const AccountSettingsForm = ({
                     d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                   />
                 </svg>
-                <p className="text-sm font-medium text-error-800">{passwordError}</p>
+                <p className="text-sm font-medium text-error-800 dark:text-error-200">{passwordError}</p>
               </div>
             </div>
           )}
 
           {/* Success Message */}
           {passwordSuccess && (
-            <div className="rounded-lg bg-success-50 border-2 border-success-200 p-4">
+            <div className="rounded-lg bg-success-50 dark:bg-success-950 border-2 border-success-200 dark:border-success-800 p-4">
               <div className="flex items-start gap-3">
                 <svg
-                  className="w-5 h-5 text-success-600 mt-0.5 flex-shrink-0"
+                  className="w-5 h-5 text-success-600 dark:text-success-400 mt-0.5 flex-shrink-0"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -280,7 +280,7 @@ export const AccountSettingsForm = ({
                     d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                   />
                 </svg>
-                <p className="text-sm font-medium text-success-800">{passwordSuccess}</p>
+                <p className="text-sm font-medium text-success-800 dark:text-success-200">{passwordSuccess}</p>
               </div>
             </div>
           )}

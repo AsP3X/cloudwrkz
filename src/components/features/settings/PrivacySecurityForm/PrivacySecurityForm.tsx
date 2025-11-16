@@ -52,10 +52,10 @@ export const PrivacySecurityForm = () => {
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6" noValidate>
       {/* Error Message */}
       {error && (
-        <div className="rounded-lg bg-error-50 border-2 border-error-200 p-4">
+        <div className="rounded-lg bg-error-50 dark:bg-error-950 border-2 border-error-200 dark:border-error-800 p-4">
           <div className="flex items-start gap-3">
             <svg
-              className="w-5 h-5 text-error-600 mt-0.5 flex-shrink-0"
+              className="w-5 h-5 text-error-600 dark:text-error-400 mt-0.5 flex-shrink-0"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -67,17 +67,17 @@ export const PrivacySecurityForm = () => {
                 d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
               />
             </svg>
-            <p className="text-sm font-medium text-error-800">{error}</p>
+            <p className="text-sm font-medium text-error-800 dark:text-error-200">{error}</p>
           </div>
         </div>
       )}
 
       {/* Success Message */}
       {success && (
-        <div className="rounded-lg bg-success-50 border-2 border-success-200 p-4">
+        <div className="rounded-lg bg-success-50 dark:bg-success-950 border-2 border-success-200 dark:border-success-800 p-4">
           <div className="flex items-start gap-3">
             <svg
-              className="w-5 h-5 text-success-600 mt-0.5 flex-shrink-0"
+              className="w-5 h-5 text-success-600 dark:text-success-400 mt-0.5 flex-shrink-0"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -89,7 +89,7 @@ export const PrivacySecurityForm = () => {
                 d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
               />
             </svg>
-            <p className="text-sm font-medium text-success-800">{success}</p>
+            <p className="text-sm font-medium text-success-800 dark:text-success-200">{success}</p>
           </div>
         </div>
       )}
@@ -108,21 +108,21 @@ export const PrivacySecurityForm = () => {
       />
 
       {/* Divider */}
-      <div className="border-t border-neutral-200 pt-6">
-        <h3 className="text-lg font-semibold text-neutral-900 mb-4">
+      <div className="border-t border-neutral-200 dark:border-neutral-800 pt-6">
+        <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-4">
           Privacy Options
         </h3>
         <div className="space-y-4">
           {/* Show Email */}
-          <div className="flex items-start justify-between p-4 bg-neutral-50 rounded-lg border border-neutral-200">
+          <div className="flex items-start justify-between p-4 bg-neutral-50 dark:bg-neutral-900 rounded-lg border border-neutral-200 dark:border-neutral-800">
             <div className="flex-1">
               <label
                 htmlFor="showEmail"
-                className="text-sm font-medium text-neutral-900 block mb-1"
+                className="text-sm font-medium text-neutral-900 dark:text-neutral-100 block mb-1"
               >
                 Show Email Address
               </label>
-              <p className="text-sm text-neutral-600">
+              <p className="text-sm text-neutral-600 dark:text-neutral-400">
                 Allow others to see your email address on your profile
               </p>
             </div>
@@ -133,20 +133,20 @@ export const PrivacySecurityForm = () => {
                 className="sr-only peer"
                 {...register("showEmail", { valueAsNumber: false })}
               />
-              <div className="w-11 h-6 bg-neutral-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+              <div className="w-11 h-6 bg-neutral-200 dark:bg-neutral-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 dark:after:border-neutral-600 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
             </label>
           </div>
 
           {/* Show Last Seen */}
-          <div className="flex items-start justify-between p-4 bg-neutral-50 rounded-lg border border-neutral-200">
+          <div className="flex items-start justify-between p-4 bg-neutral-50 dark:bg-neutral-900 rounded-lg border border-neutral-200 dark:border-neutral-800">
             <div className="flex-1">
               <label
                 htmlFor="showLastSeen"
-                className="text-sm font-medium text-neutral-900 block mb-1"
+                className="text-sm font-medium text-neutral-900 dark:text-neutral-100 block mb-1"
               >
                 Show Last Seen
               </label>
-              <p className="text-sm text-neutral-600">
+              <p className="text-sm text-neutral-600 dark:text-neutral-400">
                 Display when you were last active on your profile
               </p>
             </div>
@@ -157,28 +157,28 @@ export const PrivacySecurityForm = () => {
                 className="sr-only peer"
                 {...register("showLastSeen", { valueAsNumber: false })}
               />
-              <div className="w-11 h-6 bg-neutral-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+              <div className="w-11 h-6 bg-neutral-200 dark:bg-neutral-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 dark:after:border-neutral-600 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
             </label>
           </div>
         </div>
       </div>
 
       {/* Divider */}
-      <div className="border-t border-neutral-200 pt-6">
-        <h3 className="text-lg font-semibold text-neutral-900 mb-4">
+      <div className="border-t border-neutral-200 dark:border-neutral-800 pt-6">
+        <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-4">
           Security Options
         </h3>
         <div className="space-y-4">
           {/* Two-Factor Authentication */}
-          <div className="flex items-start justify-between p-4 bg-neutral-50 rounded-lg border border-neutral-200">
+          <div className="flex items-start justify-between p-4 bg-neutral-50 dark:bg-neutral-900 rounded-lg border border-neutral-200 dark:border-neutral-800">
             <div className="flex-1">
               <label
                 htmlFor="twoFactorEnabled"
-                className="text-sm font-medium text-neutral-900 block mb-1"
+                className="text-sm font-medium text-neutral-900 dark:text-neutral-100 block mb-1"
               >
                 Two-Factor Authentication
               </label>
-              <p className="text-sm text-neutral-600">
+              <p className="text-sm text-neutral-600 dark:text-neutral-400">
                 Add an extra layer of security to your account
               </p>
             </div>
@@ -189,7 +189,7 @@ export const PrivacySecurityForm = () => {
                 className="sr-only peer"
                 {...register("twoFactorEnabled", { valueAsNumber: false })}
               />
-              <div className="w-11 h-6 bg-neutral-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+              <div className="w-11 h-6 bg-neutral-200 dark:bg-neutral-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 dark:after:border-neutral-600 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
             </label>
           </div>
         </div>

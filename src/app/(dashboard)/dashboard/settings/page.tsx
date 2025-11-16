@@ -5,6 +5,7 @@ import { getCurrentUserProfile } from "@/server/actions/users";
 import { AccountSettingsForm } from "@/components/features/settings/AccountSettingsForm";
 import { PreferencesForm } from "@/components/features/settings/PreferencesForm";
 import { PrivacySecurityForm } from "@/components/features/settings/PrivacySecurityForm";
+import { DeleteAccountSection } from "@/components/features/settings/DeleteAccountSection";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 
 export default async function SettingsPage() {
@@ -23,11 +24,11 @@ export default async function SettingsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-white rounded-xl shadow-soft-lg border border-neutral-200 p-6 sm:p-8">
+      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-gradient-to-br from-primary-100 to-secondary-100 rounded-lg flex items-center justify-center">
+          <div className="w-12 h-12 bg-gradient-to-br from-primary-100 to-secondary-100 dark:from-primary-900 dark:to-secondary-900 rounded-lg flex items-center justify-center">
             <svg
-              className="w-6 h-6 text-primary-600"
+              className="w-6 h-6 text-primary-600 dark:text-primary-400"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -47,8 +48,8 @@ export default async function SettingsPage() {
             </svg>
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-neutral-900">Settings</h1>
-            <p className="text-neutral-600 mt-1">
+            <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100">Settings</h1>
+            <p className="text-neutral-600 dark:text-neutral-400 mt-1">
               Manage your account settings and preferences
             </p>
           </div>
@@ -61,7 +62,7 @@ export default async function SettingsPage() {
         description="Update your email address and change your password"
         icon={
           <svg
-            className="w-5 h-5 text-primary-600"
+            className="w-5 h-5 text-primary-600 dark:text-primary-400"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -88,7 +89,7 @@ export default async function SettingsPage() {
         description="Customize your application preferences and notification settings"
         icon={
           <svg
-            className="w-5 h-5 text-primary-600"
+            className="w-5 h-5 text-primary-600 dark:text-primary-400"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -112,7 +113,7 @@ export default async function SettingsPage() {
         description="Manage your privacy settings and security options"
         icon={
           <svg
-            className="w-5 h-5 text-primary-600"
+            className="w-5 h-5 text-primary-600 dark:text-primary-400"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -129,6 +130,9 @@ export default async function SettingsPage() {
       >
         <PrivacySecurityForm />
       </CollapsibleSection>
+
+      {/* Delete Account Section */}
+      <DeleteAccountSection />
     </div>
   );
 }

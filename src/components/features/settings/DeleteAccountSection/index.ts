@@ -1,0 +1,2 @@
+export { DeleteAccountSection } from "./DeleteAccountSection";
+
