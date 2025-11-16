@@ -15,13 +15,18 @@
  */
 
 import { prisma } from "../lib/db/prisma";
+import { prompt, select, confirm, separator } from "./prompts";
 
 // Get args - when called from index.ts, "group" is already removed
 // When called directly, we need to handle it
 const args = process.argv.slice(2);
 const commandArgs = args[0] === "group" ? args.slice(1) : args;
 
-if (commandArgs.length === 0) {
+// Check if this file is being run directly (not imported)
+// When imported, process.argv[1] won't match this file path
+const isRunDirectly = process.argv[1]?.includes("group-cli");
+
+if (isRunDirectly && commandArgs.length === 0) {
   console.log(`
 Group Management CLI Tool
 
@@ -79,43 +84,48 @@ Examples:
 
 const command = commandArgs[0];
 
-async function main() {
-  try {
-    switch (command) {
-      case "create":
-        await handleCreate();
-        break;
-      case "delete":
-        await handleDelete();
-        break;
-      case "list":
-        await handleList();
-        break;
-      case "show":
-        await handleShow();
-        break;
-      case "update":
-        await handleUpdate();
-        break;
-      case "add-agent":
-        await handleAddAgent();
-        break;
-      case "remove-agent":
-        await handleRemoveAgent();
-        break;
-      case "list-agents":
-        await handleListAgents();
-        break;
-      default:
-        console.error(`Unknown command: ${command}`);
-        process.exit(1);
+// Only run main if there's a command (non-interactive mode) and file is run directly
+if (isRunDirectly && command) {
+  async function main() {
+    try {
+      switch (command) {
+        case "create":
+          await handleCreate();
+          break;
+        case "delete":
+          await handleDelete();
+          break;
+        case "list":
+          await handleList();
+          break;
+        case "show":
+          await handleShow();
+          break;
+        case "update":
+          await handleUpdate();
+          break;
+        case "add-agent":
+          await handleAddAgent();
+          break;
+        case "remove-agent":
+          await handleRemoveAgent();
+          break;
+        case "list-agents":
+          await handleListAgents();
+          break;
+        default:
+          console.error(`Unknown command: ${command}`);
+          process.exit(1);
+      }
+    } catch (error) {
+      console.error("Error:", error instanceof Error ? error.message : error);
+      process.exit(1);
+    } finally {
+      await prisma.$disconnect();
     }
-  } catch (error) {
-    console.error("Error:", error instanceof Error ? error.message : error);
-    process.exit(1);
-  } finally {
-    await prisma.$disconnect();
   }
+
+  main();
 }
 
 /**
@@ -573,4 +583,369 @@ async function handleListAgents() {
   );
 }
 
-main();
+// Helper function to select group interactively
+async function selectGroupInteractively(): Promise<{ id: string; name: string; description: string | null } | null> {
+  const groups = await prisma.group.findMany({
+    select: {
+      id: true,
+      name: true,
+      description: true,
+    },
+    orderBy: { name: "asc" },
+  });
+
+  if (groups.length === 0) {
+    console.error("No groups found");
+    return null;
+  }
+
+  console.log("\nAvailable groups:");
+  groups.forEach((g, index) => {
+    console.log(`${index + 1}. ${g.name}${g.description ? ` - ${g.description}` : ""}`);
+  });
+
+  const groupChoice = await prompt("\nEnter group name or number: ");
+  const groupIndex = parseInt(groupChoice) - 1;
+
+  if (!isNaN(groupIndex) && groupIndex >= 0 && groupIndex < groups.length) {
+    return groups[groupIndex];
+  } else {
+    const group = groups.find((g) => g.name.toLowerCase() === groupChoice.toLowerCase());
+    if (!group) {
+      console.error(`Group not found: ${groupChoice}`);
+      return null;
+    }
+    return group;
+  }
+}
+
+// Helper function to select agent interactively
+async function selectAgentInteractively(): Promise<{ id: string; email: string; name: string | null; role: string } | null> {
+  const agents = await prisma.user.findMany({
+    where: {
+      role: { in: ["AGENT", "ADMIN", "MODERATOR"] },
+      status: { in: ["ACTIVE", "PENDING"] },
+    },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+    },
+    orderBy: [{ role: "asc" }, { name: "asc" }, { email: "asc" }],
+  });
+
+  if (agents.length === 0) {
+    console.error("No agents found");
+    return null;
+  }
+
+  console.log("\nAvailable agents:");
+  agents.forEach((a, index) => {
+    console.log(`${index + 1}. ${a.email} - ${a.role}${a.name ? ` (${a.name})` : ""}`);
+  });
+
+  const agentChoice = await prompt("\nEnter agent email or number: ");
+  const agentIndex = parseInt(agentChoice) - 1;
+
+  if (!isNaN(agentIndex) && agentIndex >= 0 && agentIndex < agents.length) {
+    return agents[agentIndex];
+  } else {
+    const agent = agents.find((a) => a.email.toLowerCase() === agentChoice.toLowerCase());
+    if (!agent) {
+      console.error(`Agent not found: ${agentChoice}`);
+      return null;
+    }
+    return agent;
+  }
+}
+
+// Interactive versions of handlers
+export async function handleCreateInteractive() {
+  try {
+    console.log("Create New Group\n");
+
+    const name = await prompt("Group name: ");
+    if (!name || name.trim().length === 0) {
+      console.error("Group name cannot be empty");
+      return;
+    }
+
+    // Check if group already exists
+    const existing = await prisma.group.findUnique({
+      where: { name: name.trim() },
+      select: { id: true },
+    });
+
+    if (existing) {
+      console.error(`Group with name "${name}" already exists`);
+      return;
+    }
+
+    const description = await prompt("Description (optional, press Enter to skip): ");
+
+    const group = await prisma.group.create({
+      data: {
+        name: name.trim(),
+        description: description?.trim() || null,
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        createdAt: true,
+      },
+    });
+
+    console.log("\n✅ Group created successfully!");
+    console.log(JSON.stringify(group, null, 2));
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleListInteractive() {
+  try {
+    await handleList();
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleShowInteractive() {
+  try {
+    await handleList();
+    separator();
+
+    const group = await selectGroupInteractively();
+    if (!group) return;
+
+    // Use existing handleShow logic but set commandArgs temporarily
+    const originalArgs = commandArgs.slice();
+    commandArgs.length = 0;
+    commandArgs.push("show", group.name);
+    await handleShow();
+    commandArgs.length = 0;
+    commandArgs.push(...originalArgs);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleUpdateInteractive() {
+  try {
+    await handleList();
+    separator();
+
+    const group = await selectGroupInteractively();
+    if (!group) return;
+
+    const newName = await prompt(`New name (current: ${group.name}): `);
+    if (!newName || newName.trim().length === 0) {
+      console.error("Group name cannot be empty");
+      return;
+    }
+
+    // Check if new name conflicts with existing group
+    if (newName.trim() !== group.name) {
+      const existing = await prisma.group.findUnique({
+        where: { name: newName.trim() },
+        select: { id: true },
+      });
+
+      if (existing) {
+        console.error(`Group with name "${newName}" already exists`);
+        return;
+      }
+    }
+
+    const newDescription = await prompt(`New description (current: ${group.description || "None"}, press Enter to skip): `);
+
+    const updated = await prisma.group.update({
+      where: { id: group.id },
+      data: {
+        name: newName.trim(),
+        description: newDescription?.trim() || null,
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        updatedAt: true,
+      },
+    });
+
+    console.log("\n✅ Group updated successfully!");
+    console.log(JSON.stringify(updated, null, 2));
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleAddAgentInteractive() {
+  try {
+    await handleList();
+    separator();
+
+    const group = await selectGroupInteractively();
+    if (!group) return;
+
+    separator();
+    const agent = await selectAgentInteractively();
+    if (!agent) return;
+
+    // Check if agent is already a member
+    const existing = await prisma.groupMembership.findUnique({
+      where: {
+        userId_groupId: {
+          userId: agent.id,
+          groupId: group.id,
+        },
+      },
+    });
+
+    if (existing) {
+      console.log(`\nAgent ${agent.email}${agent.name ? ` (${agent.name})` : ""} is already a member of group "${group.name}"`);
+      return;
+    }
+
+    // Add agent to group
+    await prisma.groupMembership.create({
+      data: {
+        userId: agent.id,
+        groupId: group.id,
+      },
+    });
+
+    console.log(`\n✅ Agent ${agent.email}${agent.name ? ` (${agent.name})` : ""} added to group "${group.name}"`);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleRemoveAgentInteractive() {
+  try {
+    await handleList();
+    separator();
+
+    const group = await selectGroupInteractively();
+    if (!group) return;
+
+    // List agents in this group
+    const memberships = await prisma.groupMembership.findMany({
+      where: { groupId: group.id },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+    });
+
+    if (memberships.length === 0) {
+      console.log(`\nNo agents found in group "${group.name}"`);
+      return;
+    }
+
+    console.log(`\nAgents in group "${group.name}":`);
+    memberships.forEach((m, index) => {
+      console.log(`${index + 1}. ${m.user.email} - ${m.user.role}${m.user.name ? ` (${m.user.name})` : ""}`);
+    });
+
+    separator();
+    const agent = await selectAgentInteractively();
+    if (!agent) return;
+
+    // Check if agent is a member
+    const membership = await prisma.groupMembership.findUnique({
+      where: {
+        userId_groupId: {
+          userId: agent.id,
+          groupId: group.id,
+        },
+      },
+    });
+
+    if (!membership) {
+      console.log(`\nAgent ${agent.email}${agent.name ? ` (${agent.name})` : ""} is not a member of group "${group.name}"`);
+      return;
+    }
+
+    // Remove agent from group
+    await prisma.groupMembership.delete({
+      where: {
+        userId_groupId: {
+          userId: agent.id,
+          groupId: group.id,
+        },
+      },
+    });
+
+    console.log(`\n✅ Agent ${agent.email}${agent.name ? ` (${agent.name})` : ""} removed from group "${group.name}"`);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleListAgentsInteractive() {
+  try {
+    await handleList();
+    separator();
+
+    const group = await selectGroupInteractively();
+    if (!group) return;
+
+    // Use existing handleListAgents logic but set commandArgs temporarily
+    const originalArgs = commandArgs.slice();
+    commandArgs.length = 0;
+    commandArgs.push("list-agents", group.name);
+    await handleListAgents();
+    commandArgs.length = 0;
+    commandArgs.push(...originalArgs);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleDeleteInteractive() {
+  try {
+    await handleList();
+    separator();
+
+    const group = await selectGroupInteractively();
+    if (!group) return;
+
+    // Check if group has tickets assigned
+    const ticketCount = await prisma.ticket.count({
+      where: { assignedToGroupId: group.id },
+    });
+
+    if (ticketCount > 0) {
+      console.error(`\nCannot delete group "${group.name}": ${ticketCount} ticket(s) are assigned to this group.`);
+      console.error("Please reassign or remove tickets before deleting the group.");
+      return;
+    }
+
+    const confirmed = await confirm(`\nAre you sure you want to delete group "${group.name}"?`, false);
+    if (!confirmed) {
+      console.log("Deletion cancelled.");
+      return;
+    }
+
+    // Delete group (cascade will handle memberships)
+    await prisma.group.delete({
+      where: { id: group.id },
+    });
+
+    console.log(`\n✅ Group "${group.name}" deleted successfully!`);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
