@@ -31,9 +31,9 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
 
   if (!ticketsEnabled) {
     return (
-      <div className="bg-white rounded-xl shadow-soft-lg border border-neutral-200 p-8 text-center">
-        <h2 className="text-2xl font-bold text-neutral-900 mb-2">Tickets Module Disabled</h2>
-        <p className="text-neutral-600 mb-4">
+      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8 text-center">
+        <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">Tickets Module Disabled</h2>
+        <p className="text-neutral-600 dark:text-neutral-400 mb-4">
           The tickets module is not currently enabled. Please contact an administrator.
         </p>
         <Link href={ROUTES.DASHBOARD}>
@@ -80,33 +80,33 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
   const getStatusColor = (status: string) => {
     switch (status) {
       case "OPEN":
-        return "bg-blue-100 text-blue-700";
+        return "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300";
       case "IN_PROGRESS":
-        return "bg-yellow-100 text-yellow-700";
+        return "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300";
       case "RESOLVED":
       case "CLOSED":
-        return "bg-green-100 text-green-700";
+        return "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300";
       case "PENDING":
-        return "bg-orange-100 text-orange-700";
+        return "bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300";
       case "CANCELLED":
-        return "bg-neutral-100 text-neutral-700";
+        return "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300";
       default:
-        return "bg-neutral-100 text-neutral-700";
+        return "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300";
     }
   };
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case "URGENT":
-        return "bg-red-100 text-red-700";
+        return "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300";
       case "HIGH":
-        return "bg-orange-100 text-orange-700";
+        return "bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300";
       case "MEDIUM":
-        return "bg-yellow-100 text-yellow-700";
+        return "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300";
       case "LOW":
-        return "bg-neutral-100 text-neutral-700";
+        return "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300";
       default:
-        return "bg-neutral-100 text-neutral-700";
+        return "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300";
     }
   };
 
@@ -115,17 +115,17 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
       case "AGENT":
         return {
           label: "Agent",
-          className: "bg-primary-100 text-primary-700 border-primary-200",
+          className: "bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 border-primary-200 dark:border-primary-800",
         };
       case "ADMIN":
         return {
           label: "Admin",
-          className: "bg-error-100 text-error-700 border-error-200",
+          className: "bg-error-100 dark:bg-error-900 text-error-700 dark:text-error-300 border-error-200 dark:border-error-800",
         };
       case "MODERATOR":
         return {
           label: "Moderator",
-          className: "bg-secondary-100 text-secondary-700 border-secondary-200",
+          className: "bg-secondary-100 dark:bg-secondary-900 text-secondary-700 dark:text-secondary-300 border-secondary-200 dark:border-secondary-800",
         };
       default:
         return null;
@@ -156,8 +156,8 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
             </Button>
           </Link>
           <div>
-            <h1 className="text-3xl font-bold text-neutral-900 mb-2">{ticket.title}</h1>
-            <p className="text-neutral-600">
+            <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">{ticket.title}</h1>
+            <p className="text-neutral-600 dark:text-neutral-400">
               Created {formatDate(ticket.createdAt)}
             </p>
           </div>
@@ -189,20 +189,20 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
           {/* Ticket Description */}
-          <div className="bg-white rounded-xl shadow-soft-lg border border-neutral-200 p-6 sm:p-8">
-            <h2 className="text-xl font-bold text-neutral-900 mb-4">Description</h2>
+          <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
+            <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">Description</h2>
             {ticket.description ? (
-              <div className="prose prose-sm max-w-none text-neutral-700 whitespace-pre-wrap">
+              <div className="prose prose-sm max-w-none text-neutral-700 dark:text-neutral-300 dark:text-neutral-700 whitespace-pre-wrap">
                 {ticket.description}
               </div>
             ) : (
-              <p className="text-neutral-500 italic">No description provided.</p>
+              <p className="text-neutral-500 dark:text-neutral-500 italic">No description provided.</p>
             )}
           </div>
 
           {/* Comments Section */}
-          <div className="bg-white rounded-xl shadow-soft-lg border border-neutral-200 p-6 sm:p-8">
-            <h2 className="text-xl font-bold text-neutral-900 mb-6">
+          <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
+            <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-6">
               Comments ({ticket.comments.length})
             </h2>
 
@@ -210,7 +210,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
             {ticket.comments.length === 0 ? (
               <div className="text-center py-8">
                 <svg
-                  className="w-12 h-12 text-neutral-300 mx-auto mb-3"
+                  className="w-12 h-12 text-neutral-300 dark:text-neutral-700 mx-auto mb-3"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -222,7 +222,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                     d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
                   />
                 </svg>
-                <p className="text-neutral-600 mb-6">No comments yet. Be the first to comment!</p>
+                <p className="text-neutral-600 dark:text-neutral-400 mb-6">No comments yet. Be the first to comment!</p>
               </div>
             ) : (
               <div className="space-y-6 mb-8">
@@ -248,7 +248,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <p className="text-sm font-semibold text-neutral-900">
+                            <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
                               {comment.user.name || comment.user.email}
                             </p>
                             {comment.isAgentOnly && (
@@ -264,13 +264,13 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                               </span>
                             )}
                           </div>
-                          <p className="text-xs text-neutral-500">
+                          <p className="text-xs text-neutral-500 dark:text-neutral-500">
                             {formatDate(comment.createdAt)}
                           </p>
                         </div>
                       </div>
                     </div>
-                    <div className="text-neutral-700 whitespace-pre-wrap mt-2">
+                    <div className="text-neutral-700 dark:text-neutral-300 dark:text-neutral-700 whitespace-pre-wrap mt-2">
                       {comment.content}
                     </div>
                   </div>
@@ -288,12 +288,12 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
         {/* Sidebar */}
         <div className="space-y-6">
           {/* Ticket Info Card */}
-          <div className="bg-white rounded-xl shadow-soft-lg border border-neutral-200 p-6">
-            <h3 className="text-lg font-bold text-neutral-900 mb-4">Ticket Information</h3>
+          <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
+            <h3 className="text-lg font-bold text-neutral-900 dark:text-neutral-100 mb-4">Ticket Information</h3>
             <div className="space-y-4">
               {/* Ticket Number */}
               <div>
-                <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                   Ticket ID
                 </label>
                 <p className="text-sm font-mono font-semibold text-primary-600">
@@ -303,10 +303,10 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
 
               {/* Type */}
               <div>
-                <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                   Type
                 </label>
-                <span className="inline-block px-3 py-1 rounded-full text-sm font-medium bg-neutral-100 text-neutral-700">
+                <span className="inline-block px-3 py-1 rounded-full text-sm font-medium bg-neutral-100 text-neutral-700 dark:text-neutral-300 dark:text-neutral-700">
                   {getTicketTypeLabel(ticket.type as TicketType)}
                 </span>
               </div>
@@ -325,7 +325,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                 <>
                   {/* Status */}
                   <div>
-                    <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                    <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                       Status
                     </label>
                     <span
@@ -339,7 +339,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
 
                   {/* Priority */}
                   <div>
-                    <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                    <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                       Priority
                     </label>
                     <span
@@ -358,10 +358,10 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
 
               {/* Created By */}
               <div>
-                <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                   Created By
                 </label>
-                <p className="text-sm text-neutral-900">
+                <p className="text-sm text-neutral-900 dark:text-neutral-100">
                   {ticket.createdBy.name || ticket.createdBy.email}
                 </p>
               </div>
@@ -380,43 +380,43 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                   {/* Assigned To */}
                   {ticket.assignedTo ? (
                     <div>
-                      <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                      <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                         Assigned To
                       </label>
-                      <p className="text-sm text-neutral-900">
+                      <p className="text-sm text-neutral-900 dark:text-neutral-100">
                         {ticket.assignedTo.name || ticket.assignedTo.email}
                       </p>
                     </div>
                   ) : (
                     <div>
-                      <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                      <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                         Assigned To
                       </label>
-                      <p className="text-sm text-neutral-500 italic">Unassigned</p>
+                      <p className="text-sm text-neutral-500 dark:text-neutral-500 italic">Unassigned</p>
                     </div>
                   )}
 
                   {/* Assigned To Group */}
                   {ticket.assignedToGroup ? (
                     <div>
-                      <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                      <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                         Assigned To Group
                       </label>
-                      <p className="text-sm text-neutral-900">
+                      <p className="text-sm text-neutral-900 dark:text-neutral-100">
                         {ticket.assignedToGroup.name}
                       </p>
                       {ticket.assignedToGroup.description && (
-                        <p className="text-xs text-neutral-500 mt-1">
+                        <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">
                           {ticket.assignedToGroup.description}
                         </p>
                       )}
                     </div>
                   ) : (
                     <div>
-                      <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                      <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                         Assigned To Group
                       </label>
-                      <p className="text-sm text-neutral-500 italic">No group assignment</p>
+                      <p className="text-sm text-neutral-500 dark:text-neutral-500 italic">No group assignment</p>
                     </div>
                   )}
                 </>
@@ -428,33 +428,33 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
               {/* Dates */}
               <div className="space-y-2">
                 <div>
-                  <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                  <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                     Created
                   </label>
-                  <p className="text-sm text-neutral-900">{formatDate(ticket.createdAt)}</p>
+                  <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDate(ticket.createdAt)}</p>
                 </div>
                 {ticket.updatedAt && ticket.updatedAt.getTime() !== ticket.createdAt.getTime() && (
                   <div>
-                    <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                    <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                       Last Updated
                     </label>
-                    <p className="text-sm text-neutral-900">{formatDate(ticket.updatedAt)}</p>
+                    <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDate(ticket.updatedAt)}</p>
                   </div>
                 )}
                 {ticket.resolvedAt && (
                   <div>
-                    <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                    <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                       Resolved
                     </label>
-                    <p className="text-sm text-neutral-900">{formatDate(ticket.resolvedAt)}</p>
+                    <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDate(ticket.resolvedAt)}</p>
                   </div>
                 )}
                 {ticket.closedAt && (
                   <div>
-                    <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                    <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                       Closed
                     </label>
-                    <p className="text-sm text-neutral-900">{formatDate(ticket.closedAt)}</p>
+                    <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDate(ticket.closedAt)}</p>
                   </div>
                 )}
               </div>

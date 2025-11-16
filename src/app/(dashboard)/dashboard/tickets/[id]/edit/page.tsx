@@ -33,9 +33,9 @@ export default async function TicketEditPage({ params }: TicketEditPageProps) {
 
   if (!ticketsEnabled) {
     return (
-      <div className="bg-white rounded-xl shadow-soft-lg border border-neutral-200 p-8 text-center">
-        <h2 className="text-2xl font-bold text-neutral-900 mb-2">Tickets Module Disabled</h2>
-        <p className="text-neutral-600 mb-4">
+      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8 text-center">
+        <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">Tickets Module Disabled</h2>
+        <p className="text-neutral-600 dark:text-neutral-400 mb-4">
           The tickets module is not currently enabled. Please contact an administrator.
         </p>
         <Link href={ROUTES.DASHBOARD}>
@@ -96,9 +96,9 @@ export default async function TicketEditPage({ params }: TicketEditPageProps) {
               <span className="text-lg font-mono font-semibold text-primary-600">
                 {ticket.ticketNumber}
               </span>
-              <h1 className="text-3xl font-bold text-neutral-900">Edit Ticket</h1>
+              <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100">Edit Ticket</h1>
             </div>
-            <p className="text-neutral-600">
+            <p className="text-neutral-600 dark:text-neutral-400">
               Update ticket details, status, priority, and assignment
             </p>
           </div>
@@ -106,7 +106,7 @@ export default async function TicketEditPage({ params }: TicketEditPageProps) {
       </div>
 
       {/* Edit Form Card */}
-      <div className="bg-white rounded-xl shadow-soft-lg border border-neutral-200 p-6 sm:p-8">
+      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
         <TicketEditForm
           ticket={{
             id: ticket.id,

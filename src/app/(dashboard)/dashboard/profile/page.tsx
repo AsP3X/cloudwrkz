@@ -32,22 +32,22 @@ export default async function ProfilePage() {
       case "AGENT":
         return {
           label: "Agent",
-          className: "bg-primary-100 text-primary-700 border-primary-200",
+          className: "bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 border-primary-200 dark:border-primary-800",
         };
       case "ADMIN":
         return {
           label: "Admin",
-          className: "bg-error-100 text-error-700 border-error-200",
+          className: "bg-error-100 dark:bg-error-900 text-error-700 dark:text-error-300 border-error-200 dark:border-error-800",
         };
       case "MODERATOR":
         return {
           label: "Moderator",
-          className: "bg-secondary-100 text-secondary-700 border-secondary-200",
+          className: "bg-secondary-100 dark:bg-secondary-900 text-secondary-700 dark:text-secondary-300 border-secondary-200 dark:border-secondary-800",
         };
       default:
         return {
           label: "User",
-          className: "bg-neutral-100 text-neutral-700 border-neutral-200",
+          className: "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 dark:text-neutral-300 border-neutral-200 dark:border-neutral-800",
         };
     }
   };
@@ -57,22 +57,22 @@ export default async function ProfilePage() {
       case "ACTIVE":
         return {
           label: "Active",
-          className: "bg-success-100 text-success-700 border-success-200",
+          className: "bg-success-100 dark:bg-success-900 text-success-700 dark:text-success-300 border-success-200 dark:border-success-800",
         };
       case "PENDING":
         return {
           label: "Pending",
-          className: "bg-yellow-100 text-yellow-700 border-yellow-200",
+          className: "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800",
         };
       case "SUSPENDED":
         return {
           label: "Suspended",
-          className: "bg-error-100 text-error-700 border-error-200",
+          className: "bg-error-100 dark:bg-error-900 text-error-700 dark:text-error-300 border-error-200 dark:border-error-800",
         };
       default:
         return {
           label: status,
-          className: "bg-neutral-100 text-neutral-700 border-neutral-200",
+          className: "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 dark:text-neutral-300 border-neutral-200 dark:border-neutral-800",
         };
     }
   };
@@ -83,11 +83,11 @@ export default async function ProfilePage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-white rounded-xl shadow-soft-lg border border-neutral-200 p-6 sm:p-8">
+      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div className="flex items-center gap-4">
             {/* Avatar */}
-            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary-100 to-secondary-100 flex items-center justify-center text-2xl font-bold text-primary-700 flex-shrink-0">
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary-100 to-secondary-100 dark:from-primary-900 dark:to-secondary-900 flex items-center justify-center text-2xl font-bold text-primary-700 dark:text-primary-300 flex-shrink-0">
               {profile.avatar ? (
                 <img
                   src={profile.avatar}
@@ -102,7 +102,7 @@ export default async function ProfilePage() {
             </div>
             <div>
               <div className="flex items-center gap-3 mb-2">
-                <h1 className="text-3xl font-bold text-neutral-900">
+                <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100">
                   {profile.name || profile.email.split("@")[0]}
                 </h1>
                 <span
@@ -116,9 +116,9 @@ export default async function ProfilePage() {
                   {statusBadge.label}
                 </span>
               </div>
-              <p className="text-neutral-600">{profile.email}</p>
+              <p className="text-neutral-600 dark:text-neutral-400">{profile.email}</p>
               {profile.bio && (
-                <p className="text-neutral-700 mt-2 max-w-2xl">{profile.bio}</p>
+                <p className="text-neutral-700 dark:text-neutral-300 mt-2 max-w-2xl">{profile.bio}</p>
               )}
             </div>
           </div>
@@ -128,8 +128,8 @@ export default async function ProfilePage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content - Edit Form */}
         <div className="lg:col-span-2">
-          <div className="bg-white rounded-xl shadow-soft-lg border border-neutral-200 p-6 sm:p-8">
-            <h2 className="text-xl font-bold text-neutral-900 mb-6">Edit Profile</h2>
+          <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
+            <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-6">Edit Profile</h2>
             <ProfileForm
               initialData={{
                 name: profile.name,
@@ -142,15 +142,15 @@ export default async function ProfilePage() {
         {/* Sidebar - Account Information */}
         <div className="space-y-6">
           {/* Account Information Card */}
-          <div className="bg-white rounded-xl shadow-soft-lg border border-neutral-200 p-6">
-            <h3 className="text-lg font-bold text-neutral-900 mb-4">Account Information</h3>
+          <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
+            <h3 className="text-lg font-bold text-neutral-900 dark:text-neutral-100 mb-4">Account Information</h3>
             <div className="space-y-4">
               {/* Email */}
               <div>
-                <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                   Email Address
                 </label>
-                <p className="text-sm text-neutral-900">{profile.email}</p>
+                <p className="text-sm text-neutral-900 dark:text-neutral-100">{profile.email}</p>
                 {profile.emailVerified ? (
                   <div className="flex items-center gap-1 mt-1">
                     <svg
@@ -189,11 +189,11 @@ export default async function ProfilePage() {
               </div>
 
               {/* Divider */}
-              <div className="border-t border-neutral-200 pt-4"></div>
+              <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4"></div>
 
               {/* Role */}
               <div>
-                <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                   Role
                 </label>
                 <span
@@ -205,7 +205,7 @@ export default async function ProfilePage() {
 
               {/* Status */}
               <div>
-                <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                   Status
                 </label>
                 <span
@@ -216,24 +216,24 @@ export default async function ProfilePage() {
               </div>
 
               {/* Divider */}
-              <div className="border-t border-neutral-200 pt-4"></div>
+              <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4"></div>
 
               {/* Dates */}
               <div className="space-y-2">
                 <div>
-                  <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                  <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                     Member Since
                   </label>
-                  <p className="text-sm text-neutral-900">
+                  <p className="text-sm text-neutral-900 dark:text-neutral-100">
                     {formatDate(profile.createdAt)}
                   </p>
                 </div>
                 {profile.lastLoginAt && (
                   <div>
-                    <label className="text-xs font-medium text-neutral-500 uppercase tracking-wide mb-1 block">
+                    <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                       Last Login
                     </label>
-                    <p className="text-sm text-neutral-900">
+                    <p className="text-sm text-neutral-900 dark:text-neutral-100">
                       {formatDate(profile.lastLoginAt)}
                     </p>
                   </div>

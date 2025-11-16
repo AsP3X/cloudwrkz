@@ -40,9 +40,9 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
   
   if (!ticketsEnabled) {
     return (
-      <div className="bg-white rounded-xl shadow-soft-lg border border-neutral-200 p-8 text-center">
-        <h2 className="text-2xl font-bold text-neutral-900 mb-2">Tickets Module Disabled</h2>
-        <p className="text-neutral-600">
+      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8 text-center">
+        <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">Tickets Module Disabled</h2>
+        <p className="text-neutral-600 dark:text-neutral-400">
           The tickets module is not currently enabled. Please contact an administrator.
         </p>
       </div>
@@ -102,10 +102,10 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-neutral-900">
+            <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100">
               {user.role === "AGENT" ? "All Tickets" : "My Tickets"}
             </h1>
-            <p className="text-neutral-600 mt-1">
+            <p className="text-neutral-600 dark:text-neutral-400 mt-1">
               {user.role === "AGENT" 
                 ? "Manage and track all support tickets" 
                 : "Manage and track your support tickets"}
@@ -122,7 +122,7 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
         {/* Results Count and View Toggle */}
         {tickets.length > 0 && (
           <div className="flex items-center justify-between flex-wrap gap-4">
-            <div className="text-sm text-neutral-600">
+            <div className="text-sm text-neutral-600 dark:text-neutral-400">
               Showing {tickets.length} ticket{tickets.length !== 1 ? "s" : ""}
             </div>
             <TicketViewControls />
@@ -131,9 +131,9 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
 
         {/* Tickets List */}
         {tickets.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-soft-lg border border-neutral-200 p-12 text-center">
+          <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-12 text-center">
             <svg
-              className="w-16 h-16 text-neutral-300 mx-auto mb-4"
+              className="w-16 h-16 text-neutral-300 dark:text-neutral-700 mx-auto mb-4"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -145,8 +145,8 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
                 d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
               />
             </svg>
-            <h3 className="text-lg font-semibold text-neutral-900 mb-2">No tickets yet</h3>
-            <p className="text-neutral-600 mb-4">Get started by creating your first ticket</p>
+            <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">No tickets yet</h3>
+            <p className="text-neutral-600 dark:text-neutral-400 mb-4">Get started by creating your first ticket</p>
             <Link href="/dashboard/tickets/new">
               <Button variant="primary">Create Ticket</Button>
             </Link>
