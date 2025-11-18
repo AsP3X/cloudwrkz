@@ -6,12 +6,13 @@ import { isModuleEnabled } from "./modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 
 export type SearchResult = {
-  type: "ticket" | "module" | "user";
+  type: "ticket" | "module" | "user" | "comment";
   id: string;
   title: string;
   description?: string;
   url: string;
   metadata?: Record<string, any>;
+  parentTicketId?: string; // For comment results, link to parent ticket
 };
 
 export type SearchResponse = {
@@ -192,12 +193,37 @@ async function searchTicketsWithFilters(
 
   // Build search conditions
   if (searchTerm) {
-    searchConditions.push(
+    // Base search conditions for ticket fields
+    const baseConditions = [
       { title: { contains: searchTerm, mode: "insensitive" } },
       { description: { contains: searchTerm, mode: "insensitive" } },
       { ticketNumber: { contains: searchTerm, mode: "insensitive" } },
-      { tags: { hasSome: [searchTerm] } }
-    );
+      { tags: { hasSome: [searchTerm] } },
+    ];
+
+    // Add comment search condition
+    // For regular users, exclude agent-only comments
+    if (user.role === "USER") {
+      baseConditions.push({
+        comments: {
+          some: {
+            content: { contains: searchTerm, mode: "insensitive" },
+            isAgentOnly: false,
+          },
+        },
+      });
+    } else {
+      // Agents, admins, and moderators can search all comments
+      baseConditions.push({
+        comments: {
+          some: {
+            content: { contains: searchTerm, mode: "insensitive" },
+          },
+        },
+      });
+    }
+
+    searchConditions.push(...baseConditions);
   }
 
   const where: any = {};
@@ -303,6 +329,27 @@ async function searchTicketsWithFilters(
           description: true,
         },
       },
+      comments: {
+        where: searchTerm
+          ? user.role === "USER"
+            ? {
+                content: { contains: searchTerm, mode: "insensitive" },
+                isAgentOnly: false,
+              }
+            : {
+                content: { contains: searchTerm, mode: "insensitive" },
+              }
+          : undefined,
+        select: {
+          id: true,
+          content: true,
+          createdAt: true,
+        },
+        orderBy: {
+          createdAt: "desc", // Show most recent matching comments first
+        },
+        take: 5, // Get up to 5 matching comments
+      },
       _count: {
         select: {
           comments: true,
@@ -315,42 +362,104 @@ async function searchTicketsWithFilters(
     take: limit,
   });
 
-  return tickets.map((ticket) => ({
-    type: "ticket" as const,
-    id: ticket.id,
-    title: ticket.title,
-    description: ticket.description || undefined,
-    url: `/dashboard/tickets/${ticket.id}`,
-    metadata: {
-      ticketNumber: ticket.ticketNumber,
-      status: ticket.status,
-      priority: ticket.priority,
-      type: ticket.type,
-      createdBy: ticket.createdBy.name || ticket.createdBy.email,
-      assignedTo: ticket.assignedTo?.name || ticket.assignedTo?.email,
-      assignedToGroup: ticket.assignedToGroup?.name,
-      commentCount: ticket._count.comments,
-      createdAt: ticket.createdAt,
-      updatedAt: ticket.updatedAt,
-    },
-  }));
+  const results: SearchResult[] = [];
+  
+  tickets.forEach((ticket) => {
+    const matchingComments = ticket.comments && ticket.comments.length > 0 ? ticket.comments : [];
+    
+    // Check if ticket matched via non-comment fields (title, description, ticketNumber, tags)
+    const matchedViaOtherFields = searchTerm
+      ? (ticket.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+         ticket.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+         ticket.ticketNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+         ticket.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())))
+      : false;
+    
+    // Always add ticket if it matched via other fields OR if it has matching comments
+    if (matchedViaOtherFields || matchingComments.length > 0) {
+      results.push({
+        type: "ticket" as const,
+        id: ticket.id,
+        title: ticket.title,
+        description: matchedViaOtherFields ? ticket.description || undefined : undefined,
+        url: `/dashboard/tickets/${ticket.id}`,
+        metadata: {
+          ticketNumber: ticket.ticketNumber,
+          status: ticket.status,
+          priority: ticket.priority,
+          type: ticket.type,
+          createdBy: ticket.createdBy.name || ticket.createdBy.email,
+          assignedTo: ticket.assignedTo?.name || ticket.assignedTo?.email,
+          assignedToGroup: ticket.assignedToGroup?.name,
+          commentCount: ticket._count.comments,
+          createdAt: ticket.createdAt,
+          updatedAt: ticket.updatedAt,
+        },
+      });
+      
+      // Add each matching comment as a separate entry
+      matchingComments.forEach((comment) => {
+        results.push({
+          type: "comment" as const,
+          id: comment.id,
+          title: comment.content,
+          description: undefined,
+          url: `/dashboard/tickets/${ticket.id}`,
+          parentTicketId: ticket.id,
+          metadata: {
+            ticketNumber: ticket.ticketNumber,
+            ticketTitle: ticket.title,
+            commentId: comment.id,
+            createdAt: comment.createdAt,
+          },
+        });
+      });
+    }
+  });
+  
+  return results;
 }
 
 /**
- * Search tickets by title, description, ticketNumber, and tags
+ * Search tickets by title, description, ticketNumber, tags, and comments
  */
 async function searchTickets(
   searchTerm: string,
   user: Awaited<ReturnType<typeof requireAuth>>,
   limit: number
 ): Promise<SearchResult[]> {
+  // Base search conditions for ticket fields
+  const baseConditions = [
+    { title: { contains: searchTerm, mode: "insensitive" } },
+    { description: { contains: searchTerm, mode: "insensitive" } },
+    { ticketNumber: { contains: searchTerm, mode: "insensitive" } },
+    { tags: { hasSome: [searchTerm] } },
+  ];
+
+  // Add comment search condition
+  // For regular users, exclude agent-only comments
+  if (user.role === "USER") {
+    baseConditions.push({
+      comments: {
+        some: {
+          content: { contains: searchTerm, mode: "insensitive" },
+          isAgentOnly: false,
+        },
+      },
+    });
+  } else {
+    // Agents, admins, and moderators can search all comments
+    baseConditions.push({
+      comments: {
+        some: {
+          content: { contains: searchTerm, mode: "insensitive" },
+        },
+      },
+    });
+  }
+
   const searchConditions = {
-    OR: [
-      { title: { contains: searchTerm, mode: "insensitive" } },
-      { description: { contains: searchTerm, mode: "insensitive" } },
-      { ticketNumber: { contains: searchTerm, mode: "insensitive" } },
-      { tags: { hasSome: [searchTerm] } },
-    ],
+    OR: baseConditions,
   };
 
   const where: any = {};
@@ -400,6 +509,25 @@ async function searchTickets(
           email: true,
         },
       },
+      comments: {
+        where: user.role === "USER"
+          ? {
+              content: { contains: searchTerm, mode: "insensitive" },
+              isAgentOnly: false,
+            }
+          : {
+              content: { contains: searchTerm, mode: "insensitive" },
+            },
+        select: {
+          id: true,
+          content: true,
+          createdAt: true,
+        },
+        orderBy: {
+          createdAt: "desc", // Show most recent matching comments first
+        },
+        take: 5, // Get up to 5 matching comments
+      },
       _count: {
         select: {
           comments: true,
@@ -412,20 +540,56 @@ async function searchTickets(
     take: limit,
   });
 
-  return tickets.map((ticket) => ({
-    type: "ticket" as const,
-    id: ticket.id,
-    title: ticket.title,
-    description: ticket.description || undefined,
-    url: `/dashboard/tickets/${ticket.id}`,
-    metadata: {
-      ticketNumber: ticket.ticketNumber,
-      status: ticket.status,
-      priority: ticket.priority,
-      type: ticket.type,
-      createdBy: ticket.createdBy.name || ticket.createdBy.email,
-      assignedTo: ticket.assignedTo?.name || ticket.assignedTo?.email,
-      commentCount: ticket._count.comments,
-    },
-  }));
+  const results: SearchResult[] = [];
+  
+  tickets.forEach((ticket) => {
+    const matchingComments = ticket.comments && ticket.comments.length > 0 ? ticket.comments : [];
+    
+    // Check if ticket matched via non-comment fields (title, description, ticketNumber, tags)
+    const matchedViaOtherFields = 
+      (ticket.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (ticket.description?.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (ticket.ticketNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (ticket.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())));
+    
+    // Always add ticket if it matched via other fields OR if it has matching comments
+    if (matchedViaOtherFields || matchingComments.length > 0) {
+      results.push({
+        type: "ticket" as const,
+        id: ticket.id,
+        title: ticket.title,
+        description: matchedViaOtherFields ? ticket.description || undefined : undefined,
+        url: `/dashboard/tickets/${ticket.id}`,
+        metadata: {
+          ticketNumber: ticket.ticketNumber,
+          status: ticket.status,
+          priority: ticket.priority,
+          type: ticket.type,
+          createdBy: ticket.createdBy.name || ticket.createdBy.email,
+          assignedTo: ticket.assignedTo?.name || ticket.assignedTo?.email,
+          commentCount: ticket._count.comments,
+        },
+      });
+      
+      // Add each matching comment as a separate entry
+      matchingComments.forEach((comment) => {
+        results.push({
+          type: "comment" as const,
+          id: comment.id,
+          title: comment.content,
+          description: undefined,
+          url: `/dashboard/tickets/${ticket.id}`,
+          parentTicketId: ticket.id,
+          metadata: {
+            ticketNumber: ticket.ticketNumber,
+            ticketTitle: ticket.title,
+            commentId: comment.id,
+            createdAt: comment.createdAt,
+          },
+        });
+      });
+    }
+  });
+  
+  return results;
 }
