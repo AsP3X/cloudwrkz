@@ -633,3 +633,203 @@ export async function addTicketComment(
     };
   }
 }
+
+/**
+ * Bulk update tickets
+ */
+export async function bulkUpdateTickets(
+  ticketIds: string[],
+  updates: {
+    status?: "OPEN" | "IN_PROGRESS" | "PENDING" | "RESOLVED" | "CLOSED" | "CANCELLED";
+    priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+    assignedToId?: string | null;
+    assignedToGroupId?: string | null;
+  }
+): Promise<ActionResult<{ updated: number; failed: number }>> {
+  try {
+    const user = await requireAuth();
+
+    if (!ticketIds || ticketIds.length === 0) {
+      return {
+        success: false,
+        error: "No tickets selected",
+      };
+    }
+
+    // Check permissions for all tickets
+    const tickets = await prisma.ticket.findMany({
+      where: {
+        id: { in: ticketIds },
+      },
+      select: {
+        id: true,
+        createdById: true,
+        assignedToId: true,
+        resolvedAt: true,
+        closedAt: true,
+      },
+    });
+
+    if (tickets.length === 0) {
+      return {
+        success: false,
+        error: "No tickets found",
+      };
+    }
+
+    // Verify user has permission to update all selected tickets
+    // Creator, assigned agent, admin, or moderator can update
+    const canUpdateAll = tickets.every(
+      (ticket) =>
+        ticket.createdById === user.id ||
+        user.role === "ADMIN" ||
+        user.role === "MODERATOR" ||
+        user.role === "AGENT"
+    );
+
+    if (!canUpdateAll) {
+      return {
+        success: false,
+        error: "You don't have permission to update all selected tickets",
+      };
+    }
+
+    const updateData: any = {};
+
+    if (updates.status !== undefined) {
+      updateData.status = updates.status;
+      // Set resolvedAt or closedAt based on status
+      if (updates.status === "RESOLVED") {
+        updateData.resolvedAt = new Date();
+      }
+      if (updates.status === "CLOSED") {
+        updateData.closedAt = new Date();
+      }
+    }
+    if (updates.priority !== undefined) {
+      updateData.priority = updates.priority;
+    }
+    if (updates.assignedToId !== undefined) {
+      updateData.assignedToId = updates.assignedToId || null;
+    }
+    if (updates.assignedToGroupId !== undefined) {
+      updateData.assignedToGroupId = updates.assignedToGroupId || null;
+    }
+
+    // Validate group if provided
+    if (updates.assignedToGroupId) {
+      const group = await prisma.group.findUnique({
+        where: { id: updates.assignedToGroupId },
+      });
+      if (!group) {
+        return {
+          success: false,
+          error: "Selected group not found",
+        };
+      }
+    }
+
+    const result = await prisma.ticket.updateMany({
+      where: {
+        id: { in: ticketIds },
+      },
+      data: updateData,
+    });
+
+    revalidatePath("/dashboard/tickets");
+    revalidatePath("/dashboard");
+
+    return {
+      success: true,
+      data: {
+        updated: result.count,
+        failed: ticketIds.length - result.count,
+      },
+      message: `Successfully updated ${result.count} ticket${result.count !== 1 ? "s" : ""}`,
+    };
+  } catch (error) {
+    console.error("Bulk update tickets error:", error);
+    return {
+      success: false,
+      error: "Failed to update tickets. Please try again.",
+    };
+  }
+}
+
+/**
+ * Bulk delete tickets
+ */
+export async function bulkDeleteTickets(
+  ticketIds: string[]
+): Promise<ActionResult<{ deleted: number; failed: number }>> {
+  try {
+    const user = await requireAuth();
+
+    if (!ticketIds || ticketIds.length === 0) {
+      return {
+        success: false,
+        error: "No tickets selected",
+      };
+    }
+
+    // Check permissions for all tickets
+    const tickets = await prisma.ticket.findMany({
+      where: {
+        id: { in: ticketIds },
+      },
+      select: {
+        id: true,
+        createdById: true,
+        assignedToId: true,
+      },
+    });
+
+    if (tickets.length === 0) {
+      return {
+        success: false,
+        error: "No tickets found",
+      };
+    }
+
+    // Verify user has permission to delete all selected tickets
+    // Creator, assigned agent (for assigned tickets), admin, or moderator can delete
+    const canDeleteAll = tickets.every(
+      (ticket) =>
+        ticket.createdById === user.id ||
+        user.role === "ADMIN" ||
+        user.role === "MODERATOR" ||
+        (user.role === "AGENT" && ticket.assignedToId === user.id)
+    );
+
+    if (!canDeleteAll) {
+      return {
+        success: false,
+        error: "You don't have permission to delete all selected tickets",
+      };
+    }
+
+    const result = await prisma.ticket.deleteMany({
+      where: {
+        id: { in: ticketIds },
+      },
+    });
+
+    revalidatePath("/dashboard/tickets");
+    revalidatePath("/dashboard");
+
+    return {
+      success: true,
+      data: {
+        deleted: result.count,
+        failed: ticketIds.length - result.count,
+      },
+      message: `Successfully deleted ${result.count} ticket${result.count !== 1 ? "s" : ""}`,
+    };
+  } catch (error) {
+    console.error("Bulk delete tickets error:", error);
+    return {
+      success: false,
+      error: "Failed to delete tickets. Please try again.",
+    };
+  }
+}
