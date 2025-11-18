@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { logout } from "@/server/actions/logout";
 import { ROUTES } from "@/lib/constants/routes";
 import type { CurrentUser } from "@/lib/utils/auth-server";
+import { GlobalSearch } from "@/components/features/search/GlobalSearch";
 
 interface DashboardHeaderProps {
   user: CurrentUser;
@@ -35,12 +36,16 @@ export const DashboardHeader = ({ user }: DashboardHeaderProps) => {
   return (
     <header className="sticky top-0 z-30 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm border-b border-neutral-200/50 dark:border-neutral-800/50 shadow-sm">
       <div className="px-4 sm:px-6 lg:px-8">
-        <div className="flex h-16 items-center justify-between">
+        <div className="flex h-16 items-center justify-between gap-4">
           {/* Left side - can add breadcrumbs or page title here */}
           <div className="flex-1"></div>
 
-          {/* Right side - User menu */}
-          <div className="relative">
+          {/* Right side - Search and User menu */}
+          <div className="flex items-center gap-4">
+            <GlobalSearch />
+            
+            {/* User menu */}
+            <div className="relative">
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
               className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
@@ -111,6 +116,7 @@ export const DashboardHeader = ({ user }: DashboardHeaderProps) => {
                 </div>
               </>
             )}
+            </div>
           </div>
         </div>
       </div>

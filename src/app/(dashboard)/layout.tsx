@@ -17,9 +17,8 @@ export default async function DashboardLayout({
     redirect(`${ROUTES.LOGIN}?error=account_not_verified`);
   }
 
-  // Allow USER and AGENT roles to access dashboard
-  // ADMIN and MODERATOR can have separate dashboards later
-  if (user.role !== "USER" && user.role !== "AGENT") {
+  // Allow USER, AGENT, ADMIN, and MODERATOR roles to access dashboard
+  if (user.role !== "USER" && user.role !== "AGENT" && user.role !== "ADMIN" && user.role !== "MODERATOR") {
     redirect(ROUTES.HOME);
   }
 
