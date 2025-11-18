@@ -309,7 +309,7 @@ async function searchTicketsWithFilters(
         orderBy: {
           createdAt: "desc",
         },
-        take: 10, // Get more comments for fuzzy search
+        take: 50, // Get all comments for fuzzy search
       },
       _count: {
         select: {
@@ -346,19 +346,63 @@ async function searchTicketsWithFilters(
     }));
   }
 
-  // Prepare tickets for fuzzy search
+  // Collect all comments with their ticket info for independent search
+  // Flatten structure for Fuse.js compatibility
+  const allCommentsWithTickets: Array<{
+    id: string;
+    content: string;
+    createdAt: Date;
+    isAgentOnly: boolean;
+    ticketId: string;
+    ticket: typeof tickets[0];
+  }> = [];
+  
+  tickets.forEach((ticket) => {
+    ticket.comments.forEach((comment) => {
+      allCommentsWithTickets.push({
+        id: comment.id,
+        content: comment.content,
+        createdAt: comment.createdAt,
+        isAgentOnly: comment.isAgentOnly,
+        ticketId: ticket.id,
+        ticket,
+      });
+    });
+  });
+
+  // Search comments independently with fuzzy matching
+  const commentFuzzyResults = fuzzySearch(
+    allCommentsWithTickets,
+    searchTerm,
+    {
+      keys: [{ name: "content", weight: 1 }],
+      threshold: 0.4,
+      minMatchCharLength: 2,
+    }
+  );
+
+  // Get tickets that matched via comments (even if they didn't match other fields)
+  const ticketsMatchedViaComments = new Set<string>();
+  const topMatchingComments = rankAndLimit(commentFuzzyResults, limit * 2);
+  topMatchingComments.forEach((item) => {
+    ticketsMatchedViaComments.add(item.ticketId);
+  });
+
+  // Prepare tickets for fuzzy search on ticket fields
+  // Include tags in the searchable text for fuzzy matching
   const ticketsForFuzzy = tickets.map((ticket) => ({
     ...ticket,
     searchableText: [
       ticket.title,
       ticket.description || "",
       ticket.ticketNumber,
-      ticket.tags.join(" "),
+      ...ticket.tags, // Include tags as separate items for better matching
     ].join(" "),
+    tagsString: ticket.tags.join(" "), // Also keep tags as a separate field
   }));
 
-  // Apply fuzzy search on ticket fields
-  const fuzzyResults = fuzzySearch(
+  // Apply fuzzy search on ticket fields (title, description, ticketNumber, tags)
+  const ticketFuzzyResults = fuzzySearch(
     ticketsForFuzzy,
     searchTerm,
     {
@@ -366,37 +410,94 @@ async function searchTicketsWithFilters(
         { name: "title", weight: 0.4 },
         { name: "description", weight: 0.3 },
         { name: "ticketNumber", weight: 0.2 },
-        { name: "searchableText", weight: 0.1 },
+        { name: "tagsString", weight: 0.1 }, // Search tags with fuzzy matching
       ],
       threshold: 0.4,
       minMatchCharLength: 2,
     }
   );
 
-  // Rank and limit ticket results
-  const rankedTickets = rankAndLimit(fuzzyResults, limit);
+  // Combine tickets that matched via fields OR via comments
+  const matchedTicketIds = new Set<string>();
+  
+  // Add tickets that matched via fields
+  ticketFuzzyResults.forEach((result) => {
+    if (result.score !== undefined && result.score < 0.5) {
+      matchedTicketIds.add(result.item.id);
+    }
+  });
+  
+  // Add tickets that matched via comments
+  ticketsMatchedViaComments.forEach((ticketId) => {
+    matchedTicketIds.add(ticketId);
+  });
+
+  // Get all matched tickets with their data
+  const matchedTicketsMap = new Map(
+    tickets.map((t) => [t.id, t])
+  );
+
+  // Create a combined list of tickets with their match scores
+  const combinedResults: Array<{
+    ticket: typeof tickets[0];
+    score: number;
+    matchedViaComments: boolean;
+  }> = [];
+
+  matchedTicketIds.forEach((ticketId) => {
+    const ticket = matchedTicketsMap.get(ticketId);
+    if (!ticket) return;
+
+    // Find the best score from ticket field matching
+    const ticketMatch = ticketFuzzyResults.find((r) => r.item.id === ticketId);
+    const ticketScore = ticketMatch?.score ?? 1;
+
+    // Find the best comment match score for this ticket
+    const commentMatches = commentFuzzyResults.filter((r) => r.item.ticketId === ticketId);
+    const bestCommentScore = commentMatches.length > 0
+      ? Math.min(...commentMatches.map((r) => r.score ?? 1))
+      : 1;
+
+    // Use the better score (lower is better)
+    const bestScore = Math.min(ticketScore, bestCommentScore);
+    const matchedViaComments = ticketsMatchedViaComments.has(ticketId) && ticketScore >= 0.5;
+
+    combinedResults.push({
+      ticket,
+      score: bestScore,
+      matchedViaComments,
+    });
+  });
+
+  // Sort by score and limit
+  combinedResults.sort((a, b) => a.score - b.score);
+  const topTickets = combinedResults.slice(0, limit).map((r) => r.ticket);
 
   const results: SearchResult[] = [];
-  
-  rankedTickets.forEach((ticket) => {
-    // Apply fuzzy search on comments
-    const commentFuzzyResults = fuzzySearch(
-      ticket.comments,
-      searchTerm,
-      {
-        keys: [{ name: "content", weight: 1 }],
-        threshold: 0.4,
-        minMatchCharLength: 2,
-      }
-    );
-    
-    const matchingComments = rankAndLimit(commentFuzzyResults, 5);
+  const processedTicketIds = new Set<string>();
+
+  topTickets.forEach((ticket) => {
+    processedTicketIds.add(ticket.id);
     
     // Check if ticket matched via non-comment fields
-    const matchedViaOtherFields = fuzzyResults.some(
-      (result) => result.item.id === ticket.id && result.score !== undefined && result.score < 0.5
-    );
-    
+    const ticketMatch = ticketFuzzyResults.find((r) => r.item.id === ticket.id);
+    const matchedViaOtherFields = ticketMatch !== undefined && 
+      ticketMatch.score !== undefined && 
+      ticketMatch.score < 0.5;
+
+    // Get matching comments for this ticket
+    const ticketCommentMatches = commentFuzzyResults
+      .filter((r) => r.item.ticketId === ticket.id)
+      .sort((a, b) => (a.score ?? 1) - (b.score ?? 1))
+      .slice(0, 5);
+
+    const matchingComments = ticketCommentMatches.map((r) => ({
+      id: r.item.id,
+      content: r.item.content,
+      createdAt: r.item.createdAt,
+      isAgentOnly: r.item.isAgentOnly,
+    }));
+
     // Always add ticket if it matched via other fields OR if it has matching comments
     if (matchedViaOtherFields || matchingComments.length > 0) {
       results.push({
@@ -418,7 +519,7 @@ async function searchTicketsWithFilters(
           updatedAt: ticket.updatedAt,
         },
       });
-      
+
       // Add each matching comment as a separate entry
       matchingComments.forEach((comment) => {
         results.push({
@@ -435,6 +536,54 @@ async function searchTicketsWithFilters(
             createdAt: comment.createdAt,
           },
         });
+      });
+    }
+  });
+
+  // Also include top comments from tickets that weren't in the top tickets list
+  // but had highly relevant comments
+  const topComments = rankAndLimit(commentFuzzyResults, limit);
+  topComments.forEach((item) => {
+    if (!processedTicketIds.has(item.ticketId)) {
+      const ticket = item.ticket;
+      // Add the ticket if it's not already included
+      if (!matchedTicketIds.has(item.ticketId)) {
+        results.push({
+          type: "ticket" as const,
+          id: ticket.id,
+          title: ticket.title,
+          description: undefined,
+          url: `/dashboard/tickets/${ticket.id}`,
+          metadata: {
+            ticketNumber: ticket.ticketNumber,
+            status: ticket.status,
+            priority: ticket.priority,
+            type: ticket.type,
+            createdBy: ticket.createdBy.name || ticket.createdBy.email,
+            assignedTo: ticket.assignedTo?.name || ticket.assignedTo?.email,
+            assignedToGroup: ticket.assignedToGroup?.name,
+            commentCount: ticket._count.comments,
+            createdAt: ticket.createdAt,
+            updatedAt: ticket.updatedAt,
+          },
+        });
+        processedTicketIds.add(item.ticketId);
+      }
+
+      // Add the comment
+      results.push({
+        type: "comment" as const,
+        id: item.id,
+        title: item.content,
+        description: undefined,
+        url: `/dashboard/tickets/${ticket.id}`,
+        parentTicketId: ticket.id,
+        metadata: {
+          ticketNumber: ticket.ticketNumber,
+          ticketTitle: ticket.title,
+          commentId: item.id,
+          createdAt: item.createdAt,
+        },
       });
     }
   });
@@ -474,8 +623,8 @@ async function searchTickets(
   }
   // ADMIN and MODERATOR can see all tickets (no filter needed)
 
-  // Fetch more candidates for fuzzy search (3x the limit)
-  const candidateLimit = Math.max(limit * 3, 50);
+  // Fetch more candidates for fuzzy search (3x the limit, or at least 100 to ensure we get enough comments)
+  const candidateLimit = Math.max(limit * 3, 100);
   
   const tickets = await prisma.ticket.findMany({
     where,
@@ -507,7 +656,8 @@ async function searchTickets(
         orderBy: {
           createdAt: "desc",
         },
-        take: 10, // Get more comments for fuzzy search
+        // Get all comments for fuzzy search, not just recent ones
+        take: 50,
       },
       _count: {
         select: {
@@ -521,20 +671,63 @@ async function searchTickets(
     take: candidateLimit,
   });
 
-  // Prepare tickets for fuzzy search
-  // Create a searchable string combining title, description, ticketNumber, and tags
+  // Collect all comments with their ticket info for independent search
+  // Flatten structure for Fuse.js compatibility
+  const allCommentsWithTickets: Array<{
+    id: string;
+    content: string;
+    createdAt: Date;
+    isAgentOnly: boolean;
+    ticketId: string;
+    ticket: typeof tickets[0];
+  }> = [];
+  
+  tickets.forEach((ticket) => {
+    ticket.comments.forEach((comment) => {
+      allCommentsWithTickets.push({
+        id: comment.id,
+        content: comment.content,
+        createdAt: comment.createdAt,
+        isAgentOnly: comment.isAgentOnly,
+        ticketId: ticket.id,
+        ticket,
+      });
+    });
+  });
+
+  // Search comments independently with fuzzy matching
+  const commentFuzzyResults = fuzzySearch(
+    allCommentsWithTickets,
+    searchTerm,
+    {
+      keys: [{ name: "content", weight: 1 }],
+      threshold: 0.4,
+      minMatchCharLength: 2,
+    }
+  );
+
+  // Get tickets that matched via comments (even if they didn't match other fields)
+  const ticketsMatchedViaComments = new Set<string>();
+  const topMatchingComments = rankAndLimit(commentFuzzyResults, limit * 2);
+  topMatchingComments.forEach((item) => {
+    ticketsMatchedViaComments.add(item.ticketId);
+  });
+
+  // Prepare tickets for fuzzy search on ticket fields
+  // Include tags in the searchable text for fuzzy matching
   const ticketsForFuzzy = tickets.map((ticket) => ({
     ...ticket,
     searchableText: [
       ticket.title,
       ticket.description || "",
       ticket.ticketNumber,
-      ticket.tags.join(" "),
+      ...ticket.tags, // Include tags as separate items for better matching
     ].join(" "),
+    tagsString: ticket.tags.join(" "), // Also keep tags as a separate field
   }));
 
-  // Apply fuzzy search on ticket fields
-  const fuzzyResults = fuzzySearch(
+  // Apply fuzzy search on ticket fields (title, description, ticketNumber, tags)
+  const ticketFuzzyResults = fuzzySearch(
     ticketsForFuzzy,
     searchTerm,
     {
@@ -542,37 +735,94 @@ async function searchTickets(
         { name: "title", weight: 0.4 },
         { name: "description", weight: 0.3 },
         { name: "ticketNumber", weight: 0.2 },
-        { name: "searchableText", weight: 0.1 },
+        { name: "tagsString", weight: 0.1 }, // Search tags with fuzzy matching
       ],
       threshold: 0.4,
       minMatchCharLength: 2,
     }
   );
 
-  // Rank and limit ticket results
-  const rankedTickets = rankAndLimit(fuzzyResults, limit);
+  // Combine tickets that matched via fields OR via comments
+  const matchedTicketIds = new Set<string>();
+  
+  // Add tickets that matched via fields
+  ticketFuzzyResults.forEach((result) => {
+    if (result.score !== undefined && result.score < 0.5) {
+      matchedTicketIds.add(result.item.id);
+    }
+  });
+  
+  // Add tickets that matched via comments
+  ticketsMatchedViaComments.forEach((ticketId) => {
+    matchedTicketIds.add(ticketId);
+  });
+
+  // Get all matched tickets with their data
+  const matchedTicketsMap = new Map(
+    tickets.map((t) => [t.id, t])
+  );
+
+  // Create a combined list of tickets with their match scores
+  const combinedResults: Array<{
+    ticket: typeof tickets[0];
+    score: number;
+    matchedViaComments: boolean;
+  }> = [];
+
+  matchedTicketIds.forEach((ticketId) => {
+    const ticket = matchedTicketsMap.get(ticketId);
+    if (!ticket) return;
+
+    // Find the best score from ticket field matching
+    const ticketMatch = ticketFuzzyResults.find((r) => r.item.id === ticketId);
+    const ticketScore = ticketMatch?.score ?? 1;
+
+    // Find the best comment match score for this ticket
+    const commentMatches = commentFuzzyResults.filter((r) => r.item.ticketId === ticketId);
+    const bestCommentScore = commentMatches.length > 0
+      ? Math.min(...commentMatches.map((r) => r.score ?? 1))
+      : 1;
+
+    // Use the better score (lower is better)
+    const bestScore = Math.min(ticketScore, bestCommentScore);
+    const matchedViaComments = ticketsMatchedViaComments.has(ticketId) && ticketScore >= 0.5;
+
+    combinedResults.push({
+      ticket,
+      score: bestScore,
+      matchedViaComments,
+    });
+  });
+
+  // Sort by score and limit
+  combinedResults.sort((a, b) => a.score - b.score);
+  const topTickets = combinedResults.slice(0, limit).map((r) => r.ticket);
 
   const results: SearchResult[] = [];
-  
-  rankedTickets.forEach((ticket) => {
-    // Apply fuzzy search on comments
-    const commentFuzzyResults = fuzzySearch(
-      ticket.comments,
-      searchTerm,
-      {
-        keys: [{ name: "content", weight: 1 }],
-        threshold: 0.4,
-        minMatchCharLength: 2,
-      }
-    );
-    
-    const matchingComments = rankAndLimit(commentFuzzyResults, 5);
+  const processedTicketIds = new Set<string>();
+
+  topTickets.forEach((ticket) => {
+    processedTicketIds.add(ticket.id);
     
     // Check if ticket matched via non-comment fields
-    const matchedViaOtherFields = fuzzyResults.some(
-      (result) => result.item.id === ticket.id && result.score !== undefined && result.score < 0.5
-    );
-    
+    const ticketMatch = ticketFuzzyResults.find((r) => r.item.id === ticket.id);
+    const matchedViaOtherFields = ticketMatch !== undefined && 
+      ticketMatch.score !== undefined && 
+      ticketMatch.score < 0.5;
+
+    // Get matching comments for this ticket
+    const ticketCommentMatches = commentFuzzyResults
+      .filter((r) => r.item.ticketId === ticket.id)
+      .sort((a, b) => (a.score ?? 1) - (b.score ?? 1))
+      .slice(0, 5);
+
+    const matchingComments = ticketCommentMatches.map((r) => ({
+      id: r.item.id,
+      content: r.item.content,
+      createdAt: r.item.createdAt,
+      isAgentOnly: r.item.isAgentOnly,
+    }));
+
     // Always add ticket if it matched via other fields OR if it has matching comments
     if (matchedViaOtherFields || matchingComments.length > 0) {
       results.push({
@@ -591,7 +841,7 @@ async function searchTickets(
           commentCount: ticket._count.comments,
         },
       });
-      
+
       // Add each matching comment as a separate entry
       matchingComments.forEach((comment) => {
         results.push({
@@ -611,6 +861,51 @@ async function searchTickets(
       });
     }
   });
-  
+
+  // Also include top comments from tickets that weren't in the top tickets list
+  // but had highly relevant comments
+  const topComments = rankAndLimit(commentFuzzyResults, limit);
+  topComments.forEach((item) => {
+    if (!processedTicketIds.has(item.ticketId)) {
+      const ticket = item.ticket;
+      // Add the ticket if it's not already included
+      if (!matchedTicketIds.has(item.ticketId)) {
+        results.push({
+          type: "ticket" as const,
+          id: ticket.id,
+          title: ticket.title,
+          description: undefined,
+          url: `/dashboard/tickets/${ticket.id}`,
+          metadata: {
+            ticketNumber: ticket.ticketNumber,
+            status: ticket.status,
+            priority: ticket.priority,
+            type: ticket.type,
+            createdBy: ticket.createdBy.name || ticket.createdBy.email,
+            assignedTo: ticket.assignedTo?.name || ticket.assignedTo?.email,
+            commentCount: ticket._count.comments,
+          },
+        });
+        processedTicketIds.add(item.ticketId);
+      }
+
+      // Add the comment
+      results.push({
+        type: "comment" as const,
+        id: item.id,
+        title: item.content,
+        description: undefined,
+        url: `/dashboard/tickets/${ticket.id}`,
+        parentTicketId: ticket.id,
+        metadata: {
+          ticketNumber: ticket.ticketNumber,
+          ticketTitle: ticket.title,
+          commentId: item.id,
+          createdAt: item.createdAt,
+        },
+      });
+    }
+  });
+
   return results;
 }
