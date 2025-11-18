@@ -110,6 +110,23 @@ export const GlobalSearch = () => {
         </svg>
       );
     }
+    if (type === "user") {
+      return (
+        <svg
+          className="w-5 h-5 text-green-600 dark:text-green-400"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+          />
+        </svg>
+      );
+    }
     return (
       <svg
         className="w-5 h-5 text-neutral-400"
@@ -168,7 +185,7 @@ export const GlobalSearch = () => {
               setIsOpen(true);
             }
           }}
-          placeholder="Search tickets..."
+          placeholder="Search..."
           className={cn(
             "w-full pl-10 pr-10 py-2 rounded-lg border-2 transition-all duration-200",
             "bg-white text-neutral-900 border-neutral-200",
@@ -231,6 +248,11 @@ export const GlobalSearch = () => {
                           {result.metadata.ticketNumber}
                         </span>
                       )}
+                      {result.type === "user" && result.metadata?.email && result.title !== result.metadata.email && (
+                        <span className="text-xs text-neutral-500 dark:text-neutral-400 flex-shrink-0 truncate max-w-[120px]">
+                          {result.metadata.email}
+                        </span>
+                      )}
                     </div>
                     {result.description && (
                       <p className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-1 mb-2">
@@ -258,6 +280,42 @@ export const GlobalSearch = () => {
                           <span className="text-xs text-neutral-500 dark:text-neutral-400">
                             {result.metadata.commentCount} comment
                             {result.metadata.commentCount !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {result.type === "user" && result.metadata && (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {result.metadata.role && (
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 capitalize">
+                            {result.metadata.role.toLowerCase()}
+                          </span>
+                        )}
+                        {result.metadata.status && (
+                          <span
+                            className={cn(
+                              "text-xs px-2 py-0.5 rounded-full font-medium",
+                              result.metadata.status === "ACTIVE"
+                                ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                                : result.metadata.status === "PENDING"
+                                ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+                                : "bg-neutral-100 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-200"
+                            )}
+                          >
+                            {result.metadata.status}
+                          </span>
+                        )}
+                        {(result.metadata.createdTicketsCount !== undefined ||
+                          result.metadata.assignedTicketsCount !== undefined) && (
+                          <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                            {(result.metadata.createdTicketsCount || 0) +
+                              (result.metadata.assignedTicketsCount || 0)}{" "}
+                            ticket
+                            {(result.metadata.createdTicketsCount || 0) +
+                              (result.metadata.assignedTicketsCount || 0) !==
+                            1
+                              ? "s"
+                              : ""}
                           </span>
                         )}
                       </div>

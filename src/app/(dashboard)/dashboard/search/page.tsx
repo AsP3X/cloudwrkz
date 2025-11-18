@@ -4,6 +4,7 @@ import { ROUTES } from "@/lib/constants/routes";
 import { advancedSearch, type SearchFilters } from "@/server/actions/search";
 import { SearchFilters as SearchFiltersComponent } from "@/components/features/search/SearchFilters";
 import { SearchResultsTable } from "@/components/features/search/SearchResultsTable";
+import { getAllUsers } from "@/server/actions/users";
 
 interface SearchPageProps {
   searchParams: Promise<{
@@ -11,6 +12,7 @@ interface SearchPageProps {
     status?: string;
     priority?: string;
     type?: string;
+    assignedTo?: string;
     createdFrom?: string;
     createdTo?: string;
     updatedFrom?: string;
@@ -28,12 +30,18 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     redirect(ROUTES.LOGIN);
   }
 
+  // Get users for filter dropdown (only for agents/admins)
+  const users = (user.role === "AGENT" || user.role === "ADMIN" || user.role === "MODERATOR")
+    ? await getAllUsers()
+    : [];
+
   // Build filters from search params
   const filters: SearchFilters = {
     query: params.q || "",
     status: params.status,
     priority: params.priority,
     type: params.type,
+    assignedToId: params.assignedTo,
     createdFrom: params.createdFrom,
     createdTo: params.createdTo,
     updatedFrom: params.updatedFrom,
@@ -45,7 +53,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
 
   // Perform search only if there's a query or filters
   const hasQueryOrFilters = filters.query || filters.status || filters.priority || filters.type || 
-    filters.createdFrom || filters.createdTo || filters.updatedFrom || filters.updatedTo;
+    filters.assignedToId || filters.createdFrom || filters.createdTo || filters.updatedFrom || filters.updatedTo;
   
   const searchResults = hasQueryOrFilters 
     ? await advancedSearch(filters)
@@ -64,7 +72,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
       </div>
 
       {/* Search Filters */}
-      <SearchFiltersComponent initialQuery={params.q || ""} />
+      <SearchFiltersComponent initialQuery={params.q || ""} users={users} isAgent={user.role === "AGENT" || user.role === "ADMIN" || user.role === "MODERATOR"} />
 
       {/* Results Count */}
       {searchResults.results.length > 0 && (

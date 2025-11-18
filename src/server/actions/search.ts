@@ -6,7 +6,7 @@ import { isModuleEnabled } from "./modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 
 export type SearchResult = {
-  type: "ticket" | "module";
+  type: "ticket" | "module" | "user";
   id: string;
   title: string;
   description?: string;
@@ -24,6 +24,7 @@ export type SearchFilters = {
   status?: string;
   priority?: string;
   type?: string;
+  assignedToId?: string;
   createdFrom?: string;
   createdTo?: string;
   updatedFrom?: string;
@@ -35,7 +36,7 @@ export type SearchFilters = {
 
 /**
  * Global search across all enabled modules
- * Currently supports tickets, extensible for future modules
+ * Currently supports tickets and users, extensible for future modules
  */
 export async function globalSearch(query: string, limit: number = 10): Promise<SearchResponse> {
   const user = await requireAuth();
@@ -47,10 +48,21 @@ export async function globalSearch(query: string, limit: number = 10): Promise<S
   const searchTerm = query.trim();
   const results: SearchResult[] = [];
 
+  // Distribute limit between users and tickets (roughly 40% users, 60% tickets)
+  const userLimit = Math.max(1, Math.floor(limit * 0.4));
+  const ticketLimit = limit - userLimit;
+
+  // Search users if user is agent/admin/moderator
+  if (user.role === "AGENT" || user.role === "ADMIN" || user.role === "MODERATOR") {
+    const userResults = await searchUsers(searchTerm, user);
+    // Limit user results to allocated portion
+    results.push(...userResults.slice(0, userLimit));
+  }
+
   // Search tickets if module is enabled
   const ticketsEnabled = await isModuleEnabled(MODULE_KEYS.TICKETS);
   if (ticketsEnabled) {
-    const ticketResults = await searchTickets(searchTerm, user, limit);
+    const ticketResults = await searchTickets(searchTerm, user, ticketLimit);
     results.push(...ticketResults);
   }
 
@@ -77,6 +89,13 @@ export async function advancedSearch(filters: SearchFilters): Promise<SearchResp
   const searchTerm = filters.query?.trim() || "";
   const results: SearchResult[] = [];
 
+  // Search users if query is provided (only for agents/admins/moderators)
+  // Users can be searched even when only filters are applied, as long as there's a query
+  if (searchTerm && (user.role === "AGENT" || user.role === "ADMIN" || user.role === "MODERATOR")) {
+    const userResults = await searchUsers(searchTerm, user);
+    results.push(...userResults);
+  }
+
   // Search tickets if module is enabled
   const ticketsEnabled = await isModuleEnabled(MODULE_KEYS.TICKETS);
   if (ticketsEnabled) {
@@ -88,6 +107,73 @@ export async function advancedSearch(filters: SearchFilters): Promise<SearchResp
     results,
     total: results.length,
   };
+}
+
+/**
+ * Search users by name and email
+ */
+async function searchUsers(
+  searchTerm: string,
+  user: Awaited<ReturnType<typeof requireAuth>>
+): Promise<SearchResult[]> {
+  // Only agents and admins can search for users
+  if (user.role !== "AGENT" && user.role !== "ADMIN" && user.role !== "MODERATOR") {
+    return [];
+  }
+
+  const users = await prisma.user.findMany({
+    where: {
+      AND: [
+        {
+          OR: [
+            { name: { contains: searchTerm, mode: "insensitive" } },
+            { email: { contains: searchTerm, mode: "insensitive" } },
+          ],
+        },
+        {
+          status: {
+            in: ["ACTIVE", "PENDING"],
+          },
+        },
+      ],
+    },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      status: true,
+      createdAt: true,
+      _count: {
+        select: {
+          createdTickets: true,
+          assignedTickets: true,
+        },
+      },
+    },
+    orderBy: [
+      { name: "asc" },
+      { email: "asc" },
+    ],
+    take: 20,
+  });
+
+  return users.map((u) => ({
+    type: "user" as const,
+    id: u.id,
+    title: u.name || u.email,
+    description: u.email !== (u.name || u.email) ? u.email : undefined,
+    url: `/dashboard/search?assignedTo=${u.id}`, // Link to search results filtered by this user
+    metadata: {
+      email: u.email,
+      name: u.name,
+      role: u.role,
+      status: u.status,
+      createdTicketsCount: u._count.createdTickets,
+      assignedTicketsCount: u._count.assignedTickets,
+      createdAt: u.createdAt,
+    },
+  }));
 }
 
 /**
@@ -125,6 +211,9 @@ async function searchTicketsWithFilters(
   }
   if (filters.type) {
     where.type = filters.type;
+  }
+  if (filters.assignedToId) {
+    where.assignedToId = filters.assignedToId;
   }
 
   // Date filtering for created date

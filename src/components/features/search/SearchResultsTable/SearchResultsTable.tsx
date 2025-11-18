@@ -68,6 +68,23 @@ export const SearchResultsTable = ({ results }: SearchResultsTableProps) => {
         </svg>
       );
     }
+    if (type === "user") {
+      return (
+        <svg
+          className="w-5 h-5 text-green-600 dark:text-green-400"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+          />
+        </svg>
+      );
+    }
     return (
       <svg
         className="w-5 h-5 text-neutral-400"
@@ -139,6 +156,10 @@ export const SearchResultsTable = ({ results }: SearchResultsTableProps) => {
                     >
                       {result.metadata.ticketNumber}
                     </Link>
+                  ) : result.type === "user" && result.metadata?.email ? (
+                    <span className="text-sm text-neutral-500 dark:text-neutral-400">
+                      {result.metadata.email}
+                    </span>
                   ) : (
                     <span className="text-sm text-neutral-500 dark:text-neutral-400">
                       {result.id.slice(0, 8)}...
@@ -157,6 +178,11 @@ export const SearchResultsTable = ({ results }: SearchResultsTableProps) => {
                           {result.description}
                         </div>
                       )}
+                      {result.type === "user" && result.metadata && (
+                        <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                          {result.metadata.createdTicketsCount || 0} created, {result.metadata.assignedTicketsCount || 0} assigned
+                        </div>
+                      )}
                     </div>
                   </Link>
                 </td>
@@ -168,6 +194,10 @@ export const SearchResultsTable = ({ results }: SearchResultsTableProps) => {
                       )}`}
                     >
                       {result.metadata.status.replace("_", " ")}
+                    </span>
+                  ) : result.type === "user" && result.metadata?.role ? (
+                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 capitalize">
+                      {result.metadata.role.toLowerCase()}
                     </span>
                   ) : (
                     <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
@@ -181,6 +211,16 @@ export const SearchResultsTable = ({ results }: SearchResultsTableProps) => {
                       )}`}
                     >
                       {result.metadata.priority}
+                    </span>
+                  ) : result.type === "user" && result.metadata?.status ? (
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      result.metadata.status === "ACTIVE" 
+                        ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                        : result.metadata.status === "PENDING"
+                        ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+                        : "bg-neutral-100 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-200"
+                    }`}>
+                      {result.metadata.status}
                     </span>
                   ) : (
                     <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
@@ -215,6 +255,10 @@ export const SearchResultsTable = ({ results }: SearchResultsTableProps) => {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap hidden lg:table-cell">
                   {result.type === "ticket" && result.metadata?.createdAt ? (
+                    <div className="text-sm text-neutral-600 dark:text-neutral-400">
+                      {formatDate(result.metadata.createdAt)}
+                    </div>
+                  ) : result.type === "user" && result.metadata?.createdAt ? (
                     <div className="text-sm text-neutral-600 dark:text-neutral-400">
                       {formatDate(result.metadata.createdAt)}
                     </div>

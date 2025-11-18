@@ -43,9 +43,16 @@ const SORT_OPTIONS = [
 
 interface SearchFiltersProps {
   initialQuery?: string;
+  users?: Array<{
+    id: string;
+    email: string;
+    name: string | null;
+    role: string;
+  }>;
+  isAgent?: boolean;
 }
 
-export const SearchFilters = ({ initialQuery = "" }: SearchFiltersProps) => {
+export const SearchFilters = ({ initialQuery = "", users = [], isAgent = false }: SearchFiltersProps) => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [query, setQuery] = React.useState(initialQuery);
@@ -60,6 +67,7 @@ export const SearchFilters = ({ initialQuery = "" }: SearchFiltersProps) => {
   const status = searchParams.get("status") || "";
   const priority = searchParams.get("priority") || "";
   const type = searchParams.get("type") || "";
+  const assignedTo = searchParams.get("assignedTo") || "";
   const createdFrom = searchParams.get("createdFrom") || "";
   const createdTo = searchParams.get("createdTo") || "";
   const updatedFrom = searchParams.get("updatedFrom") || "";
@@ -68,10 +76,19 @@ export const SearchFilters = ({ initialQuery = "" }: SearchFiltersProps) => {
     ? `${searchParams.get("sortBy")}-${searchParams.get("sortOrder")}`
     : "updatedAt-desc";
 
+  const userOptions = [
+    { value: "", label: "All Users" },
+    ...users.map((user) => ({
+      value: user.id,
+      label: user.name || user.email,
+    })),
+  ];
+
   const hasActiveFilters =
     status ||
     priority ||
     type ||
+    assignedTo ||
     createdFrom ||
     createdTo ||
     updatedFrom ||
@@ -109,7 +126,7 @@ export const SearchFilters = ({ initialQuery = "" }: SearchFiltersProps) => {
           <div className="flex-1">
             <Input
               type="text"
-              placeholder="Search tickets..."
+              placeholder={isAgent ? "Search tickets, users..." : "Search tickets..."}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="w-full"
@@ -186,7 +203,7 @@ export const SearchFilters = ({ initialQuery = "" }: SearchFiltersProps) => {
       </div>
 
       {/* Quick Filters - Always Visible */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+      <div className={`grid grid-cols-1 ${isAgent ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-4 mb-4`}>
         <Select
           key={`status-${status}`}
           label="Status"
@@ -208,6 +225,15 @@ export const SearchFilters = ({ initialQuery = "" }: SearchFiltersProps) => {
           defaultValue={type}
           onChange={(e) => updateFilters({ type: e.target.value })}
         />
+        {isAgent && (
+          <Select
+            key={`assignedTo-${assignedTo}`}
+            label="Assigned To"
+            options={userOptions}
+            defaultValue={assignedTo}
+            onChange={(e) => updateFilters({ assignedTo: e.target.value })}
+          />
+        )}
         <Select
           key={`sort-${sort}`}
           label="Sort By"
