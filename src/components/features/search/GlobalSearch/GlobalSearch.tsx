@@ -56,12 +56,16 @@ export const GlobalSearch = () => {
 
   // Handle keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && query.trim()) {
+      e.preventDefault();
+      // Navigate to search results page
+      router.push(`/dashboard/search?q=${encodeURIComponent(query.trim())}`);
+      setIsOpen(false);
+      setQuery("");
+      return;
+    }
+
     if (!isOpen || results.length === 0) {
-      if (e.key === "Enter" && query.trim()) {
-        // Navigate to search results page or perform search
-        router.push(`/dashboard/tickets?search=${encodeURIComponent(query)}`);
-        setIsOpen(false);
-      }
       return;
     }
 
@@ -73,12 +77,6 @@ export const GlobalSearch = () => {
       case "ArrowUp":
         e.preventDefault();
         setSelectedIndex((prev) => (prev > 0 ? prev - 1 : -1));
-        break;
-      case "Enter":
-        e.preventDefault();
-        if (selectedIndex >= 0 && selectedIndex < results.length) {
-          handleResultClick(results[selectedIndex]);
-        }
         break;
       case "Escape":
         setIsOpen(false);
