@@ -163,7 +163,7 @@ async function searchUsers(
     id: u.id,
     title: u.name || u.email,
     description: u.email !== (u.name || u.email) ? u.email : undefined,
-    url: `/dashboard/search?assignedTo=${u.id}`, // Link to search results filtered by this user
+    url: `/dashboard/users/${u.id}`, // Link to user detail page
     metadata: {
       email: u.email,
       name: u.name,

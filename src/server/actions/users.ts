@@ -99,6 +99,45 @@ export async function getCurrentUserProfile() {
 }
 
 /**
+ * Get user by ID with ticket counts (for agents/admins/moderators)
+ */
+export async function getUserById(userId: string) {
+  const currentUser = await requireAuth();
+
+  // Only agents, admins, and moderators can view other users
+  if (currentUser.role !== "AGENT" && currentUser.role !== "ADMIN" && currentUser.role !== "MODERATOR") {
+    throw new Error("Forbidden: Insufficient permissions");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { 
+      id: userId,
+    },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      bio: true,
+      avatar: true,
+      role: true,
+      status: true,
+      emailVerified: true,
+      createdAt: true,
+      updatedAt: true,
+      lastLoginAt: true,
+      _count: {
+        select: {
+          createdTickets: true,
+          assignedTickets: true,
+        },
+      },
+    },
+  });
+
+  return user;
+}
+
+/**
  * Update current user's profile
  */
 export async function updateProfile(
