@@ -100,6 +100,7 @@ async function runUserInteractive() {
       { key: "us", label: "Update User Status" },
       { key: "ur", label: "Update User Role" },
       { key: "up", label: "Update User Password" },
+      { key: "v", label: "Verify User Email" },
       { key: "cc", label: "Cookie Consent Management" },
       { key: "d", label: "Delete User" },
       { key: "b", label: "Back to Main Menu" },
@@ -137,6 +138,11 @@ async function runUserInteractive() {
       case "up":
         clear();
         await userCli.handleUpdatePasswordInteractive();
+        await prompt("\nPress Enter to continue...");
+        break;
+      case "v":
+        clear();
+        await userCli.handleVerifyInteractive();
         await prompt("\nPress Enter to continue...");
         break;
       case "cc":
@@ -289,7 +295,7 @@ function showHelp() {
 CloudWrkz CLI Tool
 
 Available command categories:
-  user      User management (create, delete, list, show, update-status, update-role, update-password, cookie-accept, cookie-revoke, cookie-status)
+  user      User management (create, delete, list, show, update-status, update-role, update-password, verify, cookie-accept, cookie-revoke, cookie-status)
   group     Group management (create, delete, list, show, update, add-agent, remove-agent, list-agents)
   module    Module management (future)
 

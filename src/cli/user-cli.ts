@@ -41,6 +41,7 @@ Commands:
   cookie-accept <email|number>         Accept cookie consent for a user
   cookie-revoke <email|number>         Revoke cookie consent for a user
   cookie-status <email|number>         Check cookie consent status for a user
+  verify <email|number>                Verify user email and optionally activate account
 
 User Selection:
   You can select users by email or by number. Use 'list' command first to see user numbers.
@@ -73,6 +74,10 @@ Examples:
   pnpm cli user cookie-accept user@example.com
   pnpm cli user cookie-revoke user@example.com
   pnpm cli user cookie-status user@example.com
+  
+  # Verify user email (by email or number)
+  pnpm cli user verify user@example.com
+  pnpm cli user verify 1  # Verify first user from list
   
   # Delete user (by email or number)
   pnpm cli user delete user@example.com
@@ -120,6 +125,9 @@ if (isRunDirectly && command) {
           break;
         case "cookie-status":
           await handleCookieStatus();
+          break;
+        case "verify":
+          await handleVerify();
           break;
         default:
           console.error(`Unknown command: ${command}`);
@@ -836,6 +844,87 @@ async function handleCookieStatus() {
   }
 }
 
+async function handleVerify() {
+  if (commandArgs.length < 2) {
+    console.error("Usage: verify <email|number>");
+    console.error("\nTip: Use 'list' command first to see user numbers");
+    process.exit(1);
+  }
+
+  const selection = commandArgs[1];
+  let email: string;
+
+  // Check if selection is a number (for selecting from list)
+  const userIndex = parseInt(selection) - 1;
+  
+  if (!isNaN(userIndex) && userIndex >= 0) {
+    // Selection is a number - fetch users and select by index
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        emailVerified: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (userIndex >= users.length) {
+      console.error(`Invalid user number: ${selection}. Only ${users.length} user(s) found.`);
+      console.error("\nRun 'pnpm cli user list' to see available users.");
+      process.exit(1);
+    }
+
+    email = users[userIndex].email;
+    console.log(`Selected user: ${email}${users[userIndex].name ? ` (${users[userIndex].name})` : ""} - Email verified: ${users[userIndex].emailVerified ? "Yes" : "No"}, Status: ${users[userIndex].status}`);
+  } else {
+    // Selection is an email
+    email = selection;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, email: true, name: true, status: true, emailVerified: true },
+  });
+
+  if (!user) {
+    console.error(`User with email ${email} not found`);
+    process.exit(1);
+  }
+
+  if (user.emailVerified) {
+    console.log(`User ${user.email}${user.name ? ` (${user.name})` : ""} is already verified`);
+    if (user.status !== "ACTIVE") {
+      console.log(`Note: User status is ${user.status}. Consider updating status to ACTIVE for full access.`);
+    }
+    return;
+  }
+
+  // Update email verification and optionally set status to ACTIVE if PENDING
+  const updateData: { emailVerified: boolean; status?: "ACTIVE" } = {
+    emailVerified: true,
+  };
+
+  if (user.status === "PENDING") {
+    updateData.status = "ACTIVE";
+    await prisma.user.update({
+      where: { email },
+      data: updateData,
+    });
+    console.log(`✅ User ${user.email}${user.name ? ` (${user.name})` : ""} email verified and account activated (status changed from PENDING to ACTIVE)`);
+  } else {
+    await prisma.user.update({
+      where: { email },
+      data: updateData,
+    });
+    console.log(`✅ User ${user.email}${user.name ? ` (${user.name})` : ""} email verified`);
+    if (user.status !== "ACTIVE") {
+      console.log(`Note: User status is ${user.status}. User will need ACTIVE status to access protected pages.`);
+    }
+  }
+}
+
 // Helper function to select user interactively
 async function selectUserInteractively(): Promise<{ id: string; email: string; name: string | null } | null> {
   const users = await prisma.user.findMany({
@@ -1151,6 +1240,25 @@ export async function handleCookieStatusInteractive() {
     commandArgs.length = 0;
     commandArgs.push("cookie-status", user.email);
     await handleCookieStatus();
+    commandArgs.length = 0;
+    commandArgs.push(...originalArgs);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleVerifyInteractive() {
+  try {
+    await handleListWithFilters({});
+    separator();
+
+    const user = await selectUserInteractively();
+    if (!user) return;
+
+    const originalArgs = commandArgs.slice();
+    commandArgs.length = 0;
+    commandArgs.push("verify", user.email);
+    await handleVerify();
     commandArgs.length = 0;
     commandArgs.push(...originalArgs);
   } catch (error) {

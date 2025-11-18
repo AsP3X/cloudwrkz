@@ -12,9 +12,9 @@ export default async function DashboardLayout({
 }) {
   const user = await getCurrentUser();
 
-  // Redirect to login if not authenticated
+  // Redirect to login if not authenticated, active, or verified
   if (!user) {
-    redirect(ROUTES.LOGIN);
+    redirect(`${ROUTES.LOGIN}?error=account_not_verified`);
   }
 
   // Allow USER and AGENT roles to access dashboard

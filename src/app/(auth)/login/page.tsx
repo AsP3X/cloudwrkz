@@ -5,7 +5,12 @@ import { LoginForm } from "@/components/features/auth/LoginForm";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 
-export default function LoginPage() {
+type LoginPageProps = {
+  searchParams: Promise<{ error?: string; redirect?: string }>;
+};
+
+export default async function LoginPage({ searchParams }: LoginPageProps) {
+  const params = await searchParams;
   return (
     <>
       <Header />
@@ -36,7 +41,7 @@ export default function LoginPage() {
 
             {/* Login Card */}
             <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8">
-              <LoginForm />
+              <LoginForm initialError={params.error} />
             </div>
 
             {/* Trust Indicators */}
