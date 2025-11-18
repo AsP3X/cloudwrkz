@@ -20,6 +20,7 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [totalResults, setTotalResults] = useState(0);
   const [mounted, setMounted] = useState(false);
+  const [expandedTickets, setExpandedTickets] = useState<Set<string>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
 
@@ -109,6 +110,52 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
     setResults([]);
   };
 
+  const toggleTicketExpansion = (ticketId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedTickets((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(ticketId)) {
+        newSet.delete(ticketId);
+      } else {
+        newSet.add(ticketId);
+      }
+      return newSet;
+    });
+  };
+
+  // Group results by ticket
+  const groupedResults = React.useMemo(() => {
+    const groups: Array<{ ticket: SearchResult; comments: SearchResult[] }> = [];
+    const ticketMap = new Map<string, SearchResult>();
+    const commentMap = new Map<string, SearchResult[]>();
+
+    results.forEach((result) => {
+      if (result.type === "ticket") {
+        ticketMap.set(result.id, result);
+        if (!commentMap.has(result.id)) {
+          commentMap.set(result.id, []);
+        }
+      } else if (result.type === "comment" && result.parentTicketId) {
+        const comments = commentMap.get(result.parentTicketId) || [];
+        comments.push(result);
+        commentMap.set(result.parentTicketId, comments);
+      } else {
+        // User or other types - add as standalone
+        groups.push({ ticket: result, comments: [] });
+      }
+    });
+
+    // Add tickets with their comments
+    ticketMap.forEach((ticket) => {
+      groups.push({
+        ticket,
+        comments: commentMap.get(ticket.id) || [],
+      });
+    });
+
+    return groups;
+  }, [results]);
+
   const handleClear = () => {
     setQuery("");
     setResults([]);
@@ -167,6 +214,23 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
             strokeLinejoin="round"
             strokeWidth={2}
             d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+          />
+        </svg>
+      );
+    }
+    if (type === "comment") {
+      return (
+        <svg
+          className="w-4 h-4 text-neutral-400 dark:text-neutral-500"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
           />
         </svg>
       );
@@ -360,64 +424,151 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
 
                     {/* Results Table */}
                     <div className="divide-y divide-neutral-200 dark:divide-neutral-800">
-                      {results.map((result, index) => (
-                        <button
-                          key={`${result.type}-${result.id}`}
-                          onClick={() => handleResultClick(result)}
-                          className={cn(
-                            "w-full px-4 py-4 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors",
-                            selectedIndex === index && "bg-primary-50 dark:bg-primary-950"
-                          )}
-                        >
-                          <div className="flex items-start gap-4">
-                            <div className="mt-0.5 flex-shrink-0">{getResultIcon(result.type)}</div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                                  {highlightMatch(result.title, query)}
-                                </p>
-                                {result.type === "ticket" && result.metadata?.ticketNumber && (
-                                  <span className="text-xs text-neutral-500 dark:text-neutral-400 font-mono flex-shrink-0">
-                                    {result.metadata.ticketNumber}
-                                  </span>
-                                )}
-                                {result.type === "user" && result.metadata?.email && result.title !== result.metadata.email && (
-                                  <span className="text-xs text-neutral-500 dark:text-neutral-400 flex-shrink-0 truncate max-w-[120px]">
-                                    {result.metadata.email}
-                                  </span>
-                                )}
-                              </div>
-                              {result.description && (
-                                <p className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-2 mb-2">
-                                  {highlightMatch(result.description, query)}
-                                </p>
+                      {groupedResults.map((group, groupIndex) => {
+                        const isTicket = group.ticket.type === "ticket";
+                        const hasComments = group.comments.length > 0;
+                        const isExpanded = expandedTickets.has(group.ticket.id);
+                        const ticketIndex = results.findIndex((r) => r.id === group.ticket.id && r.type === group.ticket.type);
+
+                        return (
+                          <div key={`group-${group.ticket.type}-${group.ticket.id}`}>
+                            {/* Ticket/User Row */}
+                            <div
+                              onClick={() => handleResultClick(group.ticket)}
+                              className={cn(
+                                "w-full text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors cursor-pointer",
+                                selectedIndex === ticketIndex && "bg-primary-50 dark:bg-primary-950",
+                                "px-4 py-4"
                               )}
-                              <div className="flex items-center gap-2 flex-wrap">
-                                {result.type === "ticket" && result.metadata?.status && (
-                                  <span
-                                    className={cn(
-                                      "text-xs px-2 py-0.5 rounded-full font-medium",
-                                      formatTicketStatus(result.metadata.status)
+                            >
+                              <div className="flex items-start gap-4">
+                                <div className="mt-0.5 flex-shrink-0 flex items-center gap-2">
+                                  {isTicket && hasComments && (
+                                    <button
+                                      onClick={(e) => toggleTicketExpansion(group.ticket.id, e)}
+                                      className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors"
+                                      aria-label={isExpanded ? "Collapse comments" : "Expand comments"}
+                                      type="button"
+                                    >
+                                      <svg
+                                        className={cn(
+                                          "w-4 h-4 text-neutral-500 dark:text-neutral-400 transition-transform duration-200",
+                                          isExpanded && "rotate-90"
+                                        )}
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        stroke="currentColor"
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={2}
+                                          d="M9 5l7 7-7 7"
+                                        />
+                                      </svg>
+                                    </button>
+                                  )}
+                                  {getResultIcon(group.ticket.type)}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+                                      {highlightMatch(group.ticket.title, query)}
+                                    </p>
+                                    {group.ticket.type === "ticket" && group.ticket.metadata?.ticketNumber && (
+                                      <span className="text-xs text-neutral-500 dark:text-neutral-400 font-mono flex-shrink-0">
+                                        {group.ticket.metadata.ticketNumber}
+                                      </span>
                                     )}
-                                  >
-                                    {result.metadata.status.replace("_", " ")}
-                                  </span>
-                                )}
-                                {result.type === "ticket" && result.metadata?.priority && (
-                                  <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                                    {result.metadata.priority}
-                                  </span>
-                                )}
-                                {result.type === "user" && result.metadata?.role && (
-                                  <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 capitalize">
-                                    {result.metadata.role.toLowerCase()}
-                                  </span>
-                                )}
+                                    {group.ticket.type === "user" && group.ticket.metadata?.email && group.ticket.title !== group.ticket.metadata.email && (
+                                      <span className="text-xs text-neutral-500 dark:text-neutral-400 flex-shrink-0 truncate max-w-[120px]">
+                                        {group.ticket.metadata.email}
+                                      </span>
+                                    )}
+                                    {isTicket && hasComments && (
+                                      <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                                        ({group.comments.length} comment{group.comments.length !== 1 ? "s" : ""})
+                                      </span>
+                                    )}
+                                  </div>
+                                  {group.ticket.description && (
+                                    <p className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-2 mb-2">
+                                      {highlightMatch(group.ticket.description, query)}
+                                    </p>
+                                  )}
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {group.ticket.type === "ticket" && group.ticket.metadata?.status && (
+                                      <span
+                                        className={cn(
+                                          "text-xs px-2 py-0.5 rounded-full font-medium",
+                                          formatTicketStatus(group.ticket.metadata.status)
+                                        )}
+                                      >
+                                        {group.ticket.metadata.status.replace("_", " ")}
+                                      </span>
+                                    )}
+                                    {group.ticket.type === "ticket" && group.ticket.metadata?.priority && (
+                                      <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                                        {group.ticket.metadata.priority}
+                                      </span>
+                                    )}
+                                    {group.ticket.type === "user" && group.ticket.metadata?.role && (
+                                      <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 capitalize">
+                                        {group.ticket.metadata.role.toLowerCase()}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
                             </div>
+
+                            {/* Comments */}
+                            {isTicket && hasComments && (
+                              <div
+                                className={cn(
+                                  "overflow-hidden transition-all duration-300 ease-in-out",
+                                  isExpanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
+                                )}
+                              >
+                                {group.comments.map((comment, commentIndex) => {
+                                  const commentResultIndex = results.findIndex((r) => r.id === comment.id && r.type === comment.type);
+                                  return (
+                                    <button
+                                      key={`comment-${comment.id}`}
+                                      onClick={() => handleResultClick(comment)}
+                                      className={cn(
+                                        "w-full text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all duration-300 ease-in-out",
+                                        selectedIndex === commentResultIndex && "bg-primary-50 dark:bg-primary-950",
+                                        "px-4 py-2 pl-12",
+                                        isExpanded 
+                                          ? "opacity-100 translate-y-0" 
+                                          : "opacity-0 -translate-y-2"
+                                      )}
+                                      style={{
+                                        transitionDelay: isExpanded ? `${300 + commentIndex * 30}ms` : `${(group.comments.length - commentIndex - 1) * 20}ms`,
+                                      }}
+                                    >
+                                      <div className="flex items-start gap-4">
+                                        <div className="mt-0.5 flex-shrink-0">{getResultIcon(comment.type)}</div>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">
+                                              Comment in {comment.metadata?.ticketNumber}:
+                                            </span>
+                                          </div>
+                                          <p className="text-sm text-neutral-700 dark:text-neutral-300">
+                                            {highlightMatch(comment.title, query)}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
-                        </button>
-                      ))}
+                        );
+                      })}
                     </div>
                   </>
                 ) : (
