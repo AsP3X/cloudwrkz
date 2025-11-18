@@ -53,8 +53,12 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
       return null;
     }
 
-    // Check if user account is active
-    if (session.user.status === "DELETED" || session.user.status === "SUSPENDED") {
+    // Check if user account is active and verified
+    // Only ACTIVE users with verified emails can access protected pages
+    if (
+      session.user.status !== "ACTIVE" ||
+      !session.user.emailVerified
+    ) {
       return null;
     }
 

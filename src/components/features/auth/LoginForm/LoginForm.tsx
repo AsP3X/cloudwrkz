@@ -11,9 +11,17 @@ import { ROUTES } from "@/lib/constants/routes";
 import { loginSchema, type LoginInput } from "@/lib/validations/auth";
 import { loginUser } from "@/server/actions/auth";
 
-export const LoginForm = () => {
+type LoginFormProps = {
+  initialError?: string;
+};
+
+export const LoginForm = ({ initialError }: LoginFormProps) => {
   const router = useRouter();
-  const [serverError, setServerError] = React.useState<string | null>(null);
+  const [serverError, setServerError] = React.useState<string | null>(
+    initialError === "account_not_verified"
+      ? "Your account needs to be verified and activated before you can access this page. Please check your email for a verification link or contact support if you need assistance."
+      : null
+  );
 
   const {
     register,
