@@ -7,9 +7,29 @@ import { getTicketTypeLabel, type TicketType } from "@/lib/utils/tickets";
 
 interface SearchResultsTableProps {
   results: SearchResult[];
+  searchQuery?: string;
 }
 
-export const SearchResultsTable = ({ results }: SearchResultsTableProps) => {
+export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsTableProps) => {
+  const highlightMatch = (text: string, searchTerm: string) => {
+    if (!searchTerm || searchTerm.length < 2) return text;
+    
+    const escapedTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(${escapedTerm})`, 'gi');
+    const parts = text.split(regex);
+    
+    return parts.map((part, index) => {
+      // Check if this part matches the search term (case-insensitive)
+      if (part.toLowerCase() === searchTerm.toLowerCase()) {
+        return (
+          <mark key={index} className="bg-yellow-200 dark:bg-yellow-900 text-yellow-900 dark:text-yellow-100 rounded px-0.5">
+            {part}
+          </mark>
+        );
+      }
+      return <React.Fragment key={index}>{part}</React.Fragment>;
+    });
+  };
   const formatDate = (date: Date | string) => {
     return new Date(date).toLocaleDateString("en-US", {
       year: "numeric",
@@ -172,10 +192,10 @@ export const SearchResultsTable = ({ results }: SearchResultsTableProps) => {
                     className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400"
                   >
                     <div className="max-w-md">
-                      <div className="truncate">{result.title}</div>
+                      <div className="truncate">{highlightMatch(result.title, searchQuery)}</div>
                       {result.description && (
                         <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 line-clamp-1">
-                          {result.description}
+                          {highlightMatch(result.description, searchQuery)}
                         </div>
                       )}
                       {result.type === "user" && result.metadata && (

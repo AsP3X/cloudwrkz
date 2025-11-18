@@ -47,6 +47,7 @@ export async function globalSearch(query: string, limit: number = 10): Promise<S
 
   const searchTerm = query.trim();
   const results: SearchResult[] = [];
+  let totalCount = 0;
 
   // Distribute limit between users and tickets (roughly 40% users, 60% tickets)
   const userLimit = Math.max(1, Math.floor(limit * 0.4));
@@ -55,6 +56,7 @@ export async function globalSearch(query: string, limit: number = 10): Promise<S
   // Search users if user is agent/admin/moderator
   if (user.role === "AGENT" || user.role === "ADMIN" || user.role === "MODERATOR") {
     const userResults = await searchUsers(searchTerm, user);
+    totalCount += userResults.length;
     // Limit user results to allocated portion
     results.push(...userResults.slice(0, userLimit));
   }
@@ -63,6 +65,7 @@ export async function globalSearch(query: string, limit: number = 10): Promise<S
   const ticketsEnabled = await isModuleEnabled(MODULE_KEYS.TICKETS);
   if (ticketsEnabled) {
     const ticketResults = await searchTickets(searchTerm, user, ticketLimit);
+    totalCount += ticketResults.length;
     results.push(...ticketResults);
   }
 
@@ -71,12 +74,13 @@ export async function globalSearch(query: string, limit: number = 10): Promise<S
   // const accountingEnabled = await isModuleEnabled(MODULE_KEYS.ACCOUNTING);
   // if (accountingEnabled) {
   //   const accountingResults = await searchAccounting(searchTerm, user, limit);
+  //   totalCount += accountingResults.length;
   //   results.push(...accountingResults);
   // }
 
   return {
     results: results.slice(0, limit),
-    total: results.length,
+    total: totalCount,
   };
 }
 

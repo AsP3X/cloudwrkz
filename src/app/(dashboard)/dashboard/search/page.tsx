@@ -107,7 +107,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
           </p>
         </div>
       ) : (
-        <SearchResultsTable results={searchResults.results} />
+        <SearchResultsTable results={searchResults.results} searchQuery={params.q || ""} />
       )}
     </div>
   );
