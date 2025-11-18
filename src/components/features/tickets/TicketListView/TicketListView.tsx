@@ -40,6 +40,5 @@ interface TicketListViewProps {
 
 export const TicketListView = ({ tickets }: TicketListViewProps) => {
   const { viewMode } = useTicketView();
-
   return <TicketList tickets={tickets} viewMode={viewMode} />;
 };
