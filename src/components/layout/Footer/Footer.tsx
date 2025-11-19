@@ -14,10 +14,10 @@ export const Footer = () => {
       { label: "Changelog", href: "#changelog" },
     ],
     Company: [
-      { label: "About", href: "#about" },
+      { label: "About", href: ROUTES.ABOUT },
       { label: "Blog", href: "#blog" },
       { label: "Careers", href: "#careers" },
-      { label: "Contact", href: "#contact" },
+      { label: "Contact", href: ROUTES.CONTACT },
     ],
     Legal: [
       { label: "Privacy", href: ROUTES.PRIVACY },

@@ -44,13 +44,13 @@ export const Header = () => {
               Features
             </Link>
             <Link
-              href="#about"
+              href={ROUTES.ABOUT}
               className="text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors duration-200"
             >
               About
             </Link>
             <Link
-              href="#contact"
+              href={ROUTES.CONTACT}
               className="text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors duration-200"
             >
               Contact
