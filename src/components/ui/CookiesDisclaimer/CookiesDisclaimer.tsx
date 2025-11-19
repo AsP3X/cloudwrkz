@@ -7,10 +7,11 @@ import type { CookiesDisclaimerProps } from "./CookiesDisclaimer.types";
 
 /**
  * Helper function to call server actions with retry logic for stale action errors
+ * By default, only retries once to avoid excessive failed requests
  */
 async function callServerActionWithRetry<T>(
   actionFn: () => Promise<T>,
-  maxRetries = 2
+  maxRetries = 1
 ): Promise<T> {
   let lastError: any;
   
@@ -97,19 +98,34 @@ export const CookiesDisclaimer: React.FC<CookiesDisclaimerProps> = ({
     // Check if user is logged in and has accepted cookies
     // Priority: Database (for logged-in users) -> Cookies (for non-logged-in users)
     const checkUserConsent = async () => {
-      // First, check cookie client-side as a fallback
-      // This allows us to show/hide banner even if server actions fail
+      // First, check cookie client-side
       const cookieConsent = getCookie("cookie-consent-accepted");
       const hasAcceptedCookie = cookieConsent === "true";
 
+      // If cookie is already set, skip server action entirely to avoid stale action errors
+      // The server action is only needed to check login status, but if cookie is set,
+      // we can assume consent is given regardless of login status
+      if (hasAcceptedCookie) {
+        if (!isMounted) return;
+        // Cookie is set - user has already consented
+        // We don't know if they're logged in, but consent is given, so hide banner
+        setIsUserLoggedIn(false); // Assume not logged in for simplicity
+        setHasAccepted(true);
+        setIsLoading(false);
+        // Don't show banner - cookie is already accepted
+        return;
+      }
+
+      // Cookie is not set - need to check via server action
+      // This will determine if user is logged in and check database consent
       try {
         // Try to check via server action to get accurate login status
         // Dynamically import to avoid stale server action references
-        // Use callServerActionWithRetry to handle stale action errors
+        // Only 1 retry to reduce failed requests
         const result = await callServerActionWithRetry(async () => {
           const { checkCookieConsent } = await import("@/server/actions/cookie-consent");
           return await checkCookieConsent();
-        });
+        }, 1); // Only 1 retry to reduce failed requests
 
         if (!isMounted) return;
 
