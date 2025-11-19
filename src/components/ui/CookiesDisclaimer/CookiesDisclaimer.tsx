@@ -1,9 +1,47 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "../Button";
 import { cn } from "@/lib/utils/cn";
 import type { CookiesDisclaimerProps } from "./CookiesDisclaimer.types";
+
+/**
+ * Helper function to call server actions with retry logic for stale action errors
+ */
+async function callServerActionWithRetry<T>(
+  actionFn: () => Promise<T>,
+  maxRetries = 2
+): Promise<T> {
+  let lastError: any;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await actionFn();
+    } catch (error: any) {
+      lastError = error;
+      
+      // Check if it's an UnrecognizedActionError
+      const isUnrecognizedActionError = 
+        error?.name === "UnrecognizedActionError" ||
+        error?.message?.includes("was not found on the server") ||
+        error?.message?.includes("Server Action") ||
+        error?.message?.includes("does not exist");
+      
+      if (isUnrecognizedActionError && attempt < maxRetries) {
+        // Wait a bit before retrying (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 100 * Math.pow(2, attempt)));
+        // Force a fresh import by invalidating the module cache
+        // This is done by importing with a cache-busting query parameter
+        continue;
+      }
+      
+      throw error;
+    }
+  }
+  
+  throw lastError;
+}
 
 /**
  * CookiesDisclaimer component that displays a cookie consent banner
@@ -16,6 +54,8 @@ export const CookiesDisclaimer: React.FC<CookiesDisclaimerProps> = ({
   privacyPolicyLink,
   onAccept,
 }) => {
+  const router = useRouter();
+  const hasRefreshedRef = useRef(false);
   const [hasAccepted, setHasAccepted] = useState<boolean>(false);
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -31,8 +71,11 @@ export const CookiesDisclaimer: React.FC<CookiesDisclaimerProps> = ({
     const checkUserConsent = async () => {
       try {
         // Dynamically import to avoid stale server action references
-        const { checkCookieConsent } = await import("@/server/actions/cookie-consent");
-        const result = await checkCookieConsent();
+        // Use callServerActionWithRetry to handle stale action errors
+        const result = await callServerActionWithRetry(async () => {
+          const { checkCookieConsent } = await import("@/server/actions/cookie-consent");
+          return await checkCookieConsent();
+        });
 
         if (!isMounted) return;
 
@@ -67,14 +110,17 @@ export const CookiesDisclaimer: React.FC<CookiesDisclaimerProps> = ({
       } catch (error: any) {
         console.error("Error checking cookie consent:", error);
         
-        // Handle "server action does not exist" error specifically
-        const isServerActionError = 
-          error?.message?.includes("does not exist") ||
-          error?.message?.includes("Cannot find") ||
-          error?.message?.includes("not found");
+        // Handle UnrecognizedActionError specifically
+        const isUnrecognizedActionError = 
+          error?.name === "UnrecognizedActionError" ||
+          error?.message?.includes("was not found on the server") ||
+          error?.message?.includes("Server Action");
         
-        if (isServerActionError) {
-          console.warn("Server action unavailable, showing banner");
+        if (isUnrecognizedActionError && !hasRefreshedRef.current) {
+          console.warn("Server action unavailable (stale reference), refreshing to get fresh actions");
+          // Refresh router to get fresh server actions (only once)
+          hasRefreshedRef.current = true;
+          router.refresh();
         }
         
         // On error, show banner to allow user to accept
@@ -106,25 +152,28 @@ export const CookiesDisclaimer: React.FC<CookiesDisclaimerProps> = ({
     setIsAnimating(false);
 
     try {
-      // Dynamically import to avoid stale server action references
-      const { 
-        acceptCookieConsent, 
-        acceptCookieConsentForGuest,
-        checkCookieConsent 
-      } = await import("@/server/actions/cookie-consent");
-      
       let result;
       
-      // Check if user is logged in first
-      const checkResult = await checkCookieConsent();
+      // Check if user is logged in first with retry logic
+      const checkResult = await callServerActionWithRetry(async () => {
+        const { checkCookieConsent } = await import("@/server/actions/cookie-consent");
+        return await checkCookieConsent();
+      });
+      
       const isLoggedIn = checkResult?.success && checkResult.isLoggedIn === true;
       
       if (isLoggedIn) {
-        // User is logged in - save to database
-        result = await acceptCookieConsent();
+        // User is logged in - save to database with retry logic
+        result = await callServerActionWithRetry(async () => {
+          const { acceptCookieConsent } = await import("@/server/actions/cookie-consent");
+          return await acceptCookieConsent();
+        });
       } else {
-        // User is not logged in - save to cookie
-        result = await acceptCookieConsentForGuest();
+        // User is not logged in - save to cookie with retry logic
+        result = await callServerActionWithRetry(async () => {
+          const { acceptCookieConsentForGuest } = await import("@/server/actions/cookie-consent");
+          return await acceptCookieConsentForGuest();
+        });
       }
       
       if (result.success) {
@@ -145,16 +194,26 @@ export const CookiesDisclaimer: React.FC<CookiesDisclaimerProps> = ({
     } catch (error: any) {
       console.error("Error accepting cookie consent:", error);
       
-      // Handle "server action does not exist" error specifically
-      const isServerActionError = 
-        error?.message?.includes("does not exist") ||
-        error?.message?.includes("Cannot find") ||
-        error?.message?.includes("not found");
+      // Handle UnrecognizedActionError specifically
+      const isUnrecognizedActionError = 
+        error?.name === "UnrecognizedActionError" ||
+        error?.message?.includes("was not found on the server") ||
+        error?.message?.includes("Server Action");
       
-      if (isServerActionError) {
-        console.warn("Server action unavailable, cannot save consent");
-        // On server action error, reset animation to show banner again
+      if (isUnrecognizedActionError) {
+        console.warn("Server action unavailable (stale reference), refreshing to get fresh actions");
+        // On stale action error, refresh the router to get fresh server actions
+        // This will re-fetch the action manifest without a full page reload
         setIsAnimating(true);
+        // Refresh router to get fresh server actions (only if not already refreshed)
+        if (!hasRefreshedRef.current) {
+          hasRefreshedRef.current = true;
+          router.refresh();
+        }
+        // Show banner again after a short delay
+        setTimeout(() => {
+          setIsAnimating(true);
+        }, 500);
       } else {
         // On other errors, reset animation to show banner again
         setIsAnimating(true);
