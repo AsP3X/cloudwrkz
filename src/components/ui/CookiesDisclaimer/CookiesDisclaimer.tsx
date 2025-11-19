@@ -2,20 +2,13 @@
 
 import React, { useState, useEffect } from "react";
 import { Button } from "../Button";
-import { useLocalStorage } from "@/lib/hooks/useLocalStorage";
 import { cn } from "@/lib/utils/cn";
-import {
-  acceptCookieConsent,
-  checkCookieConsent,
-} from "@/server/actions/cookie-consent";
 import type { CookiesDisclaimerProps } from "./CookiesDisclaimer.types";
-
-const COOKIE_CONSENT_KEY = "cookie-consent-accepted";
 
 /**
  * CookiesDisclaimer component that displays a cookie consent banner
  * on first visit. For logged-in users, stores consent in the database.
- * For non-logged-in users, uses localStorage.
+ * For non-logged-in users, uses cookies.
  */
 export const CookiesDisclaimer: React.FC<CookiesDisclaimerProps> = ({
   message = "We use cookies to enhance your browsing experience, serve personalized content, and analyze our traffic. By clicking 'Accept', you consent to our use of cookies.",
@@ -23,11 +16,6 @@ export const CookiesDisclaimer: React.FC<CookiesDisclaimerProps> = ({
   privacyPolicyLink,
   onAccept,
 }) => {
-  // localStorage hook for non-logged-in users only
-  const [hasAcceptedInLocalStorage, setHasAcceptedInLocalStorage] = useLocalStorage<boolean>(
-    COOKIE_CONSENT_KEY,
-    false
-  );
   const [hasAccepted, setHasAccepted] = useState<boolean>(false);
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -39,42 +27,23 @@ export const CookiesDisclaimer: React.FC<CookiesDisclaimerProps> = ({
     let isMounted = true;
 
     // Check if user is logged in and has accepted cookies
-    // Priority: Database (for logged-in users) -> localStorage (for non-logged-in users)
+    // Priority: Database (for logged-in users) -> Cookies (for non-logged-in users)
     const checkUserConsent = async () => {
       try {
+        // Dynamically import to avoid stale server action references
+        const { checkCookieConsent } = await import("@/server/actions/cookie-consent");
         const result = await checkCookieConsent();
 
         if (!isMounted) return;
 
-        if (result === null) {
-          // User is not logged in, use localStorage only
-          setIsUserLoggedIn(false);
-          const accepted = hasAcceptedInLocalStorage;
-          setHasAccepted(accepted);
-          setIsLoading(false);
-          
-          if (!accepted) {
-            timer = setTimeout(() => {
-              if (isMounted) {
-                setIsVisible(true);
-                setIsAnimating(true);
-              }
-            }, 100);
-          }
-        } else if (result.success) {
-          // User is logged in - use database only (ignore localStorage)
-          setIsUserLoggedIn(true);
+        if (result.success) {
           const accepted = result.accepted;
           setHasAccepted(accepted);
           setIsLoading(false);
-          
-          // Sync database state to localStorage for consistency
-          if (accepted) {
-            setHasAcceptedInLocalStorage(true);
-          }
+          setIsUserLoggedIn(result.isLoggedIn);
           
           if (!accepted) {
-            // User is logged in but hasn't accepted yet - show banner
+            // User hasn't accepted yet - show banner
             timer = setTimeout(() => {
               if (isMounted) {
                 setIsVisible(true);
@@ -83,31 +52,11 @@ export const CookiesDisclaimer: React.FC<CookiesDisclaimerProps> = ({
             }, 100);
           }
         } else {
-          // Error checking consent, fall back to localStorage
+          // Error checking consent - show banner to allow user to accept
           setIsUserLoggedIn(false);
-          const accepted = hasAcceptedInLocalStorage;
-          setHasAccepted(accepted);
+          setHasAccepted(false);
           setIsLoading(false);
           
-          if (!accepted) {
-            timer = setTimeout(() => {
-              if (isMounted) {
-                setIsVisible(true);
-                setIsAnimating(true);
-              }
-            }, 100);
-          }
-        }
-      } catch (error) {
-        console.error("Error checking cookie consent:", error);
-        // Fall back to localStorage on error
-        if (!isMounted) return;
-        setIsUserLoggedIn(false);
-        const accepted = hasAcceptedInLocalStorage;
-        setHasAccepted(accepted);
-        setIsLoading(false);
-        
-        if (!accepted) {
           timer = setTimeout(() => {
             if (isMounted) {
               setIsVisible(true);
@@ -115,6 +64,31 @@ export const CookiesDisclaimer: React.FC<CookiesDisclaimerProps> = ({
             }
           }, 100);
         }
+      } catch (error: any) {
+        console.error("Error checking cookie consent:", error);
+        
+        // Handle "server action does not exist" error specifically
+        const isServerActionError = 
+          error?.message?.includes("does not exist") ||
+          error?.message?.includes("Cannot find") ||
+          error?.message?.includes("not found");
+        
+        if (isServerActionError) {
+          console.warn("Server action unavailable, showing banner");
+        }
+        
+        // On error, show banner to allow user to accept
+        if (!isMounted) return;
+        setIsUserLoggedIn(false);
+        setHasAccepted(false);
+        setIsLoading(false);
+        
+        timer = setTimeout(() => {
+          if (isMounted) {
+            setIsVisible(true);
+            setIsAnimating(true);
+          }
+        }, 100);
       }
     };
 
@@ -126,45 +100,65 @@ export const CookiesDisclaimer: React.FC<CookiesDisclaimerProps> = ({
         clearTimeout(timer);
       }
     };
-  }, [hasAcceptedInLocalStorage, setHasAcceptedInLocalStorage]);
+  }, []);
 
   const handleAccept = async () => {
     setIsAnimating(false);
 
     try {
-      if (isUserLoggedIn) {
-        // User is logged in - save to database first
-        const result = await acceptCookieConsent();
-        if (result.success) {
-          // Save to database successful - update state and sync to localStorage
-          setHasAccepted(true);
-          setHasAcceptedInLocalStorage(true);
-          
-          // Wait for animation to complete before hiding
-          setTimeout(() => {
-            setIsVisible(false);
-            onAccept?.();
-          }, 300);
-        } else {
-          // If database save fails, don't save anywhere (show error or retry)
-          console.error("Failed to save cookie consent to database:", result.error);
-          // Reset animation state to show banner again
-          setIsAnimating(true);
-        }
+      // Dynamically import to avoid stale server action references
+      const { 
+        acceptCookieConsent, 
+        acceptCookieConsentForGuest,
+        checkCookieConsent 
+      } = await import("@/server/actions/cookie-consent");
+      
+      let result;
+      
+      // Check if user is logged in first
+      const checkResult = await checkCookieConsent();
+      const isLoggedIn = checkResult?.success && checkResult.isLoggedIn === true;
+      
+      if (isLoggedIn) {
+        // User is logged in - save to database
+        result = await acceptCookieConsent();
       } else {
-        // User is not logged in - save to localStorage only
-        setHasAcceptedInLocalStorage(true);
+        // User is not logged in - save to cookie
+        result = await acceptCookieConsentForGuest();
+      }
+      
+      if (result.success) {
+        // Save successful - update state
         setHasAccepted(true);
+        setIsUserLoggedIn(isLoggedIn ?? false);
         
+        // Wait for animation to complete before hiding
         setTimeout(() => {
           setIsVisible(false);
           onAccept?.();
         }, 300);
+      } else {
+        // If save fails, show error and reset animation
+        console.error("Failed to save cookie consent:", result.error);
+        setIsAnimating(true);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error accepting cookie consent:", error);
-      // On error, reset animation to show banner again
-      setIsAnimating(true);
+      
+      // Handle "server action does not exist" error specifically
+      const isServerActionError = 
+        error?.message?.includes("does not exist") ||
+        error?.message?.includes("Cannot find") ||
+        error?.message?.includes("not found");
+      
+      if (isServerActionError) {
+        console.warn("Server action unavailable, cannot save consent");
+        // On server action error, reset animation to show banner again
+        setIsAnimating(true);
+      } else {
+        // On other errors, reset animation to show banner again
+        setIsAnimating(true);
+      }
     }
   };
 

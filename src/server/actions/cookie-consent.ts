@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth } from "@/lib/utils/auth-server";
+import { cookies } from "next/headers";
 
 /**
  * Server action to accept cookie consent for the authenticated user
@@ -48,24 +49,32 @@ export async function acceptCookieConsent(): Promise<
 
 /**
  * Server action to check if the authenticated user has accepted cookie consent
- * Returns null if user is not authenticated
+ * Returns consent status for both authenticated and non-authenticated users
  */
 export async function checkCookieConsent(): Promise<
-  | { success: true; accepted: boolean; acceptedAt: Date | null }
+  | { success: true; accepted: boolean; acceptedAt: Date | null; isLoggedIn: boolean }
   | { success: false; error: string }
-  | null
 > {
   try {
     // Get current user (returns null if not authenticated)
     const { getCurrentUser } = await import("@/lib/utils/auth-server");
     const user = await getCurrentUser();
 
-    // If user is not authenticated, return null (not an error)
+    // If user is not authenticated, check cookie instead
     if (!user) {
-      return null;
+      const cookieStore = await cookies();
+      const consentCookie = cookieStore.get("cookie-consent-accepted");
+      const accepted = consentCookie?.value === "true";
+      
+      return {
+        success: true,
+        accepted,
+        acceptedAt: accepted ? new Date() : null,
+        isLoggedIn: false,
+      };
     }
 
-    // Get user's cookie consent status
+    // Get user's cookie consent status from database
     const userData = await prisma.user.findUnique({
       where: { id: user.id },
       select: {
@@ -85,12 +94,46 @@ export async function checkCookieConsent(): Promise<
       success: true,
       accepted: userData.cookieConsentAccepted,
       acceptedAt: userData.cookieConsentAcceptedAt,
+      isLoggedIn: true,
     };
   } catch (error) {
     console.error("Error checking cookie consent:", error);
     return {
       success: false,
       error: "An error occurred while checking cookie preferences",
+    };
+  }
+}
+
+/**
+ * Server action to accept cookie consent for non-authenticated users
+ * Sets a cookie instead of using database
+ */
+export async function acceptCookieConsentForGuest(): Promise<
+  | { success: true; message?: string }
+  | { success: false; error: string }
+> {
+  try {
+    const cookieStore = await cookies();
+    
+    // Set cookie consent cookie (expires in 1 year)
+    cookieStore.set("cookie-consent-accepted", "true", {
+      httpOnly: false, // Allow client-side access
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 365, // 1 year
+      path: "/",
+    });
+
+    return {
+      success: true,
+      message: "Cookie consent saved successfully",
+    };
+  } catch (error) {
+    console.error("Error accepting cookie consent for guest:", error);
+    return {
+      success: false,
+      error: "An error occurred while saving cookie preferences. Please try again.",
     };
   }
 }
