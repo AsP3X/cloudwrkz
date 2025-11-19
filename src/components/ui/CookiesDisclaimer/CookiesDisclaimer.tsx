@@ -21,21 +21,43 @@ async function callServerActionWithRetry<T>(
     } catch (error: any) {
       lastError = error;
       
-      // Check if it's an UnrecognizedActionError
+      // Check if it's an UnrecognizedActionError or 404 error
       const isUnrecognizedActionError = 
         error?.name === "UnrecognizedActionError" ||
         error?.message?.includes("was not found on the server") ||
         error?.message?.includes("Server Action") ||
         error?.message?.includes("does not exist");
       
-      if (isUnrecognizedActionError && attempt < maxRetries) {
+      // Check for HTTP 404 errors (server action endpoint not found)
+      // Next.js may wrap the error, so check multiple properties and message
+      const is404Error = 
+        error?.status === 404 ||
+        error?.statusCode === 404 ||
+        error?.message?.includes("404") ||
+        error?.message?.includes("Not Found") ||
+        error?.message?.includes("not found") ||
+        (error?.response?.status === 404) ||
+        (error?.stack?.includes("404"));
+      
+      // Check for network errors
+      const isNetworkError = 
+        error?.message?.includes("Failed to fetch") ||
+        error?.message?.includes("NetworkError") ||
+        error?.name === "TypeError";
+      
+      // If it's a server action error or 404, retry with backoff
+      if ((isUnrecognizedActionError || is404Error) && attempt < maxRetries) {
         // Wait a bit before retrying (exponential backoff)
         await new Promise(resolve => setTimeout(resolve, 100 * Math.pow(2, attempt)));
-        // Force a fresh import by invalidating the module cache
-        // This is done by importing with a cache-busting query parameter
         continue;
       }
       
+      // If it's a network error, don't retry (likely a connectivity issue)
+      if (isNetworkError) {
+        throw error;
+      }
+      
+      // For other errors, throw immediately
       throw error;
     }
   }
@@ -110,20 +132,36 @@ export const CookiesDisclaimer: React.FC<CookiesDisclaimerProps> = ({
       } catch (error: any) {
         console.error("Error checking cookie consent:", error);
         
-        // Handle UnrecognizedActionError specifically
+        // Handle various server action errors
         const isUnrecognizedActionError = 
           error?.name === "UnrecognizedActionError" ||
           error?.message?.includes("was not found on the server") ||
           error?.message?.includes("Server Action");
         
-        if (isUnrecognizedActionError && !hasRefreshedRef.current) {
-          console.warn("Server action unavailable (stale reference), refreshing to get fresh actions");
+        const is404Error = 
+          error?.status === 404 ||
+          error?.statusCode === 404 ||
+          error?.message?.includes("404") ||
+          error?.message?.includes("Not Found") ||
+          error?.message?.includes("not found") ||
+          (error?.response?.status === 404) ||
+          (error?.stack?.includes("404"));
+        
+        const isNetworkError = 
+          error?.message?.includes("Failed to fetch") ||
+          error?.message?.includes("NetworkError");
+        
+        if ((isUnrecognizedActionError || is404Error) && !hasRefreshedRef.current) {
+          console.warn("Server action endpoint unavailable, refreshing to get fresh actions");
           // Refresh router to get fresh server actions (only once)
           hasRefreshedRef.current = true;
           router.refresh();
+        } else if (isNetworkError) {
+          console.warn("Network error checking cookie consent, showing banner");
         }
         
-        // On error, show banner to allow user to accept
+        // On any error, show banner to allow user to accept
+        // This ensures the banner is always shown if we can't check consent
         if (!isMounted) return;
         setIsUserLoggedIn(false);
         setHasAccepted(false);
@@ -194,16 +232,28 @@ export const CookiesDisclaimer: React.FC<CookiesDisclaimerProps> = ({
     } catch (error: any) {
       console.error("Error accepting cookie consent:", error);
       
-      // Handle UnrecognizedActionError specifically
+      // Handle various server action errors
       const isUnrecognizedActionError = 
         error?.name === "UnrecognizedActionError" ||
         error?.message?.includes("was not found on the server") ||
         error?.message?.includes("Server Action");
       
-      if (isUnrecognizedActionError) {
-        console.warn("Server action unavailable (stale reference), refreshing to get fresh actions");
-        // On stale action error, refresh the router to get fresh server actions
-        // This will re-fetch the action manifest without a full page reload
+      const is404Error = 
+        error?.status === 404 ||
+        error?.statusCode === 404 ||
+        error?.message?.includes("404") ||
+        error?.message?.includes("Not Found") ||
+        error?.message?.includes("not found") ||
+        (error?.response?.status === 404) ||
+        (error?.stack?.includes("404"));
+      
+      const isNetworkError = 
+        error?.message?.includes("Failed to fetch") ||
+        error?.message?.includes("NetworkError");
+      
+      if ((isUnrecognizedActionError || is404Error)) {
+        console.warn("Server action endpoint unavailable, refreshing to get fresh actions");
+        // On stale action or 404 error, refresh the router to get fresh server actions
         setIsAnimating(true);
         // Refresh router to get fresh server actions (only if not already refreshed)
         if (!hasRefreshedRef.current) {
@@ -214,6 +264,9 @@ export const CookiesDisclaimer: React.FC<CookiesDisclaimerProps> = ({
         setTimeout(() => {
           setIsAnimating(true);
         }, 500);
+      } else if (isNetworkError) {
+        console.warn("Network error accepting cookie consent, showing banner again");
+        setIsAnimating(true);
       } else {
         // On other errors, reset animation to show banner again
         setIsAnimating(true);
