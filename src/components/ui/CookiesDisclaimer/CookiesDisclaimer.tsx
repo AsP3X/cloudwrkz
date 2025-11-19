@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useEffect } from "react";
 import { Button } from "../Button";
 import { cn } from "@/lib/utils/cn";
 import type { CookiesDisclaimerProps } from "./CookiesDisclaimer.types";
@@ -76,8 +75,6 @@ export const CookiesDisclaimer: React.FC<CookiesDisclaimerProps> = ({
   privacyPolicyLink,
   onAccept,
 }) => {
-  const router = useRouter();
-  const hasRefreshedRef = useRef(false);
   const [hasAccepted, setHasAccepted] = useState<boolean>(false);
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -88,10 +85,25 @@ export const CookiesDisclaimer: React.FC<CookiesDisclaimerProps> = ({
     let timer: NodeJS.Timeout | null = null;
     let isMounted = true;
 
+    // Helper to read cookie client-side
+    const getCookie = (name: string): string | null => {
+      if (typeof document === 'undefined') return null;
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop()?.split(';').shift() || null;
+      return null;
+    };
+
     // Check if user is logged in and has accepted cookies
     // Priority: Database (for logged-in users) -> Cookies (for non-logged-in users)
     const checkUserConsent = async () => {
+      // First, check cookie client-side as a fallback
+      // This allows us to show/hide banner even if server actions fail
+      const cookieConsent = getCookie("cookie-consent-accepted");
+      const hasAcceptedCookie = cookieConsent === "true";
+
       try {
+        // Try to check via server action to get accurate login status
         // Dynamically import to avoid stale server action references
         // Use callServerActionWithRetry to handle stale action errors
         const result = await callServerActionWithRetry(async () => {
@@ -151,28 +163,63 @@ export const CookiesDisclaimer: React.FC<CookiesDisclaimerProps> = ({
           error?.message?.includes("Failed to fetch") ||
           error?.message?.includes("NetworkError");
         
-        if ((isUnrecognizedActionError || is404Error) && !hasRefreshedRef.current) {
-          console.warn("Server action endpoint unavailable, refreshing to get fresh actions");
-          // Refresh router to get fresh server actions (only once)
-          hasRefreshedRef.current = true;
-          router.refresh();
+        // Handle server action errors gracefully
+        if ((isUnrecognizedActionError || is404Error)) {
+          console.warn("Server action unavailable, falling back to client-side cookie check");
+          // Don't reload immediately - instead fall back to client-side cookie check
+          // This prevents infinite reload loops and provides better UX
+          
+          if (!isMounted) return;
+          
+          // Use client-side cookie as fallback
+          setIsUserLoggedIn(false);
+          setHasAccepted(hasAcceptedCookie);
+          setIsLoading(false);
+          
+          if (!hasAcceptedCookie) {
+            timer = setTimeout(() => {
+              if (isMounted) {
+                setIsVisible(true);
+                setIsAnimating(true);
+              }
+            }, 100);
+          }
+          return; // Exit early, using client-side fallback
         } else if (isNetworkError) {
-          console.warn("Network error checking cookie consent, showing banner");
+          console.warn("Network error checking cookie consent, using client-side cookie check");
+          
+          if (!isMounted) return;
+          
+          // Use client-side cookie as fallback
+          setIsUserLoggedIn(false);
+          setHasAccepted(hasAcceptedCookie);
+          setIsLoading(false);
+          
+          if (!hasAcceptedCookie) {
+            timer = setTimeout(() => {
+              if (isMounted) {
+                setIsVisible(true);
+                setIsAnimating(true);
+              }
+            }, 100);
+          }
+          return; // Exit early, using client-side fallback
         }
         
-        // On any error, show banner to allow user to accept
-        // This ensures the banner is always shown if we can't check consent
+        // For other errors, show banner to allow user to accept
         if (!isMounted) return;
         setIsUserLoggedIn(false);
-        setHasAccepted(false);
+        setHasAccepted(hasAcceptedCookie);
         setIsLoading(false);
         
-        timer = setTimeout(() => {
-          if (isMounted) {
-            setIsVisible(true);
-            setIsAnimating(true);
-          }
-        }, 100);
+        if (!hasAcceptedCookie) {
+          timer = setTimeout(() => {
+            if (isMounted) {
+              setIsVisible(true);
+              setIsAnimating(true);
+            }
+          }, 100);
+        }
       }
     };
 
@@ -252,18 +299,10 @@ export const CookiesDisclaimer: React.FC<CookiesDisclaimerProps> = ({
         error?.message?.includes("NetworkError");
       
       if ((isUnrecognizedActionError || is404Error)) {
-        console.warn("Server action endpoint unavailable, refreshing to get fresh actions");
-        // On stale action or 404 error, refresh the router to get fresh server actions
+        console.warn("Server action unavailable, cannot save consent - banner will remain visible");
+        // On stale action or 404 error, don't reload - just show banner again
+        // User can try again after server recovers
         setIsAnimating(true);
-        // Refresh router to get fresh server actions (only if not already refreshed)
-        if (!hasRefreshedRef.current) {
-          hasRefreshedRef.current = true;
-          router.refresh();
-        }
-        // Show banner again after a short delay
-        setTimeout(() => {
-          setIsAnimating(true);
-        }, 500);
       } else if (isNetworkError) {
         console.warn("Network error accepting cookie consent, showing banner again");
         setIsAnimating(true);
