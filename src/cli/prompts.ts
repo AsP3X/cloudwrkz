@@ -121,7 +121,7 @@ export async function confirm(question: string, defaultValue: boolean = false): 
 /**
  * Display a menu and return the selected option
  * Automatically assigns numbers to options (1, 2, 3, etc.)
- * Returns the selected option index (0-based) as a string
+ * Returns the key of the selected option
  */
 export async function menu(title: string, options: { key: string; label: string }[]): Promise<string> {
   const rl = createInterface();
@@ -134,22 +134,32 @@ export async function menu(title: string, options: { key: string; label: string 
   console.log("─".repeat(50));
 
   const validNumbers = options.map((_, index) => (index + 1).toString());
+  const validKeys = options.map(opt => opt.key.toLowerCase());
 
   return new Promise((resolve) => {
     const ask = () => {
       rl.question("\nSelect option: ", (answer) => {
-        const choice = answer.trim();
+        const choice = answer.trim().toLowerCase();
 
-        if (!validNumbers.includes(choice)) {
-          console.error(`Invalid choice. Please enter a number between 1 and ${options.length}.`);
-          ask();
+        // Check if it's a valid number (1-based index)
+        if (validNumbers.includes(choice)) {
+          const selectedIndex = parseInt(choice) - 1;
+          rl.close();
+          resolve(options[selectedIndex].key);
           return;
         }
 
-        rl.close();
-        // Return the key of the selected option
-        const selectedIndex = parseInt(choice) - 1;
-        resolve(options[selectedIndex].key);
+        // Check if it's a valid key (case-insensitive)
+        if (validKeys.includes(choice)) {
+          const selectedOption = options.find(opt => opt.key.toLowerCase() === choice);
+          rl.close();
+          resolve(selectedOption!.key);
+          return;
+        }
+
+        // Invalid choice
+        console.error(`Invalid choice. Please enter a number between 1 and ${options.length}, or a valid option key.`);
+        ask();
       });
     };
 

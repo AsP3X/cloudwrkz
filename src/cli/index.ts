@@ -87,29 +87,30 @@ async function runInteractiveMode() {
 }
 
 async function runUserInteractive() {
+  // Import user CLI functions once (modules are cached)
+  const userCli = await import("./user-cli");
+
   while (true) {
     clear();
     console.log("╔════════════════════════════════════════════╗");
     console.log("║         User Management                    ║");
     console.log("╚════════════════════════════════════════════╝\n");
 
-    const choice = await menu("Select a command:", [
+    const choice = await menu("Select an option:", [
+      { key: "s", label: "Select User (to perform actions)" },
       { key: "c", label: "Create User" },
       { key: "l", label: "List Users" },
-      { key: "s", label: "Show User Details" },
-      { key: "us", label: "Update User Status" },
-      { key: "ur", label: "Update User Role" },
-      { key: "up", label: "Update User Password" },
-      { key: "v", label: "Verify User Email" },
-      { key: "cc", label: "Cookie Consent Management" },
-      { key: "d", label: "Delete User" },
       { key: "b", label: "Back to Main Menu" },
     ]);
 
-    // Import user CLI functions
-    const userCli = await import("./user-cli");
-
     switch (choice) {
+      case "s":
+        // Select a user first, then show actions menu
+        const selectedUser = await selectUserForActions();
+        if (selectedUser) {
+          await runUserActionsInteractive(selectedUser);
+        }
+        break;
       case "c":
         clear();
         await userCli.handleCreateInteractive();
@@ -120,39 +121,262 @@ async function runUserInteractive() {
         await userCli.handleListInteractive();
         await prompt("\nPress Enter to continue...");
         break;
+      case "b":
+        return;
+    }
+  }
+}
+
+async function selectUserForActions(): Promise<{ id: string; email: string; name: string | null } | null> {
+  const { prisma } = await import("../lib/db/prisma");
+  const { formatUserName } = await import("../lib/utils/users");
+  
+  clear();
+  console.log("╔════════════════════════════════════════════╗");
+  console.log("║         Select User                        ║");
+  console.log("╚════════════════════════════════════════════╝\n");
+
+  // Fetch users
+  const users = await prisma.user.findMany({
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      status: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (users.length === 0) {
+    console.log("No users found.");
+    await prompt("\nPress Enter to continue...");
+    return null;
+  }
+
+  // Display users in a table format
+  console.log(`Found ${users.length} user(s):\n`);
+  users.forEach((u, index) => {
+    const displayName = formatUserName(u);
+    console.log(`${index + 1}. ${displayName} - ${u.status} [${u.role}]${u.status !== "DELETED" && u.email !== displayName ? ` (${u.email})` : ""}`);
+  });
+  console.table(
+    users.map((u) => ({
+      "#": users.indexOf(u) + 1,
+      Email: u.status === "DELETED" ? formatUserName(u) : u.email,
+      Name: u.status === "DELETED" ? formatUserName(u) : (u.name || "-"),
+      Role: u.role,
+      Status: u.status,
+    }))
+  );
+
+  separator();
+
+  // Create menu options for selection (using 1-based keys to match display)
+  const userOptions = users.map((u, index) => ({
+    key: (index + 1).toString(),
+    label: `${u.email}${u.name ? ` (${u.name})` : ""} - ${u.status} [${u.role}]`,
+  }));
+
+  // Add option to enter email manually
+  userOptions.push({ key: "e", label: "Enter email manually" });
+  userOptions.push({ key: "b", label: "Back" });
+
+  try {
+    const choice = await menu("Select a user:", userOptions);
+
+    if (choice === "b") {
+      return null;
+    }
+
+    if (choice === "e") {
+      const emailInput = await prompt("Enter user email: ");
+      if (!emailInput || emailInput.trim() === "") {
+        console.error(`\nEmail cannot be empty`);
+        await prompt("\nPress Enter to continue...");
+        return null;
+      }
+      const user = await prisma.user.findUnique({
+        where: { email: emailInput.trim() },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          status: true,
+        },
+      });
+      if (!user) {
+        console.error(`\nUser not found: ${emailInput}`);
+        await prompt("\nPress Enter to continue...");
+        return null;
+      }
+      console.log(`\n✅ Selected user: ${user.email}${user.name ? ` (${user.name})` : ""}`);
+      await prompt("\nPress Enter to continue...");
+      return user;
+    }
+
+    // Choice should be a number string like "1", "2", etc.
+    const userIndex = parseInt(choice) - 1; // Convert back to 0-based index
+    if (isNaN(userIndex) || userIndex < 0 || userIndex >= users.length) {
+      console.error(`\nInvalid selection: ${choice}`);
+      await prompt("\nPress Enter to continue...");
+      return null;
+    }
+
+    const selectedUser = users[userIndex];
+    if (!selectedUser) {
+      console.error(`\nUser not found at index ${userIndex}`);
+      await prompt("\nPress Enter to continue...");
+      return null;
+    }
+
+    console.log(`\n✅ Selected user: ${selectedUser.email}${selectedUser.name ? ` (${selectedUser.name})` : ""}`);
+    await prompt("\nPress Enter to continue...");
+    return selectedUser;
+  } catch (error) {
+    console.error(`\nError selecting user:`, error instanceof Error ? error.message : error);
+    await prompt("\nPress Enter to continue...");
+    return null;
+  }
+}
+
+async function runUserActionsInteractive(selectedUser: { id: string; email: string; name: string | null }) {
+  const userCli = await import("./user-cli");
+  const { prisma } = await import("../lib/db/prisma");
+
+  // Helper function to refresh user data
+  const refreshUser = async () => {
+    const refreshed = await prisma.user.findUnique({
+      where: { email: selectedUser.email },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        status: true,
+      },
+    });
+    if (refreshed) {
+      selectedUser.id = refreshed.id;
+      selectedUser.email = refreshed.email;
+      selectedUser.name = refreshed.name;
+    }
+    return refreshed;
+  };
+
+  while (true) {
+    // Refresh user data to show current info
+    await refreshUser();
+    
+    clear();
+    console.log("╔════════════════════════════════════════════╗");
+    console.log("║         User Actions                       ║");
+    console.log("╚════════════════════════════════════════════╝\n");
+    console.log(`Selected User: ${selectedUser.email}${selectedUser.name ? ` (${selectedUser.name})` : ""}\n`);
+
+    const choice = await menu("Select an action:", [
+      { key: "s", label: "Show User Details" },
+      { key: "us", label: "Update User Status" },
+      { key: "ur", label: "Update User Role" },
+      { key: "up", label: "Update User Password" },
+      { key: "v", label: "Verify User Email" },
+      { key: "cc", label: "Cookie Consent Management" },
+      { key: "d", label: "Delete User" },
+      { key: "c", label: "Change User" },
+      { key: "b", label: "Back to User Management" },
+    ]);
+
+    switch (choice) {
       case "s":
         clear();
-        await userCli.handleShowInteractive();
+        // Use the selected user directly
+        const { prisma } = await import("../lib/db/prisma");
+        const user = await prisma.user.findUnique({
+          where: { email: selectedUser.email },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            status: true,
+            emailVerified: true,
+            avatar: true,
+            bio: true,
+            cookieConsentAccepted: true,
+            cookieConsentAcceptedAt: true,
+            createdAt: true,
+            updatedAt: true,
+            lastLoginAt: true,
+            lastLoginIp: true,
+            _count: {
+              select: {
+                createdTickets: true,
+                assignedTickets: true,
+                ticketComments: true,
+                sessions: true,
+              },
+            },
+          },
+        });
+
+        if (user) {
+          console.log("\n📋 User Details:\n");
+          console.log(`ID:              ${user.id}`);
+          console.log(`Email:           ${user.email}`);
+          console.log(`Name:            ${user.name || "-"}`);
+          console.log(`Role:            ${user.role}`);
+          console.log(`Status:          ${user.status}`);
+          console.log(`Email Verified:  ${user.emailVerified ? "Yes" : "No"}`);
+          console.log(`Cookie Consent:  ${user.cookieConsentAccepted ? "Yes" : "No"}`);
+          if (user.cookieConsentAcceptedAt) {
+            console.log(`Consent Date:    ${user.cookieConsentAcceptedAt.toLocaleString()}`);
+          }
+          console.log(`Avatar:          ${user.avatar || "-"}`);
+          console.log(`Bio:             ${user.bio || "-"}`);
+          console.log(`Created:         ${user.createdAt.toLocaleString()}`);
+          console.log(`Updated:         ${user.updatedAt.toLocaleString()}`);
+          console.log(`Last Login:      ${user.lastLoginAt?.toLocaleString() || "Never"}`);
+          console.log(`Last Login IP:   ${user.lastLoginIp || "-"}`);
+          console.log(`\n📊 Statistics:`);
+          console.log(`  Created Tickets:    ${user._count.createdTickets}`);
+          console.log(`  Assigned Tickets:    ${user._count.assignedTickets}`);
+          console.log(`  Ticket Comments:     ${user._count.ticketComments}`);
+          console.log(`  Active Sessions:     ${user._count.sessions}`);
+        }
         await prompt("\nPress Enter to continue...");
         break;
       case "us":
         clear();
-        await userCli.handleUpdateStatusInteractive();
+        await userCli.handleUpdateStatusInteractiveWithUser(selectedUser);
         await prompt("\nPress Enter to continue...");
         break;
       case "ur":
         clear();
-        await userCli.handleUpdateRoleInteractive();
+        await userCli.handleUpdateRoleInteractiveWithUser(selectedUser);
         await prompt("\nPress Enter to continue...");
         break;
       case "up":
         clear();
-        await userCli.handleUpdatePasswordInteractive();
+        await userCli.handleUpdatePasswordInteractiveWithUser(selectedUser);
         await prompt("\nPress Enter to continue...");
         break;
       case "v":
         clear();
-        await userCli.handleVerifyInteractive();
+        await userCli.handleVerifyInteractiveWithUser(selectedUser);
         await prompt("\nPress Enter to continue...");
         break;
       case "cc":
-        await runCookieConsentInteractive();
+        await runCookieConsentInteractiveWithUser(selectedUser);
         break;
       case "d":
         clear();
-        await userCli.handleDeleteInteractive();
+        await userCli.handleDeleteInteractiveWithUser(selectedUser);
         await prompt("\nPress Enter to continue...");
         break;
+      case "c":
+        // Change user - go back to selection
+        return;
       case "b":
         return;
     }
@@ -190,6 +414,45 @@ async function runCookieConsentInteractive() {
       case "s":
         clear();
         await userCli.handleCookieStatusInteractive();
+        await prompt("\nPress Enter to continue...");
+        break;
+      case "b":
+        return;
+    }
+  }
+}
+
+async function runCookieConsentInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
+  const userCli = await import("./user-cli");
+
+  while (true) {
+    clear();
+    console.log("╔════════════════════════════════════════════╗");
+    console.log("║      Cookie Consent Management             ║");
+    console.log("╚════════════════════════════════════════════╝\n");
+    console.log(`Selected User: ${user.email}${user.name ? ` (${user.name})` : ""}\n`);
+
+    const choice = await menu("Select a command:", [
+      { key: "a", label: "Accept Cookie Consent" },
+      { key: "r", label: "Revoke Cookie Consent" },
+      { key: "s", label: "Check Cookie Consent Status" },
+      { key: "b", label: "Back to User Actions" },
+    ]);
+
+    switch (choice) {
+      case "a":
+        clear();
+        await userCli.handleCookieAcceptInteractiveWithUser(user);
+        await prompt("\nPress Enter to continue...");
+        break;
+      case "r":
+        clear();
+        await userCli.handleCookieRevokeInteractiveWithUser(user);
+        await prompt("\nPress Enter to continue...");
+        break;
+      case "s":
+        clear();
+        await userCli.handleCookieStatusInteractiveWithUser(user);
         await prompt("\nPress Enter to continue...");
         break;
       case "b":
@@ -267,25 +530,79 @@ async function runGroupInteractive() {
   }
 }
 
-function executeCommand(args: string[]) {
+async function executeCommand(args: string[]) {
   const category = args[0];
+  const commandArgs = args.slice(1); // Remove category, keep rest
 
   switch (category) {
     case "user":
-      // Import and run user CLI
-      import("./user-cli");
+      // Import and execute user CLI command
+      const userCli = await import("./user-cli");
+      // The user-cli module will handle execution via its own main() function
+      // when it detects commandArgs, but we need to ensure it runs
+      // Since user-cli checks process.argv directly, we need to let it handle it
+      // But we also need to ensure the process doesn't exit immediately
+      if (commandArgs.length === 0) {
+        // Show help if no command provided
+        console.log(`
+User Management CLI Tool
+
+Commands:
+  create <email> <password> [name]     Create a new user
+  delete <email|number>                Permanently delete a user and all associated data
+  list [--status=STATUS] [--role=ROLE] List users with optional filters
+  show <email|number>                  Show user details
+  update-status <email|number> <status> Update user status (PENDING|ACTIVE|SUSPENDED|DELETED)
+  update-role <email|number> <role>    Update user role (USER|ADMIN|MODERATOR|AGENT)
+  update-password <email|number> <password> Update user password
+  cookie-accept <email|number>         Accept cookie consent for a user
+  cookie-revoke <email|number>         Revoke cookie consent for a user
+  cookie-status <email|number>         Check cookie consent status for a user
+  verify <email|number>                Verify user email and optionally activate account
+
+Run 'pnpm cli user <command>' to execute a command.
+Run 'pnpm cli help' for more information.
+`);
+        await prisma.$disconnect();
+        process.exit(0);
+      }
+      // The module will handle execution when imported
       break;
     case "group":
-      // Import and run group CLI
-      import("./group-cli");
+      // Import and execute group CLI command
+      await import("./group-cli");
+      if (commandArgs.length === 0) {
+        // Show help if no command provided
+        console.log(`
+Group Management CLI Tool
+
+Commands:
+  create <name> [description]              Create a new group
+  delete <name|number>                     Delete a group
+  list                                     List all groups
+  show <name|number>                       Show group details with members
+  update <name|number> <newName> [desc]    Update group name and/or description
+  add-agent <group|number> <agent|number>  Add an agent to a group
+  remove-agent <group|number> <agent|number> Remove an agent from a group
+  list-agents <group|number>               List all agents in a group
+
+Run 'pnpm cli group <command>' to execute a command.
+Run 'pnpm cli help' for more information.
+`);
+        await prisma.$disconnect();
+        process.exit(0);
+      }
+      // The module will handle execution when imported
       break;
     case "module":
       console.log("Module management commands coming soon!");
+      await prisma.$disconnect();
       process.exit(0);
       break;
     default:
       console.error(`Unknown category: ${category}`);
       console.log("Run 'pnpm cli help' for available commands");
+      await prisma.$disconnect();
       process.exit(1);
   }
 }
@@ -318,6 +635,7 @@ Examples:
   # Update role (by email or number)
   pnpm cli user update-role user@example.com ADMIN
   pnpm cli user update-role 2 MODERATOR  # Select second user from list
+  pnpm cli user update-role 3 AGENT  # Select third user from list
   
   # Show user details
   pnpm cli user show user@example.com

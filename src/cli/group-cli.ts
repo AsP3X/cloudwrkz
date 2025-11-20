@@ -24,9 +24,12 @@ const commandArgs = args[0] === "group" ? args.slice(1) : args;
 
 // Check if this file is being run directly (not imported)
 // When imported, process.argv[1] won't match this file path
+// Also check if we're being called through index.ts (which includes "index.ts" or "cli/index")
 const isRunDirectly = process.argv[1]?.includes("group-cli");
+const isCalledFromIndex = process.argv[1]?.includes("cli/index") || process.argv[1]?.includes("index.ts");
+const shouldExecute = isRunDirectly || (isCalledFromIndex && commandArgs.length > 0);
 
-if (isRunDirectly && commandArgs.length === 0) {
+if ((isRunDirectly || isCalledFromIndex) && commandArgs.length === 0) {
   console.log(`
 Group Management CLI Tool
 
@@ -84,8 +87,8 @@ Examples:
 
 const command = commandArgs[0];
 
-// Only run main if there's a command (non-interactive mode) and file is run directly
-if (isRunDirectly && command) {
+// Only run main if there's a command (non-interactive mode) and file is run directly or called from index
+if (shouldExecute && command) {
   async function main() {
     try {
       switch (command) {

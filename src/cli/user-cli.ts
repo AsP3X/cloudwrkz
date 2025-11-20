@@ -15,6 +15,7 @@
 
 import { prisma } from "../lib/db/prisma";
 import { hashPassword } from "../lib/utils/auth";
+import { formatUserName } from "../lib/utils/users";
 import { prompt, promptPassword, select, confirm, separator } from "./prompts";
 
 // Get args - when called from index.ts, "user" is already removed
@@ -24,8 +25,14 @@ const commandArgs = args[0] === "user" ? args.slice(1) : args;
 
 // Check if this file is being run directly (not imported)
 // When imported, process.argv[1] won't match this file path
+// Also check if we're being called through index.ts (which includes "index.ts" or "cli/index")
 const isRunDirectly = process.argv[1]?.includes("user-cli");
+const isCalledFromIndex = process.argv[1]?.includes("cli/index") || process.argv[1]?.includes("index.ts");
+// Only execute if we have command args (non-interactive mode) or if run directly
+const shouldExecute = isRunDirectly || (isCalledFromIndex && commandArgs.length > 0);
 
+// Only show help and exit if run directly with no args, or called from index with no args
+// But NOT if we're being imported for interactive mode (which happens when args.length === 0 in interactive mode)
 if (isRunDirectly && commandArgs.length === 0) {
   console.log(`
 User Management CLI Tool
@@ -91,8 +98,8 @@ Role Options: USER, ADMIN, MODERATOR, AGENT
 
 const command = commandArgs[0];
 
-// Only run main if there's a command (non-interactive mode) and file is run directly
-if (isRunDirectly && command) {
+// Only run main if there's a command (non-interactive mode) and file is run directly or called from index
+if (shouldExecute && command) {
   async function main() {
     try {
       switch (command) {
@@ -309,17 +316,25 @@ async function handleDelete() {
     where: { userId },
   });
 
-  // Delete the user account - cascading deletes will handle related data
-  // This will delete:
-  // - All tickets created by the user (Cascade)
-  // - All ticket comments by the user (Cascade)
-  // - All group memberships (Cascade)
-  // - Assigned tickets will be unassigned (SetNull)
-  await prisma.user.delete({
+  // Soft delete: Set status to DELETED and schedule for deletion
+  // The account will be permanently purged after 30 days by the purge-deleted-accounts cron job
+  const updatedUser = await prisma.user.update({
     where: { id: userId },
+    data: {
+      status: "DELETED",
+      scheduledForDeletionAt: new Date(),
+    },
+    select: {
+      id: true,
+      email: true,
+      status: true,
+      scheduledForDeletionAt: true,
+    },
   });
 
-  console.log(`\n✅ User ${userEmail}${userName ? ` (${userName})` : ""} and all associated data deleted successfully!`);
+  console.log(`\n✅ User ${userEmail}${userName ? ` (${userName})` : ""} has been flagged for deletion. The account will be permanently removed after 30 days.`);
+  console.log(`   Status: ${updatedUser.status}`);
+  console.log(`   Scheduled for deletion at: ${updatedUser.scheduledForDeletionAt?.toISOString()}`);
 }
 
 async function handleList() {
@@ -368,10 +383,14 @@ async function handleList() {
   }
 
   console.log(`\nFound ${users.length} user(s):\n`);
+  users.forEach((u, index) => {
+    const displayName = formatUserName(u);
+    console.log(`${index + 1}. ${displayName} - ${u.status} [${u.role}]${u.status !== "DELETED" && u.email !== displayName ? ` (${u.email})` : ""}`);
+  });
   console.table(
     users.map((u: typeof users[0]) => ({
-      Email: u.email,
-      Name: u.name || "-",
+      Email: u.status === "DELETED" ? formatUserName(u) : u.email,
+      Name: u.status === "DELETED" ? formatUserName(u) : (u.name || "-"),
       Role: u.role,
       Status: u.status,
       Verified: u.emailVerified ? "✓" : "✗",
@@ -384,11 +403,40 @@ async function handleList() {
 
 async function handleShow() {
   if (commandArgs.length < 2) {
-    console.error("Usage: show <email>");
+    console.error("Usage: show <email|number>");
+    console.error("\nTip: Use 'list' command first to see user numbers");
     process.exit(1);
   }
 
-  const email = commandArgs[1];
+  const selection = commandArgs[1];
+  let email: string;
+
+  // Check if selection is a number (for selecting from list)
+  const userIndex = parseInt(selection) - 1;
+  
+  if (!isNaN(userIndex) && userIndex >= 0) {
+    // Selection is a number - fetch users and select by index
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        name: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (userIndex >= users.length) {
+      console.error(`Invalid user number: ${selection}. Only ${users.length} user(s) found.`);
+      console.error("\nRun 'pnpm cli user list' to see available users.");
+      process.exit(1);
+    }
+
+    email = users[userIndex].email;
+    console.log(`Selected user: ${email}${users[userIndex].name ? ` (${users[userIndex].name})` : ""}`);
+  } else {
+    // Selection is an email
+    email = selection;
+  }
 
   const user = await prisma.user.findUnique({
     where: { email },
@@ -1041,7 +1089,7 @@ export async function handleListInteractive() {
   }
 }
 
-async function handleListWithFilters(where: any) {
+export async function handleListWithFilters(where: any) {
   const users = await prisma.user.findMany({
     where,
     select: {
@@ -1066,12 +1114,13 @@ async function handleListWithFilters(where: any) {
 
   console.log(`\nFound ${users.length} user(s):\n`);
   users.forEach((u, index) => {
-    console.log(`${index + 1}. ${u.email} - ${u.status} [${u.role}] ${u.name ? `(${u.name})` : ""}`);
+    const displayName = formatUserName(u);
+    console.log(`${index + 1}. ${displayName} - ${u.status} [${u.role}]${u.status !== "DELETED" && u.email !== displayName ? ` (${u.email})` : ""}`);
   });
   console.table(
     users.map((u: typeof users[0]) => ({
-      Email: u.email,
-      Name: u.name || "-",
+      Email: u.status === "DELETED" ? formatUserName(u) : u.email,
+      Name: u.status === "DELETED" ? formatUserName(u) : (u.name || "-"),
       Role: u.role,
       Status: u.status,
       Verified: u.emailVerified ? "✓" : "✗",
@@ -1323,12 +1372,330 @@ export async function handleDeleteInteractive() {
       where: { userId: fullUser.id },
     });
 
-    // Delete the user account
-    await prisma.user.delete({
+    // Soft delete: Set status to DELETED and schedule for deletion
+    // The account will be permanently purged after 30 days by the purge-deleted-accounts cron job
+    const updatedUser = await prisma.user.update({
       where: { id: fullUser.id },
+      data: {
+        status: "DELETED",
+        scheduledForDeletionAt: new Date(),
+      },
+      select: {
+        id: true,
+        email: true,
+        status: true,
+        scheduledForDeletionAt: true,
+      },
     });
 
-    console.log(`\n✅ User ${fullUser.email}${fullUser.name ? ` (${fullUser.name})` : ""} and all associated data deleted successfully!`);
+    console.log(`\n✅ User ${fullUser.email}${fullUser.name ? ` (${fullUser.name})` : ""} has been flagged for deletion. The account will be permanently removed after 30 days.`);
+    console.log(`   Status: ${updatedUser.status}`);
+    console.log(`   Scheduled for deletion at: ${updatedUser.scheduledForDeletionAt?.toISOString()}`);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+// Interactive handlers that work with a pre-selected user
+export async function handleUpdateStatusInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
+  try {
+    const status = await select("Select new status:", ["PENDING", "ACTIVE", "SUSPENDED", "DELETED"]);
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: user.email },
+      select: { id: true, email: true, name: true, status: true },
+    });
+
+    if (!currentUser) {
+      console.error(`User with email ${user.email} not found`);
+      return;
+    }
+
+    if (currentUser.status === status) {
+      console.log(`User status is already ${status}`);
+      return;
+    }
+
+    await prisma.user.update({
+      where: { email: user.email },
+      data: { status: status as any },
+    });
+
+    console.log(`✅ User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} status updated: ${currentUser.status} → ${status}`);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleUpdateRoleInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
+  try {
+    const role = await select("Select new role:", ["USER", "ADMIN", "MODERATOR", "AGENT"]);
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: user.email },
+      select: { id: true, email: true, name: true, role: true },
+    });
+
+    if (!currentUser) {
+      console.error(`User with email ${user.email} not found`);
+      return;
+    }
+
+    if (currentUser.role === role) {
+      console.log(`User role is already ${role}`);
+      return;
+    }
+
+    await prisma.user.update({
+      where: { email: user.email },
+      data: { role: role as any },
+    });
+
+    console.log(`✅ User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} role updated: ${currentUser.role} → ${role}`);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleUpdatePasswordInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
+  try {
+    const password = await promptPassword("Enter new password: ");
+    if (password.length < 8) {
+      console.error("Password must be at least 8 characters long");
+      return;
+    }
+
+    const confirmPassword = await promptPassword("Confirm password: ");
+    if (password !== confirmPassword) {
+      console.error("Passwords do not match");
+      return;
+    }
+
+    const hashedPassword = await hashPassword(password);
+
+    await prisma.user.update({
+      where: { email: user.email },
+      data: { password: hashedPassword },
+    });
+
+    console.log(`✅ Password updated for user ${user.email}${user.name ? ` (${user.name})` : ""}`);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleVerifyInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
+  try {
+    const currentUser = await prisma.user.findUnique({
+      where: { email: user.email },
+      select: { id: true, email: true, name: true, status: true, emailVerified: true },
+    });
+
+    if (!currentUser) {
+      console.error(`User with email ${user.email} not found`);
+      return;
+    }
+
+    if (currentUser.emailVerified) {
+      console.log(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} is already verified`);
+      if (currentUser.status !== "ACTIVE") {
+        console.log(`Note: User status is ${currentUser.status}. Consider updating status to ACTIVE for full access.`);
+      }
+      return;
+    }
+
+    // Update email verification and optionally set status to ACTIVE if PENDING
+    const updateData: { emailVerified: boolean; status?: "ACTIVE" } = {
+      emailVerified: true,
+    };
+
+    if (currentUser.status === "PENDING") {
+      updateData.status = "ACTIVE";
+      await prisma.user.update({
+        where: { email: user.email },
+        data: updateData,
+      });
+      console.log(`✅ User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} email verified and account activated (status changed from PENDING to ACTIVE)`);
+    } else {
+      await prisma.user.update({
+        where: { email: user.email },
+        data: updateData,
+      });
+      console.log(`✅ User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} email verified`);
+      if (currentUser.status !== "ACTIVE") {
+        console.log(`Note: User status is ${currentUser.status}. User will need ACTIVE status to access protected pages.`);
+      }
+    }
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleDeleteInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
+  try {
+    // Get full user details with counts
+    const fullUser = await prisma.user.findUnique({
+      where: { email: user.email },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        role: true,
+        _count: {
+          select: {
+            createdTickets: true,
+            assignedTickets: true,
+            ticketComments: true,
+            sessions: true,
+            groupMemberships: true,
+          },
+        },
+      },
+    });
+
+    if (!fullUser) {
+      console.error("User not found");
+      return;
+    }
+
+    console.log(`\n⚠️  WARNING: You are about to permanently delete:`);
+    console.log(`   User: ${fullUser.email}${fullUser.name ? ` (${fullUser.name})` : ""}`);
+    console.log(`   Status: ${fullUser.status} | Role: ${fullUser.role}`);
+    console.log(`\n   This will also delete:`);
+    console.log(`   - ${fullUser._count.createdTickets} ticket(s) created by this user`);
+    console.log(`   - ${fullUser._count.ticketComments} ticket comment(s)`);
+    console.log(`   - ${fullUser._count.sessions} session(s)`);
+    console.log(`   - ${fullUser._count.groupMemberships} group membership(s)`);
+    console.log(`   - ${fullUser._count.assignedTickets} ticket assignment(s) will be unassigned`);
+    console.log(`\n   This action CANNOT be undone!`);
+
+    const confirmed = await confirm("\nAre you sure you want to delete this user?", false);
+    if (!confirmed) {
+      console.log("Deletion cancelled.");
+      return;
+    }
+
+    // Delete all user sessions first
+    await prisma.session.deleteMany({
+      where: { userId: fullUser.id },
+    });
+
+    // Soft delete: Set status to DELETED and schedule for deletion
+    // The account will be permanently purged after 30 days by the purge-deleted-accounts cron job
+    const updatedUser = await prisma.user.update({
+      where: { id: fullUser.id },
+      data: {
+        status: "DELETED",
+        scheduledForDeletionAt: new Date(),
+      },
+      select: {
+        id: true,
+        email: true,
+        status: true,
+        scheduledForDeletionAt: true,
+      },
+    });
+
+    console.log(`\n✅ User ${fullUser.email}${fullUser.name ? ` (${fullUser.name})` : ""} has been flagged for deletion. The account will be permanently removed after 30 days.`);
+    console.log(`   Status: ${updatedUser.status}`);
+    console.log(`   Scheduled for deletion at: ${updatedUser.scheduledForDeletionAt?.toISOString()}`);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleCookieAcceptInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
+  try {
+    const currentUser = await prisma.user.findUnique({
+      where: { email: user.email },
+      select: { id: true, email: true, name: true, cookieConsentAccepted: true },
+    });
+
+    if (!currentUser) {
+      console.error(`User with email ${user.email} not found`);
+      return;
+    }
+
+    if (currentUser.cookieConsentAccepted) {
+      console.log(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} has already accepted cookie consent`);
+      return;
+    }
+
+    await prisma.user.update({
+      where: { email: user.email },
+      data: {
+        cookieConsentAccepted: true,
+        cookieConsentAcceptedAt: new Date(),
+      },
+    });
+
+    console.log(`✅ Cookie consent accepted for user ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""}`);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleCookieRevokeInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
+  try {
+    const currentUser = await prisma.user.findUnique({
+      where: { email: user.email },
+      select: { id: true, email: true, name: true, cookieConsentAccepted: true },
+    });
+
+    if (!currentUser) {
+      console.error(`User with email ${user.email} not found`);
+      return;
+    }
+
+    if (!currentUser.cookieConsentAccepted) {
+      console.log(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} has not accepted cookie consent yet`);
+      return;
+    }
+
+    await prisma.user.update({
+      where: { email: user.email },
+      data: {
+        cookieConsentAccepted: false,
+        cookieConsentAcceptedAt: null,
+      },
+    });
+
+    console.log(`✅ Cookie consent revoked for user ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""}`);
+    console.log(`   The user will see the cookie banner again on their next visit.`);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleCookieStatusInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
+  try {
+    const currentUser = await prisma.user.findUnique({
+      where: { email: user.email },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        cookieConsentAccepted: true,
+        cookieConsentAcceptedAt: true,
+      },
+    });
+
+    if (!currentUser) {
+      console.error(`User with email ${user.email} not found`);
+      return;
+    }
+
+    console.log("\n🍪 Cookie Consent Status:\n");
+    console.log(`User:            ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""}`);
+    console.log(`Status:          ${currentUser.cookieConsentAccepted ? "✅ Accepted" : "❌ Not accepted"}`);
+    if (currentUser.cookieConsentAcceptedAt) {
+      console.log(`Accepted Date:   ${currentUser.cookieConsentAcceptedAt.toLocaleString()}`);
+      const daysSince = Math.floor((Date.now() - currentUser.cookieConsentAcceptedAt.getTime()) / (1000 * 60 * 60 * 24));
+      console.log(`Days Since:      ${daysSince} day(s) ago`);
+    } else {
+      console.log(`Accepted Date:   Never`);
+    }
   } catch (error) {
     console.error("Error:", error instanceof Error ? error.message : error);
   }
