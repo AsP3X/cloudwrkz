@@ -8,7 +8,8 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
-import { updateGroup, addAgentToGroup, removeAgentFromGroup, getAgents } from "@/server/actions/groups";
+import { updateGroup, addAgentToGroup, removeAgentFromGroup } from "@/server/actions/groups";
+import { getAgents } from "@/server/actions/users";
 import type { getGroup } from "@/server/actions/groups";
 
 type Group = NonNullable<Awaited<ReturnType<typeof getGroup>>>;

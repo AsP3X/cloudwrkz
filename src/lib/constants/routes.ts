@@ -16,6 +16,7 @@ export const ROUTES = {
   ADMIN_MODULES: "/dashboard/admin/modules",
   ADMIN_GROUPS: "/dashboard/admin/groups",
   ADMIN_SETTINGS: "/dashboard/admin/settings",
+  ADMIN_STATISTICS: "/dashboard/admin/statistics",
 } as const;
 
 // Export individual routes for better tree-shaking and to ensure they're always available

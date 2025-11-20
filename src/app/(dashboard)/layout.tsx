@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/utils/auth-server";
 import { ROUTES } from "@/lib/constants/routes";
 import { DashboardSidebar } from "@/components/layout/DashboardSidebar";
-import { AdminSidebar } from "@/components/layout/AdminSidebar";
+import { AdminSidebarWrapper } from "@/components/layout/AdminSidebar/AdminSidebarWrapper";
 import { DashboardHeader } from "@/components/layout/DashboardHeader";
 import { getAllModules } from "@/server/actions/modules";
 
@@ -39,7 +39,7 @@ export default async function DashboardLayout({
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-primary-100 dark:bg-primary-950 rounded-full mix-blend-multiply filter blur-3xl opacity-5 dark:opacity-2" />
       </div>
       {isAdmin ? (
-        <AdminSidebar />
+        <AdminSidebarWrapper />
       ) : (
         <DashboardSidebar enabledModuleKeys={enabledModuleKeys} userRole={user.role} />
       )}
