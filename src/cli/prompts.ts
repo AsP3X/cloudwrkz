@@ -48,7 +48,7 @@ export function promptPassword(question: string): Promise<string> {
 
     // Try to hide input if possible
     // This is a best-effort approach
-    if (process.stdin.setRawMode && process.stdin.isTTY) {
+    if (typeof process.stdin.setRawMode === "function" && process.stdin.isTTY) {
       // For TTY terminals, we could use raw mode, but it's complex
       // For now, just use standard input (may show characters)
       // Users can still type normally, but characters will be visible

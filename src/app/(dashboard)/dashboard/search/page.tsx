@@ -26,7 +26,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const user = await getCurrentUser();
   const params = await searchParams;
 
-  if (!user || (user.role !== "USER" && user.role !== "AGENT")) {
+  if (!user || (user.role !== "USER" && user.role !== "AGENT" && user.role !== "ADMIN" && user.role !== "MODERATOR")) {
     redirect(ROUTES.LOGIN);
   }
 

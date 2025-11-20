@@ -111,6 +111,8 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
   const showDescription = viewMode === "detailed";
   const showPriority = viewMode !== "title-only";
   const showUpdated = viewMode === "detailed";
+  const isCompact = viewMode === "compact";
+  const isNormal = viewMode === "normal";
 
   const allSelected = tickets.length > 0 && selectedTickets.size === tickets.length;
   const someSelected = selectedTickets.size > 0 && selectedTickets.size < tickets.length;
@@ -393,14 +395,14 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
                   </td>
                 )}
                 {showType && (
-                  <td className={`px-6 py-4 whitespace-nowrap ${viewMode === "normal" ? "hidden md:table-cell" : ""} ${viewMode === "compact" ? "px-4 py-3" : ""}`}>
+                  <td className={`px-6 py-4 whitespace-nowrap ${isNormal ? "hidden md:table-cell" : ""} ${isCompact ? "px-4 py-3" : ""}`}>
                     <span className="px-2 py-1 rounded-full text-xs font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
                       {getTicketTypeLabel(ticket.type as TicketType)}
                     </span>
                   </td>
                 )}
                 {showAssignedTo && (
-                  <td className={`px-6 py-4 whitespace-nowrap ${viewMode === "normal" ? "hidden lg:table-cell" : ""} ${viewMode === "compact" ? "px-4 py-3" : ""}`}>
+                  <td className={`px-6 py-4 whitespace-nowrap ${isNormal ? "hidden lg:table-cell" : ""} ${isCompact ? "px-4 py-3" : ""}`}>
                     {ticket.assignedTo ? (
                       <div className="text-sm text-neutral-700 dark:text-neutral-300">
                         {ticket.assignedTo.name || ticket.assignedTo.email}
@@ -416,8 +418,8 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
                   </td>
                 )}
                 {showCreated && (
-                  <td className={`px-6 py-4 whitespace-nowrap ${viewMode === "normal" ? "hidden lg:table-cell" : ""} ${viewMode === "compact" ? "px-4 py-3" : ""}`}>
-                    <div className={`${viewMode === "compact" ? "text-xs" : "text-sm"} text-neutral-600 dark:text-neutral-400`}>
+                  <td className={`px-6 py-4 whitespace-nowrap ${isNormal ? "hidden lg:table-cell" : ""} ${isCompact ? "px-4 py-3" : ""}`}>
+                    <div className={`${isCompact ? "text-xs" : "text-sm"} text-neutral-600 dark:text-neutral-400`}>
                       {formatDate(ticket.createdAt)}
                     </div>
                     {showUpdated && ticket.updatedAt && ticket.updatedAt.getTime() !== ticket.createdAt.getTime() && (
@@ -442,7 +444,7 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
                   </td>
                 )}
                 {showComments && (
-                  <td className={`px-6 py-4 whitespace-nowrap ${viewMode === "normal" ? "hidden md:table-cell" : ""} ${viewMode === "compact" ? "px-4 py-3" : ""}`}>
+                  <td className={`px-6 py-4 whitespace-nowrap ${isNormal ? "hidden md:table-cell" : ""} ${isCompact ? "px-4 py-3" : ""}`}>
                     {ticket._count.comments > 0 ? (
                       <div className="flex items-center gap-1 text-sm text-neutral-600 dark:text-neutral-400">
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
