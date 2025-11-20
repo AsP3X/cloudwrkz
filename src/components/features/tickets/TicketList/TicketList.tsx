@@ -53,27 +53,27 @@ interface TicketListProps {
 const getStatusColor = (status: string) => {
   switch (status) {
     case "OPEN":
-      return "bg-blue-100 text-blue-700";
+      return "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300";
     case "IN_PROGRESS":
-      return "bg-yellow-100 text-yellow-700";
+      return "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300";
     case "RESOLVED":
     case "CLOSED":
-      return "bg-green-100 text-green-700";
+      return "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300";
     default:
-      return "bg-neutral-100 text-neutral-700";
+      return "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300";
   }
 };
 
 const getPriorityColor = (priority: string) => {
   switch (priority) {
     case "URGENT":
-      return "bg-red-100 text-red-700";
+      return "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300";
     case "HIGH":
-      return "bg-orange-100 text-orange-700";
+      return "bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300";
     case "MEDIUM":
-      return "bg-yellow-100 text-yellow-700";
+      return "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300";
     default:
-      return "bg-neutral-100 text-neutral-700";
+      return "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300";
   }
 };
 
@@ -418,7 +418,7 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
                         {ticket.assignedToGroup.name}
                       </div>
                     ) : (
-                      <span className="text-xs text-neutral-400 dark:text-neutral-500">Unassigned</span>
+                      <span className="text-xs text-neutral-400 dark:text-neutral-400">Unassigned</span>
                     )}
                   </td>
                 )}
@@ -458,7 +458,7 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
                         <span>{ticket._count.comments}</span>
                       </div>
                     ) : (
-                      <span className="text-xs text-neutral-400 dark:text-neutral-500">—</span>
+                      <span className="text-xs text-neutral-400 dark:text-neutral-400">—</span>
                     )}
                   </td>
                 )}

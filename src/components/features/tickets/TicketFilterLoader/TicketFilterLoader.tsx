@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 const STORAGE_KEY = "ticket-filter-presets";
@@ -23,6 +23,7 @@ interface TicketFilterLoaderProps {
 export const TicketFilterLoader = ({ isAgent }: TicketFilterLoaderProps) => {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const hasAppliedRef = useRef(false);
 
   useEffect(() => {
     // Only apply preset for agents
@@ -30,9 +31,16 @@ export const TicketFilterLoader = ({ isAgent }: TicketFilterLoaderProps) => {
       return;
     }
 
-    // Check if there are already filters in the URL
-    const hasUrlFilters = Array.from(searchParams.keys()).length > 0;
+    // Only apply preset once per mount
+    if (hasAppliedRef.current) {
+      return;
+    }
+
+    // Check if there are already filters in the URL (read synchronously at effect start)
+    const currentSearchParams = searchParams;
+    const hasUrlFilters = Array.from(currentSearchParams.keys()).length > 0;
     if (hasUrlFilters) {
+      hasAppliedRef.current = true;
       return; // Don't override existing filters
     }
 
@@ -40,12 +48,14 @@ export const TicketFilterLoader = ({ isAgent }: TicketFilterLoaderProps) => {
       // Load last used preset
       const lastUsedId = localStorage.getItem(LAST_USED_PRESET_KEY);
       if (!lastUsedId) {
+        hasAppliedRef.current = true;
         return; // No preset to load
       }
 
       // Load presets
       const stored = localStorage.getItem(STORAGE_KEY);
       if (!stored) {
+        hasAppliedRef.current = true;
         return;
       }
 
@@ -53,6 +63,7 @@ export const TicketFilterLoader = ({ isAgent }: TicketFilterLoaderProps) => {
       const preset = presets.find((p) => p.id === lastUsedId);
       
       if (!preset) {
+        hasAppliedRef.current = true;
         return; // Preset not found
       }
 
@@ -66,12 +77,18 @@ export const TicketFilterLoader = ({ isAgent }: TicketFilterLoaderProps) => {
 
       // Only redirect if there are filters to apply
       if (params.toString()) {
+        hasAppliedRef.current = true;
         router.replace(`/dashboard/tickets?${params.toString()}`);
+      } else {
+        hasAppliedRef.current = true;
       }
     } catch (error) {
       console.error("Failed to load filter preset:", error);
+      hasAppliedRef.current = true;
     }
-  }, [isAgent, router, searchParams]);
+    // Note: searchParams is intentionally NOT in dependencies to prevent infinite loops
+    // We read it synchronously at the start of the effect, which is safe
+  }, [isAgent, router]); // Removed searchParams from dependencies to prevent reload loops
 
   return null; // This component doesn't render anything
 };

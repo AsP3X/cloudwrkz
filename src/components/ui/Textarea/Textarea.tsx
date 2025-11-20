@@ -16,6 +16,114 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
   ) => {
     const generatedId = React.useId();
     const textareaId = id || generatedId;
+    const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+    
+    // Combine refs
+    React.useImperativeHandle(ref, () => textareaRef.current as HTMLTextAreaElement);
+    
+    // Ensure dark mode background is applied correctly
+    React.useEffect(() => {
+      if (!textareaRef.current) return;
+      
+      const updateBackground = () => {
+        if (!textareaRef.current || error) {
+          // Remove inline style for error states
+          if (textareaRef.current) {
+            textareaRef.current.style.removeProperty("background-color");
+          }
+          return;
+        }
+        
+        const isDark = document.documentElement.classList.contains("dark");
+        if (isDark) {
+          // Apply dark mode background
+          textareaRef.current.style.setProperty("background-color", "rgb(38 38 38)", "important");
+        } else {
+          // Remove inline style to let CSS handle light mode
+          textareaRef.current.style.removeProperty("background-color");
+        }
+      };
+      
+      // Initial update with multiple strategies to catch late-applied dark class
+      const applyBackground = () => {
+        // Use requestAnimationFrame to ensure DOM is ready
+        requestAnimationFrame(() => {
+          updateBackground();
+          // Also try after a microtask
+          setTimeout(updateBackground, 0);
+        });
+      };
+      
+      applyBackground();
+      const timeout1 = setTimeout(applyBackground, 50);
+      const timeout2 = setTimeout(applyBackground, 100);
+      const timeout3 = setTimeout(applyBackground, 200);
+      const timeout4 = setTimeout(applyBackground, 500);
+      
+      // Watch for theme changes
+      const observer = new MutationObserver(() => {
+        updateBackground();
+        // Also retry after a short delay when class changes
+        setTimeout(updateBackground, 10);
+      });
+      observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["class"],
+      });
+      
+      // Also listen for when the page becomes visible (after navigation)
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === "visible") {
+          setTimeout(updateBackground, 0);
+          setTimeout(updateBackground, 50);
+        }
+      };
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+      
+      return () => {
+        clearTimeout(timeout1);
+        clearTimeout(timeout2);
+        clearTimeout(timeout3);
+        clearTimeout(timeout4);
+        observer.disconnect();
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+      };
+    }, [error]);
+    
+    // Aggressive check for client-side navigation - continuously check for first second
+    React.useEffect(() => {
+      if (!textareaRef.current || error) return;
+      
+      let intervalId: NodeJS.Timeout | null = null;
+      let checkCount = 0;
+      const maxChecks = 20; // Check 20 times over 1 second
+      
+      const checkAndApply = () => {
+        if (!textareaRef.current || error || checkCount >= maxChecks) {
+          if (intervalId) {
+            clearInterval(intervalId);
+            intervalId = null;
+          }
+          return;
+        }
+        
+        checkCount++;
+        const isDark = document.documentElement.classList.contains("dark");
+        if (isDark && textareaRef.current) {
+          textareaRef.current.style.setProperty("background-color", "rgb(38 38 38)", "important");
+        }
+      };
+      
+      // Start checking immediately and then every 50ms
+      checkAndApply();
+      intervalId = setInterval(checkAndApply, 50);
+      
+      return () => {
+        if (intervalId) {
+          clearInterval(intervalId);
+        }
+      };
+    }, [error]);
 
     return (
       <div className="w-full">
@@ -29,7 +137,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
           </label>
         )}
         <textarea
-          ref={ref}
+          ref={textareaRef}
           id={textareaId}
           className={cn(
             "w-full px-4 py-3 rounded-lg border-2 transition-all duration-200",

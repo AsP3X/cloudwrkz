@@ -27,6 +27,7 @@ import {
   notice,
   waitForEnter,
   createSpinner,
+  paginatedCheckbox,
 } from "./prompts";
 import { prisma } from "../lib/db/prisma";
 import chalk from "chalk";
@@ -131,8 +132,8 @@ async function runUserInteractive() {
     const choice = await menu("Select an action:", [
       {
         key: "s",
-        label: "🔍 Select User",
-        description: "Select a user to perform actions on",
+        label: "🔍 Select User(s)",
+        description: "Select one or more users to perform actions on",
       },
       {
         key: "c",
@@ -145,7 +146,7 @@ async function runUserInteractive() {
         description: "View all users with filters and search",
       },
       {
-        key: "b",
+        key: "back",
         label: "⬅️  Back to Main Menu",
         description: "Return to main menu",
       },
@@ -153,9 +154,9 @@ async function runUserInteractive() {
 
     switch (choice) {
       case "s":
-        const selectedUser = await selectUserForActions();
-        if (selectedUser) {
-          await runUserActionsInteractive(selectedUser);
+        const selectedUsers = await selectUsersForActions();
+        if (selectedUsers && selectedUsers.length > 0) {
+          await runUserActionsInteractive(selectedUsers);
         }
         break;
       case "c":
@@ -168,18 +169,18 @@ async function runUserInteractive() {
         await userCli.handleListInteractive();
         await waitForEnter();
         break;
-      case "b":
+      case "back":
         return;
     }
   }
 }
 
-async function selectUserForActions(): Promise<{ id: string; email: string; name: string | null } | null> {
+async function selectUsersForActions(): Promise<{ id: string; email: string; name: string | null }[] | null> {
   const { prisma } = await import("../lib/db/prisma");
   const { formatUserName } = await import("../lib/utils/users");
 
   clear();
-  header("Select User", "Choose a user to perform actions on");
+  header("Select User(s)", "Choose one or more users to perform actions on");
 
   const spinner = createSpinner("Loading users...");
   spinner.start();
@@ -206,10 +207,10 @@ async function selectUserForActions(): Promise<{ id: string; email: string; name
     }
 
     separator();
+    info("Use Space to select/deselect users, Enter to confirm selection");
 
-    const { paginatedSelect } = await import("./prompts");
-    const selectedUser = await paginatedSelect(
-      "Select a user:",
+    const selectedUsers = await paginatedCheckbox(
+      "Select user(s) (use Space to toggle, Enter to confirm):",
       users,
       (u, index) => {
         const displayName = formatUserName(u);
@@ -223,23 +224,28 @@ async function selectUserForActions(): Promise<{ id: string; email: string; name
       },
       {
         pageSize: 15,
-        searchable: true,
         emptyMessage: "No users found",
       }
     );
 
-    if (!selectedUser) {
+    if (!selectedUsers || selectedUsers.length === 0) {
+      notice("No users selected.", "warning");
+      await waitForEnter();
       return null;
     }
 
-    const displayEmail =
-      selectedUser.status === "DELETED" && selectedUser.originalEmail
-        ? selectedUser.originalEmail
-        : selectedUser.email;
-    success(`Selected user: ${displayEmail}${selectedUser.name ? ` (${selectedUser.name})` : ""}`);
+    if (selectedUsers.length === 1) {
+      const displayEmail =
+        selectedUsers[0].status === "DELETED" && selectedUsers[0].originalEmail
+          ? selectedUsers[0].originalEmail
+          : selectedUsers[0].email;
+      success(`Selected user: ${displayEmail}${selectedUsers[0].name ? ` (${selectedUsers[0].name})` : ""}`);
+    } else {
+      success(`Selected ${selectedUsers.length} user(s) for operations`);
+    }
     await waitForEnter();
 
-    return selectedUser;
+    return selectedUsers;
   } catch (err) {
     spinner.fail("Failed to load users");
     error(err instanceof Error ? err.message : String(err));
@@ -248,13 +254,18 @@ async function selectUserForActions(): Promise<{ id: string; email: string; name
   }
 }
 
-async function runUserActionsInteractive(selectedUser: { id: string; email: string; name: string | null }) {
+async function runUserActionsInteractive(selectedUsers: { id: string; email: string; name: string | null }[]) {
   const userCli = await import("./user-cli");
   const { prisma } = await import("../lib/db/prisma");
   const { formatStatus, formatRole, displayKeyValue, sectionHeader } = await import("./prompts");
+  const { formatUserName } = await import("../lib/utils/users");
 
-  // Helper function to refresh user data
+  const isSingleUser = selectedUsers.length === 1;
+  const selectedUser = isSingleUser ? selectedUsers[0] : null;
+
+  // Helper function to refresh user data (for single user mode)
   const refreshUser = async () => {
+    if (!selectedUser) return null;
     const refreshed = await prisma.user.findFirst({
       where: {
         OR: [{ id: selectedUser.id }, { email: selectedUser.email }, { originalEmail: selectedUser.email }],
@@ -268,7 +279,7 @@ async function runUserActionsInteractive(selectedUser: { id: string; email: stri
         status: true,
       },
     });
-    if (refreshed) {
+    if (refreshed && selectedUser) {
       selectedUser.id = refreshed.id;
       selectedUser.email = refreshed.email;
       selectedUser.name = refreshed.name;
@@ -277,130 +288,225 @@ async function runUserActionsInteractive(selectedUser: { id: string; email: stri
   };
 
   while (true) {
-    const refreshed = await refreshUser();
+    if (isSingleUser && selectedUser) {
+      const refreshed = await refreshUser();
 
-    clear();
-    header("User Actions", "Manage selected user account");
+      clear();
+      header("User Actions", "Manage selected user account");
 
-    const displayEmail =
-      refreshed && refreshed.status === "DELETED" && refreshed.originalEmail
-        ? refreshed.originalEmail
-        : selectedUser.email;
+      const displayEmail =
+        refreshed && refreshed.status === "DELETED" && refreshed.originalEmail
+          ? refreshed.originalEmail
+          : selectedUser.email;
 
-    sectionHeader("Selected User");
-    displayKeyValue("Email", displayEmail);
-    displayKeyValue("Name", selectedUser.name || "-");
-    if (refreshed) {
-      displayKeyValue("Status", formatStatus(refreshed.status));
-      displayKeyValue("Role", formatRole(refreshed.role));
-    }
-    separator();
-
-    const actions = [
-      {
-        key: "s",
-        label: "📋 Show User Details",
-        description: "View comprehensive user information and statistics",
-      },
-      {
-        key: "us",
-        label: "🔄 Update User Status",
-        description: "Change user account status (PENDING/ACTIVE/SUSPENDED/DELETED)",
-      },
-      {
-        key: "ur",
-        label: "👤 Update User Role",
-        description: "Change user role (USER/ADMIN/MODERATOR/AGENT)",
-      },
-      {
-        key: "up",
-        label: "🔐 Update Password",
-        description: "Reset user password",
-      },
-      {
-        key: "v",
-        label: "✓ Verify Email",
-        description: "Verify user email and activate account",
-      },
-      {
-        key: "cc",
-        label: "🍪 Cookie Consent",
-        description: "Manage cookie consent settings",
-      },
-    ];
-
-    if (refreshed && refreshed.status === "DELETED") {
-      actions.push({
-        key: "r",
-        label: "♻️  Reactivate User",
-        description: "Restore a deleted user account",
-      });
-    }
-
-    actions.push(
-      {
-        key: "d",
-        label: "🗑️  Delete User",
-        description: "Permanently delete user account (irreversible)",
-      },
-      {
-        key: "c",
-        label: "🔄 Change User",
-        description: "Select a different user",
-      },
-      {
-        key: "b",
-        label: "⬅️  Back to User Management",
-        description: "Return to user management menu",
+      sectionHeader("Selected User");
+      displayKeyValue("Email", displayEmail);
+      displayKeyValue("Name", selectedUser.name || "-");
+      if (refreshed) {
+        displayKeyValue("Status", formatStatus(refreshed.status));
+        displayKeyValue("Role", formatRole(refreshed.role));
       }
-    );
+      separator();
 
-    const choice = await menu("Select an action:", actions);
+      const actions = [
+        {
+          key: "s",
+          label: "📋 Show User Details",
+          description: "View comprehensive user information and statistics",
+        },
+        {
+          key: "us",
+          label: "🔄 Update User Status",
+          description: "Change user account status (PENDING/ACTIVE/SUSPENDED/DELETED)",
+        },
+        {
+          key: "ur",
+          label: "👤 Update User Role",
+          description: "Change user role (USER/ADMIN/MODERATOR/AGENT)",
+        },
+        {
+          key: "up",
+          label: "🔐 Update Password",
+          description: "Reset user password",
+        },
+        {
+          key: "v",
+          label: "✓ Verify Email",
+          description: "Verify user email and activate account",
+        },
+        {
+          key: "cc",
+          label: "🍪 Cookie Consent",
+          description: "Manage cookie consent settings",
+        },
+      ];
 
-    switch (choice) {
-      case "s":
-        clear();
-        await showUserDetails(selectedUser);
-        await waitForEnter();
-        break;
-      case "us":
-        clear();
-        await userCli.handleUpdateStatusInteractiveWithUser(selectedUser);
-        await waitForEnter();
-        break;
-      case "ur":
-        clear();
-        await userCli.handleUpdateRoleInteractiveWithUser(selectedUser);
-        await waitForEnter();
-        break;
-      case "up":
-        clear();
-        await userCli.handleUpdatePasswordInteractiveWithUser(selectedUser);
-        await waitForEnter();
-        break;
-      case "v":
-        clear();
-        await userCli.handleVerifyInteractiveWithUser(selectedUser);
-        await waitForEnter();
-        break;
-      case "cc":
-        await runCookieConsentInteractiveWithUser(selectedUser);
-        break;
-      case "r":
-        clear();
-        await userCli.handleReactivateInteractiveWithUser(selectedUser);
-        await refreshUser();
-        await waitForEnter();
-        break;
-      case "d":
-        clear();
-        await userCli.handleDeleteInteractiveWithUser(selectedUser);
-        await waitForEnter();
-        break;
-      case "c":
-        return;
-      case "b":
-        return;
+      if (refreshed && refreshed.status === "DELETED") {
+        actions.push({
+          key: "r",
+          label: "♻️  Reactivate User",
+          description: "Restore a deleted user account",
+        });
+      }
+
+      actions.push(
+        {
+          key: "d",
+          label: "🗑️  Delete User",
+          description: "Permanently delete user account (irreversible)",
+        },
+        {
+          key: "c",
+          label: "🔄 Change Selection",
+          description: "Select different user(s)",
+        },
+        {
+          key: "b",
+          label: "⬅️  Back to User Management",
+          description: "Return to user management menu",
+        }
+      );
+
+      const choice = await menu("Select an action:", actions);
+
+      switch (choice) {
+        case "s":
+          clear();
+          await showUserDetails(selectedUser);
+          await waitForEnter();
+          break;
+        case "us":
+          clear();
+          await userCli.handleUpdateStatusInteractiveWithUser(selectedUser);
+          await waitForEnter();
+          break;
+        case "ur":
+          clear();
+          await userCli.handleUpdateRoleInteractiveWithUser(selectedUser);
+          await waitForEnter();
+          break;
+        case "up":
+          clear();
+          await userCli.handleUpdatePasswordInteractiveWithUser(selectedUser);
+          await waitForEnter();
+          break;
+        case "v":
+          clear();
+          await userCli.handleVerifyInteractiveWithUser(selectedUser);
+          await waitForEnter();
+          break;
+        case "cc":
+          await runCookieConsentInteractiveWithUser(selectedUser);
+          break;
+        case "r":
+          clear();
+          await userCli.handleReactivateInteractiveWithUser(selectedUser);
+          await refreshUser();
+          await waitForEnter();
+          break;
+        case "d":
+          clear();
+          await userCli.handleDeleteInteractiveWithUser(selectedUser);
+          await waitForEnter();
+          break;
+        case "c":
+          return;
+        case "b":
+          return;
+      }
+    } else {
+      // Multiple users - show bulk operations menu
+      clear();
+      header("Bulk Operations", `Manage ${selectedUsers.length} selected user(s)`);
+
+      sectionHeader("Selected Users");
+      selectedUsers.forEach((user, index) => {
+        const displayName = formatUserName(user);
+        console.log(chalk.gray(`${index + 1}.`), `${displayName} (${user.email})`);
+      });
+      separator();
+
+      const actions = [
+        {
+          key: "us",
+          label: "🔄 Update Status",
+          description: `Update status for ${selectedUsers.length} user(s)`,
+        },
+        {
+          key: "ur",
+          label: "👤 Update Role",
+          description: `Update role for ${selectedUsers.length} user(s)`,
+        },
+        {
+          key: "v",
+          label: "✓ Verify Email",
+          description: `Verify email for ${selectedUsers.length} user(s)`,
+        },
+        {
+          key: "cc",
+          label: "🍪 Accept Cookie Consent",
+          description: `Accept cookie consent for ${selectedUsers.length} user(s)`,
+        },
+        {
+          key: "ccr",
+          label: "🍪 Revoke Cookie Consent",
+          description: `Revoke cookie consent for ${selectedUsers.length} user(s)`,
+        },
+        {
+          key: "d",
+          label: "🗑️  Delete Users",
+          description: `Permanently delete ${selectedUsers.length} user(s) (irreversible)`,
+        },
+        {
+          key: "c",
+          label: "🔄 Change Selection",
+          description: "Select different users",
+        },
+        {
+          key: "b",
+          label: "⬅️  Back to User Management",
+          description: "Return to user management menu",
+        },
+      ];
+
+      const choice = await menu("Select a bulk operation:", actions);
+
+      switch (choice) {
+        case "us":
+          clear();
+          await userCli.handleBulkUpdateStatusInteractive(selectedUsers);
+          await waitForEnter();
+          break;
+        case "ur":
+          clear();
+          await userCli.handleBulkUpdateRoleInteractive(selectedUsers);
+          await waitForEnter();
+          break;
+        case "v":
+          clear();
+          await userCli.handleBulkVerifyInteractive(selectedUsers);
+          await waitForEnter();
+          break;
+        case "cc":
+          clear();
+          await userCli.handleBulkCookieAcceptInteractive(selectedUsers);
+          await waitForEnter();
+          break;
+        case "ccr":
+          clear();
+          await userCli.handleBulkCookieRevokeInteractive(selectedUsers);
+          await waitForEnter();
+          break;
+        case "d":
+          clear();
+          await userCli.handleBulkDeleteInteractive(selectedUsers);
+          await waitForEnter();
+          break;
+        case "c":
+          return;
+        case "b":
+          return;
+      }
     }
   }
 }

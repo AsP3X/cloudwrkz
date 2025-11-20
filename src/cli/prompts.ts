@@ -349,6 +349,45 @@ export async function paginatedSelect<T>(
 }
 
 /**
+ * Display paginated checkbox list for multiple selections
+ */
+export async function paginatedCheckbox<T>(
+  question: string,
+  items: T[],
+  displayFn: (item: T, index: number) => string,
+  options?: {
+    pageSize?: number;
+    emptyMessage?: string;
+  }
+): Promise<T[]> {
+  if (items.length === 0) {
+    if (options?.emptyMessage) {
+      console.log(chalk.yellow(options.emptyMessage));
+    }
+    return [];
+  }
+
+  const pageSize = options?.pageSize || 15;
+
+  const choices = items.map((item, index) => ({
+    name: displayFn(item, index),
+    value: item,
+  }));
+
+  const { selected } = await inquirer.prompt([
+    {
+      type: "checkbox",
+      name: "selected",
+      message: chalk.cyan(question),
+      choices,
+      pageSize: Math.min(pageSize, items.length),
+    },
+  ]);
+
+  return selected || [];
+}
+
+/**
  * Format status with colors
  */
 export function formatStatus(status: string): string {

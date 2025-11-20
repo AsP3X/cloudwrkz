@@ -16,6 +16,7 @@
 import { prisma } from "../lib/db/prisma";
 import { hashPassword } from "../lib/utils/auth";
 import { formatUserName } from "../lib/utils/users";
+import chalk from "chalk";
 import {
   prompt,
   promptPassword,
@@ -2356,5 +2357,470 @@ export async function handleCookieStatusInteractiveWithUser(user: { id: string; 
     }
   } catch (error) {
     console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+// Bulk operation handlers
+export async function handleBulkUpdateStatusInteractive(users: { id: string; email: string; name: string | null }[]) {
+  try {
+    header("Bulk Update Status", `Update status for ${users.length} user(s)`);
+
+    const status = await select("Select new status:", ["PENDING", "ACTIVE", "SUSPENDED", "DELETED"]);
+
+    sectionHeader("Users to Update");
+    users.forEach((user, index) => {
+      console.log(chalk.gray(`${index + 1}.`), `${user.email}${user.name ? ` (${user.name})` : ""}`);
+    });
+    separator();
+
+    const confirmed = await confirm(
+      `Are you sure you want to update status to ${status} for ${users.length} user(s)?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Status update cancelled");
+      return;
+    }
+
+    const spinner = createSpinner(`Updating status for ${users.length} user(s)...`);
+    spinner.start();
+
+    let successCount = 0;
+    let failCount = 0;
+    const errors: string[] = [];
+
+    for (const user of users) {
+      try {
+        await prisma.user.update({
+          where: { email: user.email },
+          data: { status: status as any },
+        });
+        successCount++;
+      } catch (err) {
+        failCount++;
+        errors.push(`${user.email}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    spinner.succeed(`Updated ${successCount} user(s)`);
+
+    if (successCount > 0) {
+      success(`Successfully updated status to ${formatStatus(status)} for ${successCount} user(s)`);
+    }
+
+    if (failCount > 0) {
+      warning(`Failed to update ${failCount} user(s):`);
+      errors.forEach((err) => error(err));
+    }
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleBulkUpdateRoleInteractive(users: { id: string; email: string; name: string | null }[]) {
+  try {
+    header("Bulk Update Role", `Update role for ${users.length} user(s)`);
+
+    const role = await select("Select new role:", ["USER", "ADMIN", "MODERATOR", "AGENT"]);
+
+    sectionHeader("Users to Update");
+    users.forEach((user, index) => {
+      console.log(chalk.gray(`${index + 1}.`), `${user.email}${user.name ? ` (${user.name})` : ""}`);
+    });
+    separator();
+
+    const confirmed = await confirm(
+      `Are you sure you want to update role to ${role} for ${users.length} user(s)?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Role update cancelled");
+      return;
+    }
+
+    const spinner = createSpinner(`Updating role for ${users.length} user(s)...`);
+    spinner.start();
+
+    let successCount = 0;
+    let failCount = 0;
+    const errors: string[] = [];
+
+    for (const user of users) {
+      try {
+        await prisma.user.update({
+          where: { email: user.email },
+          data: { role: role as any },
+        });
+        successCount++;
+      } catch (err) {
+        failCount++;
+        errors.push(`${user.email}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    spinner.succeed(`Updated ${successCount} user(s)`);
+
+    if (successCount > 0) {
+      success(`Successfully updated role to ${formatRole(role)} for ${successCount} user(s)`);
+    }
+
+    if (failCount > 0) {
+      warning(`Failed to update ${failCount} user(s):`);
+      errors.forEach((err) => error(err));
+    }
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleBulkVerifyInteractive(users: { id: string; email: string; name: string | null }[]) {
+  try {
+    header("Bulk Verify Email", `Verify email for ${users.length} user(s)`);
+
+    sectionHeader("Users to Verify");
+    users.forEach((user, index) => {
+      console.log(chalk.gray(`${index + 1}.`), `${user.email}${user.name ? ` (${user.name})` : ""}`);
+    });
+    separator();
+
+    const confirmed = await confirm(
+      `Are you sure you want to verify email for ${users.length} user(s)?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Email verification cancelled");
+      return;
+    }
+
+    const spinner = createSpinner(`Verifying email for ${users.length} user(s)...`);
+    spinner.start();
+
+    let successCount = 0;
+    let activatedCount = 0;
+    let failCount = 0;
+    const errors: string[] = [];
+
+    for (const user of users) {
+      try {
+        const currentUser = await prisma.user.findUnique({
+          where: { email: user.email },
+          select: { id: true, status: true },
+        });
+
+        if (!currentUser) {
+          failCount++;
+          errors.push(`${user.email}: User not found`);
+          continue;
+        }
+
+        const updateData: { emailVerified: boolean; status?: "ACTIVE" } = {
+          emailVerified: true,
+        };
+
+        if (currentUser.status === "PENDING") {
+          updateData.status = "ACTIVE";
+          activatedCount++;
+        }
+
+        await prisma.user.update({
+          where: { email: user.email },
+          data: updateData,
+        });
+        successCount++;
+      } catch (err) {
+        failCount++;
+        errors.push(`${user.email}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    spinner.succeed(`Verified ${successCount} user(s)`);
+
+    if (successCount > 0) {
+      success(`Successfully verified email for ${successCount} user(s)`);
+      if (activatedCount > 0) {
+        info(`Activated ${activatedCount} user(s) (status changed from PENDING to ACTIVE)`);
+      }
+    }
+
+    if (failCount > 0) {
+      warning(`Failed to verify ${failCount} user(s):`);
+      errors.forEach((err) => error(err));
+    }
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleBulkCookieAcceptInteractive(users: { id: string; email: string; name: string | null }[]) {
+  try {
+    header("Bulk Accept Cookie Consent", `Accept cookie consent for ${users.length} user(s)`);
+
+    sectionHeader("Users to Update");
+    users.forEach((user, index) => {
+      console.log(chalk.gray(`${index + 1}.`), `${user.email}${user.name ? ` (${user.name})` : ""}`);
+    });
+    separator();
+
+    const confirmed = await confirm(
+      `Are you sure you want to accept cookie consent for ${users.length} user(s)?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Cookie consent update cancelled");
+      return;
+    }
+
+    const spinner = createSpinner(`Accepting cookie consent for ${users.length} user(s)...`);
+    spinner.start();
+
+    let successCount = 0;
+    let alreadyAcceptedCount = 0;
+    let failCount = 0;
+    const errors: string[] = [];
+
+    for (const user of users) {
+      try {
+        const currentUser = await prisma.user.findUnique({
+          where: { email: user.email },
+          select: { id: true, cookieConsentAccepted: true },
+        });
+
+        if (!currentUser) {
+          failCount++;
+          errors.push(`${user.email}: User not found`);
+          continue;
+        }
+
+        if (currentUser.cookieConsentAccepted) {
+          alreadyAcceptedCount++;
+          continue;
+        }
+
+        await prisma.user.update({
+          where: { email: user.email },
+          data: {
+            cookieConsentAccepted: true,
+            cookieConsentAcceptedAt: new Date(),
+          },
+        });
+        successCount++;
+      } catch (err) {
+        failCount++;
+        errors.push(`${user.email}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    spinner.succeed(`Updated ${successCount + alreadyAcceptedCount} user(s)`);
+
+    if (successCount > 0) {
+      success(`Successfully accepted cookie consent for ${successCount} user(s)`);
+    }
+
+    if (alreadyAcceptedCount > 0) {
+      info(`${alreadyAcceptedCount} user(s) already had cookie consent accepted`);
+    }
+
+    if (failCount > 0) {
+      warning(`Failed to update ${failCount} user(s):`);
+      errors.forEach((err) => error(err));
+    }
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleBulkCookieRevokeInteractive(users: { id: string; email: string; name: string | null }[]) {
+  try {
+    header("Bulk Revoke Cookie Consent", `Revoke cookie consent for ${users.length} user(s)`);
+
+    sectionHeader("Users to Update");
+    users.forEach((user, index) => {
+      console.log(chalk.gray(`${index + 1}.`), `${user.email}${user.name ? ` (${user.name})` : ""}`);
+    });
+    separator();
+
+    const confirmed = await confirm(
+      `Are you sure you want to revoke cookie consent for ${users.length} user(s)?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Cookie consent update cancelled");
+      return;
+    }
+
+    const spinner = createSpinner(`Revoking cookie consent for ${users.length} user(s)...`);
+    spinner.start();
+
+    let successCount = 0;
+    let notAcceptedCount = 0;
+    let failCount = 0;
+    const errors: string[] = [];
+
+    for (const user of users) {
+      try {
+        const currentUser = await prisma.user.findUnique({
+          where: { email: user.email },
+          select: { id: true, cookieConsentAccepted: true },
+        });
+
+        if (!currentUser) {
+          failCount++;
+          errors.push(`${user.email}: User not found`);
+          continue;
+        }
+
+        if (!currentUser.cookieConsentAccepted) {
+          notAcceptedCount++;
+          continue;
+        }
+
+        await prisma.user.update({
+          where: { email: user.email },
+          data: {
+            cookieConsentAccepted: false,
+            cookieConsentAcceptedAt: null,
+          },
+        });
+        successCount++;
+      } catch (err) {
+        failCount++;
+        errors.push(`${user.email}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    spinner.succeed(`Updated ${successCount + notAcceptedCount} user(s)`);
+
+    if (successCount > 0) {
+      success(`Successfully revoked cookie consent for ${successCount} user(s)`);
+      info(`The users will see the cookie banner again on their next visit.`);
+    }
+
+    if (notAcceptedCount > 0) {
+      info(`${notAcceptedCount} user(s) did not have cookie consent accepted`);
+    }
+
+    if (failCount > 0) {
+      warning(`Failed to update ${failCount} user(s):`);
+      errors.forEach((err) => error(err));
+    }
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleBulkDeleteInteractive(users: { id: string; email: string; name: string | null }[]) {
+  try {
+    header("Bulk Delete Users", `Permanently delete ${users.length} user(s)`);
+
+    notice("⚠️  WARNING: This action is PERMANENT and CANNOT be undone!", "error");
+
+    sectionHeader("Users to Delete");
+    users.forEach((user, index) => {
+      console.log(chalk.gray(`${index + 1}.`), `${user.email}${user.name ? ` (${user.name})` : ""}`);
+    });
+    separator();
+
+    const confirmed = await confirm(
+      `Are you ABSOLUTELY SURE you want to PERMANENTLY DELETE ${users.length} user(s)?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Deletion cancelled");
+      return;
+    }
+
+    const spinner = createSpinner(`Deleting ${users.length} user(s) and cleaning up data...`);
+    spinner.start();
+
+    let successCount = 0;
+    let failCount = 0;
+    const errors: string[] = [];
+
+    for (const user of users) {
+      try {
+        const fullUser = await prisma.user.findUnique({
+          where: { email: user.email },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+          },
+        });
+
+        if (!fullUser) {
+          failCount++;
+          errors.push(`${user.email}: User not found`);
+          continue;
+        }
+
+        // Delete all user sessions first
+        await prisma.session.deleteMany({
+          where: { userId: fullUser.id },
+        });
+
+        // Generate anonymized name: "Deleted User (full UUID)"
+        const anonymizedName = `Deleted User (${fullUser.id})`;
+
+        // Update all tickets created by this user to store anonymized name
+        await prisma.ticket.updateMany({
+          where: { createdById: fullUser.id },
+          data: {
+            createdByName: anonymizedName,
+          },
+        });
+
+        // Update all ticket comments by this user to store anonymized name and nullify user reference
+        await prisma.ticketComment.updateMany({
+          where: { userId: fullUser.id },
+          data: {
+            authorName: anonymizedName,
+            userId: null,
+          },
+        });
+
+        // Unassign user from any assigned tickets
+        await prisma.ticket.updateMany({
+          where: { assignedToId: fullUser.id },
+          data: {
+            assignedToId: null,
+          },
+        });
+
+        // Delete group memberships
+        await prisma.groupMembership.deleteMany({
+          where: { userId: fullUser.id },
+        });
+
+        // Hard delete: Permanently delete the user
+        await prisma.user.delete({
+          where: { id: fullUser.id },
+        });
+
+        successCount++;
+      } catch (err) {
+        failCount++;
+        errors.push(`${user.email}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    spinner.succeed(`Deleted ${successCount} user(s)`);
+
+    if (successCount > 0) {
+      success(`Successfully deleted ${successCount} user(s)`);
+      info(`Tickets and comments preserved with anonymized names.`);
+    }
+
+    if (failCount > 0) {
+      warning(`Failed to delete ${failCount} user(s):`);
+      errors.forEach((err) => error(err));
+    }
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
   }
 }

@@ -133,6 +133,43 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
     }
   };
 
+  /**
+   * Formats the display name for a deleted user, showing the full UUID if available
+   * Extracts UUID from "Deleted User (UUID)" format and displays it fully
+   * If createdById is still available, uses that full UUID instead
+   */
+  const formatDeletedUserName = (
+    user: typeof ticket.createdBy, 
+    storedName: string | null | undefined,
+    createdById: string | null | undefined
+  ): string => {
+    // If user exists, use standard formatting
+    if (user) {
+      return formatUserName(user, storedName);
+    }
+    
+    // If createdById is still available (user was deleted but ID wasn't nulled), use the full UUID
+    if (createdById) {
+      return `Deleted User (${createdById})`;
+    }
+    
+    // If no stored name, return fallback
+    if (!storedName) {
+      return "Unknown User";
+    }
+    
+    // Check if stored name matches "Deleted User (ID)" pattern
+    const deletedUserMatch = storedName.match(/^Deleted User \((.+)\)$/);
+    if (deletedUserMatch) {
+      const userId = deletedUserMatch[1];
+      // Return with full UUID displayed (or prefix if that's what was stored)
+      return `Deleted User (${userId})`;
+    }
+    
+    // If it doesn't match the pattern, return as-is
+    return storedName;
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -287,7 +324,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                   Created By
                 </label>
                 <p className="text-sm text-neutral-900 dark:text-neutral-100">
-                  {formatUserName(ticket.createdBy, ticket.createdByName)}
+                  {formatDeletedUserName(ticket.createdBy, ticket.createdByName, ticket.createdById)}
                 </p>
               </div>
 
