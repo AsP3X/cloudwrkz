@@ -16,7 +16,25 @@
 import { prisma } from "../lib/db/prisma";
 import { hashPassword } from "../lib/utils/auth";
 import { formatUserName } from "../lib/utils/users";
-import { prompt, promptPassword, select, confirm, separator } from "./prompts";
+import {
+  prompt,
+  promptPassword,
+  select,
+  confirm,
+  separator,
+  header,
+  success,
+  error,
+  warning,
+  info,
+  createSpinner,
+  createTable,
+  formatStatus,
+  formatRole,
+  sectionHeader,
+  displayKeyValue,
+  notice,
+} from "./prompts";
 
 // Get args - when called from index.ts, "user" is already removed
 // When called directly, we need to handle it
@@ -333,12 +351,14 @@ async function handleDelete() {
   // Generate anonymized name: "Deleted User (full UUID)"
   const anonymizedName = `Deleted User (${userId})`;
 
-  // Update all tickets created by this user to store anonymized name and nullify user reference
+  // Update all tickets created by this user to store anonymized name with full UUID
+  // Note: We keep createdById set to preserve the full UUID reference, even though the user is deleted
+  // The foreign key constraint will be handled by Prisma's onDelete: SetNull when the user is actually deleted
   await prisma.ticket.updateMany({
     where: { createdById: userId },
     data: {
       createdByName: anonymizedName,
-      createdById: null,
+      // Keep createdById to preserve UUID reference - it will be nulled by Prisma's onDelete: SetNull
     },
   });
 
@@ -1193,32 +1213,63 @@ async function selectUserInteractively(): Promise<{ id: string; email: string; n
 // Interactive versions of handlers
 export async function handleCreateInteractive() {
   try {
-    console.log("Create New User\n");
+    header("Create New User", "Add a new user account to the system");
 
-    const email = await prompt("Email: ");
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      console.error("Invalid email format");
-      return;
-    }
+    const email = await prompt("Email address:", {
+      required: true,
+      validate: (input) => {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input)) {
+          return "Please enter a valid email address";
+        }
+        return true;
+      },
+    });
 
-    // Check if user already exists
+    const spinner = createSpinner("Checking if user exists...");
+    spinner.start();
+
     const existing = await prisma.user.findUnique({
       where: { email },
       select: { id: true },
     });
 
     if (existing) {
-      console.error(`User with email ${email} already exists`);
+      spinner.fail("User already exists");
+      error(`User with email ${email} already exists`);
       return;
     }
+    spinner.succeed("Email available");
 
-    const password = await promptPassword("Password: ");
-    if (password.length < 8) {
-      console.error("Password must be at least 8 characters long");
-      return;
-    }
+    const password = await promptPassword("Password:", {
+      required: true,
+      validate: (input) => {
+        if (input.length < 8) {
+          return "Password must be at least 8 characters long";
+        }
+        return true;
+      },
+    });
 
-    const name = await prompt("Name (optional, press Enter to skip): ");
+    const confirmPassword = await promptPassword("Confirm password:", {
+      required: true,
+      validate: (input) => {
+        if (input !== password) {
+          return "Passwords do not match";
+        }
+        return true;
+      },
+    });
+
+    const name = await prompt("Full name (optional, press Enter to skip):", {
+      required: false,
+    });
+
+    const role = await select("Select user role:", ["USER", "ADMIN", "MODERATOR", "AGENT"]);
+
+    const status = await select("Select initial status:", ["PENDING", "ACTIVE"]);
+
+    const spinner2 = createSpinner("Creating user...");
+    spinner2.start();
 
     const hashedPassword = await hashPassword(password);
 
@@ -1227,8 +1278,8 @@ export async function handleCreateInteractive() {
         email,
         password: hashedPassword,
         name: name || null,
-        role: "USER",
-        status: "PENDING",
+        role: role as any,
+        status: status as any,
       },
       select: {
         id: true,
@@ -1240,16 +1291,25 @@ export async function handleCreateInteractive() {
       },
     });
 
-    console.log("\n✅ User created successfully!");
-    console.log(JSON.stringify(user, null, 2));
-  } catch (error) {
-    console.error("Error:", error instanceof Error ? error.message : error);
+    spinner2.succeed("User created successfully");
+
+    separator();
+    sectionHeader("User Created");
+    displayKeyValue("Email", user.email);
+    displayKeyValue("Name", user.name || "-");
+    displayKeyValue("Role", formatRole(user.role));
+    displayKeyValue("Status", formatStatus(user.status));
+    displayKeyValue("Created", user.createdAt.toLocaleString());
+    success("User account has been created successfully!");
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
   }
 }
 
 export async function handleListInteractive() {
   try {
-    separator();
+    header("List Users", "View and filter user accounts");
+
     const statusFilter = await select("Filter by status:", ["All", "PENDING", "ACTIVE", "SUSPENDED", "DELETED"]);
     const roleFilter = await select("Filter by role:", ["All", "USER", "ADMIN", "MODERATOR", "AGENT"]);
 
@@ -1262,51 +1322,75 @@ export async function handleListInteractive() {
     }
 
     await handleListWithFilters(where);
-  } catch (error) {
-    console.error("Error:", error instanceof Error ? error.message : error);
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
   }
 }
 
 export async function handleListWithFilters(where: any) {
-  const users = await prisma.user.findMany({
-    where,
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      role: true,
-      status: true,
-      emailVerified: true,
-      cookieConsentAccepted: true,
-      cookieConsentAcceptedAt: true,
-      createdAt: true,
-      lastLoginAt: true,
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  const spinner = createSpinner("Loading users...");
+  spinner.start();
 
-  if (users.length === 0) {
-    console.log("No users found");
-    return;
+  try {
+    const users = await prisma.user.findMany({
+      where,
+      select: {
+        id: true,
+        email: true,
+        originalEmail: true,
+        name: true,
+        role: true,
+        status: true,
+        emailVerified: true,
+        cookieConsentAccepted: true,
+        cookieConsentAcceptedAt: true,
+        createdAt: true,
+        lastLoginAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    spinner.succeed(`Found ${users.length} user(s)`);
+
+    if (users.length === 0) {
+      notice("No users found matching the selected filters.", "info");
+      return;
+    }
+
+    separator();
+
+    const table = createTable(
+      ["#", "Email", "Name", "Role", "Status", "Verified", "Cookie Consent", "Created", "Last Login"],
+      { colWidths: [4, 30, 20, 12, 12, 8, 15, 12, 12] }
+    );
+
+    users.forEach((u, index) => {
+      const displayEmail =
+        u.status === "DELETED" && u.originalEmail
+          ? u.originalEmail
+          : u.status === "DELETED"
+            ? formatUserName(u)
+            : u.email;
+      const displayName = u.status === "DELETED" ? formatUserName(u) : u.name || "-";
+
+      table.push([
+        (index + 1).toString(),
+        displayEmail,
+        displayName,
+        formatRole(u.role),
+        formatStatus(u.status),
+        u.emailVerified ? "✓" : "✗",
+        u.cookieConsentAccepted ? "✓" : "✗",
+        u.createdAt.toLocaleDateString(),
+        u.lastLoginAt?.toLocaleDateString() || "Never",
+      ]);
+    });
+
+    console.log(table.toString());
+  } catch (err) {
+    spinner.fail("Failed to load users");
+    error(err instanceof Error ? err.message : String(err));
   }
-
-  console.log(`\nFound ${users.length} user(s):\n`);
-  users.forEach((u, index) => {
-    const displayName = formatUserName(u);
-    console.log(`${index + 1}. ${displayName} - ${u.status} [${u.role}]${u.status !== "DELETED" && u.email !== displayName ? ` (${u.email})` : ""}`);
-  });
-  console.table(
-    users.map((u: typeof users[0]) => ({
-      Email: u.status === "DELETED" && u.originalEmail ? u.originalEmail : (u.status === "DELETED" ? formatUserName(u) : u.email),
-      Name: u.status === "DELETED" ? formatUserName(u) : (u.name || "-"),
-      Role: u.role,
-      Status: u.status,
-      Verified: u.emailVerified ? "✓" : "✗",
-      "Cookie Consent": u.cookieConsentAccepted ? "✓" : "✗",
-      Created: u.createdAt.toLocaleDateString(),
-      "Last Login": u.lastLoginAt?.toLocaleDateString() || "Never",
-    }))
-  );
 }
 
 export async function handleShowInteractive() {
@@ -1550,16 +1634,17 @@ export async function handleDeleteInteractive() {
       where: { userId: fullUser.id },
     });
 
-    // Generate anonymized name: "Deleted User (first 8 chars of UUID)"
-    const uuidPrefix = fullUser.id.substring(0, 8);
-    const anonymizedName = `Deleted User (${uuidPrefix})`;
+    // Generate anonymized name: "Deleted User (full UUID)"
+    const anonymizedName = `Deleted User (${fullUser.id})`;
 
-    // Update all tickets created by this user to store anonymized name and nullify user reference
+    // Update all tickets created by this user to store anonymized name with full UUID
+    // Note: We keep createdById set to preserve the full UUID reference, even though the user is deleted
+    // The foreign key constraint will be handled by Prisma's onDelete: SetNull when the user is actually deleted
     await prisma.ticket.updateMany({
       where: { createdById: fullUser.id },
       data: {
         createdByName: anonymizedName,
-        createdById: null,
+        // Keep createdById to preserve UUID reference - it will be nulled by Prisma's onDelete: SetNull
       },
     });
 
@@ -1600,7 +1685,7 @@ export async function handleDeleteInteractive() {
 // Interactive handlers that work with a pre-selected user
 export async function handleUpdateStatusInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
   try {
-    const status = await select("Select new status:", ["PENDING", "ACTIVE", "SUSPENDED", "DELETED"]);
+    header("Update User Status", `Change status for ${user.email}`);
 
     const currentUser = await prisma.user.findUnique({
       where: { email: user.email },
@@ -1608,29 +1693,51 @@ export async function handleUpdateStatusInteractiveWithUser(user: { id: string; 
     });
 
     if (!currentUser) {
-      console.error(`User with email ${user.email} not found`);
+      error(`User with email ${user.email} not found`);
       return;
     }
 
+    sectionHeader("Current Status");
+    displayKeyValue("Current Status", formatStatus(currentUser.status));
+    separator();
+
+    const status = await select("Select new status:", ["PENDING", "ACTIVE", "SUSPENDED", "DELETED"]);
+
     if (currentUser.status === status) {
-      console.log(`User status is already ${status}`);
+      info(`User status is already ${status}`);
       return;
     }
+
+    const confirmed = await confirm(
+      `Are you sure you want to change status from ${currentUser.status} to ${status}?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Status update cancelled");
+      return;
+    }
+
+    const spinner = createSpinner("Updating user status...");
+    spinner.start();
 
     await prisma.user.update({
       where: { email: user.email },
       data: { status: status as any },
     });
 
-    console.log(`✅ User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} status updated: ${currentUser.status} → ${status}`);
-  } catch (error) {
-    console.error("Error:", error instanceof Error ? error.message : error);
+    spinner.succeed("Status updated successfully");
+    success(
+      `User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} status updated: ${formatStatus(currentUser.status)} → ${formatStatus(status)}`
+    );
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
   }
 }
 
 export async function handleUpdateRoleInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
   try {
-    const role = await select("Select new role:", ["USER", "ADMIN", "MODERATOR", "AGENT"]);
+    header("Update User Role", `Change role for ${user.email}`);
 
     const currentUser = await prisma.user.findUnique({
       where: { email: user.email },
@@ -1638,39 +1745,83 @@ export async function handleUpdateRoleInteractiveWithUser(user: { id: string; em
     });
 
     if (!currentUser) {
-      console.error(`User with email ${user.email} not found`);
+      error(`User with email ${user.email} not found`);
       return;
     }
 
+    sectionHeader("Current Role");
+    displayKeyValue("Current Role", formatRole(currentUser.role));
+    separator();
+
+    const role = await select("Select new role:", ["USER", "ADMIN", "MODERATOR", "AGENT"]);
+
     if (currentUser.role === role) {
-      console.log(`User role is already ${role}`);
+      info(`User role is already ${role}`);
       return;
     }
+
+    const confirmed = await confirm(
+      `Are you sure you want to change role from ${currentUser.role} to ${role}?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Role update cancelled");
+      return;
+    }
+
+    const spinner = createSpinner("Updating user role...");
+    spinner.start();
 
     await prisma.user.update({
       where: { email: user.email },
       data: { role: role as any },
     });
 
-    console.log(`✅ User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} role updated: ${currentUser.role} → ${role}`);
-  } catch (error) {
-    console.error("Error:", error instanceof Error ? error.message : error);
+    spinner.succeed("Role updated successfully");
+    success(
+      `User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} role updated: ${formatRole(currentUser.role)} → ${formatRole(role)}`
+    );
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
   }
 }
 
 export async function handleUpdatePasswordInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
   try {
-    const password = await promptPassword("Enter new password: ");
-    if (password.length < 8) {
-      console.error("Password must be at least 8 characters long");
+    header("Update Password", `Reset password for ${user.email}`);
+
+    warning("This will change the user's password. They will need to use the new password to log in.");
+
+    const password = await promptPassword("Enter new password:", {
+      required: true,
+      validate: (input) => {
+        if (input.length < 8) {
+          return "Password must be at least 8 characters long";
+        }
+        return true;
+      },
+    });
+
+    const confirmPassword = await promptPassword("Confirm password:", {
+      required: true,
+      validate: (input) => {
+        if (input !== password) {
+          return "Passwords do not match";
+        }
+        return true;
+      },
+    });
+
+    const confirmed = await confirm("Are you sure you want to update the password?", false);
+
+    if (!confirmed) {
+      info("Password update cancelled");
       return;
     }
 
-    const confirmPassword = await promptPassword("Confirm password: ");
-    if (password !== confirmPassword) {
-      console.error("Passwords do not match");
-      return;
-    }
+    const spinner = createSpinner("Updating password...");
+    spinner.start();
 
     const hashedPassword = await hashPassword(password);
 
@@ -1679,31 +1830,49 @@ export async function handleUpdatePasswordInteractiveWithUser(user: { id: string
       data: { password: hashedPassword },
     });
 
-    console.log(`✅ Password updated for user ${user.email}${user.name ? ` (${user.name})` : ""}`);
-  } catch (error) {
-    console.error("Error:", error instanceof Error ? error.message : error);
+    spinner.succeed("Password updated successfully");
+    success(`Password updated for user ${user.email}${user.name ? ` (${user.name})` : ""}`);
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
   }
 }
 
 export async function handleVerifyInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
   try {
+    header("Verify Email", `Verify email for ${user.email}`);
+
     const currentUser = await prisma.user.findUnique({
       where: { email: user.email },
       select: { id: true, email: true, name: true, status: true, emailVerified: true },
     });
 
     if (!currentUser) {
-      console.error(`User with email ${user.email} not found`);
+      error(`User with email ${user.email} not found`);
       return;
     }
 
+    sectionHeader("Current Status");
+    displayKeyValue("Email Verified", currentUser.emailVerified ? "Yes ✓" : "No ✗");
+    displayKeyValue("Account Status", formatStatus(currentUser.status));
+    separator();
+
     if (currentUser.emailVerified) {
-      console.log(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} is already verified`);
+      info(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} is already verified`);
       if (currentUser.status !== "ACTIVE") {
-        console.log(`Note: User status is ${currentUser.status}. Consider updating status to ACTIVE for full access.`);
+        warning(`Note: User status is ${currentUser.status}. Consider updating status to ACTIVE for full access.`);
       }
       return;
     }
+
+    const confirmed = await confirm("Are you sure you want to verify this user's email?", true);
+
+    if (!confirmed) {
+      info("Email verification cancelled");
+      return;
+    }
+
+    const spinner = createSpinner("Verifying email...");
+    spinner.start();
 
     // Update email verification and optionally set status to ACTIVE if PENDING
     const updateData: { emailVerified: boolean; status?: "ACTIVE" } = {
@@ -1716,25 +1885,33 @@ export async function handleVerifyInteractiveWithUser(user: { id: string; email:
         where: { email: user.email },
         data: updateData,
       });
-      console.log(`✅ User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} email verified and account activated (status changed from PENDING to ACTIVE)`);
+      spinner.succeed("Email verified and account activated");
+      success(
+        `User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} email verified and account activated (status changed from PENDING to ACTIVE)`
+      );
     } else {
       await prisma.user.update({
         where: { email: user.email },
         data: updateData,
       });
-      console.log(`✅ User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} email verified`);
+      spinner.succeed("Email verified");
+      success(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} email verified`);
       if (currentUser.status !== "ACTIVE") {
-        console.log(`Note: User status is ${currentUser.status}. User will need ACTIVE status to access protected pages.`);
+        warning(`Note: User status is ${currentUser.status}. User will need ACTIVE status to access protected pages.`);
       }
     }
-  } catch (error) {
-    console.error("Error:", error instanceof Error ? error.message : error);
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
   }
 }
 
 export async function handleDeleteInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
   try {
-    // Get full user details with counts
+    header("Delete User", `Permanently delete ${user.email}`);
+
+    const spinner = createSpinner("Loading user details...");
+    spinner.start();
+
     const fullUser = await prisma.user.findUnique({
       where: { email: user.email },
       select: {
@@ -1755,78 +1932,112 @@ export async function handleDeleteInteractiveWithUser(user: { id: string; email:
       },
     });
 
+    spinner.succeed("User details loaded");
+
     if (!fullUser) {
-      console.error("User not found");
+      error("User not found");
       return;
     }
 
-    console.log(`\n⚠️  WARNING: You are about to permanently delete:`);
-    console.log(`   User: ${fullUser.email}${fullUser.name ? ` (${fullUser.name})` : ""}`);
-    console.log(`   Status: ${fullUser.status} | Role: ${fullUser.role}`);
-    console.log(`\n   This will preserve:`);
-    console.log(`   - ${fullUser._count.createdTickets} ticket(s) created by this user (with anonymized name)`);
-    console.log(`   - ${fullUser._count.ticketComments} ticket comment(s) (with anonymized name)`);
-    console.log(`\n   This will delete:`);
-    console.log(`   - ${fullUser._count.sessions} session(s)`);
-    console.log(`   - ${fullUser._count.groupMemberships} group membership(s)`);
-    console.log(`   - ${fullUser._count.assignedTickets} ticket assignment(s) will be unassigned`);
-    console.log(`\n   This action CANNOT be undone!`);
+    notice("⚠️  WARNING: This action is PERMANENT and CANNOT be undone!", "error");
 
-    const confirmed = await confirm("\nAre you sure you want to delete this user?", false);
+    sectionHeader("User Information");
+    displayKeyValue("Email", fullUser.email);
+    displayKeyValue("Name", fullUser.name || "-");
+    displayKeyValue("Status", formatStatus(fullUser.status));
+    displayKeyValue("Role", formatRole(fullUser.role));
+
+    separator();
+
+    sectionHeader("Impact Analysis");
+    const impactTable = createTable(["Action", "Count", "Description"]);
+    impactTable.push([
+      "Preserve",
+      fullUser._count.createdTickets.toString(),
+      "Tickets created (with anonymized name)",
+    ]);
+    impactTable.push([
+      "Preserve",
+      fullUser._count.ticketComments.toString(),
+      "Ticket comments (with anonymized name)",
+    ]);
+    impactTable.push(["Delete", fullUser._count.sessions.toString(), "Active sessions"]);
+    impactTable.push(["Delete", fullUser._count.groupMemberships.toString(), "Group memberships"]);
+    impactTable.push([
+      "Unassign",
+      fullUser._count.assignedTickets.toString(),
+      "Ticket assignments",
+    ]);
+    console.log(impactTable.toString());
+
+    separator();
+
+    const confirmed = await confirm(
+      `Are you absolutely sure you want to PERMANENTLY DELETE user ${fullUser.email}${fullUser.name ? ` (${fullUser.name})` : ""}?`,
+      false
+    );
+
     if (!confirmed) {
-      console.log("Deletion cancelled.");
+      info("Deletion cancelled");
       return;
     }
 
-    // Delete all user sessions first
-    await prisma.session.deleteMany({
-      where: { userId: fullUser.id },
-    });
+    const deleteSpinner = createSpinner("Deleting user and cleaning up data...");
+    deleteSpinner.start();
 
-    // Generate anonymized name: "Deleted User (first 8 chars of UUID)"
-    const uuidPrefix = fullUser.id.substring(0, 8);
-    const anonymizedName = `Deleted User (${uuidPrefix})`;
+    try {
+      // Delete all user sessions first
+      await prisma.session.deleteMany({
+        where: { userId: fullUser.id },
+      });
 
-    // Update all tickets created by this user to store anonymized name and nullify user reference
-    await prisma.ticket.updateMany({
-      where: { createdById: fullUser.id },
-      data: {
-        createdByName: anonymizedName,
-        createdById: null,
-      },
-    });
+      // Generate anonymized name: "Deleted User (full UUID)"
+      const anonymizedName = `Deleted User (${fullUser.id})`;
 
-    // Update all ticket comments by this user to store anonymized name and nullify user reference
-    await prisma.ticketComment.updateMany({
-      where: { userId: fullUser.id },
-      data: {
-        authorName: anonymizedName,
-        userId: null,
-      },
-    });
+      // Update all tickets created by this user to store anonymized name with full UUID
+      await prisma.ticket.updateMany({
+        where: { createdById: fullUser.id },
+        data: {
+          createdByName: anonymizedName,
+        },
+      });
 
-    // Unassign user from any assigned tickets
-    await prisma.ticket.updateMany({
-      where: { assignedToId: fullUser.id },
-      data: {
-        assignedToId: null,
-      },
-    });
+      // Update all ticket comments by this user to store anonymized name and nullify user reference
+      await prisma.ticketComment.updateMany({
+        where: { userId: fullUser.id },
+        data: {
+          authorName: anonymizedName,
+          userId: null,
+        },
+      });
 
-    // Delete group memberships
-    await prisma.groupMembership.deleteMany({
-      where: { userId: fullUser.id },
-    });
+      // Unassign user from any assigned tickets
+      await prisma.ticket.updateMany({
+        where: { assignedToId: fullUser.id },
+        data: {
+          assignedToId: null,
+        },
+      });
 
-    // Hard delete: Permanently delete the user
-    await prisma.user.delete({
-      where: { id: fullUser.id },
-    });
+      // Delete group memberships
+      await prisma.groupMembership.deleteMany({
+        where: { userId: fullUser.id },
+      });
 
-    console.log(`\n✅ User ${fullUser.email}${fullUser.name ? ` (${fullUser.name})` : ""} has been permanently deleted.`);
-    console.log(`   Tickets and comments preserved with anonymized name: "${anonymizedName}"`);
-  } catch (error) {
-    console.error("Error:", error instanceof Error ? error.message : error);
+      // Hard delete: Permanently delete the user
+      await prisma.user.delete({
+        where: { id: fullUser.id },
+      });
+
+      deleteSpinner.succeed("User deleted successfully");
+      success(`User ${fullUser.email}${fullUser.name ? ` (${fullUser.name})` : ""} has been permanently deleted.`);
+      info(`Tickets and comments preserved with anonymized name: "${anonymizedName}"`);
+    } catch (err) {
+      deleteSpinner.fail("Failed to delete user");
+      error(err instanceof Error ? err.message : String(err));
+    }
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
   }
 }
 
