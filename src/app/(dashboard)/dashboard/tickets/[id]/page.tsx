@@ -230,7 +230,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
           <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
             <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">Description</h2>
             {ticket.description ? (
-              <div className="prose prose-sm max-w-none text-neutral-700 dark:text-neutral-300 dark:text-neutral-700 whitespace-pre-wrap">
+              <div className="prose prose-sm max-w-none text-neutral-600 dark:text-neutral-300 whitespace-pre-wrap">
                 {ticket.description}
               </div>
             ) : (
