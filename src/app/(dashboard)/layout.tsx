@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/utils/auth-server";
 import { ROUTES } from "@/lib/constants/routes";
 import { DashboardSidebar } from "@/components/layout/DashboardSidebar";
+import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { DashboardHeader } from "@/components/layout/DashboardHeader";
 import { getAllModules } from "@/server/actions/modules";
 
@@ -22,7 +23,10 @@ export default async function DashboardLayout({
     redirect(ROUTES.HOME);
   }
 
-  // Get enabled modules for sidebar
+  // Use AdminSidebar for admins, DashboardSidebar for others
+  const isAdmin = user.role === "ADMIN";
+  
+  // Get enabled modules for sidebar (only needed for non-admin sidebar)
   const modules = await getAllModules();
   const enabledModuleKeys = modules.filter((m: typeof modules[0]) => m.enabled).map((m: typeof modules[0]) => m.key);
 
@@ -34,7 +38,11 @@ export default async function DashboardLayout({
         <div className="absolute bottom-20 right-10 w-96 h-96 bg-secondary-200 dark:bg-secondary-900 rounded-full mix-blend-multiply filter blur-3xl opacity-10 dark:opacity-5" />
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-primary-100 dark:bg-primary-950 rounded-full mix-blend-multiply filter blur-3xl opacity-5 dark:opacity-2" />
       </div>
-      <DashboardSidebar enabledModuleKeys={enabledModuleKeys} />
+      {isAdmin ? (
+        <AdminSidebar />
+      ) : (
+        <DashboardSidebar enabledModuleKeys={enabledModuleKeys} userRole={user.role} />
+      )}
       <div className="lg:pl-64 relative z-10">
         <DashboardHeader user={user} />
         <main className="p-4 sm:p-6 lg:p-8">

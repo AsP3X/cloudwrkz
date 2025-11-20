@@ -7,8 +7,7 @@ import { cn } from "@/lib/utils/cn";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 
-// Navigation will be dynamically generated based on enabled modules
-const baseNavigation = [
+const adminNavigation = [
   {
     name: "Dashboard",
     href: ROUTES.DASHBOARD,
@@ -22,26 +21,52 @@ const baseNavigation = [
         />
       </svg>
     ),
-    alwaysShow: true,
   },
   {
-    name: "Tickets",
-    href: "/dashboard/tickets",
+    name: "Users",
+    href: ROUTES.ADMIN_USERS,
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
           strokeWidth={2}
-          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+          d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
         />
       </svg>
     ),
-    moduleKey: "tickets",
   },
   {
-    name: "Settings",
-    href: "/dashboard/settings",
+    name: "Modules",
+    href: ROUTES.ADMIN_MODULES,
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1v-3z"
+        />
+      </svg>
+    ),
+  },
+  {
+    name: "Groups",
+    href: ROUTES.ADMIN_GROUPS,
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+        />
+      </svg>
+    ),
+  },
+  {
+    name: "System Settings",
+    href: ROUTES.ADMIN_SETTINGS,
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path
@@ -58,24 +83,12 @@ const baseNavigation = [
         />
       </svg>
     ),
-    alwaysShow: true,
   },
 ];
 
-interface DashboardSidebarProps {
-  enabledModuleKeys: string[];
-  userRole?: "USER" | "AGENT" | "ADMIN" | "MODERATOR";
-}
-
-export const DashboardSidebar = ({ enabledModuleKeys, userRole }: DashboardSidebarProps) => {
+export const AdminSidebar = () => {
   const pathname = usePathname();
   const [isMobileOpen, setIsMobileOpen] = React.useState(false);
-
-  // Filter navigation based on enabled modules
-  const enabledModulesSet = new Set(enabledModuleKeys);
-  const navigation = baseNavigation.filter(
-    (item) => item.alwaysShow || (item.moduleKey && enabledModulesSet.has(item.moduleKey))
-  );
 
   return (
     <>
@@ -125,12 +138,15 @@ export const DashboardSidebar = ({ enabledModuleKeys, userRole }: DashboardSideb
             >
               {APP_CONFIG.name}
             </Link>
+            <span className="ml-2 px-2 py-1 text-xs font-semibold bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded">
+              Admin
+            </span>
           </div>
 
           {/* Navigation */}
           <nav className="flex-1 px-4 py-6 space-y-2">
-            {navigation.map((item) => {
-              // Dashboard should only match exactly, not sub-routes like /dashboard/tickets
+            {adminNavigation.map((item) => {
+              // Dashboard should only match exactly, not sub-routes
               const isActive =
                 item.href === ROUTES.DASHBOARD
                   ? pathname === item.href
