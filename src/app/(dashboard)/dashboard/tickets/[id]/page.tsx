@@ -6,7 +6,7 @@ import { MODULE_KEYS } from "@/lib/constants/modules";
 import { getTicket } from "@/server/actions/tickets";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
-import { TicketCommentForm } from "@/components/features/tickets/TicketCommentForm";
+import { TicketCommentsAndActivity } from "@/components/features/tickets/TicketCommentsAndActivity";
 import { TicketAssignmentFields } from "@/components/features/tickets/TicketAssignmentFields";
 import { TicketStatusPriorityFields } from "@/components/features/tickets/TicketStatusPriorityFields";
 import { getTicketTypeLabel, type TicketType } from "@/lib/utils/tickets";
@@ -200,88 +200,12 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
             )}
           </div>
 
-          {/* Comments Section */}
+          {/* Comments and Activity Section */}
           <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
-            <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-6">
-              Comments ({ticket.comments.length})
-            </h2>
-
-            {/* Comments List */}
-            {ticket.comments.length === 0 ? (
-              <div className="text-center py-8">
-                <svg
-                  className="w-12 h-12 text-neutral-300 dark:text-neutral-700 mx-auto mb-3"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                  />
-                </svg>
-                <p className="text-neutral-600 dark:text-neutral-400 mb-6">No comments yet. Be the first to comment!</p>
-              </div>
-            ) : (
-              <div className="space-y-6 mb-8">
-                {ticket.comments.map((comment: typeof ticket.comments[0]) => (
-                  <div
-                    key={comment.id}
-                    className={`border-l-4 pl-4 py-2 rounded-r-lg ${
-                      comment.isAgentOnly
-                        ? "border-orange-300 bg-orange-50"
-                        : "border-primary-200"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                          comment.isAgentOnly ? "bg-orange-100" : "bg-primary-100"
-                        }`}>
-                          <span className={`text-sm font-semibold ${
-                            comment.isAgentOnly ? "text-orange-700" : "text-primary-700"
-                          }`}>
-                            {(comment.user.name || comment.user.email)[0].toUpperCase()}
-                          </span>
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                              {comment.user.name || comment.user.email}
-                            </p>
-                            {comment.isAgentOnly && (
-                              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 border border-orange-200">
-                                Agent Only
-                              </span>
-                            )}
-                            {comment.user.role && getRoleBadge(comment.user.role) && (
-                              <span
-                                className={`px-2 py-0.5 rounded-full text-xs font-medium border ${getRoleBadge(comment.user.role)?.className}`}
-                              >
-                                {getRoleBadge(comment.user.role)?.label}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-neutral-500 dark:text-neutral-500">
-                            {formatDate(comment.createdAt)}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-neutral-700 dark:text-neutral-300 dark:text-neutral-700 whitespace-pre-wrap mt-2">
-                      {comment.content}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Add Comment Form */}
-            <div className="border-t border-neutral-200 pt-6">
-              <TicketCommentForm ticketId={ticket.id} userRole={user.role} />
-            </div>
+            <TicketCommentsAndActivity
+              ticket={ticket}
+              userRole={user.role}
+            />
           </div>
         </div>
 
