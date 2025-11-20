@@ -141,6 +141,7 @@ async function selectUserForActions(): Promise<{ id: string; email: string; name
     select: {
       id: true,
       email: true,
+      originalEmail: true,
       name: true,
       role: true,
       status: true,
@@ -158,12 +159,17 @@ async function selectUserForActions(): Promise<{ id: string; email: string; name
   console.log(`Found ${users.length} user(s):\n`);
   users.forEach((u, index) => {
     const displayName = formatUserName(u);
-    console.log(`${index + 1}. ${displayName} - ${u.status} [${u.role}]${u.status !== "DELETED" && u.email !== displayName ? ` (${u.email})` : ""}`);
+    const emailDisplay = u.status === "DELETED" && u.originalEmail 
+      ? ` (original: ${u.originalEmail})`
+      : u.status !== "DELETED" && u.email !== displayName 
+        ? ` (${u.email})`
+        : "";
+    console.log(`${index + 1}. ${displayName} - ${u.status} [${u.role}]${emailDisplay}`);
   });
   console.table(
     users.map((u) => ({
       "#": users.indexOf(u) + 1,
-      Email: u.status === "DELETED" ? formatUserName(u) : u.email,
+      Email: u.status === "DELETED" && u.originalEmail ? u.originalEmail : (u.status === "DELETED" ? formatUserName(u) : u.email),
       Name: u.status === "DELETED" ? formatUserName(u) : (u.name || "-"),
       Role: u.role,
       Status: u.status,
@@ -173,10 +179,16 @@ async function selectUserForActions(): Promise<{ id: string; email: string; name
   separator();
 
   // Create menu options for selection (using 1-based keys to match display)
-  const userOptions = users.map((u, index) => ({
-    key: (index + 1).toString(),
-    label: `${u.email}${u.name ? ` (${u.name})` : ""} - ${u.status} [${u.role}]`,
-  }));
+  // For deleted users, show originalEmail if available, otherwise show current email
+  const userOptions = users.map((u, index) => {
+    const displayEmail = u.status === "DELETED" && u.originalEmail 
+      ? u.originalEmail 
+      : u.email;
+    return {
+      key: (index + 1).toString(),
+      label: `${displayEmail}${u.name ? ` (${u.name})` : ""} - ${u.status} [${u.role}]`,
+    };
+  });
 
   // Add option to enter email manually
   userOptions.push({ key: "e", label: "Enter email manually" });
@@ -196,11 +208,17 @@ async function selectUserForActions(): Promise<{ id: string; email: string; name
         await prompt("\nPress Enter to continue...");
         return null;
       }
-      const user = await prisma.user.findUnique({
-        where: { email: emailInput.trim() },
+      const user = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { email: emailInput.trim() },
+            { originalEmail: emailInput.trim() },
+          ],
+        },
         select: {
           id: true,
           email: true,
+          originalEmail: true,
           name: true,
           role: true,
           status: true,
@@ -211,7 +229,11 @@ async function selectUserForActions(): Promise<{ id: string; email: string; name
         await prompt("\nPress Enter to continue...");
         return null;
       }
-      console.log(`\n✅ Selected user: ${user.email}${user.name ? ` (${user.name})` : ""}`);
+      // For deleted users, show originalEmail in the confirmation message if available
+      const displayEmail = user.status === "DELETED" && user.originalEmail 
+        ? user.originalEmail 
+        : user.email;
+      console.log(`\n✅ Selected user: ${displayEmail}${user.name ? ` (${user.name})` : ""}`);
       await prompt("\nPress Enter to continue...");
       return user;
     }
@@ -231,7 +253,11 @@ async function selectUserForActions(): Promise<{ id: string; email: string; name
       return null;
     }
 
-    console.log(`\n✅ Selected user: ${selectedUser.email}${selectedUser.name ? ` (${selectedUser.name})` : ""}`);
+    // For deleted users, show originalEmail in the confirmation message if available
+    const displayEmail = selectedUser.status === "DELETED" && selectedUser.originalEmail 
+      ? selectedUser.originalEmail 
+      : selectedUser.email;
+    console.log(`\n✅ Selected user: ${displayEmail}${selectedUser.name ? ` (${selectedUser.name})` : ""}`);
     await prompt("\nPress Enter to continue...");
     return selectedUser;
   } catch (error) {
@@ -247,11 +273,19 @@ async function runUserActionsInteractive(selectedUser: { id: string; email: stri
 
   // Helper function to refresh user data
   const refreshUser = async () => {
-    const refreshed = await prisma.user.findUnique({
-      where: { email: selectedUser.email },
+    // Try to find by ID first (most reliable), then by email or originalEmail
+    const refreshed = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { id: selectedUser.id },
+          { email: selectedUser.email },
+          { originalEmail: selectedUser.email },
+        ],
+      },
       select: {
         id: true,
         email: true,
+        originalEmail: true,
         name: true,
         role: true,
         status: true,
@@ -259,7 +293,7 @@ async function runUserActionsInteractive(selectedUser: { id: string; email: stri
     });
     if (refreshed) {
       selectedUser.id = refreshed.id;
-      selectedUser.email = refreshed.email;
+      selectedUser.email = refreshed.email; // Update to current email (might have changed after reactivation)
       selectedUser.name = refreshed.name;
     }
     return refreshed;
@@ -267,36 +301,58 @@ async function runUserActionsInteractive(selectedUser: { id: string; email: stri
 
   while (true) {
     // Refresh user data to show current info
-    await refreshUser();
+    const refreshed = await refreshUser();
     
     clear();
     console.log("╔════════════════════════════════════════════╗");
     console.log("║         User Actions                       ║");
     console.log("╚════════════════════════════════════════════╝\n");
-    console.log(`Selected User: ${selectedUser.email}${selectedUser.name ? ` (${selectedUser.name})` : ""}\n`);
+    
+    // For deleted users, show originalEmail if available, otherwise show current email
+    const displayEmail = refreshed && refreshed.status === "DELETED" && refreshed.originalEmail
+      ? refreshed.originalEmail
+      : selectedUser.email;
+    console.log(`Selected User: ${displayEmail}${selectedUser.name ? ` (${selectedUser.name})` : ""}\n`);
 
-    const choice = await menu("Select an action:", [
+    const actions = [
       { key: "s", label: "Show User Details" },
       { key: "us", label: "Update User Status" },
       { key: "ur", label: "Update User Role" },
       { key: "up", label: "Update User Password" },
       { key: "v", label: "Verify User Email" },
       { key: "cc", label: "Cookie Consent Management" },
+    ];
+    
+    // Add reactivate option if user is deleted
+    if (refreshed && refreshed.status === "DELETED") {
+      actions.push({ key: "r", label: "Reactivate User" });
+    }
+    
+    actions.push(
       { key: "d", label: "Delete User" },
       { key: "c", label: "Change User" },
-      { key: "b", label: "Back to User Management" },
-    ]);
+      { key: "b", label: "Back to User Management" }
+    );
+
+    const choice = await menu("Select an action:", actions);
 
     switch (choice) {
       case "s":
         clear();
-        // Use the selected user directly
+        // Use the selected user directly - find by ID or email/originalEmail to handle reactivated users
         const { prisma } = await import("../lib/db/prisma");
-        const user = await prisma.user.findUnique({
-          where: { email: selectedUser.email },
+        const user = await prisma.user.findFirst({
+          where: {
+            OR: [
+              { id: selectedUser.id },
+              { email: selectedUser.email },
+              { originalEmail: selectedUser.email },
+            ],
+          },
           select: {
             id: true,
             email: true,
+            originalEmail: true,
             name: true,
             role: true,
             status: true,
@@ -323,7 +379,14 @@ async function runUserActionsInteractive(selectedUser: { id: string; email: stri
         if (user) {
           console.log("\n📋 User Details:\n");
           console.log(`ID:              ${user.id}`);
-          console.log(`Email:           ${user.email}`);
+          // For deleted users, show originalEmail if available, otherwise show current email
+          const displayEmail = user.status === "DELETED" && user.originalEmail
+            ? user.originalEmail
+            : user.email;
+          console.log(`Email:           ${displayEmail}`);
+          if (user.status === "DELETED" && user.originalEmail && user.email !== user.originalEmail) {
+            console.log(`Current Email:   ${user.email} (deleted format)`);
+          }
           console.log(`Name:            ${user.name || "-"}`);
           console.log(`Role:            ${user.role}`);
           console.log(`Status:          ${user.status}`);
@@ -368,6 +431,13 @@ async function runUserActionsInteractive(selectedUser: { id: string; email: stri
         break;
       case "cc":
         await runCookieConsentInteractiveWithUser(selectedUser);
+        break;
+      case "r":
+        clear();
+        await userCli.handleReactivateInteractiveWithUser(selectedUser);
+        // Refresh user data after reactivation to get updated email
+        await refreshUser();
+        await prompt("\nPress Enter to continue...");
         break;
       case "d":
         clear();

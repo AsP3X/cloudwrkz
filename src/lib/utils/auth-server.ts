@@ -53,6 +53,11 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
       return null;
     }
 
+    // Explicitly reject deleted users
+    if (session.user.status === "DELETED") {
+      return null;
+    }
+
     // Check if user account is active and verified
     // Only ACTIVE users with verified emails can access protected pages
     if (

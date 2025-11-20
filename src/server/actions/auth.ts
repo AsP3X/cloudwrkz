@@ -136,13 +136,20 @@ export async function loginUser(
     }
 
     const { email, password, rememberMe } = validationResult.data;
+    const normalizedEmail = email.toLowerCase().trim();
 
-    // Find user by email
-    const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase().trim() },
+    // Find user by email or originalEmail (for deleted users)
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: normalizedEmail },
+          { originalEmail: normalizedEmail },
+        ],
+      },
       select: {
         id: true,
         email: true,
+        originalEmail: true,
         name: true,
         password: true,
         status: true,
@@ -158,18 +165,19 @@ export async function loginUser(
       };
     }
 
+    // Check if account is deleted - show specific error message
+    if (user.status === "DELETED") {
+      return {
+        success: false,
+        error: "This account has been deleted. Please contact an administrator to reactivate your account.",
+      };
+    }
+
     // Check if account is active
     if (user.status === "SUSPENDED") {
       return {
         success: false,
         error: "Your account has been suspended. Please contact support.",
-      };
-    }
-
-    if (user.status === "DELETED") {
-      return {
-        success: false,
-        error: "Invalid email or password",
       };
     }
 

@@ -428,9 +428,9 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
                           {getTicketTypeLabel(ticket.type as TicketType)}
                         </span>
                       </div>
-                      {ticket.createdBy && (
+                      {(ticket.createdBy || ticket.createdByName) && (
                         <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-2">
-                          Created by {formatUserName(ticket.createdBy)}
+                          Created by {formatUserName(ticket.createdBy, ticket.createdByName)}
                         </p>
                       )}
                     </div>

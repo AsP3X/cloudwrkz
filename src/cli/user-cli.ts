@@ -40,6 +40,7 @@ User Management CLI Tool
 Commands:
   create <email> <password> [name]     Create a new user
   delete <email|number>                Permanently delete a user and all associated data
+  reactivate <email|number>            Reactivate a deleted user account
   list [--status=STATUS] [--role=ROLE] List users with optional filters
   show <email>                         Show user details
   update-status <email|number> <status> Update user status (PENDING|ACTIVE|SUSPENDED|DELETED)
@@ -89,6 +90,10 @@ Examples:
   # Delete user (by email or number)
   pnpm cli user delete user@example.com
   pnpm cli user delete 1  # Delete first user from list
+  
+  # Reactivate deleted user (by original email or number)
+  pnpm cli user reactivate user@example.com
+  pnpm cli user reactivate 1  # Reactivate first deleted user from list
 
 Status Options: PENDING, ACTIVE, SUSPENDED, DELETED
 Role Options: USER, ADMIN, MODERATOR, AGENT
@@ -135,6 +140,9 @@ if (shouldExecute && command) {
           break;
         case "verify":
           await handleVerify();
+          break;
+        case "reactivate":
+          await handleReactivate();
           break;
         default:
           console.error(`Unknown command: ${command}`);
@@ -261,12 +269,15 @@ async function handleDelete() {
     console.log(`\n⚠️  WARNING: You are about to permanently delete:`);
     console.log(`   User: ${userEmail}${userName ? ` (${userName})` : ""}`);
     console.log(`   Status: ${selectedUser.status} | Role: ${selectedUser.role}`);
-    console.log(`\n   This will also delete:`);
-    console.log(`   - ${selectedUser._count.createdTickets} ticket(s) created by this user`);
-    console.log(`   - ${selectedUser._count.ticketComments} ticket comment(s)`);
+    console.log(`\n   This will preserve:`);
+    console.log(`   - ${selectedUser._count.createdTickets} ticket(s) created by this user (with anonymized name)`);
+    console.log(`   - ${selectedUser._count.ticketComments} ticket comment(s) (with anonymized name)`);
+    console.log(`\n   This will delete:`);
     console.log(`   - ${selectedUser._count.sessions} session(s)`);
     console.log(`   - ${selectedUser._count.groupMemberships} group membership(s)`);
     console.log(`   - ${selectedUser._count.assignedTickets} ticket assignment(s) will be unassigned`);
+    console.log(`\n   The user account will be permanently deleted and cannot be recovered.`);
+    console.log(`   Tickets and comments will be preserved with anonymized name: "Deleted User (UUID)"`);
     console.log(`\n   This action CANNOT be undone!`);
   } else {
     // Selection is an email
@@ -302,12 +313,15 @@ async function handleDelete() {
     console.log(`\n⚠️  WARNING: You are about to permanently delete:`);
     console.log(`   User: ${userEmail}${userName ? ` (${userName})` : ""}`);
     console.log(`   Status: ${user.status} | Role: ${user.role}`);
-    console.log(`\n   This will also delete:`);
-    console.log(`   - ${user._count.createdTickets} ticket(s) created by this user`);
-    console.log(`   - ${user._count.ticketComments} ticket comment(s)`);
+    console.log(`\n   This will preserve:`);
+    console.log(`   - ${user._count.createdTickets} ticket(s) created by this user (with anonymized name)`);
+    console.log(`   - ${user._count.ticketComments} ticket comment(s) (with anonymized name)`);
+    console.log(`\n   This will delete:`);
     console.log(`   - ${user._count.sessions} session(s)`);
     console.log(`   - ${user._count.groupMemberships} group membership(s)`);
     console.log(`   - ${user._count.assignedTickets} ticket assignment(s) will be unassigned`);
+    console.log(`\n   The user account will be permanently deleted and cannot be recovered.`);
+    console.log(`   Tickets and comments will be preserved with anonymized name: "Deleted User (UUID)"`);
     console.log(`\n   This action CANNOT be undone!`);
   }
 
@@ -316,25 +330,183 @@ async function handleDelete() {
     where: { userId },
   });
 
-  // Soft delete: Set status to DELETED and schedule for deletion
-  // The account will be permanently purged after 30 days by the purge-deleted-accounts cron job
-  const updatedUser = await prisma.user.update({
+  // Generate anonymized name: "Deleted User (full UUID)"
+  const anonymizedName = `Deleted User (${userId})`;
+
+  // Update all tickets created by this user to store anonymized name and nullify user reference
+  await prisma.ticket.updateMany({
+    where: { createdById: userId },
+    data: {
+      createdByName: anonymizedName,
+      createdById: null,
+    },
+  });
+
+  // Update all ticket comments by this user to store anonymized name and nullify user reference
+  await prisma.ticketComment.updateMany({
+    where: { userId },
+    data: {
+      authorName: anonymizedName,
+      userId: null,
+    },
+  });
+
+  // Unassign user from any assigned tickets (SetNull will handle this automatically, but we do it explicitly)
+  await prisma.ticket.updateMany({
+    where: { assignedToId: userId },
+    data: {
+      assignedToId: null,
+    },
+  });
+
+  // Delete group memberships
+  await prisma.groupMembership.deleteMany({
+    where: { userId },
+  });
+
+  // Hard delete: Permanently delete the user
+  await prisma.user.delete({
+    where: { id: userId },
+  });
+
+  console.log(`\n✅ User ${userEmail}${userName ? ` (${userName})` : ""} has been permanently deleted.`);
+  console.log(`   Tickets and comments preserved with anonymized name: "${anonymizedName}"`);
+}
+
+async function handleReactivate() {
+  if (commandArgs.length < 2) {
+    console.error("Usage: reactivate <email|number>");
+    console.error("\nTip: Use 'list --status=DELETED' command first to see deleted users");
+    process.exit(1);
+  }
+
+  const selection = commandArgs[1];
+  let userId: string;
+  let userEmail: string;
+  let userName: string | null;
+  let originalEmail: string | null;
+
+  // Check if selection is a number (for selecting from list)
+  const userIndex = parseInt(selection) - 1;
+  
+  if (!isNaN(userIndex) && userIndex >= 0) {
+    // Selection is a number - fetch deleted users and select by index
+    const users = await prisma.user.findMany({
+      where: { status: "DELETED" },
+      select: {
+        id: true,
+        email: true,
+        originalEmail: true,
+        name: true,
+        status: true,
+        emailVerified: true,
+      },
+      orderBy: { scheduledForDeletionAt: "desc" },
+    });
+
+    if (userIndex >= users.length) {
+      console.error(`Invalid user number: ${selection}. Only ${users.length} deleted user(s) found.`);
+      console.error("\nRun 'pnpm cli user list --status=DELETED' to see deleted users.");
+      process.exit(1);
+    }
+
+    const selectedUser = users[userIndex];
+    userId = selectedUser.id;
+    userEmail = selectedUser.email;
+    userName = selectedUser.name;
+    originalEmail = selectedUser.originalEmail;
+
+    console.log(`Selected user: ${originalEmail || userEmail}${userName ? ` (${userName})` : ""} - Status: ${selectedUser.status}`);
+  } else {
+    // Selection is an email - try to find by originalEmail or email
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { originalEmail: selection },
+          { email: selection },
+        ],
+        status: "DELETED",
+      },
+      select: {
+        id: true,
+        email: true,
+        originalEmail: true,
+        name: true,
+        status: true,
+        emailVerified: true,
+      },
+    });
+
+    if (!user) {
+      console.error(`Deleted user with email ${selection} not found`);
+      console.error("\nRun 'pnpm cli user list --status=DELETED' to see deleted users.");
+      process.exit(1);
+    }
+
+    userId = user.id;
+    userEmail = user.email;
+    userName = user.name;
+    originalEmail = user.originalEmail;
+  }
+
+  // Handle legacy deleted users (deleted before originalEmail field was added)
+  // If originalEmail is not set but email doesn't contain "_deleted_", use current email
+  if (!originalEmail) {
+    if (userEmail.includes("_deleted_")) {
+      console.error(`Cannot reactivate user: original email not found. User may have been permanently deleted.`);
+      process.exit(1);
+    } else {
+      // Legacy deleted user - email wasn't modified, so use current email
+      originalEmail = userEmail;
+      console.log(`Note: This appears to be a legacy deleted user. Using current email as original email.`);
+    }
+  }
+
+  // Check if the original email is now taken by another active user
+  const emailTaken = await prisma.user.findFirst({
+    where: {
+      email: originalEmail,
+      status: { not: "DELETED" },
+    },
+    select: { id: true, email: true },
+  });
+
+  if (emailTaken) {
+    console.error(`Cannot reactivate user: The email ${originalEmail} is now in use by another user.`);
+    process.exit(1);
+  }
+
+  // Reactivate: restore original email, set status to ACTIVE (or PENDING if email not verified)
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { emailVerified: true },
+  });
+
+  const newStatus = user?.emailVerified ? "ACTIVE" : "PENDING";
+
+  const reactivatedUser = await prisma.user.update({
     where: { id: userId },
     data: {
-      status: "DELETED",
-      scheduledForDeletionAt: new Date(),
+      email: originalEmail,
+      originalEmail: null,
+      status: newStatus,
+      scheduledForDeletionAt: null,
     },
     select: {
       id: true,
       email: true,
+      name: true,
       status: true,
-      scheduledForDeletionAt: true,
+      emailVerified: true,
     },
   });
 
-  console.log(`\n✅ User ${userEmail}${userName ? ` (${userName})` : ""} has been flagged for deletion. The account will be permanently removed after 30 days.`);
-  console.log(`   Status: ${updatedUser.status}`);
-  console.log(`   Scheduled for deletion at: ${updatedUser.scheduledForDeletionAt?.toISOString()}`);
+  console.log(`\n✅ User ${reactivatedUser.email}${userName ? ` (${userName})` : ""} has been reactivated.`);
+  console.log(`   Status: ${reactivatedUser.status}`);
+  console.log(`   Email verified: ${reactivatedUser.emailVerified ? "Yes" : "No"}`);
+  if (!reactivatedUser.emailVerified) {
+    console.log(`   Note: User will need to verify their email before full access is granted.`);
+  }
 }
 
 async function handleList() {
@@ -365,6 +537,7 @@ async function handleList() {
     select: {
       id: true,
       email: true,
+      originalEmail: true,
       name: true,
       role: true,
       status: true,
@@ -385,11 +558,16 @@ async function handleList() {
   console.log(`\nFound ${users.length} user(s):\n`);
   users.forEach((u, index) => {
     const displayName = formatUserName(u);
-    console.log(`${index + 1}. ${displayName} - ${u.status} [${u.role}]${u.status !== "DELETED" && u.email !== displayName ? ` (${u.email})` : ""}`);
+    const emailDisplay = u.status === "DELETED" && u.originalEmail 
+      ? ` (original: ${u.originalEmail})`
+      : u.status !== "DELETED" && u.email !== displayName 
+        ? ` (${u.email})`
+        : "";
+    console.log(`${index + 1}. ${displayName} - ${u.status} [${u.role}]${emailDisplay}`);
   });
   console.table(
     users.map((u: typeof users[0]) => ({
-      Email: u.status === "DELETED" ? formatUserName(u) : u.email,
+      Email: u.status === "DELETED" && u.originalEmail ? u.originalEmail : (u.status === "DELETED" ? formatUserName(u) : u.email),
       Name: u.status === "DELETED" ? formatUserName(u) : (u.name || "-"),
       Role: u.role,
       Status: u.status,
@@ -1119,7 +1297,7 @@ export async function handleListWithFilters(where: any) {
   });
   console.table(
     users.map((u: typeof users[0]) => ({
-      Email: u.status === "DELETED" ? formatUserName(u) : u.email,
+      Email: u.status === "DELETED" && u.originalEmail ? u.originalEmail : (u.status === "DELETED" ? formatUserName(u) : u.email),
       Name: u.status === "DELETED" ? formatUserName(u) : (u.name || "-"),
       Role: u.role,
       Status: u.status,
@@ -1372,25 +1550,48 @@ export async function handleDeleteInteractive() {
       where: { userId: fullUser.id },
     });
 
-    // Soft delete: Set status to DELETED and schedule for deletion
-    // The account will be permanently purged after 30 days by the purge-deleted-accounts cron job
-    const updatedUser = await prisma.user.update({
-      where: { id: fullUser.id },
+    // Generate anonymized name: "Deleted User (first 8 chars of UUID)"
+    const uuidPrefix = fullUser.id.substring(0, 8);
+    const anonymizedName = `Deleted User (${uuidPrefix})`;
+
+    // Update all tickets created by this user to store anonymized name and nullify user reference
+    await prisma.ticket.updateMany({
+      where: { createdById: fullUser.id },
       data: {
-        status: "DELETED",
-        scheduledForDeletionAt: new Date(),
-      },
-      select: {
-        id: true,
-        email: true,
-        status: true,
-        scheduledForDeletionAt: true,
+        createdByName: anonymizedName,
+        createdById: null,
       },
     });
 
-    console.log(`\n✅ User ${fullUser.email}${fullUser.name ? ` (${fullUser.name})` : ""} has been flagged for deletion. The account will be permanently removed after 30 days.`);
-    console.log(`   Status: ${updatedUser.status}`);
-    console.log(`   Scheduled for deletion at: ${updatedUser.scheduledForDeletionAt?.toISOString()}`);
+    // Update all ticket comments by this user to store anonymized name and nullify user reference
+    await prisma.ticketComment.updateMany({
+      where: { userId: fullUser.id },
+      data: {
+        authorName: anonymizedName,
+        userId: null,
+      },
+    });
+
+    // Unassign user from any assigned tickets
+    await prisma.ticket.updateMany({
+      where: { assignedToId: fullUser.id },
+      data: {
+        assignedToId: null,
+      },
+    });
+
+    // Delete group memberships
+    await prisma.groupMembership.deleteMany({
+      where: { userId: fullUser.id },
+    });
+
+    // Hard delete: Permanently delete the user
+    await prisma.user.delete({
+      where: { id: fullUser.id },
+    });
+
+    console.log(`\n✅ User ${fullUser.email}${fullUser.name ? ` (${fullUser.name})` : ""} has been permanently deleted.`);
+    console.log(`   Tickets and comments preserved with anonymized name: "${anonymizedName}"`);
   } catch (error) {
     console.error("Error:", error instanceof Error ? error.message : error);
   }
@@ -1562,9 +1763,10 @@ export async function handleDeleteInteractiveWithUser(user: { id: string; email:
     console.log(`\n⚠️  WARNING: You are about to permanently delete:`);
     console.log(`   User: ${fullUser.email}${fullUser.name ? ` (${fullUser.name})` : ""}`);
     console.log(`   Status: ${fullUser.status} | Role: ${fullUser.role}`);
-    console.log(`\n   This will also delete:`);
-    console.log(`   - ${fullUser._count.createdTickets} ticket(s) created by this user`);
-    console.log(`   - ${fullUser._count.ticketComments} ticket comment(s)`);
+    console.log(`\n   This will preserve:`);
+    console.log(`   - ${fullUser._count.createdTickets} ticket(s) created by this user (with anonymized name)`);
+    console.log(`   - ${fullUser._count.ticketComments} ticket comment(s) (with anonymized name)`);
+    console.log(`\n   This will delete:`);
     console.log(`   - ${fullUser._count.sessions} session(s)`);
     console.log(`   - ${fullUser._count.groupMemberships} group membership(s)`);
     console.log(`   - ${fullUser._count.assignedTickets} ticket assignment(s) will be unassigned`);
@@ -1581,25 +1783,270 @@ export async function handleDeleteInteractiveWithUser(user: { id: string; email:
       where: { userId: fullUser.id },
     });
 
-    // Soft delete: Set status to DELETED and schedule for deletion
-    // The account will be permanently purged after 30 days by the purge-deleted-accounts cron job
-    const updatedUser = await prisma.user.update({
-      where: { id: fullUser.id },
+    // Generate anonymized name: "Deleted User (first 8 chars of UUID)"
+    const uuidPrefix = fullUser.id.substring(0, 8);
+    const anonymizedName = `Deleted User (${uuidPrefix})`;
+
+    // Update all tickets created by this user to store anonymized name and nullify user reference
+    await prisma.ticket.updateMany({
+      where: { createdById: fullUser.id },
       data: {
+        createdByName: anonymizedName,
+        createdById: null,
+      },
+    });
+
+    // Update all ticket comments by this user to store anonymized name and nullify user reference
+    await prisma.ticketComment.updateMany({
+      where: { userId: fullUser.id },
+      data: {
+        authorName: anonymizedName,
+        userId: null,
+      },
+    });
+
+    // Unassign user from any assigned tickets
+    await prisma.ticket.updateMany({
+      where: { assignedToId: fullUser.id },
+      data: {
+        assignedToId: null,
+      },
+    });
+
+    // Delete group memberships
+    await prisma.groupMembership.deleteMany({
+      where: { userId: fullUser.id },
+    });
+
+    // Hard delete: Permanently delete the user
+    await prisma.user.delete({
+      where: { id: fullUser.id },
+    });
+
+    console.log(`\n✅ User ${fullUser.email}${fullUser.name ? ` (${fullUser.name})` : ""} has been permanently deleted.`);
+    console.log(`   Tickets and comments preserved with anonymized name: "${anonymizedName}"`);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleReactivateInteractive() {
+  try {
+    console.log("Reactivate Deleted User\n");
+
+    // List deleted users
+    const deletedUsers = await prisma.user.findMany({
+      where: { status: "DELETED" },
+      select: {
+        id: true,
+        email: true,
+        originalEmail: true,
+        name: true,
+        status: true,
+        emailVerified: true,
+      },
+      orderBy: { scheduledForDeletionAt: "desc" },
+    });
+
+    if (deletedUsers.length === 0) {
+      console.log("No deleted users found.");
+      return;
+    }
+
+    console.log(`Found ${deletedUsers.length} deleted user(s):\n`);
+    deletedUsers.forEach((u, index) => {
+      const displayEmail = u.originalEmail || u.email;
+      console.log(`${index + 1}. ${displayEmail}${u.name ? ` (${u.name})` : ""}`);
+    });
+
+    separator();
+
+    const email = await prompt("Enter the original email of the user to reactivate: ");
+    if (!email) {
+      console.error("Email cannot be empty");
+      return;
+    }
+
+    // Find user by originalEmail or email
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { originalEmail: email },
+          { email: email },
+        ],
         status: "DELETED",
-        scheduledForDeletionAt: new Date(),
       },
       select: {
         id: true,
         email: true,
+        originalEmail: true,
+        name: true,
         status: true,
-        scheduledForDeletionAt: true,
+        emailVerified: true,
       },
     });
 
-    console.log(`\n✅ User ${fullUser.email}${fullUser.name ? ` (${fullUser.name})` : ""} has been flagged for deletion. The account will be permanently removed after 30 days.`);
-    console.log(`   Status: ${updatedUser.status}`);
-    console.log(`   Scheduled for deletion at: ${updatedUser.scheduledForDeletionAt?.toISOString()}`);
+    if (!user) {
+      console.error(`Deleted user with email ${email} not found`);
+      return;
+    }
+
+    // Handle legacy deleted users (deleted before originalEmail field was added)
+    // If originalEmail is not set but email doesn't contain "_deleted_", use current email
+    if (!user.originalEmail) {
+      if (user.email.includes("_deleted_")) {
+        console.error(`Cannot reactivate user: original email not found. User may have been permanently deleted.`);
+        return;
+      } else {
+        // Legacy deleted user - email wasn't modified, so use current email
+        user.originalEmail = user.email;
+        console.log(`Note: This appears to be a legacy deleted user. Using current email as original email.`);
+      }
+    }
+
+    // Check if the original email is now taken by another active user
+    const emailTaken = await prisma.user.findFirst({
+      where: {
+        email: user.originalEmail,
+        status: { not: "DELETED" },
+      },
+      select: { id: true, email: true },
+    });
+
+    if (emailTaken) {
+      console.error(`Cannot reactivate user: The email ${user.originalEmail} is now in use by another user.`);
+      return;
+    }
+
+    const confirmed = await confirm(`\nAre you sure you want to reactivate ${user.originalEmail}${user.name ? ` (${user.name})` : ""}?`, false);
+    if (!confirmed) {
+      console.log("Reactivation cancelled.");
+      return;
+    }
+
+    const newStatus = user.emailVerified ? "ACTIVE" : "PENDING";
+
+    const reactivatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        email: user.originalEmail,
+        originalEmail: null,
+        status: newStatus,
+        scheduledForDeletionAt: null,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        emailVerified: true,
+      },
+    });
+
+    console.log(`\n✅ User ${reactivatedUser.email}${user.name ? ` (${user.name})` : ""} has been reactivated.`);
+    console.log(`   Status: ${reactivatedUser.status}`);
+    console.log(`   Email verified: ${reactivatedUser.emailVerified ? "Yes" : "No"}`);
+    if (!reactivatedUser.emailVerified) {
+      console.log(`   Note: User will need to verify their email before full access is granted.`);
+    }
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleReactivateInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
+  try {
+    // Get full user details - find by ID or email/originalEmail to handle deleted users
+    const fullUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { id: user.id },
+          { email: user.email },
+          { originalEmail: user.email },
+        ],
+      },
+      select: {
+        id: true,
+        email: true,
+        originalEmail: true,
+        name: true,
+        status: true,
+        emailVerified: true,
+      },
+    });
+
+    if (!fullUser) {
+      console.error("User not found");
+      return;
+    }
+
+    if (fullUser.status !== "DELETED") {
+      console.log(`User ${fullUser.email}${fullUser.name ? ` (${fullUser.name})` : ""} is not deleted. Current status: ${fullUser.status}`);
+      return;
+    }
+
+    // Handle legacy deleted users (deleted before originalEmail field was added)
+    // If originalEmail is not set but email doesn't contain "_deleted_", use current email
+    if (!fullUser.originalEmail) {
+      if (fullUser.email.includes("_deleted_")) {
+        console.error(`Cannot reactivate user: original email not found. User may have been permanently deleted.`);
+        return;
+      } else {
+        // Legacy deleted user - email wasn't modified, so use current email
+        fullUser.originalEmail = fullUser.email;
+        console.log(`Note: This appears to be a legacy deleted user. Using current email as original email.`);
+      }
+    }
+
+    // Check if the original email is now taken by another active user
+    const emailTaken = await prisma.user.findFirst({
+      where: {
+        email: fullUser.originalEmail,
+        status: { not: "DELETED" },
+      },
+      select: { id: true, email: true },
+    });
+
+    if (emailTaken) {
+      console.error(`Cannot reactivate user: The email ${fullUser.originalEmail} is now in use by another user.`);
+      return;
+    }
+
+    const confirmed = await confirm(`\nAre you sure you want to reactivate ${fullUser.originalEmail}${fullUser.name ? ` (${fullUser.name})` : ""}?`, false);
+    if (!confirmed) {
+      console.log("Reactivation cancelled.");
+      return;
+    }
+
+    const newStatus = fullUser.emailVerified ? "ACTIVE" : "PENDING";
+
+    const reactivatedUser = await prisma.user.update({
+      where: { id: fullUser.id },
+      data: {
+        email: fullUser.originalEmail,
+        originalEmail: null,
+        status: newStatus,
+        scheduledForDeletionAt: null,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        emailVerified: true,
+      },
+    });
+
+    console.log(`\n✅ User ${reactivatedUser.email}${fullUser.name ? ` (${fullUser.name})` : ""} has been reactivated.`);
+    console.log(`   Status: ${reactivatedUser.status}`);
+    console.log(`   Email verified: ${reactivatedUser.emailVerified ? "Yes" : "No"}`);
+    if (!reactivatedUser.emailVerified) {
+      console.log(`   Note: User will need to verify their email before full access is granted.`);
+    }
+    
+    // Update the user object passed in to reflect the reactivated state
+    user.email = reactivatedUser.email;
+    user.name = reactivatedUser.name;
   } catch (error) {
     console.error("Error:", error instanceof Error ? error.message : error);
   }

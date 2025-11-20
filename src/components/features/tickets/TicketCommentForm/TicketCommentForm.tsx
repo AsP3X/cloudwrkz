@@ -141,10 +141,10 @@ export const TicketCommentForm = ({ ticketId, userRole }: TicketCommentFormProps
   return (
     <form onSubmit={handleFormSubmit} className="space-y-4" noValidate>
       {serverError && (
-        <div className="rounded-lg bg-error-50 border-2 border-error-200 p-4">
+        <div className="rounded-lg bg-error-50 dark:bg-error-900/20 border-2 border-error-200 dark:border-error-800 p-4">
           <div className="flex items-start gap-3">
             <svg
-              className="w-5 h-5 text-error-600 mt-0.5 flex-shrink-0"
+              className="w-5 h-5 text-error-600 dark:text-error-400 mt-0.5 flex-shrink-0"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -156,7 +156,7 @@ export const TicketCommentForm = ({ ticketId, userRole }: TicketCommentFormProps
                 d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
               />
             </svg>
-            <p className="text-sm font-medium text-error-800">{serverError}</p>
+            <p className="text-sm font-medium text-error-800 dark:text-error-300">{serverError}</p>
           </div>
         </div>
       )}
@@ -175,9 +175,9 @@ export const TicketCommentForm = ({ ticketId, userRole }: TicketCommentFormProps
             type="checkbox"
             id="isAgentOnly"
             {...register("isAgentOnly")}
-            className="w-4 h-4 text-primary-600 border-neutral-300 rounded focus:ring-primary-500 focus:ring-2"
+            className="w-4 h-4 text-primary-600 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 bg-white dark:bg-neutral-800"
           />
-          <label htmlFor="isAgentOnly" className="ml-2 text-sm text-neutral-700">
+          <label htmlFor="isAgentOnly" className="ml-2 text-sm text-neutral-700 dark:text-neutral-300">
             Agent only comment
           </label>
         </div>
@@ -220,7 +220,7 @@ export const TicketCommentForm = ({ ticketId, userRole }: TicketCommentFormProps
             </div>
 
             {isDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
+              <div className="absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white dark:bg-neutral-800 ring-1 ring-black dark:ring-neutral-700 ring-opacity-5 z-10">
                 <div className="py-1" role="menu" aria-orientation="vertical">
                   <button
                     type="button"
@@ -229,7 +229,7 @@ export const TicketCommentForm = ({ ticketId, userRole }: TicketCommentFormProps
                       handleQuickAction("post");
                     }}
                     disabled={isSubmitting}
-                    className="block w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="block w-full text-left px-4 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     role="menuitem"
                   >
                     Post
@@ -241,7 +241,7 @@ export const TicketCommentForm = ({ ticketId, userRole }: TicketCommentFormProps
                       handleQuickAction("pending");
                     }}
                     disabled={isSubmitting}
-                    className="block w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="block w-full text-left px-4 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     role="menuitem"
                   >
                     Set Pending
@@ -253,7 +253,7 @@ export const TicketCommentForm = ({ ticketId, userRole }: TicketCommentFormProps
                       handleQuickAction("resolve");
                     }}
                     disabled={isSubmitting}
-                    className="block w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="block w-full text-left px-4 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     role="menuitem"
                   >
                     Resolve
@@ -265,7 +265,7 @@ export const TicketCommentForm = ({ ticketId, userRole }: TicketCommentFormProps
                       handleQuickAction("open");
                     }}
                     disabled={isSubmitting}
-                    className="block w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="block w-full text-left px-4 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     role="menuitem"
                   >
                     Open

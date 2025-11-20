@@ -53,6 +53,7 @@ model User {
   
   // Account deletion
   scheduledForDeletionAt DateTime? // When account was flagged for deletion
+  originalEmail String? // Original email before deletion (for reactivation)
   
   // Relations
   sessions  Session[]
@@ -175,8 +176,9 @@ model Ticket {
   priority    TicketPriority  @default(MEDIUM)
   
   // Relations
-  createdById String
-  createdBy   User            @relation("TicketCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdById String?
+  createdBy   User?           @relation("TicketCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdByName String?       // Store anonymized name when creator is deleted
   assignedToId String?
   assignedTo User?           @relation("TicketAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
   assignedToGroupId String?
@@ -212,8 +214,9 @@ model TicketComment {
   content    String
   ticketId   String
   ticket     Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  authorName String?  // Store anonymized name when author is deleted
   isAgentOnly Boolean @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt

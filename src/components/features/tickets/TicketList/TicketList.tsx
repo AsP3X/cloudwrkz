@@ -21,12 +21,14 @@ type Ticket = {
   priority: string;
   createdAt: Date;
   updatedAt: Date;
+  createdById?: string | null;
+  createdByName?: string | null;
   createdBy: {
     id: string;
     name: string | null;
     email: string;
     status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
-  };
+  } | null;
   assignedTo: {
     id: string;
     name: string | null;

@@ -233,15 +233,22 @@ export async function flagAccountForDeletion(): Promise<ActionResult> {
 
     // Soft delete: Set status to DELETED and schedule for deletion
     // The account will be permanently purged after 30 days by the purge-deleted-accounts cron job
+    // Free up the email by modifying it and storing the original
+    const timestamp = Date.now();
+    const deletedEmail = `${user.email}_deleted_${userId}_${timestamp}`;
+    
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: {
         status: "DELETED",
         scheduledForDeletionAt: new Date(),
+        originalEmail: user.email,
+        email: deletedEmail,
       },
       select: {
         id: true,
         email: true,
+        originalEmail: true,
         status: true,
         scheduledForDeletionAt: true,
       },

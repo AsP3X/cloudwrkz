@@ -287,7 +287,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                   Created By
                 </label>
                 <p className="text-sm text-neutral-900 dark:text-neutral-100">
-                  {formatUserName(ticket.createdBy)}
+                  {formatUserName(ticket.createdBy, ticket.createdByName)}
                 </p>
               </div>
 

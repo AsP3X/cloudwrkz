@@ -11,13 +11,15 @@ interface Comment {
   content: string;
   createdAt: Date;
   isAgentOnly: boolean;
+  userId?: string | null;
+  authorName?: string | null;
   user: {
     id: string;
     name?: string | null;
     email: string;
     role?: string | null;
     status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
-  };
+  } | null;
 }
 
 interface TicketCommentsAndActivityProps {
@@ -29,11 +31,13 @@ interface TicketCommentsAndActivityProps {
     closedAt: Date | null;
     status: string;
     priority: string;
+    createdById?: string | null;
+    createdByName?: string | null;
     createdBy: {
       name?: string | null;
       email: string;
       status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
-    };
+    } | null;
     assignedTo?: {
       name?: string | null;
       email: string;
@@ -123,20 +127,20 @@ export const TicketCommentsAndActivity = ({
                         comment.isAgentOnly ? "text-orange-700 dark:text-orange-300" : "text-primary-700 dark:text-primary-300"
                       }`}
                     >
-                      {formatUserInitial(comment.user)}
+                      {formatUserInitial(comment.user, comment.authorName)}
                     </span>
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                        {formatUserName(comment.user)}
+                        {formatUserName(comment.user, comment.authorName)}
                       </p>
                       {comment.isAgentOnly && (
                         <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 border border-orange-200 dark:bg-orange-900 dark:text-orange-300 dark:border-orange-800">
                           Agent Only
                         </span>
                       )}
-                      {comment.user.role && getRoleBadge(comment.user.role) && (
+                      {comment.user && comment.user.role && getRoleBadge(comment.user.role) && (
                         <span
                           className={`px-2 py-0.5 rounded-full text-xs font-medium border ${getRoleBadge(comment.user.role)?.className}`}
                         >

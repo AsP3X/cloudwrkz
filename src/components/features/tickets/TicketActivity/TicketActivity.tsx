@@ -11,6 +11,7 @@ interface ActivityItem {
     email: string;
     status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
   };
+  storedName?: string | null;
   timestamp: Date;
   metadata?: {
     oldValue?: string;
@@ -26,11 +27,13 @@ interface TicketActivityProps {
     closedAt: Date | null;
     status: string;
     priority: string;
+    createdById?: string | null;
+    createdByName?: string | null;
     createdBy: {
       name?: string | null;
       email: string;
       status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
-    };
+    } | null;
     assignedTo?: {
       name?: string | null;
       email: string;
@@ -39,11 +42,13 @@ interface TicketActivityProps {
     comments: Array<{
       id: string;
       createdAt: Date;
+      userId?: string | null;
+      authorName?: string | null;
       user: {
         name?: string | null;
         email: string;
         status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
-      };
+      } | null;
     }>;
   };
 }
@@ -56,7 +61,8 @@ export const TicketActivity = ({ ticket }: TicketActivityProps) => {
     id: "ticket-created",
     type: "created",
     description: "Ticket created",
-    user: ticket.createdBy,
+    user: ticket.createdBy || undefined,
+    storedName: ticket.createdByName || undefined,
     timestamp: ticket.createdAt,
   });
 
@@ -85,7 +91,8 @@ export const TicketActivity = ({ ticket }: TicketActivityProps) => {
       id: `comment-${comment.id}`,
       type: "comment",
       description: "Comment added",
-      user: comment.user,
+      user: comment.user || undefined,
+      storedName: comment.authorName || undefined,
       timestamp: comment.createdAt,
     });
   });
@@ -204,9 +211,9 @@ export const TicketActivity = ({ ticket }: TicketActivityProps) => {
                 <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
                   {activity.description}
                 </p>
-                {activity.user && (
+                {(activity.user || activity.storedName) && (
                   <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">
-                    by {formatUserName(activity.user)}
+                    by {formatUserName(activity.user, activity.storedName)}
                   </p>
                 )}
                 {activity.metadata?.oldValue && activity.metadata?.newValue && (

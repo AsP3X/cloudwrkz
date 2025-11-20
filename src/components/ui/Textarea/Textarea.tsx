@@ -22,7 +22,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
         {label && (
           <label
             htmlFor={textareaId}
-            className="block text-sm font-medium text-neutral-700 mb-2"
+            className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2"
           >
             {label}
             {props.required && <span className="text-error-500 ml-1">*</span>}
@@ -33,12 +33,12 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
           id={textareaId}
           className={cn(
             "w-full px-4 py-3 rounded-lg border-2 transition-all duration-200",
-            "focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2",
-            "disabled:bg-neutral-100 disabled:cursor-not-allowed",
-            "placeholder:text-neutral-400 resize-y min-h-[100px]",
+            "focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900",
+            "disabled:bg-neutral-100 dark:disabled:bg-neutral-800 disabled:cursor-not-allowed",
+            "placeholder:text-neutral-400 dark:placeholder:text-neutral-500 resize-y min-h-[100px]",
             error
-              ? "border-error-300 bg-error-50 focus:border-error-500 focus:ring-error-500"
-              : "border-neutral-200 bg-white hover:border-neutral-300 focus:border-primary-500",
+              ? "border-error-300 dark:border-error-700 bg-error-50 dark:bg-error-900/20 focus:border-error-500 dark:focus:border-error-500 focus:ring-error-500"
+              : "border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-600 focus:border-primary-500 dark:focus:border-primary-500 text-neutral-900 dark:text-neutral-100",
             className
           )}
           aria-invalid={error ? "true" : "false"}
@@ -48,7 +48,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
         {error && (
           <p
             id={`${textareaId}-error`}
-            className="mt-2 text-sm text-error-600 flex items-center gap-1"
+            className="mt-2 text-sm text-error-600 dark:text-error-400 flex items-center gap-1"
           >
             <svg
               className="w-4 h-4"
@@ -69,7 +69,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
         {helperText && !error && (
           <p
             id={`${textareaId}-helper`}
-            className="mt-2 text-sm text-neutral-500"
+            className="mt-2 text-sm text-neutral-500 dark:text-neutral-400"
           >
             {helperText}
           </p>
