@@ -377,7 +377,7 @@ export async function getTicket(id: string) {
           },
         },
         orderBy: {
-          createdAt: "asc",
+          createdAt: "desc",
         },
       },
     },

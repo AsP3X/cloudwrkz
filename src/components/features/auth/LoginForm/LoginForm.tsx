@@ -61,8 +61,6 @@ export const LoginForm = ({ initialError }: LoginFormProps) => {
 
   return (
     <form 
-      method="POST" 
-      action="#" 
       onSubmit={handleFormSubmit} 
       className="space-y-6"
       noValidate
