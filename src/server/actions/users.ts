@@ -205,13 +205,14 @@ export async function updateProfile(
 }
 
 /**
- * Delete current user's account permanently
- * Immediately deletes the account and all associated data
+ * Flag current user's account for deletion (soft delete)
+ * Sets status to DELETED and scheduledForDeletionAt to now
+ * The account will be permanently purged after 30 days by the purge-deleted-accounts cron job
  * Cascading deletes will handle:
  * - Sessions (already deleted explicitly)
- * - Tickets created by user
- * - Ticket comments by user
- * - Group memberships
+ * - Tickets created by user (will be deleted when account is purged)
+ * - Ticket comments by user (will be deleted when account is purged)
+ * - Group memberships (will be deleted when account is purged)
  * - Assigned tickets will be unassigned (SetNull)
  */
 export async function flagAccountForDeletion(): Promise<ActionResult> {
@@ -230,14 +231,27 @@ export async function flagAccountForDeletion(): Promise<ActionResult> {
     const cookieStore = await cookies();
     cookieStore.delete("session");
 
-    // Delete the user account - cascading deletes will handle related data
-    // This will delete:
-    // - All tickets created by the user (Cascade)
-    // - All ticket comments by the user (Cascade)
-    // - All group memberships (Cascade)
-    // - Assigned tickets will be unassigned (SetNull)
-    await prisma.user.delete({
+    // Soft delete: Set status to DELETED and schedule for deletion
+    // The account will be permanently purged after 30 days by the purge-deleted-accounts cron job
+    const updatedUser = await prisma.user.update({
       where: { id: userId },
+      data: {
+        status: "DELETED",
+        scheduledForDeletionAt: new Date(),
+      },
+      select: {
+        id: true,
+        email: true,
+        status: true,
+        scheduledForDeletionAt: true,
+      },
+    });
+
+    console.log("User flagged for deletion:", {
+      id: updatedUser.id,
+      email: updatedUser.email,
+      status: updatedUser.status,
+      scheduledForDeletionAt: updatedUser.scheduledForDeletionAt,
     });
 
     // Revalidate settings page
@@ -245,14 +259,15 @@ export async function flagAccountForDeletion(): Promise<ActionResult> {
 
     return {
       success: true,
-      message: "Your account has been permanently deleted. All your data has been removed.",
+      message: "Your account has been flagged for deletion. It will be permanently removed after 30 days.",
     };
   } catch (error) {
     console.error("Account deletion error:", error);
+    console.error("Error details:", error instanceof Error ? error.stack : error);
 
     return {
       success: false,
-      error: "An error occurred while deleting your account. Please try again.",
+      error: error instanceof Error ? `An error occurred: ${error.message}` : "An error occurred while deleting your account. Please try again.",
     };
   }
 }
