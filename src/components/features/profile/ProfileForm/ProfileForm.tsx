@@ -70,8 +70,6 @@ export const ProfileForm = ({ initialData }: ProfileFormProps) => {
 
   return (
     <form
-      method="POST"
-      action="#"
       onSubmit={handleFormSubmit}
       className="space-y-6"
       noValidate

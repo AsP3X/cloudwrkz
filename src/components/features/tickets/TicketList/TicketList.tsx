@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getTicketTypeLabel, type TicketType } from "@/lib/utils/tickets";
+import { formatUserName } from "@/lib/utils/users";
 import { type TicketViewMode } from "../TicketViewToggle";
 import { TicketBulkActionsToolbar } from "../TicketBulkActionsToolbar";
 import { bulkUpdateTickets, bulkDeleteTickets } from "@/server/actions/tickets";
@@ -20,15 +21,19 @@ type Ticket = {
   priority: string;
   createdAt: Date;
   updatedAt: Date;
+  createdById?: string | null;
+  createdByName?: string | null;
   createdBy: {
     id: string;
     name: string | null;
     email: string;
-  };
+    status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
+  } | null;
   assignedTo: {
     id: string;
     name: string | null;
     email: string;
+    status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
   } | null;
   assignedToGroup: {
     id: string;
@@ -48,27 +53,27 @@ interface TicketListProps {
 const getStatusColor = (status: string) => {
   switch (status) {
     case "OPEN":
-      return "bg-blue-100 text-blue-700";
+      return "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300";
     case "IN_PROGRESS":
-      return "bg-yellow-100 text-yellow-700";
+      return "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300";
     case "RESOLVED":
     case "CLOSED":
-      return "bg-green-100 text-green-700";
+      return "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300";
     default:
-      return "bg-neutral-100 text-neutral-700";
+      return "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300";
   }
 };
 
 const getPriorityColor = (priority: string) => {
   switch (priority) {
     case "URGENT":
-      return "bg-red-100 text-red-700";
+      return "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300";
     case "HIGH":
-      return "bg-orange-100 text-orange-700";
+      return "bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300";
     case "MEDIUM":
-      return "bg-yellow-100 text-yellow-700";
+      return "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300";
     default:
-      return "bg-neutral-100 text-neutral-700";
+      return "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300";
   }
 };
 
@@ -111,6 +116,8 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
   const showDescription = viewMode === "detailed";
   const showPriority = viewMode !== "title-only";
   const showUpdated = viewMode === "detailed";
+  const isCompact = viewMode === "compact";
+  const isNormal = viewMode === "normal";
 
   const allSelected = tickets.length > 0 && selectedTickets.size === tickets.length;
   const someSelected = selectedTickets.size > 0 && selectedTickets.size < tickets.length;
@@ -393,17 +400,17 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
                   </td>
                 )}
                 {showType && (
-                  <td className={`px-6 py-4 whitespace-nowrap ${viewMode === "normal" ? "hidden md:table-cell" : ""} ${viewMode === "compact" ? "px-4 py-3" : ""}`}>
+                  <td className={`px-6 py-4 whitespace-nowrap ${isNormal ? "hidden md:table-cell" : ""} ${isCompact ? "px-4 py-3" : ""}`}>
                     <span className="px-2 py-1 rounded-full text-xs font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
                       {getTicketTypeLabel(ticket.type as TicketType)}
                     </span>
                   </td>
                 )}
                 {showAssignedTo && (
-                  <td className={`px-6 py-4 whitespace-nowrap ${viewMode === "normal" ? "hidden lg:table-cell" : ""} ${viewMode === "compact" ? "px-4 py-3" : ""}`}>
+                  <td className={`px-6 py-4 whitespace-nowrap ${isNormal ? "hidden lg:table-cell" : ""} ${isCompact ? "px-4 py-3" : ""}`}>
                     {ticket.assignedTo ? (
                       <div className="text-sm text-neutral-700 dark:text-neutral-300">
-                        {ticket.assignedTo.name || ticket.assignedTo.email}
+                        {formatUserName(ticket.assignedTo)}
                       </div>
                     ) : ticket.assignedToGroup ? (
                       <div className="text-sm text-neutral-700 dark:text-neutral-300">
@@ -411,13 +418,13 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
                         {ticket.assignedToGroup.name}
                       </div>
                     ) : (
-                      <span className="text-xs text-neutral-400 dark:text-neutral-500">Unassigned</span>
+                      <span className="text-xs text-neutral-400 dark:text-neutral-400">Unassigned</span>
                     )}
                   </td>
                 )}
                 {showCreated && (
-                  <td className={`px-6 py-4 whitespace-nowrap ${viewMode === "normal" ? "hidden lg:table-cell" : ""} ${viewMode === "compact" ? "px-4 py-3" : ""}`}>
-                    <div className={`${viewMode === "compact" ? "text-xs" : "text-sm"} text-neutral-600 dark:text-neutral-400`}>
+                  <td className={`px-6 py-4 whitespace-nowrap ${isNormal ? "hidden lg:table-cell" : ""} ${isCompact ? "px-4 py-3" : ""}`}>
+                    <div className={`${isCompact ? "text-xs" : "text-sm"} text-neutral-600 dark:text-neutral-400`}>
                       {formatDate(ticket.createdAt)}
                     </div>
                     {showUpdated && ticket.updatedAt && ticket.updatedAt.getTime() !== ticket.createdAt.getTime() && (
@@ -442,7 +449,7 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
                   </td>
                 )}
                 {showComments && (
-                  <td className={`px-6 py-4 whitespace-nowrap ${viewMode === "normal" ? "hidden md:table-cell" : ""} ${viewMode === "compact" ? "px-4 py-3" : ""}`}>
+                  <td className={`px-6 py-4 whitespace-nowrap ${isNormal ? "hidden md:table-cell" : ""} ${isCompact ? "px-4 py-3" : ""}`}>
                     {ticket._count.comments > 0 ? (
                       <div className="flex items-center gap-1 text-sm text-neutral-600 dark:text-neutral-400">
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -451,7 +458,7 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
                         <span>{ticket._count.comments}</span>
                       </div>
                     ) : (
-                      <span className="text-xs text-neutral-400 dark:text-neutral-500">—</span>
+                      <span className="text-xs text-neutral-400 dark:text-neutral-400">—</span>
                     )}
                   </td>
                 )}

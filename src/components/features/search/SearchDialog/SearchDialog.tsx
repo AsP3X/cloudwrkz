@@ -3,7 +3,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { globalSearch, type SearchResult } from "@/server/actions/search";
+import type { SearchResult } from "@/server/actions/search";
+import { callServerActionWithRetry } from "@/lib/utils/server-action-utils";
 import { cn } from "@/lib/utils/cn";
 import Link from "next/link";
 
@@ -47,12 +48,19 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
     const timeoutId = setTimeout(async () => {
       setIsLoading(true);
       try {
-        const response = await globalSearch(query, 20);
+        // Dynamically import to avoid stale server action references
+        const response = await callServerActionWithRetry(async () => {
+          const { globalSearch } = await import("@/server/actions/search");
+          return await globalSearch(query, 20);
+        }, 1); // Only 1 retry to reduce failed requests
+        
         setResults(response.results);
         setTotalResults(response.total);
         setSelectedIndex(-1);
-      } catch (error) {
+      } catch (error: any) {
         console.error("Search error:", error);
+        // Don't show error to user, just clear results
+        // Stale action errors are handled by retry logic
         setResults([]);
         setTotalResults(0);
       } finally {

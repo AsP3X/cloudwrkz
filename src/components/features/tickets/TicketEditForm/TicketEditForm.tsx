@@ -145,8 +145,6 @@ export const TicketEditForm = ({ ticket, agents, groups = [] }: TicketEditFormPr
 
   return (
     <form
-      method="POST"
-      action="#"
       onSubmit={handleFormSubmit}
       className="space-y-6"
       noValidate

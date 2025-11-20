@@ -141,8 +141,6 @@ export const TicketForm = ({ isAgent = false, users = [], agents = [], groups = 
 
   return (
     <form
-      method="POST"
-      action="#"
       onSubmit={handleFormSubmit}
       className="space-y-6"
       noValidate

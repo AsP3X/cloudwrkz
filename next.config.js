@@ -1,9 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  experimental: {
-    // Next.js 15 features
-  },
+  allowedDevOrigins: ['https://cloudwrkz.corespace.de'],
 };
 
 module.exports = nextConfig;

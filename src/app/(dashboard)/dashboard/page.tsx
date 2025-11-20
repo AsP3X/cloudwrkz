@@ -1,4 +1,5 @@
 import { getCurrentUser } from "@/lib/utils/auth-server";
+import { formatUserName } from "@/lib/utils/users";
 import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
 import { isModuleEnabled } from "@/server/actions/modules";
@@ -327,12 +328,12 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
                 <Link
                   key={ticket.id}
                   href={`/dashboard/tickets/${ticket.id}`}
-                  className="block p-4 border border-neutral-200/50 dark:border-neutral-800/50 rounded-xl hover:border-primary-300 hover:bg-gradient-to-r hover:from-primary-50/50 dark:hover:from-primary-900/50 hover:to-transparent transition-all duration-200 hover:shadow-sm group"
+                  className="block p-4 border border-neutral-200/50 dark:border-neutral-800/50 rounded-xl bg-white dark:bg-neutral-800 hover:border-primary-300 dark:hover:border-primary-600 hover:bg-gradient-to-r hover:from-primary-50/50 dark:hover:from-primary-900/50 hover:to-transparent transition-all duration-200 hover:shadow-sm group"
                 >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-mono font-semibold text-primary-600">
+                      <span className="text-xs font-mono font-semibold text-primary-600 dark:text-primary-400">
                         {ticket.ticketNumber}
                       </span>
                       <h3 className="font-semibold text-neutral-900 dark:text-neutral-100">{ticket.title}</h3>
@@ -342,7 +343,7 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
                         ticket.status === "OPEN" ? "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300" :
                         ticket.status === "IN_PROGRESS" ? "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300" :
                         ticket.status === "RESOLVED" || ticket.status === "CLOSED" ? "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300" :
-                        "bg-neutral-100 dark:bg-neutral-800 text-neutral-700"
+                        "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300"
                       }`}>
                         {ticket.status.replace("_", " ")}
                       </span>
@@ -350,24 +351,24 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
                         ticket.priority === "URGENT" ? "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300" :
                         ticket.priority === "HIGH" ? "bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300" :
                         ticket.priority === "MEDIUM" ? "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300" :
-                        "bg-neutral-100 dark:bg-neutral-800 text-neutral-700"
+                        "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300"
                       }`}>
                         {ticket.priority}
                       </span>
-                      <span className="px-2 py-1 rounded text-xs font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700">
-                        {getTicketTypeLabel(ticket.type as TicketType)}
-                      </span>
-                      {ticket._count.comments > 0 && (
-                        <span className="text-neutral-500 dark:text-neutral-500">
-                          {ticket._count.comments} comment{ticket._count.comments !== 1 ? "s" : ""}
+                        <span className="px-2 py-1 rounded text-xs font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
+                          {getTicketTypeLabel(ticket.type as TicketType)}
                         </span>
+                        {ticket._count.comments > 0 && (
+                          <span className="text-neutral-500 dark:text-neutral-400">
+                            {ticket._count.comments} comment{ticket._count.comments !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                      </div>
+                      {ticket.createdBy && (
+                        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2">
+                          Created by {formatUserName(ticket.createdBy)}
+                        </p>
                       )}
-                    </div>
-                    {ticket.createdBy && (
-                      <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-2">
-                        Created by {ticket.createdBy.name || ticket.createdBy.email}
-                      </p>
-                    )}
                   </div>
                 </div>
               </Link>
@@ -396,12 +397,12 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
                 <Link
                   key={ticket.id}
                   href={`/dashboard/tickets/${ticket.id}`}
-                  className="block p-4 border border-neutral-200/50 dark:border-neutral-800/50 rounded-xl hover:border-warning-300 dark:hover:border-warning-700 hover:bg-gradient-to-r hover:from-warning-50/50 dark:hover:from-warning-900/50 hover:to-transparent transition-all duration-200 hover:shadow-sm group"
+                  className="block p-4 border border-neutral-200/50 dark:border-neutral-800/50 rounded-xl bg-white dark:bg-neutral-800 hover:border-warning-300 dark:hover:border-warning-600 hover:bg-gradient-to-r hover:from-warning-50/50 dark:hover:from-warning-900/50 hover:to-transparent transition-all duration-200 hover:shadow-sm group"
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-mono font-semibold text-primary-600">
+                        <span className="text-xs font-mono font-semibold text-primary-600 dark:text-primary-400">
                           {ticket.ticketNumber}
                         </span>
                         <h3 className="font-semibold text-neutral-900 dark:text-neutral-100">{ticket.title}</h3>
@@ -411,7 +412,7 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
                           ticket.status === "OPEN" ? "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300" :
                           ticket.status === "IN_PROGRESS" ? "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300" :
                           ticket.status === "RESOLVED" || ticket.status === "CLOSED" ? "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300" :
-                          "bg-neutral-100 dark:bg-neutral-800 text-neutral-700"
+                          "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300"
                         }`}>
                           {ticket.status.replace("_", " ")}
                         </span>
@@ -419,17 +420,17 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
                           ticket.priority === "URGENT" ? "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300" :
                           ticket.priority === "HIGH" ? "bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300" :
                           ticket.priority === "MEDIUM" ? "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300" :
-                          "bg-neutral-100 dark:bg-neutral-800 text-neutral-700"
+                          "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300"
                         }`}>
                           {ticket.priority}
                         </span>
-                        <span className="px-2 py-1 rounded text-xs font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700">
+                        <span className="px-2 py-1 rounded text-xs font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
                           {getTicketTypeLabel(ticket.type as TicketType)}
                         </span>
                       </div>
-                      {ticket.createdBy && (
-                        <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-2">
-                          Created by {ticket.createdBy.name || ticket.createdBy.email}
+                      {(ticket.createdBy || ticket.createdByName) && (
+                        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2">
+                          Created by {formatUserName(ticket.createdBy, ticket.createdByName)}
                         </p>
                       )}
                     </div>
@@ -691,7 +692,7 @@ export default async function DashboardPage() {
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-mono font-semibold text-primary-600">
+                        <span className="text-xs font-mono font-semibold text-primary-600 dark:text-primary-400">
                           {ticket.ticketNumber}
                         </span>
                         <h3 className="font-semibold text-neutral-900 dark:text-neutral-100">{ticket.title}</h3>
@@ -701,7 +702,7 @@ export default async function DashboardPage() {
                           ticket.status === "OPEN" ? "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300" :
                           ticket.status === "IN_PROGRESS" ? "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300" :
                           ticket.status === "RESOLVED" || ticket.status === "CLOSED" ? "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300" :
-                          "bg-neutral-100 dark:bg-neutral-800 text-neutral-700"
+                          "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300"
                         }`}>
                           {ticket.status.replace("_", " ")}
                         </span>
@@ -709,15 +710,15 @@ export default async function DashboardPage() {
                           ticket.priority === "URGENT" ? "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300" :
                           ticket.priority === "HIGH" ? "bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300" :
                           ticket.priority === "MEDIUM" ? "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300" :
-                          "bg-neutral-100 dark:bg-neutral-800 text-neutral-700"
+                          "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300"
                         }`}>
                           {ticket.priority}
                         </span>
-                        <span className="px-2 py-1 rounded text-xs font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700">
+                        <span className="px-2 py-1 rounded text-xs font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
                           {getTicketTypeLabel(ticket.type as TicketType)}
                         </span>
                         {ticket._count.comments > 0 && (
-                          <span className="text-neutral-500 dark:text-neutral-500">
+                          <span className="text-neutral-500 dark:text-neutral-400">
                             {ticket._count.comments} comment{ticket._count.comments !== 1 ? "s" : ""}
                           </span>
                         )}

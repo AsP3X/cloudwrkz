@@ -55,7 +55,7 @@ pnpm cli user list [--status=STATUS] [--role=ROLE]
 ```
 
 **Status options:** `PENDING`, `ACTIVE`, `SUSPENDED`, `DELETED`  
-**Role options:** `USER`, `ADMIN`, `MODERATOR`
+**Role options:** `USER`, `ADMIN`, `MODERATOR`, `AGENT`
 
 **Examples:**
 ```bash
@@ -67,15 +67,20 @@ pnpm cli user list --status=ACTIVE --role=ADMIN
 
 ### Show User Details
 
-Display detailed information about a specific user.
+Display detailed information about a specific user. You can select a user by email or by number.
 
 ```bash
-pnpm cli user show <email>
+pnpm cli user show <email|number>
 ```
 
-**Example:**
+**Examples:**
 ```bash
+# Show by email
 pnpm cli user show admin@example.com
+
+# Show by number (from list)
+pnpm cli user list
+pnpm cli user show 1  # Shows details for the first user in the list
 ```
 
 ### Update User Status
@@ -107,7 +112,7 @@ Change a user's role/permissions. You can select a user by email or by number.
 pnpm cli user update-role <email|number> <role>
 ```
 
-**Role options:** `USER`, `ADMIN`, `MODERATOR`
+**Role options:** `USER`, `ADMIN`, `MODERATOR`, `AGENT`
 
 **Examples:**
 ```bash
@@ -215,7 +220,7 @@ If you get an error that a user already exists, use `show` to check the user det
 
 Make sure you're using the exact status/role values:
 - Status: `PENDING`, `ACTIVE`, `SUSPENDED`, `DELETED` (case-insensitive)
-- Role: `USER`, `ADMIN`, `MODERATOR` (case-insensitive)
+- Role: `USER`, `ADMIN`, `MODERATOR`, `AGENT` (case-insensitive)
 
 ## Future Features
 

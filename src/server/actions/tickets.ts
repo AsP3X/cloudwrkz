@@ -295,21 +295,38 @@ export async function getTickets(filters?: {
 
   return prisma.ticket.findMany({
     where,
-    include: {
+    select: {
+      id: true,
+      ticketNumber: true,
+      title: true,
+      description: true,
+      type: true,
+      status: true,
+      priority: true,
+      createdAt: true,
+      updatedAt: true,
+      resolvedAt: true,
+      closedAt: true,
+      createdById: true,
+      createdByName: true,
       createdBy: {
         select: {
           id: true,
           name: true,
           email: true,
+          status: true,
         },
       },
+      assignedToId: true,
       assignedTo: {
         select: {
           id: true,
           name: true,
           email: true,
+          status: true,
         },
       },
+      assignedToGroupId: true,
       assignedToGroup: {
         select: {
           id: true,
@@ -337,21 +354,38 @@ export async function getTicket(id: string) {
 
   const ticket = await prisma.ticket.findUnique({
     where: { id },
-    include: {
+    select: {
+      id: true,
+      ticketNumber: true,
+      title: true,
+      description: true,
+      type: true,
+      status: true,
+      priority: true,
+      createdAt: true,
+      updatedAt: true,
+      resolvedAt: true,
+      closedAt: true,
+      createdById: true,
+      createdByName: true,
       createdBy: {
         select: {
           id: true,
           name: true,
           email: true,
+          status: true,
         },
       },
+      assignedToId: true,
       assignedTo: {
         select: {
           id: true,
           name: true,
           email: true,
+          status: true,
         },
       },
+      assignedToGroupId: true,
       assignedToGroup: {
         select: {
           id: true,
@@ -366,18 +400,26 @@ export async function getTicket(id: string) {
             ? { isAgentOnly: false }
             : {}),
         },
-        include: {
+        select: {
+          id: true,
+          content: true,
+          createdAt: true,
+          updatedAt: true,
+          isAgentOnly: true,
+          userId: true,
+          authorName: true,
           user: {
             select: {
               id: true,
               name: true,
               email: true,
               role: true,
+              status: true,
             },
           },
         },
         orderBy: {
-          createdAt: "asc",
+          createdAt: "desc",
         },
       },
     },

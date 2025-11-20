@@ -15,7 +15,22 @@
  */
 
 import { prisma } from "../lib/db/prisma";
-import { prompt, select, confirm, separator } from "./prompts";
+import {
+  prompt,
+  select,
+  confirm,
+  separator,
+  header,
+  success,
+  error,
+  warning,
+  info,
+  createSpinner,
+  createTable,
+  sectionHeader,
+  displayKeyValue,
+  notice,
+} from "./prompts";
 
 // Get args - when called from index.ts, "group" is already removed
 // When called directly, we need to handle it
@@ -24,9 +39,12 @@ const commandArgs = args[0] === "group" ? args.slice(1) : args;
 
 // Check if this file is being run directly (not imported)
 // When imported, process.argv[1] won't match this file path
+// Also check if we're being called through index.ts (which includes "index.ts" or "cli/index")
 const isRunDirectly = process.argv[1]?.includes("group-cli");
+const isCalledFromIndex = process.argv[1]?.includes("cli/index") || process.argv[1]?.includes("index.ts");
+const shouldExecute = isRunDirectly || (isCalledFromIndex && commandArgs.length > 0);
 
-if (isRunDirectly && commandArgs.length === 0) {
+if ((isRunDirectly || isCalledFromIndex) && commandArgs.length === 0) {
   console.log(`
 Group Management CLI Tool
 
@@ -84,8 +102,8 @@ Examples:
 
 const command = commandArgs[0];
 
-// Only run main if there's a command (non-interactive mode) and file is run directly
-if (isRunDirectly && command) {
+// Only run main if there's a command (non-interactive mode) and file is run directly or called from index
+if (shouldExecute && command) {
   async function main() {
     try {
       switch (command) {
@@ -305,34 +323,52 @@ async function handleDelete() {
 }
 
 async function handleList() {
-  const groups = await prisma.group.findMany({
-    include: {
-      _count: {
-        select: {
-          members: true,
-          tickets: true,
+  const spinner = createSpinner("Loading groups...");
+  spinner.start();
+
+  try {
+    const groups = await prisma.group.findMany({
+      include: {
+        _count: {
+          select: {
+            members: true,
+            tickets: true,
+          },
         },
       },
-    },
-    orderBy: { name: "asc" },
-  });
+      orderBy: { name: "asc" },
+    });
 
-  if (groups.length === 0) {
-    console.log("No groups found");
-    return;
+    spinner.succeed(`Found ${groups.length} group(s)`);
+
+    if (groups.length === 0) {
+      notice("No groups found in the system.", "info");
+      return;
+    }
+
+    separator();
+
+    const table = createTable(
+      ["#", "Name", "Description", "Members", "Tickets", "Created"],
+      { colWidths: [4, 25, 30, 10, 10, 12] }
+    );
+
+    groups.forEach((g, index) => {
+      table.push([
+        (index + 1).toString(),
+        g.name,
+        g.description || "-",
+        g._count.members.toString(),
+        g._count.tickets.toString(),
+        g.createdAt.toLocaleDateString(),
+      ]);
+    });
+
+    console.log(table.toString());
+  } catch (err) {
+    spinner.fail("Failed to load groups");
+    error(err instanceof Error ? err.message : String(err));
   }
-
-  console.log(`\nFound ${groups.length} group(s):\n`);
-  console.table(
-    groups.map((g, index) => ({
-      "#": index + 1,
-      Name: g.name,
-      Description: g.description || "-",
-      Members: g._count.members,
-      Tickets: g._count.tickets,
-      Created: g.createdAt.toLocaleDateString(),
-    }))
-  );
 }
 
 async function handleShow() {
@@ -663,26 +699,39 @@ async function selectAgentInteractively(): Promise<{ id: string; email: string; 
 // Interactive versions of handlers
 export async function handleCreateInteractive() {
   try {
-    console.log("Create New Group\n");
+    header("Create New Group", "Add a new group to the system");
 
-    const name = await prompt("Group name: ");
-    if (!name || name.trim().length === 0) {
-      console.error("Group name cannot be empty");
-      return;
-    }
+    const name = await prompt("Group name:", {
+      required: true,
+      validate: (input) => {
+        if (!input || input.trim().length === 0) {
+          return "Group name cannot be empty";
+        }
+        return true;
+      },
+    });
 
-    // Check if group already exists
+    const spinner = createSpinner("Checking if group exists...");
+    spinner.start();
+
     const existing = await prisma.group.findUnique({
       where: { name: name.trim() },
       select: { id: true },
     });
 
     if (existing) {
-      console.error(`Group with name "${name}" already exists`);
+      spinner.fail("Group already exists");
+      error(`Group with name "${name}" already exists`);
       return;
     }
+    spinner.succeed("Group name available");
 
-    const description = await prompt("Description (optional, press Enter to skip): ");
+    const description = await prompt("Description (optional, press Enter to skip):", {
+      required: false,
+    });
+
+    const createSpinner2 = createSpinner("Creating group...");
+    createSpinner2.start();
 
     const group = await prisma.group.create({
       data: {
@@ -697,18 +746,26 @@ export async function handleCreateInteractive() {
       },
     });
 
-    console.log("\n✅ Group created successfully!");
-    console.log(JSON.stringify(group, null, 2));
-  } catch (error) {
-    console.error("Error:", error instanceof Error ? error.message : error);
+    createSpinner2.succeed("Group created successfully");
+
+    separator();
+    sectionHeader("Group Created");
+    displayKeyValue("ID", group.id);
+    displayKeyValue("Name", group.name);
+    displayKeyValue("Description", group.description || "-");
+    displayKeyValue("Created", group.createdAt.toLocaleString());
+    success("Group has been created successfully!");
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
   }
 }
 
 export async function handleListInteractive() {
   try {
+    header("List Groups", "View all groups in the system");
     await handleList();
-  } catch (error) {
-    console.error("Error:", error instanceof Error ? error.message : error);
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
   }
 }
 

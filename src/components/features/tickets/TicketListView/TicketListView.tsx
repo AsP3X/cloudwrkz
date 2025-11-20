@@ -18,11 +18,13 @@ type Ticket = {
     id: string;
     name: string | null;
     email: string;
+    status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
   };
   assignedTo: {
     id: string;
     name: string | null;
     email: string;
+    status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
   } | null;
   assignedToGroup: {
     id: string;
