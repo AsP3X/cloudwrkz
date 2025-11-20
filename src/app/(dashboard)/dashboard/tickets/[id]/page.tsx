@@ -1,4 +1,5 @@
 import { getCurrentUser } from "@/lib/utils/auth-server";
+import { formatUserName } from "@/lib/utils/users";
 import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
 import { isModuleEnabled } from "@/server/actions/modules";
@@ -286,7 +287,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                   Created By
                 </label>
                 <p className="text-sm text-neutral-900 dark:text-neutral-100">
-                  {ticket.createdBy.name || ticket.createdBy.email}
+                  {formatUserName(ticket.createdBy)}
                 </p>
               </div>
 
@@ -308,7 +309,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                         Assigned To
                       </label>
                       <p className="text-sm text-neutral-900 dark:text-neutral-100">
-                        {ticket.assignedTo.name || ticket.assignedTo.email}
+                        {formatUserName(ticket.assignedTo)}
                       </p>
                     </div>
                   ) : (

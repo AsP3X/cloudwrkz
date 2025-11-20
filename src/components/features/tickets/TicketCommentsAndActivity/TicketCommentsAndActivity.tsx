@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Tabs } from "@/components/ui/Tabs";
+import { formatUserName, formatUserInitial } from "@/lib/utils/users";
 import { TicketActivity } from "../TicketActivity";
 import { TicketCommentForm } from "../TicketCommentForm";
 
@@ -15,6 +16,7 @@ interface Comment {
     name?: string | null;
     email: string;
     role?: string | null;
+    status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
   };
 }
 
@@ -30,10 +32,12 @@ interface TicketCommentsAndActivityProps {
     createdBy: {
       name?: string | null;
       email: string;
+      status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
     };
     assignedTo?: {
       name?: string | null;
       email: string;
+      status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
     } | null;
     comments: Comment[];
   };
@@ -119,13 +123,13 @@ export const TicketCommentsAndActivity = ({
                         comment.isAgentOnly ? "text-orange-700 dark:text-orange-300" : "text-primary-700 dark:text-primary-300"
                       }`}
                     >
-                      {(comment.user.name || comment.user.email)[0].toUpperCase()}
+                      {formatUserInitial(comment.user)}
                     </span>
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                        {comment.user.name || comment.user.email}
+                        {formatUserName(comment.user)}
                       </p>
                       {comment.isAgentOnly && (
                         <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 border border-orange-200 dark:bg-orange-900 dark:text-orange-300 dark:border-orange-800">

@@ -301,6 +301,7 @@ export async function getTickets(filters?: {
           id: true,
           name: true,
           email: true,
+          status: true,
         },
       },
       assignedTo: {
@@ -308,6 +309,7 @@ export async function getTickets(filters?: {
           id: true,
           name: true,
           email: true,
+          status: true,
         },
       },
       assignedToGroup: {
@@ -343,6 +345,7 @@ export async function getTicket(id: string) {
           id: true,
           name: true,
           email: true,
+          status: true,
         },
       },
       assignedTo: {
@@ -350,6 +353,7 @@ export async function getTicket(id: string) {
           id: true,
           name: true,
           email: true,
+          status: true,
         },
       },
       assignedToGroup: {
@@ -373,6 +377,7 @@ export async function getTicket(id: string) {
               name: true,
               email: true,
               role: true,
+              status: true,
             },
           },
         },

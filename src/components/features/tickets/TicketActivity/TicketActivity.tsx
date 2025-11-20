@@ -1,4 +1,5 @@
 import React from "react";
+import { formatUserName } from "@/lib/utils/users";
 import { formatDate } from "./utils";
 
 interface ActivityItem {
@@ -8,6 +9,7 @@ interface ActivityItem {
   user?: {
     name?: string | null;
     email: string;
+    status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
   };
   timestamp: Date;
   metadata?: {
@@ -27,10 +29,12 @@ interface TicketActivityProps {
     createdBy: {
       name?: string | null;
       email: string;
+      status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
     };
     assignedTo?: {
       name?: string | null;
       email: string;
+      status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
     } | null;
     comments: Array<{
       id: string;
@@ -38,6 +42,7 @@ interface TicketActivityProps {
       user: {
         name?: string | null;
         email: string;
+        status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
       };
     }>;
   };
@@ -201,7 +206,7 @@ export const TicketActivity = ({ ticket }: TicketActivityProps) => {
                 </p>
                 {activity.user && (
                   <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">
-                    by {activity.user.name || activity.user.email}
+                    by {formatUserName(activity.user)}
                   </p>
                 )}
                 {activity.metadata?.oldValue && activity.metadata?.newValue && (

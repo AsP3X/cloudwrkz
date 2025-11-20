@@ -1,4 +1,5 @@
 import { getCurrentUser } from "@/lib/utils/auth-server";
+import { formatUserName } from "@/lib/utils/users";
 import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
 import { isModuleEnabled } from "@/server/actions/modules";
@@ -365,7 +366,7 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
                     </div>
                     {ticket.createdBy && (
                       <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-2">
-                        Created by {ticket.createdBy.name || ticket.createdBy.email}
+                        Created by {formatUserName(ticket.createdBy)}
                       </p>
                     )}
                   </div>
@@ -429,7 +430,7 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
                       </div>
                       {ticket.createdBy && (
                         <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-2">
-                          Created by {ticket.createdBy.name || ticket.createdBy.email}
+                          Created by {formatUserName(ticket.createdBy)}
                         </p>
                       )}
                     </div>

@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getTicketTypeLabel, type TicketType } from "@/lib/utils/tickets";
+import { formatUserName } from "@/lib/utils/users";
 import { type TicketViewMode } from "../TicketViewToggle";
 import { TicketBulkActionsToolbar } from "../TicketBulkActionsToolbar";
 import { bulkUpdateTickets, bulkDeleteTickets } from "@/server/actions/tickets";
@@ -24,11 +25,13 @@ type Ticket = {
     id: string;
     name: string | null;
     email: string;
+    status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
   };
   assignedTo: {
     id: string;
     name: string | null;
     email: string;
+    status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
   } | null;
   assignedToGroup: {
     id: string;
@@ -405,7 +408,7 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
                   <td className={`px-6 py-4 whitespace-nowrap ${isNormal ? "hidden lg:table-cell" : ""} ${isCompact ? "px-4 py-3" : ""}`}>
                     {ticket.assignedTo ? (
                       <div className="text-sm text-neutral-700 dark:text-neutral-300">
-                        {ticket.assignedTo.name || ticket.assignedTo.email}
+                        {formatUserName(ticket.assignedTo)}
                       </div>
                     ) : ticket.assignedToGroup ? (
                       <div className="text-sm text-neutral-700 dark:text-neutral-300">

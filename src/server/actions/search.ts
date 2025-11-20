@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth } from "@/lib/utils/auth-server";
+import { formatUserName } from "@/lib/utils/users";
 import { isModuleEnabled } from "./modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { fuzzySearch, rankAndLimit } from "@/lib/utils/fuzzy-search";
@@ -173,8 +174,8 @@ async function searchUsers(
   return rankedUsers.map((u) => ({
     type: "user" as const,
     id: u.id,
-    title: u.name || u.email,
-    description: u.email !== (u.name || u.email) ? u.email : undefined,
+    title: formatUserName(u),
+    description: u.email !== formatUserName(u) ? u.email : undefined,
     url: `/dashboard/users/${u.id}`, // Link to user detail page
     metadata: {
       email: u.email,
@@ -336,8 +337,8 @@ async function searchTicketsWithFilters(
         status: ticket.status,
         priority: ticket.priority,
         type: ticket.type,
-        createdBy: ticket.createdBy.name || ticket.createdBy.email,
-        assignedTo: ticket.assignedTo?.name || ticket.assignedTo?.email,
+        createdBy: formatUserName(ticket.createdBy),
+        assignedTo: ticket.assignedTo ? formatUserName(ticket.assignedTo) : undefined,
         assignedToGroup: ticket.assignedToGroup?.name,
         commentCount: ticket._count.comments,
         createdAt: ticket.createdAt,
@@ -511,8 +512,8 @@ async function searchTicketsWithFilters(
           status: ticket.status,
           priority: ticket.priority,
           type: ticket.type,
-          createdBy: ticket.createdBy.name || ticket.createdBy.email,
-          assignedTo: ticket.assignedTo?.name || ticket.assignedTo?.email,
+          createdBy: formatUserName(ticket.createdBy),
+          assignedTo: ticket.assignedTo ? formatUserName(ticket.assignedTo) : undefined,
           assignedToGroup: ticket.assignedToGroup?.name,
           commentCount: ticket._count.comments,
           createdAt: ticket.createdAt,
@@ -559,8 +560,8 @@ async function searchTicketsWithFilters(
             status: ticket.status,
             priority: ticket.priority,
             type: ticket.type,
-            createdBy: ticket.createdBy.name || ticket.createdBy.email,
-            assignedTo: ticket.assignedTo?.name || ticket.assignedTo?.email,
+            createdBy: formatUserName(ticket.createdBy),
+            assignedTo: ticket.assignedTo ? formatUserName(ticket.assignedTo) : undefined,
             assignedToGroup: ticket.assignedToGroup?.name,
             commentCount: ticket._count.comments,
             createdAt: ticket.createdAt,
@@ -836,8 +837,8 @@ async function searchTickets(
           status: ticket.status,
           priority: ticket.priority,
           type: ticket.type,
-          createdBy: ticket.createdBy.name || ticket.createdBy.email,
-          assignedTo: ticket.assignedTo?.name || ticket.assignedTo?.email,
+          createdBy: formatUserName(ticket.createdBy),
+          assignedTo: ticket.assignedTo ? formatUserName(ticket.assignedTo) : undefined,
           commentCount: ticket._count.comments,
         },
       });
@@ -881,8 +882,8 @@ async function searchTickets(
             status: ticket.status,
             priority: ticket.priority,
             type: ticket.type,
-            createdBy: ticket.createdBy.name || ticket.createdBy.email,
-            assignedTo: ticket.assignedTo?.name || ticket.assignedTo?.email,
+            createdBy: formatUserName(ticket.createdBy),
+            assignedTo: ticket.assignedTo ? formatUserName(ticket.assignedTo) : undefined,
             commentCount: ticket._count.comments,
           },
         });

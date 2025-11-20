@@ -1,4 +1,5 @@
 import { getCurrentUser } from "@/lib/utils/auth-server";
+import { formatUserName, formatUserInitial } from "@/lib/utils/users";
 import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
 import { isModuleEnabled } from "@/server/actions/modules";
@@ -176,7 +177,7 @@ export default async function UserDetailPage({ params, searchParams }: UserDetai
             {/* Avatar */}
             <div className="w-16 h-16 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center flex-shrink-0">
               <span className="text-2xl font-semibold text-primary-700 dark:text-primary-300">
-                {user.name?.[0]?.toUpperCase() || user.email[0].toUpperCase()}
+                {formatUserInitial(user)}
               </span>
             </div>
 
@@ -184,7 +185,7 @@ export default async function UserDetailPage({ params, searchParams }: UserDetai
             <div>
               <div className="flex items-center gap-3 flex-wrap">
                 <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100">
-                  {user.name || user.email.split("@")[0]}
+                  {formatUserName(user)}
                 </h1>
                 <span
                   className={`px-3 py-1 rounded-full text-sm font-medium border ${roleBadge.className}`}
@@ -292,7 +293,7 @@ export default async function UserDetailPage({ params, searchParams }: UserDetai
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div>
                 <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-                  Tickets Created by {user.name || user.email.split("@")[0]}
+                  Tickets Created by {formatUserName(user)}
                 </h2>
                 <p className="text-neutral-600 dark:text-neutral-400 mt-1">
                   View and filter all tickets created by this user
@@ -331,7 +332,7 @@ export default async function UserDetailPage({ params, searchParams }: UserDetai
                   No tickets found
                 </h3>
                 <p className="text-neutral-600 dark:text-neutral-400">
-                  {user.name || user.email.split("@")[0]} hasn't created any tickets yet.
+                  {formatUserName(user)} hasn't created any tickets yet.
                 </p>
               </div>
             ) : (
