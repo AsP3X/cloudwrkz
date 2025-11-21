@@ -13,6 +13,7 @@ import { UserEditDialog } from "./UserEditDialog";
 import { UserDeleteDialog } from "./UserDeleteDialog";
 import { createUserAdmin, updateUserAdmin, deleteUserAdmin, bulkUpdateUserStatusAdmin, type UserFilters } from "@/server/actions/admin/users";
 import type { getAllUsersAdmin } from "@/server/actions/admin/users";
+import { formatDate } from "@/lib/utils/date";
 
 type User = Awaited<ReturnType<typeof getAllUsersAdmin>>["users"][0];
 
@@ -261,7 +262,7 @@ export function UserManagementPage({ initialData }: UserManagementPageProps) {
                     {user._count.createdTickets + user._count.assignedTickets}
                   </td>
                   <td className="px-4 py-3 text-sm text-neutral-600 dark:text-neutral-400">
-                    {new Date(user.createdAt).toLocaleDateString()}
+                    {formatDate(user.createdAt)}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">

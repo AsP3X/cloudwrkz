@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/Badge";
 import { updateGroup, addAgentToGroup, removeAgentFromGroup } from "@/server/actions/groups";
 import { getAgents } from "@/server/actions/users";
 import type { getGroup } from "@/server/actions/groups";
+import { formatDate } from "@/lib/utils/date";
 
 type Group = NonNullable<Awaited<ReturnType<typeof getGroup>>>;
 
@@ -111,7 +112,7 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
         <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
           <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Created</p>
           <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-2">
-            {new Date(group.createdAt).toLocaleDateString()}
+            {formatDate(group.createdAt)}
           </p>
         </div>
       </div>

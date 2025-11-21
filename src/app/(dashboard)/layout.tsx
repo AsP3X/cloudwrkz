@@ -26,9 +26,20 @@ export default async function DashboardLayout({
   // Use AdminSidebar for admins, DashboardSidebar for others
   const isAdmin = user.role === "ADMIN";
   
-  // Get enabled modules for sidebar (only needed for non-admin sidebar)
+  // Get enabled modules for sidebar
   const modules = await getAllModules();
-  const enabledModuleKeys = modules.filter((m: typeof modules[0]) => m.enabled).map((m: typeof modules[0]) => m.key);
+  // Sort modules by key to ensure consistent order between server and client
+  const sortedModules = [...modules].sort((a, b) => a.key.localeCompare(b.key));
+  // Sort enabled keys to ensure consistent array order
+  const enabledModuleKeys = sortedModules
+    .filter((m: typeof modules[0]) => m.enabled)
+    .map((m: typeof modules[0]) => m.key)
+    .sort();
+  
+  // Create a key based on module status to force re-render when modules change
+  // This ensures AdminSidebar re-mounts when modules are enabled/disabled
+  // Use sorted modules to ensure consistent key generation
+  const moduleStatusKey = sortedModules.map((m: typeof modules[0]) => `${m.key}:${m.enabled}`).join(",");
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-secondary-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950">

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { updateUserAdmin, deleteUserAdmin } from "@/server/actions/admin/users";
 import type { getUserByIdAdmin } from "@/server/actions/admin/users";
+import { formatDateTimeFull } from "@/lib/utils/date";
 
 type User = NonNullable<Awaited<ReturnType<typeof getUserByIdAdmin>>>;
 
@@ -189,14 +190,14 @@ export function UserDetailPage({ user: initialUser }: UserDetailPageProps) {
           <div>
             <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Created At</p>
             <p className="text-base text-neutral-900 dark:text-neutral-100 mt-1">
-              {new Date(user.createdAt).toLocaleString()}
+              {formatDateTimeFull(user.createdAt)}
             </p>
           </div>
           {user.lastLoginAt && (
             <div>
               <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Last Login</p>
               <p className="text-base text-neutral-900 dark:text-neutral-100 mt-1">
-                {new Date(user.lastLoginAt).toLocaleString()}
+                {formatDateTimeFull(user.lastLoginAt)}
               </p>
             </div>
           )}

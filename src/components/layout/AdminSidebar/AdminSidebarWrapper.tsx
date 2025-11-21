@@ -1,11 +1,7 @@
 "use client";
 
-import dynamic from "next/dynamic";
+// Import AdminSidebar directly - it's already a client component
+// Using dynamic import was causing caching issues when modules changed
+import { AdminSidebar } from "./AdminSidebar";
 
-// Dynamically import AdminSidebar with SSR disabled to prevent hydration mismatches
-export const AdminSidebarWrapper = dynamic(
-  () => import("./AdminSidebar").then((mod) => ({ default: mod.AdminSidebar })),
-  {
-    ssr: false,
-  }
-);
+export const AdminSidebarWrapper = AdminSidebar;
