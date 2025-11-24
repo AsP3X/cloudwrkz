@@ -914,6 +914,70 @@ export async function bulkUpdateTimeEntries(
 }
 
 /**
+ * Get time entries for a specific ticket
+ */
+export async function getTimeEntriesForTicket(ticketId: string) {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
+    if (!moduleEnabled) {
+      return [];
+    }
+
+    const user = await requireAuth();
+
+    const entries = await prisma.timeEntry.findMany({
+      where: {
+        ticketId,
+        userId: user.id, // Only show user's own timers
+      },
+      orderBy: { createdAt: "desc" },
+      include: {
+        ticket: {
+          select: {
+            id: true,
+            ticketNumber: true,
+            title: true,
+          },
+        },
+      },
+    });
+
+    return entries;
+  } catch (error: any) {
+    console.error("Error fetching time entries for ticket:", error);
+    return [];
+  }
+}
+
+/**
+ * Get available time entries that can be assigned to a ticket (user's timers without a ticket)
+ */
+export async function getAvailableTimeEntriesForAssignment() {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
+    if (!moduleEnabled) {
+      return [];
+    }
+
+    const user = await requireAuth();
+
+    const entries = await prisma.timeEntry.findMany({
+      where: {
+        userId: user.id,
+        ticketId: null, // Only timers not assigned to any ticket
+      },
+      orderBy: { createdAt: "desc" },
+      take: 50, // Limit to recent 50
+    });
+
+    return entries;
+  } catch (error: any) {
+    console.error("Error fetching available time entries:", error);
+    return [];
+  }
+}
+
+/**
  * Bulk delete time entries
  */
 export async function bulkDeleteTimeEntries(ids: string[]): Promise<ActionResult> {

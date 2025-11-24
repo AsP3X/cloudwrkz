@@ -11,6 +11,7 @@ import {
   parseTicketNumber,
   type TicketType,
 } from "@/lib/utils/tickets";
+import { createTimeEntry } from "./time-tracking";
 
 export type TicketInput = {
   title: string;
@@ -21,6 +22,7 @@ export type TicketInput = {
   assignedToGroupId?: string; // For assigning tickets to groups
   createdForUserId?: string; // For agents to create tickets for other users
   tags?: string[];
+  createTimer?: boolean; // Create a timer for this ticket
 };
 
 export type TicketUpdateInput = Partial<TicketInput> & {
@@ -164,11 +166,28 @@ export async function createTicket(input: TicketInput): Promise<ActionResult<{ i
       },
       select: {
         id: true,
+        ticketNumber: true,
+        title: true,
       },
     });
 
+    // Create timer if requested and time tracking module is enabled
+    if (input.createTimer) {
+      const timeTrackingEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
+      if (timeTrackingEnabled) {
+        const timerName = `${ticket.ticketNumber} - ${ticket.title}`;
+        // Create timer for the current user (the one creating the ticket)
+        await createTimeEntry({
+          name: timerName,
+          ticketId: ticket.id,
+          description: `Timer for ticket ${ticket.ticketNumber}`,
+        });
+      }
+    }
+
     revalidatePath("/dashboard/tickets");
     revalidatePath("/dashboard");
+    revalidatePath("/dashboard/time-tracking");
 
     return {
       success: true,
