@@ -69,4 +69,12 @@
     @apply bg-primary-200 text-primary-900 dark:bg-primary-800 dark:text-primary-100;
   }
 
+  /* Ensure floating timer widget is always fixed to viewport */
+  #floating-timer-widget {
+    position: fixed !important;
+    bottom: 24px !important;
+    right: 24px !important;
+    z-index: 99999 !important;
+  }
+
 }

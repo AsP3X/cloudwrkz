@@ -19,6 +19,8 @@ export const ROUTES = {
   ADMIN_STATISTICS: "/dashboard/admin/statistics",
   ADMIN_SESSIONS: "/dashboard/admin/sessions",
   ADMIN_TICKETS: "/dashboard/admin/tickets",
+  // Time tracking
+  TIME_TRACKING: "/dashboard/time-tracking",
 } as const;
 
 // Export individual routes for better tree-shaking and to ensure they're always available

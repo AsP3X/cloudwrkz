@@ -61,6 +61,7 @@ model User {
   assignedTickets Ticket[] @relation("TicketAssignee")
   ticketComments TicketComment[]
   groupMemberships GroupMembership[]
+  timeEntries TimeEntry[]
   
   // Timestamps
   createdAt DateTime @default(now())
@@ -132,6 +133,14 @@ enum TicketType {
   TASK
 }
 
+// Time Entry Status
+enum TimeEntryStatus {
+  RUNNING
+  PAUSED
+  STOPPED
+  COMPLETED
+}
+
 // Agent Groups - only for agents
 model Group {
   id          String   @id @default(cuid())
@@ -190,6 +199,7 @@ model Ticket {
   
   // Relations
   comments    TicketComment[]
+  timeEntries TimeEntry[]
   
   // Timestamps
   createdAt   DateTime       @default(now())
@@ -224,4 +234,42 @@ model TicketComment {
   @@index([ticketId])
   @@index([userId])
   @@map("ticket_comments")
+}
+
+// Time Entry model for time tracking module
+model TimeEntry {
+  id          String           @id @default(cuid())
+  name        String           // Timer name (user-provided or auto-generated)
+  description String?          // Optional description
+  
+  // Status and timing
+  status      TimeEntryStatus  @default(RUNNING)
+  startedAt   DateTime         @default(now())
+  pausedAt    DateTime?        // Last pause time
+  stoppedAt   DateTime?        // When timer was stopped
+  completedAt DateTime?        // When timer was completed
+  
+  // Accumulated time (in seconds)
+  totalDuration Int            @default(0) // Total accumulated time including paused periods
+  lastResumedAt DateTime?      // When timer was last resumed (for calculating running time)
+  
+  // Relations
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ticketId    String?          // Future: Link to ticket
+  ticket      Ticket?          @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  
+  // Tags and metadata
+  tags        String[]         @default([])
+  billable    Boolean          @default(false) // Future: Billable flag
+  
+  // Timestamps
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  
+  @@index([userId])
+  @@index([status])
+  @@index([ticketId])
+  @@index([createdAt])
+  @@map("time_entries")
 }
