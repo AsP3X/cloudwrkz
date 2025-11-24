@@ -950,6 +950,29 @@ export async function getTimeEntriesForTicket(ticketId: string) {
 }
 
 /**
+ * Get count of timers for a specific ticket (all users)
+ */
+export async function getTimerCountForTicket(ticketId: string): Promise<number> {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
+    if (!moduleEnabled) {
+      return 0;
+    }
+
+    const count = await prisma.timeEntry.count({
+      where: {
+        ticketId,
+      },
+    });
+
+    return count;
+  } catch (error: any) {
+    console.error("Error counting timers for ticket:", error);
+    return 0;
+  }
+}
+
+/**
  * Get available time entries that can be assigned to a ticket (user's timers without a ticket)
  */
 export async function getAvailableTimeEntriesForAssignment() {

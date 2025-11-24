@@ -175,7 +175,14 @@ export async function createTicket(input: TicketInput): Promise<ActionResult<{ i
     if (input.createTimer) {
       const timeTrackingEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
       if (timeTrackingEnabled) {
-        const timerName = `${ticket.ticketNumber} - ${ticket.title}`;
+        // Count existing timers for this ticket to determine the number
+        const existingTimerCount = await prisma.timeEntry.count({
+          where: {
+            ticketId: ticket.id,
+          },
+        });
+        const timerNumber = existingTimerCount + 1;
+        const timerName = `${ticket.ticketNumber} - ${ticket.title} - ${timerNumber}`;
         // Create timer for the current user (the one creating the ticket)
         await createTimeEntry({
           name: timerName,

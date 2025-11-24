@@ -2,8 +2,7 @@
 
 import React from "react";
 import { Button } from "@/components/ui/Button";
-import { Select } from "@/components/ui/Select";
-import { createTimeEntry, updateTimeEntry, getTimeEntriesForTicket, getAvailableTimeEntriesForAssignment, pauseTimeEntry, resumeTimeEntry, stopTimeEntry } from "@/server/actions/time-tracking";
+import { createTimeEntry, getTimeEntriesForTicket, pauseTimeEntry, resumeTimeEntry, stopTimeEntry, getTimerCountForTicket } from "@/server/actions/time-tracking";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ROUTES } from "@/lib/constants/routes";
@@ -40,10 +39,7 @@ export function TicketTimerSection({
 }: TicketTimerSectionProps) {
   const router = useRouter();
   const [timeEntries, setTimeEntries] = React.useState(initialTimeEntries);
-  const [availableEntries, setAvailableEntries] = React.useState(initialAvailableEntries);
-  const [selectedTimerId, setSelectedTimerId] = React.useState<string>("");
   const [isCreating, setIsCreating] = React.useState(false);
-  const [isAssigning, setIsAssigning] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [loadingTimers, setLoadingTimers] = React.useState<Set<string>>(new Set());
   const [tick, setTick] = React.useState(0);
@@ -73,7 +69,10 @@ export function TicketTimerSection({
     setError(null);
 
     try {
-      const timerName = `${ticketNumber} - ${ticketTitle}`;
+      // Count existing timers for this ticket to determine the number (all users)
+      const existingTimerCount = await getTimerCountForTicket(ticketId);
+      const timerNumber = existingTimerCount + 1;
+      const timerName = `${ticketNumber} - ${ticketTitle} - ${timerNumber}`;
       const result = await createTimeEntry({
         name: timerName,
         ticketId,
@@ -85,9 +84,6 @@ export function TicketTimerSection({
         // Reload timers
         const updatedEntries = await getTimeEntriesForTicket(ticketId);
         setTimeEntries(updatedEntries);
-        // Reload available entries
-        const updatedAvailable = await getAvailableTimeEntriesForAssignment();
-        setAvailableEntries(updatedAvailable);
       } else {
         setError(result.error || "Failed to create timer");
       }
@@ -96,40 +92,6 @@ export function TicketTimerSection({
       console.error("Error creating timer:", err);
     } finally {
       setIsCreating(false);
-    }
-  };
-
-  const handleAssignTimer = async () => {
-    if (!selectedTimerId) {
-      setError("Please select a timer to assign");
-      return;
-    }
-
-    setIsAssigning(true);
-    setError(null);
-
-    try {
-      const result = await updateTimeEntry(selectedTimerId, {
-        ticketId,
-      });
-
-      if (result.success) {
-        router.refresh();
-        // Reload timers
-        const updatedEntries = await getTimeEntriesForTicket(ticketId);
-        setTimeEntries(updatedEntries);
-        // Reload available entries
-        const updatedAvailable = await getAvailableTimeEntriesForAssignment();
-        setAvailableEntries(updatedAvailable);
-        setSelectedTimerId("");
-      } else {
-        setError(result.error || "Failed to assign timer");
-      }
-    } catch (err) {
-      setError("An unexpected error occurred");
-      console.error("Error assigning timer:", err);
-    } finally {
-      setIsAssigning(false);
     }
   };
 
@@ -241,13 +203,6 @@ export function TicketTimerSection({
     );
   };
 
-  const timerOptions = [
-    { value: "", label: "Select a timer..." },
-    ...availableEntries.map((entry) => ({
-      value: entry.id,
-      label: `${entry.name} (${entry.status})`,
-    })),
-  ];
 
   return (
     <div className="space-y-4">
@@ -293,28 +248,6 @@ export function TicketTimerSection({
           Create Timer
         </Button>
       </div>
-
-      {/* Assign Existing Timer */}
-      {availableEntries.length > 0 && (
-        <div className="space-y-2">
-          <Select
-            label="Assign Existing Timer"
-            options={timerOptions}
-            value={selectedTimerId}
-            onChange={(e) => setSelectedTimerId(e.target.value)}
-            placeholder="Select a timer to assign..."
-          />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleAssignTimer}
-            loading={isAssigning}
-            disabled={isAssigning || !selectedTimerId}
-          >
-            Assign Timer
-          </Button>
-        </div>
-      )}
 
       {/* Timer List */}
       {timeEntries.length > 0 ? (
