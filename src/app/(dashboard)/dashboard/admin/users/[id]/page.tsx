@@ -7,7 +7,7 @@ import { UserDetailPage } from "@/components/features/admin/UserManagement/UserD
 export default async function AdminUserDetailPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
   const user = await getCurrentUser();
   
@@ -17,7 +17,8 @@ export default async function AdminUserDetailPage({
 
   await requireRole("ADMIN");
 
-  const userDetail = await getUserByIdAdmin(params.id);
+  const { id } = await params;
+  const userDetail = await getUserByIdAdmin(id);
 
   if (!userDetail) {
     redirect("/dashboard/admin/users");

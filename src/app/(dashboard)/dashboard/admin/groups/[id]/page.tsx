@@ -7,7 +7,7 @@ import { GroupDetailPage } from "@/components/features/admin/GroupManagement/Gro
 export default async function AdminGroupDetailPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
   const user = await getCurrentUser();
   
@@ -17,7 +17,8 @@ export default async function AdminGroupDetailPage({
 
   await requireRole("ADMIN");
 
-  const group = await getGroup(params.id);
+  const { id } = await params;
+  const group = await getGroup(id);
 
   if (!group) {
     redirect("/dashboard/admin/groups");
