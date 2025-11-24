@@ -3,9 +3,8 @@ import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
 import { isModuleEnabled } from "@/server/actions/modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
-import { getTimeEntries, getActiveTimeEntries } from "@/server/actions/time-tracking";
+import { getTimeEntries } from "@/server/actions/time-tracking";
 import { TimeTrackingPage } from "@/components/features/time-tracking/TimeTrackingPage";
-import { FloatingTimerWidgetRenderer } from "@/components/features/time-tracking/TimeTrackingPage/FloatingTimerWidgetWrapper";
 
 interface TimeTrackingPageProps {
   searchParams: Promise<{
@@ -65,13 +64,7 @@ export default async function TimeTrackingPageRoute({ searchParams }: TimeTracki
     limit: 50,
   });
 
-  // Get active entries for the floating widget
-  const activeEntries = await getActiveTimeEntries();
-
   return (
-    <>
-      <TimeTrackingPage initialEntries={result.entries} initialTotal={result.total} initialPage={page} />
-      <FloatingTimerWidgetRenderer activeEntries={activeEntries} />
-    </>
+    <TimeTrackingPage initialEntries={result.entries} initialTotal={result.total} initialPage={page} />
   );
 }

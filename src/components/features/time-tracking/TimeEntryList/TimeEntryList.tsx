@@ -65,6 +65,17 @@ export function TimeEntryList({ entries }: TimeEntryListProps) {
     }
   }, [someSelected]);
 
+  // Get all unique tags from selected entries (must be before early return)
+  const selectedTags = React.useMemo(() => {
+    const tagSet = new Set<string>();
+    entries
+      .filter((e) => selectedEntries.has(e.id))
+      .forEach((e) => {
+        e.tags.forEach((tag) => tagSet.add(tag));
+      });
+    return Array.from(tagSet);
+  }, [entries, selectedEntries]);
+
   // Early return after all hooks
   if (entries.length === 0) {
     return (
@@ -207,17 +218,6 @@ export function TimeEntryList({ entries }: TimeEntryListProps) {
       });
     }
   };
-
-  // Get all unique tags from selected entries
-  const selectedTags = React.useMemo(() => {
-    const tagSet = new Set<string>();
-    entries
-      .filter((e) => selectedEntries.has(e.id))
-      .forEach((e) => {
-        e.tags.forEach((tag) => tagSet.add(tag));
-      });
-    return Array.from(tagSet);
-  }, [entries, selectedEntries]);
 
   return (
     <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
