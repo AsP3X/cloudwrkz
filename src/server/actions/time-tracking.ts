@@ -632,6 +632,54 @@ export async function deleteTimeEntry(id: string): Promise<ActionResult> {
 /**
  * Get time entries with filters
  */
+/**
+ * Get a single time entry by ID
+ */
+export async function getTimeEntry(id: string) {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
+    if (!moduleEnabled) {
+      return null;
+    }
+
+    const user = await requireAuth();
+
+    const entry = await prisma.timeEntry.findUnique({
+      where: { id },
+      include: {
+        ticket: {
+          select: {
+            id: true,
+            ticketNumber: true,
+            title: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    if (!entry) {
+      return null;
+    }
+
+    // Verify ownership
+    if (entry.userId !== user.id) {
+      return null;
+    }
+
+    return entry;
+  } catch (error: any) {
+    console.error("Error fetching time entry:", error);
+    return null;
+  }
+}
+
 export async function getTimeEntries(filters: TimeEntryFilters = {}) {
   try {
     const moduleEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);

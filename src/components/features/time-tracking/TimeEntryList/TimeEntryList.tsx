@@ -2,6 +2,7 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
 import { DurationDisplay } from "../DurationDisplay";
 import { TimeEntryBulkActionsToolbar } from "../TimeEntryBulkActionsToolbar";
@@ -43,7 +44,12 @@ export function TimeEntryList({ entries }: TimeEntryListProps) {
   const [error, setError] = React.useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false);
   const [showTagDialog, setShowTagDialog] = React.useState(false);
+  const [mounted, setMounted] = React.useState(false);
   const selectAllRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const formatDate = (date: Date) => {
     return new Date(date).toLocaleString("en-US", {
@@ -289,33 +295,45 @@ export function TimeEntryList({ entries }: TimeEntryListProps) {
           <tbody className="divide-y divide-neutral-200 dark:divide-neutral-700">
             {entries.map((entry) => {
               const isProcessingEntry = processing.has(entry.id);
-              const isSelected = selectedEntries.has(entry.id);
+              // Only check selection state after mount to avoid hydration mismatch
+              const isSelected = mounted && selectedEntries.has(entry.id);
+              
+              // Base classes that should always be present (same on server and client)
+              // Using cn to ensure proper class merging
+              const rowClassName = cn(
+                "hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors",
+                isSelected && "bg-primary-50/50 dark:bg-primary-900/10"
+              );
+
               return (
                 <tr
                   key={entry.id}
-                  className={cn(
-                    "hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors",
-                    isSelected && "bg-primary-50/50 dark:bg-primary-900/10"
-                  )}
+                  className={rowClassName}
                 >
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
                       checked={isSelected}
-                      onChange={(e) => handleSelectEntry(entry.id, e.target.checked)}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        handleSelectEntry(entry.id, e.target.checked);
+                      }}
                       className="w-4 h-4 text-primary-600 bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 cursor-pointer"
                       aria-label={`Select ${entry.name}`}
                     />
                   </td>
                   <td className="px-6 py-4">
-                    <div>
-                      <div className="font-medium text-neutral-900 dark:text-neutral-100">{entry.name}</div>
-                      {entry.description && (
-                        <div className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
-                          {entry.description}
-                        </div>
-                      )}
-                    </div>
+                    <Link 
+                      href={`/dashboard/time-tracking/${entry.id}`}
+                      className="font-medium text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400"
+                    >
+                      {entry.name}
+                    </Link>
+                    {entry.description && (
+                      <div className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                        {entry.description}
+                      </div>
+                    )}
                   </td>
                   <td className="px-6 py-4">
                     <Badge className={getStatusColor(entry.status)}>{getStatusLabel(entry.status)}</Badge>
@@ -342,11 +360,14 @@ export function TimeEntryList({ entries }: TimeEntryListProps) {
                       <span className="text-xs text-neutral-400">—</span>
                     )}
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-2">
                       {canPause(entry.status) && (
                         <button
-                          onClick={() => handleAction(entry.id, () => pauseTimeEntry(entry.id))}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAction(entry.id, () => pauseTimeEntry(entry.id));
+                          }}
                           disabled={isProcessingEntry || isProcessing}
                           className="p-2 text-neutral-600 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 disabled:opacity-50"
                           title="Pause"
@@ -358,7 +379,10 @@ export function TimeEntryList({ entries }: TimeEntryListProps) {
                       )}
                       {canResume(entry.status) && (
                         <button
-                          onClick={() => handleAction(entry.id, () => resumeTimeEntry(entry.id))}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAction(entry.id, () => resumeTimeEntry(entry.id));
+                          }}
                           disabled={isProcessingEntry || isProcessing}
                           className="p-2 text-neutral-600 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 disabled:opacity-50"
                           title="Resume"
@@ -371,7 +395,10 @@ export function TimeEntryList({ entries }: TimeEntryListProps) {
                       )}
                       {canStop(entry.status) && (
                         <button
-                          onClick={() => handleAction(entry.id, () => stopTimeEntry(entry.id))}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAction(entry.id, () => stopTimeEntry(entry.id));
+                          }}
                           disabled={isProcessingEntry || isProcessing}
                           className="p-2 text-neutral-600 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 disabled:opacity-50"
                           title="Stop"
@@ -383,7 +410,8 @@ export function TimeEntryList({ entries }: TimeEntryListProps) {
                         </button>
                       )}
                       <button
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           if (confirm("Are you sure you want to delete this time entry?")) {
                             handleAction(entry.id, () => deleteTimeEntry(entry.id));
                           }
