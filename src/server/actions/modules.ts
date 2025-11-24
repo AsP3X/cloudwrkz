@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { MODULE_CONFIG, type ModuleKey } from "@/lib/constants/modules";
+import { revalidatePath } from "next/cache";
 
 /**
  * Initialize modules in the database
@@ -73,8 +74,14 @@ export async function setModuleEnabled(
   moduleKey: ModuleKey,
   enabled: boolean
 ) {
-  return prisma.module.update({
+  const result = await prisma.module.update({
     where: { key: moduleKey },
     data: { enabled },
   });
+  
+  // Revalidate the dashboard layout to ensure sidebar updates
+  revalidatePath("/dashboard", "layout");
+  revalidatePath("/dashboard/admin/modules");
+  
+  return result;
 }

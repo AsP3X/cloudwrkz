@@ -37,12 +37,12 @@ export const Header = () => {
           </Link>
 
           <div className="hidden md:flex items-center space-x-8">
-            <Link
+            <a
               href="#features"
               className="text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors duration-200"
             >
               Features
-            </Link>
+            </a>
             <Link
               href={ROUTES.ABOUT}
               className="text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors duration-200"

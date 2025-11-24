@@ -64,9 +64,10 @@ const baseNavigation = [
 
 interface DashboardSidebarProps {
   enabledModuleKeys: string[];
+  userRole?: "USER" | "AGENT" | "ADMIN" | "MODERATOR";
 }
 
-export const DashboardSidebar = ({ enabledModuleKeys }: DashboardSidebarProps) => {
+export const DashboardSidebar = ({ enabledModuleKeys, userRole }: DashboardSidebarProps) => {
   const pathname = usePathname();
   const [isMobileOpen, setIsMobileOpen] = React.useState(false);
 

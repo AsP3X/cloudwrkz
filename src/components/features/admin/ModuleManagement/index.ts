@@ -1,0 +1,1 @@
+export { ModuleManagementPage } from "./ModuleManagementPage";

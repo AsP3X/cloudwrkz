@@ -449,8 +449,14 @@ export default async function DashboardPage() {
   const user = await getCurrentUser();
 
   // Double-check authentication (layout already does this, but good practice)
-  if (!user || (user.role !== "USER" && user.role !== "AGENT")) {
+  if (!user || (user.role !== "USER" && user.role !== "AGENT" && user.role !== "ADMIN")) {
     redirect(ROUTES.LOGIN);
+  }
+
+  // Render admin dashboard if user is an admin
+  if (user.role === "ADMIN") {
+    const { AdminDashboard } = await import("@/components/features/admin/AdminDashboard/AdminDashboard");
+    return <AdminDashboard user={user} />;
   }
 
   // Render agent dashboard if user is an agent
