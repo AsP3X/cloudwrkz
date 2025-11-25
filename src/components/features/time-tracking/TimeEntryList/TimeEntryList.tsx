@@ -12,6 +12,7 @@ import { getStatusColor, getStatusLabel, canPause, canResume, canStop } from "@/
 import { cn } from "@/lib/utils/cn";
 import { pauseTimeEntry, resumeTimeEntry, stopTimeEntry, deleteTimeEntry, bulkUpdateTimeEntries, bulkDeleteTimeEntries } from "@/server/actions/time-tracking";
 import { type TimeEntryStatus } from "@prisma/client";
+import { EditTimeEntryDialog } from "../EditTimeEntryDialog";
 
 type TimeEntry = {
   id: string;
@@ -44,6 +45,7 @@ export function TimeEntryList({ entries }: TimeEntryListProps) {
   const [error, setError] = React.useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false);
   const [showTagDialog, setShowTagDialog] = React.useState(false);
+  const [editingEntry, setEditingEntry] = React.useState<TimeEntry | null>(null);
   const [mounted, setMounted] = React.useState(false);
   const selectAllRef = React.useRef<HTMLInputElement>(null);
 
@@ -412,6 +414,19 @@ export function TimeEntryList({ entries }: TimeEntryListProps) {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
+                          setEditingEntry(entry);
+                        }}
+                        disabled={isProcessingEntry || isProcessing}
+                        className="p-2 text-neutral-600 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 disabled:opacity-50"
+                        title="Edit"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
                           if (confirm("Are you sure you want to delete this time entry?")) {
                             handleAction(entry.id, () => deleteTimeEntry(entry.id));
                           }
@@ -447,6 +462,17 @@ export function TimeEntryList({ entries }: TimeEntryListProps) {
           onConfirm={handleBulkTagConfirm}
           selectedCount={selectedEntries.size}
           existingTags={selectedTags}
+        />
+      )}
+      {editingEntry && (
+        <EditTimeEntryDialog
+          open={!!editingEntry}
+          onOpenChange={(open) => {
+            if (!open) {
+              setEditingEntry(null);
+            }
+          }}
+          entry={editingEntry}
         />
       )}
     </div>

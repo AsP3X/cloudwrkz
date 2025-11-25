@@ -29,6 +29,7 @@ export const updateTimeEntrySchema = z.object({
   tags: z.array(z.string()).optional(),
   ticketId: z.string().nullable().optional(),
   billable: z.boolean().optional(),
+  startedAt: z.date().optional(),
 });
 
 export type CreateTimeEntryInput = z.infer<typeof createTimeEntrySchema>;

@@ -253,6 +253,7 @@ export async function updateTimeEntry(
         ...(input.tags !== undefined && { tags: input.tags }),
         ...(input.ticketId !== undefined && { ticketId: input.ticketId }),
         ...(input.billable !== undefined && { billable: input.billable }),
+        ...(input.startedAt !== undefined && { startedAt: input.startedAt }),
       },
     });
 

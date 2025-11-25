@@ -16,6 +16,7 @@ type TimeEntry = {
   status: TimeEntryStatus;
   tags: string[];
   billable: boolean;
+  startedAt: Date;
   ticket: {
     id: string;
     ticketNumber: string;
@@ -34,9 +35,20 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting }: Tim
   const [tags, setTags] = React.useState<string[]>(entry.tags);
   const [tagInput, setTagInput] = React.useState("");
 
+  // Helper function to convert Date to datetime-local string (local time)
+  const dateToLocalDateTimeString = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors },
   } = useForm<UpdateTimeEntryInput>({
     resolver: zodResolver(updateTimeEntrySchema),
@@ -45,6 +57,7 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting }: Tim
       description: entry.description || "",
       tags: entry.tags,
       billable: entry.billable,
+      startedAt: entry.startedAt,
     },
   });
 
@@ -66,7 +79,17 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting }: Tim
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <>
+      <style dangerouslySetInnerHTML={{
+        __html: `
+          html.dark #startedAt::-webkit-calendar-picker-indicator,
+          .dark #startedAt::-webkit-calendar-picker-indicator {
+            filter: invert(1) brightness(2) contrast(1.2) !important;
+            opacity: 1 !important;
+          }
+        `
+      }} />
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       <div>
         <label htmlFor="name" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
           Name *
@@ -137,6 +160,28 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting }: Tim
       </div>
 
       <div>
+        <label htmlFor="startedAt" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+          Start Date & Time
+        </label>
+        <Controller
+          name="startedAt"
+          control={control}
+          render={({ field }) => (
+            <input
+              type="datetime-local"
+              id="startedAt"
+              value={field.value ? dateToLocalDateTimeString(new Date(field.value)) : ""}
+              onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : undefined)}
+              className="w-full px-4 py-2 rounded-lg border-2 border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            />
+          )}
+        />
+        {errors.startedAt && (
+          <p className="mt-1 text-sm text-error-600 dark:text-error-400">{errors.startedAt.message}</p>
+        )}
+      </div>
+
+      <div>
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
@@ -156,5 +201,6 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting }: Tim
         </Button>
       </div>
     </form>
+    </>
   );
 }
