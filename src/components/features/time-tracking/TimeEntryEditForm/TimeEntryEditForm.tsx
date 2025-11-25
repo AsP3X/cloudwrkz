@@ -16,6 +16,7 @@ type TimeEntry = {
   status: TimeEntryStatus;
   tags: string[];
   billable: boolean;
+  location: string | null;
   startedAt: Date;
   ticket: {
     id: string;
@@ -57,6 +58,7 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting }: Tim
       description: entry.description || "",
       tags: entry.tags,
       billable: entry.billable,
+      location: entry.location || "",
       startedAt: entry.startedAt,
     },
   });
@@ -112,6 +114,18 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting }: Tim
           error={errors.description?.message}
           placeholder="Optional description"
           rows={4}
+        />
+      </div>
+
+      <div>
+        <label htmlFor="location" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+          Location
+        </label>
+        <Input
+          id="location"
+          {...register("location")}
+          error={errors.location?.message}
+          placeholder="Optional location/address"
         />
       </div>
 

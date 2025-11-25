@@ -21,6 +21,7 @@ type TimeEntry = {
   totalDuration: number;
   lastResumedAt: Date | null;
   tags: string[];
+  location: string | null;
   ticket: {
     id: string;
     ticketNumber: string;

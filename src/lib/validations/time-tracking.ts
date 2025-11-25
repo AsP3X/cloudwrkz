@@ -6,6 +6,7 @@ export const createTimeEntrySchema = z.object({
   tags: z.array(z.string()).optional(),
   ticketId: z.string().optional(),
   billable: z.boolean().optional(),
+  location: z.string().optional(),
 });
 
 export const addTimeEntrySchema = z.object({
@@ -14,6 +15,7 @@ export const addTimeEntrySchema = z.object({
   tags: z.array(z.string()).optional(),
   ticketId: z.string().optional(),
   billable: z.boolean().optional(),
+  location: z.string().optional(),
   duration: z.object({
     hours: z.number().min(0).max(23),
     minutes: z.number().min(0).max(59),
@@ -29,6 +31,7 @@ export const updateTimeEntrySchema = z.object({
   tags: z.array(z.string()).optional(),
   ticketId: z.string().nullable().optional(),
   billable: z.boolean().optional(),
+  location: z.string().nullable().optional(),
   startedAt: z.date().optional(),
 });
 

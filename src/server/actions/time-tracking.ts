@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache";
 import { generateRandomTimerName, calculateElapsedTime } from "@/lib/utils/time-tracking";
 import { timeTrackingEvents } from "@/lib/utils/event-emitter";
 import { type TimeEntryStatus } from "@prisma/client";
+import { logTicketActivity } from "../utils/ticket-activity-logger";
 
 /**
  * Emit a time tracking event
@@ -31,6 +32,7 @@ export type CreateTimeEntryInput = {
   tags?: string[];
   ticketId?: string; // Future
   billable?: boolean; // Future
+  location?: string;
 };
 
 export type UpdateTimeEntryInput = {
@@ -39,6 +41,7 @@ export type UpdateTimeEntryInput = {
   tags?: string[];
   ticketId?: string | null;
   billable?: boolean;
+  location?: string | null;
 };
 
 export type TimeEntryFilters = {
@@ -103,12 +106,33 @@ export async function createTimeEntry(
         userId: user.id,
         ticketId: input.ticketId || null,
         billable: input.billable || false,
+        location: input.location?.trim() || null,
         status: "RUNNING",
         startedAt: new Date(),
         lastResumedAt: new Date(),
         totalDuration: 0,
       },
     });
+
+    // Log activity if timer is linked to a ticket
+    if (input.ticketId) {
+      try {
+        await logTicketActivity(
+          input.ticketId,
+          "TIMER_CREATED",
+          user.id,
+          user.name || null,
+          null,
+          name,
+          { timerId: entry.id }
+        );
+        // Revalidate ticket detail page to show the new activity
+        revalidatePath(`/dashboard/tickets/${input.ticketId}`);
+      } catch (error) {
+        // Log error but don't fail the timer creation
+        console.error("Failed to log timer creation activity:", error);
+      }
+    }
 
     revalidatePath("/dashboard/time-tracking");
     emitTimeTrackingEvent(user.id, "ENTRY_CREATED", entry);
@@ -167,12 +191,33 @@ export async function createTimeEntryWithDuration(
         userId: user.id,
         ticketId: input.ticketId || null,
         billable: input.billable || false,
+        location: input.location?.trim() || null,
         status: "STOPPED",
         startedAt: input.startedAt,
         stoppedAt: input.stoppedAt || new Date(),
         totalDuration: input.totalDuration,
       },
     });
+
+    // Log activity if timer is linked to a ticket
+    if (input.ticketId) {
+      try {
+        await logTicketActivity(
+          input.ticketId,
+          "TIMER_CREATED",
+          user.id,
+          user.name || null,
+          null,
+          name,
+          { timerId: entry.id }
+        );
+        // Revalidate ticket detail page to show the new activity
+        revalidatePath(`/dashboard/tickets/${input.ticketId}`);
+      } catch (error) {
+        // Log error but don't fail the timer creation
+        console.error("Failed to log timer creation activity:", error);
+      }
+    }
 
     revalidatePath("/dashboard/time-tracking");
     emitTimeTrackingEvent(user.id, "ENTRY_CREATED", entry);
@@ -208,10 +253,10 @@ export async function updateTimeEntry(
 
     const user = await requireAuth();
 
-    // Verify ownership
+    // Verify ownership and get current ticketId for logging
     const existing = await prisma.timeEntry.findUnique({
       where: { id },
-      select: { userId: true },
+      select: { userId: true, ticketId: true, name: true },
     });
 
     if (!existing) {
@@ -253,9 +298,72 @@ export async function updateTimeEntry(
         ...(input.tags !== undefined && { tags: input.tags }),
         ...(input.ticketId !== undefined && { ticketId: input.ticketId }),
         ...(input.billable !== undefined && { billable: input.billable }),
+        ...(input.location !== undefined && {
+          location: input.location?.trim() || null,
+        }),
         ...(input.startedAt !== undefined && { startedAt: input.startedAt }),
       },
     });
+
+    // Log activity if ticket assignment changed
+    if (input.ticketId !== undefined) {
+      const oldTicketId = existing.ticketId;
+      const newTicketId = input.ticketId;
+
+      if (oldTicketId !== newTicketId) {
+        try {
+          if (newTicketId && !oldTicketId) {
+            // Timer assigned to ticket
+            await logTicketActivity(
+              newTicketId,
+              "TIMER_ASSIGNED",
+              user.id,
+              user.name || null,
+              null,
+              existing.name,
+              { timerId: id }
+            );
+            revalidatePath(`/dashboard/tickets/${newTicketId}`);
+          } else if (!newTicketId && oldTicketId) {
+            // Timer unassigned from ticket
+            await logTicketActivity(
+              oldTicketId,
+              "TIMER_UNASSIGNED",
+              user.id,
+              user.name || null,
+              existing.name,
+              null,
+              { timerId: id }
+            );
+            revalidatePath(`/dashboard/tickets/${oldTicketId}`);
+          } else if (newTicketId && oldTicketId) {
+            // Timer reassigned to different ticket
+            await logTicketActivity(
+              oldTicketId,
+              "TIMER_UNASSIGNED",
+              user.id,
+              user.name || null,
+              existing.name,
+              null,
+              { timerId: id }
+            );
+            await logTicketActivity(
+              newTicketId,
+              "TIMER_ASSIGNED",
+              user.id,
+              user.name || null,
+              null,
+              existing.name,
+              { timerId: id }
+            );
+            revalidatePath(`/dashboard/tickets/${oldTicketId}`);
+            revalidatePath(`/dashboard/tickets/${newTicketId}`);
+          }
+        } catch (error) {
+          console.error("Failed to log timer assignment activity:", error);
+        }
+      }
+    }
 
     revalidatePath("/dashboard/time-tracking");
     emitTimeTrackingEvent(user.id, "ENTRY_UPDATED", updated);
@@ -295,6 +403,8 @@ export async function pauseTimeEntry(id: string): Promise<ActionResult> {
         totalDuration: true,
         lastResumedAt: true,
         startedAt: true,
+        ticketId: true,
+        name: true,
       },
     });
 
@@ -335,6 +445,24 @@ export async function pauseTimeEntry(id: string): Promise<ActionResult> {
       },
     });
 
+    // Log activity if timer is linked to a ticket
+    if (entry.ticketId) {
+      try {
+        await logTicketActivity(
+          entry.ticketId,
+          "TIMER_PAUSED",
+          user.id,
+          user.name || null,
+          "RUNNING",
+          "PAUSED",
+          { timerId: id, timerName: entry.name }
+        );
+        revalidatePath(`/dashboard/tickets/${entry.ticketId}`);
+      } catch (error) {
+        console.error("Failed to log timer pause activity:", error);
+      }
+    }
+
     revalidatePath("/dashboard/time-tracking");
     emitTimeTrackingEvent(user.id, "ENTRY_STATUS_CHANGED", { id, status: "PAUSED", entry: updated });
     return {
@@ -367,7 +495,7 @@ export async function resumeTimeEntry(id: string): Promise<ActionResult> {
 
     const entry = await prisma.timeEntry.findUnique({
       where: { id },
-      select: { userId: true, status: true },
+      select: { userId: true, status: true, ticketId: true, name: true },
     });
 
     if (!entry) {
@@ -401,6 +529,24 @@ export async function resumeTimeEntry(id: string): Promise<ActionResult> {
         pausedAt: null,
       },
     });
+
+    // Log activity if timer is linked to a ticket
+    if (entry.ticketId) {
+      try {
+        await logTicketActivity(
+          entry.ticketId,
+          "TIMER_RESUMED",
+          user.id,
+          user.name || null,
+          "PAUSED",
+          "RUNNING",
+          { timerId: id, timerName: entry.name }
+        );
+        revalidatePath(`/dashboard/tickets/${entry.ticketId}`);
+      } catch (error) {
+        console.error("Failed to log timer resume activity:", error);
+      }
+    }
 
     revalidatePath("/dashboard/time-tracking");
     emitTimeTrackingEvent(user.id, "ENTRY_STATUS_CHANGED", { id, status: "RUNNING", entry: updated });
@@ -440,6 +586,8 @@ export async function stopTimeEntry(id: string): Promise<ActionResult> {
         totalDuration: true,
         lastResumedAt: true,
         startedAt: true,
+        ticketId: true,
+        name: true,
       },
     });
 
@@ -484,6 +632,24 @@ export async function stopTimeEntry(id: string): Promise<ActionResult> {
         pausedAt: null,
       },
     });
+
+    // Log activity if timer is linked to a ticket
+    if (entry.ticketId) {
+      try {
+        await logTicketActivity(
+          entry.ticketId,
+          "TIMER_STOPPED",
+          user.id,
+          user.name || null,
+          entry.status,
+          "STOPPED",
+          { timerId: id, timerName: entry.name, totalDuration: finalDuration }
+        );
+        revalidatePath(`/dashboard/tickets/${entry.ticketId}`);
+      } catch (error) {
+        console.error("Failed to log timer stop activity:", error);
+      }
+    }
 
     revalidatePath("/dashboard/time-tracking");
     emitTimeTrackingEvent(user.id, "ENTRY_STATUS_CHANGED", { id, status: "STOPPED", entry: updated });
@@ -827,10 +993,10 @@ export async function bulkUpdateTimeEntries(
       };
     }
 
-    // Verify ownership of all entries
+    // Verify ownership of all entries and get current ticketIds for logging
     const entries = await prisma.timeEntry.findMany({
       where: { id: { in: ids } },
-      select: { id: true, userId: true },
+      select: { id: true, userId: true, ticketId: true, name: true },
     });
 
     const unauthorized = entries.filter((e) => e.userId !== user.id);
@@ -886,6 +1052,71 @@ export async function bulkUpdateTimeEntries(
       }
       if (updates.ticketId !== undefined) {
         updateData.ticketId = updates.ticketId;
+        
+        // Log activity for each entry that has ticket assignment changed
+        const ticketsToRevalidate = new Set<string>();
+        for (const entry of entries) {
+          const oldTicketId = entry.ticketId;
+          const newTicketId = updates.ticketId;
+
+          if (oldTicketId !== newTicketId) {
+            try {
+              if (newTicketId && !oldTicketId) {
+                // Timer assigned to ticket
+                await logTicketActivity(
+                  newTicketId,
+                  "TIMER_ASSIGNED",
+                  user.id,
+                  user.name || null,
+                  null,
+                  entry.name,
+                  { timerId: entry.id }
+                );
+                ticketsToRevalidate.add(newTicketId);
+              } else if (!newTicketId && oldTicketId) {
+                // Timer unassigned from ticket
+                await logTicketActivity(
+                  oldTicketId,
+                  "TIMER_UNASSIGNED",
+                  user.id,
+                  user.name || null,
+                  entry.name,
+                  null,
+                  { timerId: entry.id }
+                );
+                ticketsToRevalidate.add(oldTicketId);
+              } else if (newTicketId && oldTicketId) {
+                // Timer reassigned to different ticket
+                await logTicketActivity(
+                  oldTicketId,
+                  "TIMER_UNASSIGNED",
+                  user.id,
+                  user.name || null,
+                  entry.name,
+                  null,
+                  { timerId: entry.id }
+                );
+                await logTicketActivity(
+                  newTicketId,
+                  "TIMER_ASSIGNED",
+                  user.id,
+                  user.name || null,
+                  null,
+                  entry.name,
+                  { timerId: entry.id }
+                );
+                ticketsToRevalidate.add(oldTicketId);
+                ticketsToRevalidate.add(newTicketId);
+              }
+            } catch (error) {
+              console.error("Failed to log timer assignment activity:", error);
+            }
+          }
+        }
+        // Revalidate all affected ticket pages
+        for (const ticketId of ticketsToRevalidate) {
+          revalidatePath(`/dashboard/tickets/${ticketId}`);
+        }
       }
 
       if (Object.keys(updateData).length > 0) {

@@ -14,6 +14,7 @@ type TimeEntry = {
   status: TimeEntryStatus;
   tags: string[];
   billable: boolean;
+  location: string | null;
   startedAt: Date;
   ticket: {
     id: string;

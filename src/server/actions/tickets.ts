@@ -12,6 +12,8 @@ import {
   type TicketType,
 } from "@/lib/utils/tickets";
 import { createTimeEntry } from "./time-tracking";
+import { formatUserName } from "@/lib/utils/users";
+import { logTicketActivity } from "../utils/ticket-activity-logger";
 
 export type TicketInput = {
   title: string;
@@ -170,6 +172,48 @@ export async function createTicket(input: TicketInput): Promise<ActionResult<{ i
         title: true,
       },
     });
+
+    // Log ticket creation
+    await logTicketActivity(
+      ticket.id,
+      "CREATED",
+      user.id,
+      user.name || null
+    );
+
+    // Log assignment if assigned to agent
+    if (assignedToId) {
+      const assignedAgent = await prisma.user.findUnique({
+        where: { id: assignedToId },
+        select: { name: true, email: true },
+      });
+      await logTicketActivity(
+        ticket.id,
+        "ASSIGNED_TO_AGENT",
+        user.id,
+        user.name || null,
+        null,
+        assignedAgent ? formatUserName(assignedAgent) : assignedToId,
+        { agentId: assignedToId }
+      );
+    }
+
+    // Log group assignment if assigned to group
+    if (input.assignedToGroupId) {
+      const group = await prisma.group.findUnique({
+        where: { id: input.assignedToGroupId },
+        select: { name: true },
+      });
+      await logTicketActivity(
+        ticket.id,
+        "ASSIGNED_TO_GROUP",
+        user.id,
+        user.name || null,
+        null,
+        group?.name || input.assignedToGroupId,
+        { groupId: input.assignedToGroupId }
+      );
+    }
 
     // Create timer if requested and time tracking module is enabled
     if (input.createTimer) {
@@ -448,6 +492,29 @@ export async function getTicket(id: string) {
           createdAt: "desc",
         },
       },
+      activities: {
+        select: {
+          id: true,
+          activityType: true,
+          changedById: true,
+          changedByName: true,
+          oldValue: true,
+          newValue: true,
+          metadata: true,
+          createdAt: true,
+          changedBy: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              status: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      },
     },
   });
 
@@ -486,12 +553,25 @@ export async function updateTicket(
   try {
     const user = await requireAuth();
 
-    const ticket = await prisma.ticket.findUnique({
+    // Fetch current ticket data to compare changes
+    const currentTicket = await prisma.ticket.findUnique({
       where: { id },
-      select: { createdById: true, assignedToId: true, resolvedAt: true, closedAt: true },
+      select: {
+        createdById: true,
+        assignedToId: true,
+        assignedToGroupId: true,
+        resolvedAt: true,
+        closedAt: true,
+        status: true,
+        priority: true,
+        type: true,
+        title: true,
+        description: true,
+        tags: true,
+      },
     });
 
-    if (!ticket) {
+    if (!currentTicket) {
       return {
         success: false,
         error: "Ticket not found",
@@ -501,7 +581,7 @@ export async function updateTicket(
     // Creator, assigned agent, admin, or moderator can update
     // Agents can update any ticket (to allow self-assignment and ticket management)
     const canUpdate = 
-      ticket.createdById === user.id ||
+      currentTicket.createdById === user.id ||
       user.role === "ADMIN" ||
       user.role === "MODERATOR" ||
       user.role === "AGENT"; // Agents can update all tickets
@@ -514,52 +594,257 @@ export async function updateTicket(
     }
 
     const updateData: any = {};
+    const userDisplayName = user.name || null;
 
-    if (input.title !== undefined) {
-      updateData.title = input.title.trim();
-    }
-    if (input.description !== undefined) {
-      updateData.description = input.description?.trim();
-    }
-    if (input.type !== undefined) {
-      updateData.type = input.type;
-    }
-    if (input.priority !== undefined) {
-      updateData.priority = input.priority;
-    }
-    if (input.status !== undefined) {
+    // Track status changes
+    if (input.status !== undefined && input.status !== currentTicket.status) {
       updateData.status = input.status;
       
       // Set resolvedAt or closedAt based on status
-      if (input.status === "RESOLVED" && !ticket.resolvedAt) {
+      if (input.status === "RESOLVED" && !currentTicket.resolvedAt) {
         updateData.resolvedAt = new Date();
-      }
-      if (input.status === "CLOSED" && !ticket.closedAt) {
+        await logTicketActivity(
+          id,
+          "RESOLVED",
+          user.id,
+          userDisplayName
+        );
+      } else if (input.status === "CLOSED" && !currentTicket.closedAt) {
         updateData.closedAt = new Date();
+        await logTicketActivity(
+          id,
+          "CLOSED",
+          user.id,
+          userDisplayName
+        );
+      } else if (input.status === "OPEN" && (currentTicket.status === "RESOLVED" || currentTicket.status === "CLOSED")) {
+        // Reopening a ticket
+        await logTicketActivity(
+          id,
+          "REOPENED",
+          user.id,
+          userDisplayName,
+          currentTicket.status,
+          input.status
+        );
+      } else {
+        // Regular status change
+        await logTicketActivity(
+          id,
+          "STATUS_CHANGED",
+          user.id,
+          userDisplayName,
+          currentTicket.status,
+          input.status
+        );
       }
-    }
-    if (input.assignedToId !== undefined) {
-      updateData.assignedToId = input.assignedToId || null;
-    }
-    if (input.assignedToGroupId !== undefined) {
-      // Validate group if provided
-      if (input.assignedToGroupId) {
-        const group = await prisma.group.findUnique({
-          where: { id: input.assignedToGroupId },
-        });
-        if (!group) {
-          return {
-            success: false,
-            error: "Selected group not found",
-          };
-        }
-      }
-      updateData.assignedToGroupId = input.assignedToGroupId || null;
-    }
-    if (input.tags !== undefined) {
-      updateData.tags = input.tags;
     }
 
+    // Track priority changes
+    if (input.priority !== undefined && input.priority !== currentTicket.priority) {
+      updateData.priority = input.priority;
+      await logTicketActivity(
+        id,
+        "PRIORITY_CHANGED",
+        user.id,
+        userDisplayName,
+        currentTicket.priority,
+        input.priority
+      );
+    }
+
+    // Track type changes
+    if (input.type !== undefined && input.type !== currentTicket.type) {
+      updateData.type = input.type;
+      await logTicketActivity(
+        id,
+        "TYPE_CHANGED",
+        user.id,
+        userDisplayName,
+        currentTicket.type,
+        input.type
+      );
+    }
+
+    // Track title changes
+    if (input.title !== undefined && input.title.trim() !== currentTicket.title) {
+      updateData.title = input.title.trim();
+      await logTicketActivity(
+        id,
+        "TITLE_CHANGED",
+        user.id,
+        userDisplayName,
+        currentTicket.title,
+        input.title.trim()
+      );
+    }
+
+    // Track description changes
+    if (input.description !== undefined) {
+      const newDescription = input.description?.trim() || null;
+      const oldDescription = currentTicket.description || null;
+      if (newDescription !== oldDescription) {
+        updateData.description = newDescription;
+        await logTicketActivity(
+          id,
+          "DESCRIPTION_CHANGED",
+          user.id,
+          userDisplayName,
+          oldDescription || "(empty)",
+          newDescription || "(empty)"
+        );
+      }
+    }
+
+    // Track assignment changes
+    if (input.assignedToId !== undefined) {
+      const newAssignedToId = input.assignedToId || null;
+      if (newAssignedToId !== currentTicket.assignedToId) {
+        updateData.assignedToId = newAssignedToId;
+        
+        if (newAssignedToId && !currentTicket.assignedToId) {
+          // Assigned to agent
+          const assignedAgent = await prisma.user.findUnique({
+            where: { id: newAssignedToId },
+            select: { name: true, email: true },
+          });
+          await logTicketActivity(
+            id,
+            "ASSIGNED_TO_AGENT",
+            user.id,
+            userDisplayName,
+            null,
+            assignedAgent ? formatUserName(assignedAgent) : newAssignedToId,
+            { agentId: newAssignedToId }
+          );
+        } else if (!newAssignedToId && currentTicket.assignedToId) {
+          // Unassigned from agent
+          const oldAgent = await prisma.user.findUnique({
+            where: { id: currentTicket.assignedToId },
+            select: { name: true, email: true },
+          });
+          await logTicketActivity(
+            id,
+            "UNASSIGNED_FROM_AGENT",
+            user.id,
+            userDisplayName,
+            oldAgent ? formatUserName(oldAgent) : currentTicket.assignedToId,
+            null,
+            { agentId: currentTicket.assignedToId }
+          );
+        } else if (newAssignedToId && currentTicket.assignedToId) {
+          // Reassigned to different agent
+          const oldAgent = await prisma.user.findUnique({
+            where: { id: currentTicket.assignedToId },
+            select: { name: true, email: true },
+          });
+          const newAgent = await prisma.user.findUnique({
+            where: { id: newAssignedToId },
+            select: { name: true, email: true },
+          });
+          await logTicketActivity(
+            id,
+            "ASSIGNED_TO_AGENT",
+            user.id,
+            userDisplayName,
+            oldAgent ? formatUserName(oldAgent) : currentTicket.assignedToId,
+            newAgent ? formatUserName(newAgent) : newAssignedToId,
+            { oldAgentId: currentTicket.assignedToId, agentId: newAssignedToId }
+          );
+        }
+      }
+    }
+
+    // Track group assignment changes
+    if (input.assignedToGroupId !== undefined) {
+      const newGroupId = input.assignedToGroupId || null;
+      if (newGroupId !== currentTicket.assignedToGroupId) {
+        // Validate group if provided
+        if (newGroupId) {
+          const group = await prisma.group.findUnique({
+            where: { id: newGroupId },
+          });
+          if (!group) {
+            return {
+              success: false,
+              error: "Selected group not found",
+            };
+          }
+        }
+        
+        updateData.assignedToGroupId = newGroupId;
+        
+        if (newGroupId && !currentTicket.assignedToGroupId) {
+          // Assigned to group
+          const group = await prisma.group.findUnique({
+            where: { id: newGroupId },
+            select: { name: true },
+          });
+          await logTicketActivity(
+            id,
+            "ASSIGNED_TO_GROUP",
+            user.id,
+            userDisplayName,
+            null,
+            group?.name || newGroupId,
+            { groupId: newGroupId }
+          );
+        } else if (!newGroupId && currentTicket.assignedToGroupId) {
+          // Unassigned from group
+          const oldGroup = await prisma.group.findUnique({
+            where: { id: currentTicket.assignedToGroupId },
+            select: { name: true },
+          });
+          await logTicketActivity(
+            id,
+            "UNASSIGNED_FROM_GROUP",
+            user.id,
+            userDisplayName,
+            oldGroup?.name || currentTicket.assignedToGroupId,
+            null,
+            { groupId: currentTicket.assignedToGroupId }
+          );
+        } else if (newGroupId && currentTicket.assignedToGroupId) {
+          // Reassigned to different group
+          const oldGroup = await prisma.group.findUnique({
+            where: { id: currentTicket.assignedToGroupId },
+            select: { name: true },
+          });
+          const newGroup = await prisma.group.findUnique({
+            where: { id: newGroupId },
+            select: { name: true },
+          });
+          await logTicketActivity(
+            id,
+            "ASSIGNED_TO_GROUP",
+            user.id,
+            userDisplayName,
+            oldGroup?.name || currentTicket.assignedToGroupId,
+            newGroup?.name || newGroupId,
+            { oldGroupId: currentTicket.assignedToGroupId, groupId: newGroupId }
+          );
+        }
+      }
+    }
+
+    // Track tags changes
+    if (input.tags !== undefined) {
+      const oldTags = JSON.stringify(currentTicket.tags.sort());
+      const newTags = JSON.stringify([...input.tags].sort());
+      if (oldTags !== newTags) {
+        updateData.tags = input.tags;
+        await logTicketActivity(
+          id,
+          "TAGS_CHANGED",
+          user.id,
+          userDisplayName,
+          currentTicket.tags.length > 0 ? currentTicket.tags.join(", ") : "(no tags)",
+          input.tags.length > 0 ? input.tags.join(", ") : "(no tags)"
+        );
+      }
+    }
+
+    // Update the ticket
     await prisma.ticket.update({
       where: { id },
       data: updateData,
@@ -686,6 +971,17 @@ export async function addTicketComment(
       },
     });
 
+    // Log comment activity
+    await logTicketActivity(
+      ticketId,
+      "COMMENT_ADDED",
+      user.id,
+      user.name || null,
+      null,
+      null,
+      { commentId: comment.id, isAgentOnly }
+    );
+
     revalidatePath(`/dashboard/tickets/${ticketId}`);
 
     return {
@@ -724,7 +1020,7 @@ export async function bulkUpdateTickets(
       };
     }
 
-    // Check permissions for all tickets
+    // Check permissions for all tickets and get current values for logging
     const tickets = await prisma.ticket.findMany({
       where: {
         id: { in: ticketIds },
@@ -733,8 +1029,11 @@ export async function bulkUpdateTickets(
         id: true,
         createdById: true,
         assignedToId: true,
+        assignedToGroupId: true,
         resolvedAt: true,
         closedAt: true,
+        status: true,
+        priority: true,
       },
     });
 
@@ -763,6 +1062,123 @@ export async function bulkUpdateTickets(
     }
 
     const updateData: any = {};
+    const userDisplayName = user.name || null;
+
+    // Log activities for each ticket before bulk update
+    for (const ticket of tickets) {
+      if (updates.status !== undefined && updates.status !== ticket.status) {
+        if (updates.status === "RESOLVED" && !ticket.resolvedAt) {
+          await logTicketActivity(
+            ticket.id,
+            "RESOLVED",
+            user.id,
+            userDisplayName
+          );
+        } else if (updates.status === "CLOSED" && !ticket.closedAt) {
+          await logTicketActivity(
+            ticket.id,
+            "CLOSED",
+            user.id,
+            userDisplayName
+          );
+        } else if (updates.status === "OPEN" && (ticket.status === "RESOLVED" || ticket.status === "CLOSED")) {
+          await logTicketActivity(
+            ticket.id,
+            "REOPENED",
+            user.id,
+            userDisplayName,
+            ticket.status,
+            updates.status
+          );
+        } else {
+          await logTicketActivity(
+            ticket.id,
+            "STATUS_CHANGED",
+            user.id,
+            userDisplayName,
+            ticket.status,
+            updates.status
+          );
+        }
+      }
+
+      if (updates.priority !== undefined && updates.priority !== ticket.priority) {
+        await logTicketActivity(
+          ticket.id,
+          "PRIORITY_CHANGED",
+          user.id,
+          userDisplayName,
+          ticket.priority,
+          updates.priority
+        );
+      }
+
+      if (updates.assignedToId !== undefined && updates.assignedToId !== ticket.assignedToId) {
+        const newAssignedToId = updates.assignedToId || null;
+        if (newAssignedToId && !ticket.assignedToId) {
+          const assignedAgent = await prisma.user.findUnique({
+            where: { id: newAssignedToId },
+            select: { name: true, email: true },
+          });
+          await logTicketActivity(
+            ticket.id,
+            "ASSIGNED_TO_AGENT",
+            user.id,
+            userDisplayName,
+            null,
+            assignedAgent ? formatUserName(assignedAgent) : newAssignedToId,
+            { agentId: newAssignedToId }
+          );
+        } else if (!newAssignedToId && ticket.assignedToId) {
+          const oldAgent = await prisma.user.findUnique({
+            where: { id: ticket.assignedToId },
+            select: { name: true, email: true },
+          });
+          await logTicketActivity(
+            ticket.id,
+            "UNASSIGNED_FROM_AGENT",
+            user.id,
+            userDisplayName,
+            oldAgent ? formatUserName(oldAgent) : ticket.assignedToId,
+            null,
+            { agentId: ticket.assignedToId }
+          );
+        }
+      }
+
+      if (updates.assignedToGroupId !== undefined && updates.assignedToGroupId !== ticket.assignedToGroupId) {
+        const newGroupId = updates.assignedToGroupId || null;
+        if (newGroupId && !ticket.assignedToGroupId) {
+          const group = await prisma.group.findUnique({
+            where: { id: newGroupId },
+            select: { name: true },
+          });
+          await logTicketActivity(
+            ticket.id,
+            "ASSIGNED_TO_GROUP",
+            user.id,
+            userDisplayName,
+            null,
+            group?.name || newGroupId,
+            { groupId: newGroupId }
+          );
+        } else if (!newGroupId && ticket.assignedToGroupId) {
+          const oldGroup = await prisma.group.findUnique({
+            where: { id: ticket.assignedToGroupId },
+            select: { name: true },
+          });
+          await logTicketActivity(
+            ticket.id,
+            "UNASSIGNED_FROM_GROUP",
+            user.id,
+            userDisplayName,
+            oldGroup?.name || ticket.assignedToGroupId,
+            null,
+            { groupId: ticket.assignedToGroupId }
+          );
+        }
+      }
+    }
 
     if (updates.status !== undefined) {
       updateData.status = updates.status;

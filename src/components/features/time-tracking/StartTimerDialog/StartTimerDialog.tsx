@@ -66,6 +66,7 @@ export function StartTimerDialog({ open, onOpenChange }: StartTimerDialogProps) 
       const result = await createTimeEntry({
         ...data,
         tags: tags.length > 0 ? tags : undefined,
+        location: data.location?.trim() || undefined,
       });
 
       if (result.success) {
@@ -106,6 +107,13 @@ export function StartTimerDialog({ open, onOpenChange }: StartTimerDialogProps) 
           placeholder="Optional description"
           {...register("description")}
           error={errors.description?.message}
+        />
+
+        <Input
+          label="Location"
+          placeholder="Optional location/address"
+          {...register("location")}
+          error={errors.location?.message}
         />
 
         <div>

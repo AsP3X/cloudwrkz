@@ -81,6 +81,7 @@ export function AddTimeEntryDialog({ open, onOpenChange }: AddTimeEntryDialogPro
         description: data.description,
         tags: tags.length > 0 ? tags : undefined,
         billable: data.billable,
+        location: data.location?.trim() || undefined,
         totalDuration: totalSeconds,
         startedAt: data.startedAt,
         stoppedAt: data.stoppedAt || new Date(),
@@ -126,6 +127,13 @@ export function AddTimeEntryDialog({ open, onOpenChange }: AddTimeEntryDialogPro
           placeholder="Optional description"
           {...register("description")}
           error={errors.description?.message}
+        />
+
+        <Input
+          label="Location"
+          placeholder="Optional location/address"
+          {...register("location")}
+          error={errors.location?.message}
         />
 
         <div>

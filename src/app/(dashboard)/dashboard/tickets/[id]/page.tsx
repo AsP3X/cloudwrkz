@@ -74,6 +74,16 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
   const timeTrackingEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
   const timeEntries = timeTrackingEnabled ? await getTimeEntriesForTicket(ticket.id) : [];
   const availableTimeEntries = timeTrackingEnabled ? await getAvailableTimeEntriesForAssignment() : [];
+  
+  // Filter stopped timers for the Timers tab
+  const stoppedTimeEntries = timeTrackingEnabled 
+    ? timeEntries.filter((entry) => entry.status === "STOPPED")
+    : [];
+  
+  // Only show running and paused timers in sidebar (active timers that can be controlled)
+  const activeTimeEntries = timeTrackingEnabled
+    ? timeEntries.filter((entry) => entry.status === "RUNNING" || entry.status === "PAUSED")
+    : [];
 
   const formatDate = (date: Date) => {
     return new Date(date).toLocaleString("en-US", {
@@ -250,6 +260,16 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
             <TicketCommentsAndActivity
               ticket={ticket}
               userRole={user.role}
+              stoppedTimeEntries={stoppedTimeEntries.map((entry) => ({
+                id: entry.id,
+                name: entry.name,
+                description: entry.description,
+                status: entry.status,
+                startedAt: entry.startedAt,
+                totalDuration: entry.totalDuration,
+                lastResumedAt: entry.lastResumedAt,
+                createdAt: entry.createdAt,
+              }))}
             />
           </div>
         </div>
@@ -437,7 +457,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                 ticketId={ticket.id}
                 ticketNumber={ticket.ticketNumber}
                 ticketTitle={ticket.title}
-                initialTimeEntries={timeEntries.map((entry) => ({
+                initialTimeEntries={activeTimeEntries.map((entry) => ({
                   id: entry.id,
                   name: entry.name,
                   description: entry.description,
