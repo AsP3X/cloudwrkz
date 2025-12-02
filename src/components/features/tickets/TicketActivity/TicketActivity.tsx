@@ -4,6 +4,8 @@ import React from "react";
 import { formatUserName } from "@/lib/utils/users";
 import { formatDate } from "./utils";
 
+// Version: 2.0 - Timeline design with vertical line
+
 type TicketActivityType =
   | "CREATED"
   | "STATUS_CHANGED"
@@ -279,95 +281,132 @@ export const TicketActivity = ({ ticket }: TicketActivityProps) => {
   }
 
   return (
-    <div className="space-y-4">
-      {activities.map((activity) => {
-        const description = getActivityDescription(activity.activityType, activity.oldValue, activity.newValue);
-        const showChangeDetails = activity.oldValue && activity.newValue && 
-          (activity.activityType === "STATUS_CHANGED" || 
-           activity.activityType === "PRIORITY_CHANGED" || 
-           activity.activityType === "TYPE_CHANGED" ||
-           activity.activityType === "TITLE_CHANGED" ||
-           activity.activityType === "DESCRIPTION_CHANGED" ||
-           activity.activityType === "TAGS_CHANGED" ||
-           activity.activityType === "ASSIGNED_TO_AGENT" ||
-           activity.activityType === "ASSIGNED_TO_GROUP" ||
-           activity.activityType === "REOPENED" ||
-           activity.activityType === "TIMER_PAUSED" ||
-           activity.activityType === "TIMER_RESUMED" ||
-           activity.activityType === "TIMER_STOPPED");
-        
-        const showSingleValue = (activity.activityType === "ASSIGNED_TO_AGENT" && !activity.oldValue) ||
-          (activity.activityType === "ASSIGNED_TO_GROUP" && !activity.oldValue) ||
-          (activity.activityType === "UNASSIGNED_FROM_AGENT") ||
-          (activity.activityType === "UNASSIGNED_FROM_GROUP") ||
-          activity.activityType === "TIMER_CREATED" ||
-          activity.activityType === "TIMER_STARTED";
-        
-        const showTimerName = activity.metadata?.timerName && 
-          (activity.activityType === "TIMER_CREATED" ||
-           activity.activityType === "TIMER_ASSIGNED" ||
-           activity.activityType === "TIMER_UNASSIGNED" ||
-           activity.activityType === "TIMER_STARTED" ||
-           activity.activityType === "TIMER_PAUSED" ||
-           activity.activityType === "TIMER_RESUMED" ||
-           activity.activityType === "TIMER_STOPPED");
+    <div className="relative pl-10" data-timeline-version="2.0">
+      {/* Continuous vertical timeline line - positioned to align with icon centers */}
+      {activities.length > 1 && (
+        <>
+          {/* Light mode line */}
+          <div 
+            className="absolute top-0 bottom-0 dark:hidden"
+            style={{
+              left: '19px', // Icon center at 20px, line is 2px wide, so left edge at 19px centers it
+              width: '2px',
+              backgroundColor: 'rgb(163 163 163)', // neutral-400
+              zIndex: 0
+            }}
+          />
+          {/* Dark mode line */}
+          <div 
+            className="absolute top-0 bottom-0 hidden dark:block"
+            style={{
+              left: '19px', // Icon center at 20px, line is 2px wide, so left edge at 19px centers it
+              width: '2px',
+              backgroundColor: 'rgb(115 115 115)', // neutral-500
+              zIndex: 0
+            }}
+          />
+        </>
+      )}
+      
+      <div className="relative">
+        {activities.map((activity, index) => {
+          const description = getActivityDescription(activity.activityType, activity.oldValue, activity.newValue);
+          const showChangeDetails = activity.oldValue && activity.newValue && 
+            (activity.activityType === "STATUS_CHANGED" || 
+             activity.activityType === "PRIORITY_CHANGED" || 
+             activity.activityType === "TYPE_CHANGED" ||
+             activity.activityType === "TITLE_CHANGED" ||
+             activity.activityType === "DESCRIPTION_CHANGED" ||
+             activity.activityType === "TAGS_CHANGED" ||
+             activity.activityType === "ASSIGNED_TO_AGENT" ||
+             activity.activityType === "ASSIGNED_TO_GROUP" ||
+             activity.activityType === "REOPENED" ||
+             activity.activityType === "TIMER_PAUSED" ||
+             activity.activityType === "TIMER_RESUMED" ||
+             activity.activityType === "TIMER_STOPPED");
+          
+          const showSingleValue = (activity.activityType === "ASSIGNED_TO_AGENT" && !activity.oldValue) ||
+            (activity.activityType === "ASSIGNED_TO_GROUP" && !activity.oldValue) ||
+            (activity.activityType === "UNASSIGNED_FROM_AGENT") ||
+            (activity.activityType === "UNASSIGNED_FROM_GROUP") ||
+            activity.activityType === "TIMER_CREATED" ||
+            activity.activityType === "TIMER_STARTED";
+          
+          const showTimerName = activity.metadata?.timerName && 
+            (activity.activityType === "TIMER_CREATED" ||
+             activity.activityType === "TIMER_ASSIGNED" ||
+             activity.activityType === "TIMER_UNASSIGNED" ||
+             activity.activityType === "TIMER_STARTED" ||
+             activity.activityType === "TIMER_PAUSED" ||
+             activity.activityType === "TIMER_RESUMED" ||
+             activity.activityType === "TIMER_STOPPED");
 
-        return (
-          <div
-            key={activity.id}
-            className="flex items-start gap-4 p-4 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors"
-          >
-            <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${getActivityColor(activity.activityType)}`}>
-              {getActivityIcon(activity.activityType)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                    {description}
-                  </p>
-                  {(activity.changedBy || activity.changedByName) && (
-                    <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">
-                      by {formatUserName(activity.changedBy, activity.changedByName)}
-                    </p>
-                  )}
-                  {showChangeDetails && (
-                    <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">
-                      Changed from <span className="font-medium">{formatValue(activity.oldValue, activity.activityType)}</span> to{" "}
-                      <span className="font-medium">{formatValue(activity.newValue, activity.activityType)}</span>
-                    </p>
-                  )}
-                  {showSingleValue && activity.newValue && (
-                    <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">
-                      {activity.activityType === "UNASSIGNED_FROM_AGENT" || activity.activityType === "UNASSIGNED_FROM_GROUP"
-                        ? `Removed: ${activity.oldValue}`
-                        : `Assigned: ${activity.newValue}`}
-                    </p>
-                  )}
-                  {showSingleValue && !activity.newValue && activity.oldValue && (
-                    <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">
-                      Removed: {activity.oldValue}
-                    </p>
-                  )}
-                  {showTimerName && (
-                    <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">
-                      Timer: <span className="font-medium">{activity.metadata.timerName}</span>
-                    </p>
-                  )}
-                  {activity.activityType === "TIMER_STOPPED" && activity.metadata?.totalDuration && (
-                    <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">
-                      Total duration: {formatDuration(activity.metadata.totalDuration)}
-                    </p>
-                  )}
+          return (
+            <div
+              key={activity.id}
+              className="relative flex items-start gap-4 mb-8 last:mb-0"
+            >
+              {/* Timeline node - icon positioned on the line */}
+              <div className="relative z-10 flex-shrink-0" style={{ marginLeft: '-2.5rem' }}>
+                <div 
+                  className={`w-10 h-10 rounded-full flex items-center justify-center border-2 border-white dark:border-neutral-900 shadow-md ${getActivityColor(activity.activityType)}`}
+                >
+                  {getActivityIcon(activity.activityType)}
                 </div>
-                <p className="text-xs text-neutral-500 dark:text-neutral-500 whitespace-nowrap">
-                  {mounted ? formatDate(activity.createdAt) : ""}
-                </p>
+              </div>
+              
+              {/* Content card */}
+              <div className="flex-1 min-w-0 pt-1">
+                <div className="p-4 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                        {description}
+                      </p>
+                      {(activity.changedBy || activity.changedByName) && (
+                        <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">
+                          by {formatUserName(activity.changedBy, activity.changedByName)}
+                        </p>
+                      )}
+                      {showChangeDetails && (
+                        <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">
+                          Changed from <span className="font-medium">{formatValue(activity.oldValue, activity.activityType)}</span> to{" "}
+                          <span className="font-medium">{formatValue(activity.newValue, activity.activityType)}</span>
+                        </p>
+                      )}
+                      {showSingleValue && activity.newValue && (
+                        <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">
+                          {activity.activityType === "UNASSIGNED_FROM_AGENT" || activity.activityType === "UNASSIGNED_FROM_GROUP"
+                            ? `Removed: ${activity.oldValue}`
+                            : `Assigned: ${activity.newValue}`}
+                        </p>
+                      )}
+                      {showSingleValue && !activity.newValue && activity.oldValue && (
+                        <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">
+                          Removed: {activity.oldValue}
+                        </p>
+                      )}
+                      {showTimerName && (
+                        <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">
+                          Timer: <span className="font-medium">{activity.metadata.timerName}</span>
+                        </p>
+                      )}
+                      {activity.activityType === "TIMER_STOPPED" && activity.metadata?.totalDuration && (
+                        <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">
+                          Total duration: {formatDuration(activity.metadata.totalDuration)}
+                        </p>
+                      )}
+                    </div>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-500 whitespace-nowrap">
+                      {mounted ? formatDate(activity.createdAt) : ""}
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 };

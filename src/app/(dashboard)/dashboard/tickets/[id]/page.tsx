@@ -21,6 +21,10 @@ interface TicketDetailPageProps {
   params: Promise<{ id: string }>;
 }
 
+// Force dynamic rendering to prevent caching issues
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function TicketDetailPage({ params }: TicketDetailPageProps) {
   const { id } = await params;
   const user = await getCurrentUser();

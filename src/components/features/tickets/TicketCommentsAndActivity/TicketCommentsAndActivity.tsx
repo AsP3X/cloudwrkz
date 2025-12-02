@@ -208,7 +208,10 @@ export const TicketCommentsAndActivity = ({
 
   const activityTabContent = (
     <div>
-      <TicketActivity ticket={{ activities: ticket.activities || [] }} />
+      <TicketActivity 
+        key={`activity-${ticket.id}-v2`}
+        ticket={{ activities: ticket.activities || [] }} 
+      />
     </div>
   );
 
