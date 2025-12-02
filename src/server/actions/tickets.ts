@@ -697,8 +697,9 @@ export async function updateTicket(
     }
 
     // Track assignment changes
+    // Handle both explicit null (unassign) and undefined (no change)
     if (input.assignedToId !== undefined) {
-      const newAssignedToId = input.assignedToId || null;
+      const newAssignedToId = input.assignedToId === "" ? null : (input.assignedToId || null);
       if (newAssignedToId !== currentTicket.assignedToId) {
         updateData.assignedToId = newAssignedToId;
         
@@ -1114,8 +1115,9 @@ export async function bulkUpdateTickets(
       }
 
       if (updates.assignedToId !== undefined && updates.assignedToId !== ticket.assignedToId) {
-        const newAssignedToId = updates.assignedToId || null;
+        const newAssignedToId = updates.assignedToId === "" ? null : (updates.assignedToId || null);
         if (newAssignedToId && !ticket.assignedToId) {
+          // Assigned to agent
           const assignedAgent = await prisma.user.findUnique({
             where: { id: newAssignedToId },
             select: { name: true, email: true },
@@ -1130,6 +1132,7 @@ export async function bulkUpdateTickets(
             { agentId: newAssignedToId }
           );
         } else if (!newAssignedToId && ticket.assignedToId) {
+          // Unassigned from agent
           const oldAgent = await prisma.user.findUnique({
             where: { id: ticket.assignedToId },
             select: { name: true, email: true },
@@ -1143,12 +1146,32 @@ export async function bulkUpdateTickets(
             null,
             { agentId: ticket.assignedToId }
           );
+        } else if (newAssignedToId && ticket.assignedToId) {
+          // Reassigned to different agent
+          const oldAgent = await prisma.user.findUnique({
+            where: { id: ticket.assignedToId },
+            select: { name: true, email: true },
+          });
+          const newAgent = await prisma.user.findUnique({
+            where: { id: newAssignedToId },
+            select: { name: true, email: true },
+          });
+          await logTicketActivity(
+            ticket.id,
+            "ASSIGNED_TO_AGENT",
+            user.id,
+            userDisplayName,
+            oldAgent ? formatUserName(oldAgent) : ticket.assignedToId,
+            newAgent ? formatUserName(newAgent) : newAssignedToId,
+            { oldAgentId: ticket.assignedToId, agentId: newAssignedToId }
+          );
         }
       }
 
       if (updates.assignedToGroupId !== undefined && updates.assignedToGroupId !== ticket.assignedToGroupId) {
-        const newGroupId = updates.assignedToGroupId || null;
+        const newGroupId = updates.assignedToGroupId === "" ? null : (updates.assignedToGroupId || null);
         if (newGroupId && !ticket.assignedToGroupId) {
+          // Assigned to group
           const group = await prisma.group.findUnique({
             where: { id: newGroupId },
             select: { name: true },
@@ -1163,6 +1186,7 @@ export async function bulkUpdateTickets(
             { groupId: newGroupId }
           );
         } else if (!newGroupId && ticket.assignedToGroupId) {
+          // Unassigned from group
           const oldGroup = await prisma.group.findUnique({
             where: { id: ticket.assignedToGroupId },
             select: { name: true },
@@ -1175,6 +1199,25 @@ export async function bulkUpdateTickets(
             oldGroup?.name || ticket.assignedToGroupId,
             null,
             { groupId: ticket.assignedToGroupId }
+          );
+        } else if (newGroupId && ticket.assignedToGroupId) {
+          // Reassigned to different group
+          const oldGroup = await prisma.group.findUnique({
+            where: { id: ticket.assignedToGroupId },
+            select: { name: true },
+          });
+          const newGroup = await prisma.group.findUnique({
+            where: { id: newGroupId },
+            select: { name: true },
+          });
+          await logTicketActivity(
+            ticket.id,
+            "ASSIGNED_TO_GROUP",
+            user.id,
+            userDisplayName,
+            oldGroup?.name || ticket.assignedToGroupId,
+            newGroup?.name || newGroupId,
+            { oldGroupId: ticket.assignedToGroupId, groupId: newGroupId }
           );
         }
       }
@@ -1194,10 +1237,10 @@ export async function bulkUpdateTickets(
       updateData.priority = updates.priority;
     }
     if (updates.assignedToId !== undefined) {
-      updateData.assignedToId = updates.assignedToId || null;
+      updateData.assignedToId = updates.assignedToId === "" ? null : (updates.assignedToId || null);
     }
     if (updates.assignedToGroupId !== undefined) {
-      updateData.assignedToGroupId = updates.assignedToGroupId || null;
+      updateData.assignedToGroupId = updates.assignedToGroupId === "" ? null : (updates.assignedToGroupId || null);
     }
 
     // Validate group if provided

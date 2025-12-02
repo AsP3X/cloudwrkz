@@ -16,19 +16,36 @@ export async function logTicketActivity(
   metadata?: Record<string, any>
 ) {
   try {
+    // Verify ticket exists before logging activity
+    const ticketExists = await prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: { id: true },
+    });
+
+    if (!ticketExists) {
+      console.error(`Failed to log ticket activity: Ticket ${ticketId} does not exist`);
+      return;
+    }
+
     await prisma.ticketActivity.create({
       data: {
         ticketId,
         activityType,
         changedById,
         changedByName,
-        oldValue: oldValue || null,
-        newValue: newValue || null,
-        metadata: metadata || null,
+        oldValue: oldValue ?? null,
+        newValue: newValue ?? null,
+        metadata: metadata ? JSON.parse(JSON.stringify(metadata)) : null,
       },
     });
-  } catch (error) {
-    // Log error but don't fail the operation
-    console.error("Failed to log ticket activity:", error);
+  } catch (error: any) {
+    // Log detailed error but don't fail the operation
+    console.error("Failed to log ticket activity:", {
+      ticketId,
+      activityType,
+      changedById,
+      error: error?.message || error,
+      stack: error?.stack,
+    });
   }
 }

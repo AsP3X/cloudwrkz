@@ -114,8 +114,8 @@ export const TicketEditForm = ({ ticket, agents, groups = [] }: TicketEditFormPr
         type: data.type,
         priority: data.priority,
         status: data.status,
-        assignedToId: data.assignedToId || undefined,
-        assignedToGroupId: data.assignedToGroupId || undefined,
+        assignedToId: data.assignedToId === "" || data.assignedToId === null ? null : (data.assignedToId || undefined),
+        assignedToGroupId: data.assignedToGroupId === "" || data.assignedToGroupId === null ? null : (data.assignedToGroupId || undefined),
       });
 
       if (result.success) {

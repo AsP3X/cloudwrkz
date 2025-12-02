@@ -60,7 +60,7 @@ export const TicketAssignmentFields = ({
 
     try {
       const result = await updateTicket(ticketId, {
-        assignedToId: value === "" ? undefined : value,
+        assignedToId: value === "" ? null : value,
       });
 
       if (result.success) {
