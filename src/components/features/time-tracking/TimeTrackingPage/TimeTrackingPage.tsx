@@ -8,6 +8,48 @@ import { AddTimeEntryDialog } from "../AddTimeEntryDialog";
 import { getActiveTimeEntries } from "@/server/actions/time-tracking";
 import { useTimeTrackingEvents } from "@/lib/hooks/useTimeTrackingEvents";
 import { type TimeEntryStatus } from "@prisma/client";
+import { calculateElapsedTime } from "@/lib/utils/time-tracking";
+
+// Client-only component to calculate total time to avoid hydration mismatch
+function TotalTimeDisplay({ entries }: { entries: TimeEntry[] }) {
+  const [totalHours, setTotalHours] = React.useState(0);
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  React.useEffect(() => {
+    if (!mounted) return;
+
+    const calculateTotal = () => {
+      const total = entries.reduce((sum, e) => {
+        return sum + calculateElapsedTime(e);
+      }, 0);
+      setTotalHours(Math.floor(total / 3600));
+    };
+
+    calculateTotal();
+
+    // Update every second for running timers
+    const interval = setInterval(calculateTotal, 1000);
+
+    return () => clearInterval(interval);
+  }, [entries, mounted]);
+
+  // Show static value during SSR to match initial client render
+  const staticTotal = entries.reduce((sum, e) => sum + e.totalDuration, 0);
+  const staticHours = Math.floor(staticTotal / 3600);
+
+  return (
+    <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
+      <div className="text-sm text-neutral-600 dark:text-neutral-400">Total Time</div>
+      <div className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-1" suppressHydrationWarning>
+        {mounted ? totalHours : staticHours}h
+      </div>
+    </div>
+  );
+}
 
 type TimeEntry = {
   id: string;
@@ -109,26 +151,7 @@ export function TimeTrackingPage({ initialEntries, initialTotal, initialPage }: 
             {initialEntries.filter((e) => e.status === "RUNNING" || e.status === "PAUSED").length}
           </div>
         </div>
-        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
-          <div className="text-sm text-neutral-600 dark:text-neutral-400">Total Time</div>
-          <div className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-1">
-            {Math.floor(
-              initialEntries.reduce((sum, e) => {
-                if (e.status === "RUNNING" && e.lastResumedAt) {
-                  const now = new Date();
-                  const runningTime = Math.floor((now.getTime() - e.lastResumedAt.getTime()) / 1000);
-                  return sum + e.totalDuration + runningTime;
-                } else if (e.status === "RUNNING" && !e.lastResumedAt) {
-                  const now = new Date();
-                  const runningTime = Math.floor((now.getTime() - e.startedAt.getTime()) / 1000);
-                  return sum + e.totalDuration + runningTime;
-                }
-                return sum + e.totalDuration;
-              }, 0) / 3600
-            )}
-            h
-          </div>
-        </div>
+        <TotalTimeDisplay entries={initialEntries} />
       </div>
 
       {/* Time Entries List */}

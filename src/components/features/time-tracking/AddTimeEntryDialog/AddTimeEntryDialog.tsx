@@ -41,10 +41,33 @@ export function AddTimeEntryDialog({ open, onOpenChange }: AddTimeEntryDialogPro
         minutes: 0,
         seconds: 0,
       },
-      startedAt: new Date(),
+      // Will be set when dialog opens to avoid hydration mismatch
+      startedAt: undefined as any,
       stoppedAt: undefined,
     },
   });
+
+  // Set default startedAt on client side only when dialog opens
+  React.useEffect(() => {
+    if (open) {
+      const currentStartedAt = watch("startedAt");
+      if (!currentStartedAt) {
+        reset({
+          name: "",
+          description: "",
+          tags: [],
+          billable: false,
+          duration: {
+            hours: 0,
+            minutes: 0,
+            seconds: 0,
+          },
+          startedAt: new Date(),
+          stoppedAt: undefined,
+        });
+      }
+    }
+  }, [open, reset, watch]);
 
   React.useEffect(() => {
     if (!open) {

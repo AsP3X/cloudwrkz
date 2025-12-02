@@ -19,28 +19,41 @@ export function useTimerDuration({
   startedAt,
   updateInterval = 1000,
 }: UseTimerDurationProps) {
-  const [duration, setDuration] = useState(() =>
-    calculateElapsedTime({ status, totalDuration, lastResumedAt, startedAt })
-  );
-  const [formatted, setFormatted] = useState(() => formatDuration(duration));
+  // Start with totalDuration to match server render (avoid hydration mismatch)
+  const [duration, setDuration] = useState(totalDuration);
+  const [formatted, setFormatted] = useState(() => formatDuration(totalDuration));
+  const [mounted, setMounted] = useState(false);
+
+  // Mark as mounted on client side
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
+    if (!mounted) return;
+
     if (status !== "RUNNING") {
-      const elapsed = calculateElapsedTime({ status, totalDuration, lastResumedAt, startedAt });
-      setDuration(elapsed);
-      setFormatted(formatDuration(elapsed));
+      // For non-running entries, use totalDuration directly
+      setDuration(totalDuration);
+      setFormatted(formatDuration(totalDuration));
       return;
     }
 
-    // Update every second for running timers
-    const interval = setInterval(() => {
+    // For running timers, calculate actual elapsed time
+    const updateDuration = () => {
       const elapsed = calculateElapsedTime({ status, totalDuration, lastResumedAt, startedAt });
       setDuration(elapsed);
       setFormatted(formatDuration(elapsed));
-    }, updateInterval);
+    };
+
+    // Update immediately
+    updateDuration();
+
+    // Update every second for running timers
+    const interval = setInterval(updateDuration, updateInterval);
 
     return () => clearInterval(interval);
-  }, [status, totalDuration, lastResumedAt, startedAt, updateInterval]);
+  }, [status, totalDuration, lastResumedAt, startedAt, updateInterval, mounted]);
 
   return {
     duration, // in seconds

@@ -54,15 +54,17 @@ export function TimeEntryList({ entries }: TimeEntryListProps) {
     setMounted(true);
   }, []);
 
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
+  // Format date consistently between server and client
+  const formatDate = React.useCallback((date: Date) => {
+    // Use a consistent format that works the same on server and client
+    const d = new Date(date);
+    const year = d.getFullYear();
+    const month = d.toLocaleString("en-US", { month: "short" });
+    const day = d.getDate();
+    const hours = String(d.getHours()).padStart(2, "0");
+    const minutes = String(d.getMinutes()).padStart(2, "0");
+    return `${month} ${day}, ${year} ${hours}:${minutes}`;
+  }, []);
 
   const allSelected = entries.length > 0 && selectedEntries.size === entries.length;
   const someSelected = selectedEntries.size > 0 && selectedEntries.size < entries.length;

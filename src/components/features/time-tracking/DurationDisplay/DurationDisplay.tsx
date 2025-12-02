@@ -23,34 +23,41 @@ export function DurationDisplay({ entry, className }: DurationDisplayProps) {
   // Only calculate live duration on client after mount to avoid hydration mismatch
   React.useEffect(() => {
     setMounted(true);
-    
-    // For running entries, calculate the actual elapsed time after mount
-    if (entry.status === "RUNNING") {
-      setDuration(calculateElapsedTime(entry));
-    }
-  }, [entry.status, entry.totalDuration, entry.lastResumedAt, entry.startedAt]);
+  }, []);
 
   React.useEffect(() => {
     if (!mounted) return;
 
     if (entry.status !== "RUNNING") {
+      // For non-running entries, use totalDuration directly
       setDuration(entry.totalDuration);
       return;
     }
 
-    // Update every second for running timers
-    const interval = setInterval(() => {
+    // For running entries, calculate the actual elapsed time
+    const updateDuration = () => {
       setDuration(calculateElapsedTime(entry));
-    }, 1000);
+    };
+
+    // Update immediately
+    updateDuration();
+
+    // Update every second for running timers
+    const interval = setInterval(updateDuration, 1000);
 
     return () => clearInterval(interval);
   }, [entry.status, entry.totalDuration, entry.lastResumedAt, entry.startedAt, mounted]);
 
   // For running timers, suppress hydration warning since the value will differ between server and client
-  // Server renders totalDuration (which might be 0), client calculates actual elapsed time
+  // Server renders totalDuration (static), client calculates actual elapsed time (dynamic)
   if (entry.status === "RUNNING") {
-    return <span className={className} suppressHydrationWarning>{formatDuration(duration)}</span>;
+    return (
+      <span className={className} suppressHydrationWarning>
+        {mounted ? formatDuration(duration) : formatDuration(entry.totalDuration)}
+      </span>
+    );
   }
 
+  // For non-running entries, always use totalDuration (same on server and client)
   return <span className={className}>{formatDuration(duration)}</span>;
 }
