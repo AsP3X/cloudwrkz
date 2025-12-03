@@ -18,15 +18,21 @@ export type ActionResult<T = void> =
 export async function getPreferences() {
   const user = await requireAuth();
 
-  // For now, we'll store theme preference in localStorage on client side
-  // But we can extend this to fetch from database if needed in the future
-  // This is a placeholder that returns default preferences
+  // Fetch user preferences from database
+  const dbUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: {
+      timezone: true,
+    },
+  });
+
   return {
-    theme: "system" as const,
+    theme: "system" as const, // Theme is stored in localStorage on client side
     language: "en" as const,
     emailNotifications: true,
     pushNotifications: false,
     marketingEmails: false,
+    timezone: dbUser?.timezone ?? "UTC",
   };
 }
 
@@ -65,12 +71,11 @@ export async function updatePreferences(
       validationResult.data;
 
     // Persist timezone preference on the user record
-    if (timezone) {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { timezone },
-      });
-    }
+    // Always update timezone, even if undefined (to allow clearing it)
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { timezone: timezone ?? "UTC" },
+    });
 
     // Revalidate settings page
     revalidatePath("/dashboard/settings");
