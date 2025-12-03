@@ -44,7 +44,9 @@ const isRunDirectly = process.argv[1]?.includes("group-cli");
 const isCalledFromIndex = process.argv[1]?.includes("cli/index") || process.argv[1]?.includes("index.ts");
 const shouldExecute = isRunDirectly || (isCalledFromIndex && commandArgs.length > 0);
 
-if ((isRunDirectly || isCalledFromIndex) && commandArgs.length === 0) {
+// Only show help and exit when the file is run directly with no arguments.
+// When imported from the main CLI for interactive mode (no args), we must NOT exit here.
+if (isRunDirectly && commandArgs.length === 0) {
   console.log(`
 Group Management CLI Tool
 
