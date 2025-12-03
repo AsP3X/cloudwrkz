@@ -692,6 +692,8 @@ export async function completeTimeEntry(id: string): Promise<ActionResult> {
         totalDuration: true,
         lastResumedAt: true,
         startedAt: true,
+      pausedAt: true,
+      stoppedAt: true,
       },
     });
 
@@ -854,7 +856,13 @@ export async function getTimeEntries(filters: TimeEntryFilters = {}) {
   try {
     const moduleEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
     if (!moduleEnabled) {
-      return [];
+      return {
+        entries: [],
+        total: 0,
+        page: filters.page || 1,
+        limit: filters.limit || 50,
+        totalPages: 0,
+      };
     }
 
     const user = await requireAuth();

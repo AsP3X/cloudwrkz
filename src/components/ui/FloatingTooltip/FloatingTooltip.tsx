@@ -121,7 +121,7 @@ export const FloatingTooltip: React.FC<FloatingTooltipProps> = ({
     requestAnimationFrame(() => {
       requestAnimationFrame(calculatePosition);
     });
-  }, [isOpen, position]);
+  }, [isOpen, position, setIsOpen]);
 
   // Handle click outside
   React.useEffect(() => {

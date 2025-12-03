@@ -146,7 +146,7 @@ const ADMIN_NAVIGATION = Object.freeze([
     href: "/dashboard/admin/settings",
     icon: SettingsIcon,
   }),
-]) as readonly Array<{
+]) as ReadonlyArray<{
   readonly name: string;
   readonly href: string;
   readonly icon: () => JSX.Element;

@@ -96,7 +96,7 @@ export const TicketForm = ({ isAgent = false, users = [], agents = [], groups = 
     },
   });
 
-  const createTimer = watch("createTimer");
+  const createTimer = watch("createTimer"); // used for UI-only logic
 
   const onSubmit = async (data: CreateTicketInput) => {
     setServerError(null);

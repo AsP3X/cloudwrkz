@@ -175,7 +175,11 @@ export function UserManagementPage({ initialData }: UserManagementPageProps) {
               { value: "DELETED", label: "Deleted" },
             ]}
             value={filters.status || ""}
-            onChange={(e) => updateFilters({ status: e.target.value || undefined })}
+            onChange={(e) =>
+              updateFilters({
+                status: (e.target.value || undefined) as UserFilters["status"],
+              })
+            }
           />
           <Select
             label="Role"
@@ -188,7 +192,11 @@ export function UserManagementPage({ initialData }: UserManagementPageProps) {
               { value: "ADMIN", label: "Admin" },
             ]}
             value={filters.role || ""}
-            onChange={(e) => updateFilters({ role: e.target.value || undefined })}
+            onChange={(e) =>
+              updateFilters({
+                role: (e.target.value || undefined) as UserFilters["role"],
+              })
+            }
           />
           {selectedUsers.size > 0 && (
             <div className="flex items-end gap-2">

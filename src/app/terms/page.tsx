@@ -45,7 +45,7 @@ export default function TermsPage() {
                 {/* Introduction */}
                 <section className="mb-8">
                   <p className="text-neutral-700 dark:text-neutral-300 leading-relaxed">
-                    Welcome to {APP_CONFIG.name}. These Terms and Conditions ("Terms") govern your access to and use of our services, website, and applications (collectively, the "Service"). By accessing or using our Service, you agree to be bound by these Terms.
+                    Welcome to {APP_CONFIG.name}. These Terms and Conditions (&quot;Terms&quot;) govern your access to and use of our services, website, and applications (collectively, the &quot;Service&quot;). By accessing or using our Service, you agree to be bound by these Terms.
                   </p>
                 </section>
 
@@ -58,7 +58,7 @@ export default function TermsPage() {
                     By accessing or using {APP_CONFIG.name}, you acknowledge that you have read, understood, and agree to be bound by these Terms and our Privacy Policy. If you do not agree with any part of these Terms, you must not use our Service.
                   </p>
                   <p className="text-neutral-700 dark:text-neutral-300 leading-relaxed">
-                    We reserve the right to modify these Terms at any time. We will notify users of any material changes by posting the new Terms on this page and updating the "Last updated" date. Your continued use of the Service after such modifications constitutes acceptance of the updated Terms.
+                    We reserve the right to modify these Terms at any time. We will notify users of any material changes by posting the new Terms on this page and updating the &quot;Last updated&quot; date. Your continued use of the Service after such modifications constitutes acceptance of the updated Terms.
                   </p>
                 </section>
 
@@ -178,7 +178,7 @@ export default function TermsPage() {
                     9. Disclaimer of Warranties
                   </h2>
                   <p className="text-neutral-700 dark:text-neutral-300 leading-relaxed mb-4">
-                    THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, OR NON-INFRINGEMENT.
+                    THE SERVICE IS PROVIDED &quot;AS IS&quot; AND &quot;AS AVAILABLE&quot; WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, OR NON-INFRINGEMENT.
                   </p>
                   <p className="text-neutral-700 dark:text-neutral-300 leading-relaxed">
                     We do not warrant that the Service will be uninterrupted, secure, or error-free, or that defects will be corrected. We do not warrant or make any representations regarding the use or results of the Service in terms of accuracy, reliability, or otherwise.
@@ -204,7 +204,7 @@ export default function TermsPage() {
                     11. Indemnification
                   </h2>
                   <p className="text-neutral-700 dark:text-neutral-300 leading-relaxed">
-                    You agree to indemnify, defend, and hold harmless {APP_CONFIG.name}, its officers, directors, employees, and agents from and against any claims, liabilities, damages, losses, and expenses, including reasonable attorneys' fees, arising out of or in any way connected with your access to or use of the Service, your violation of these Terms, or your violation of any rights of another.
+                    You agree to indemnify, defend, and hold harmless {APP_CONFIG.name}, its officers, directors, employees, and agents from and against any claims, liabilities, damages, losses, and expenses, including reasonable attorneys&apos; fees, arising out of or in any way connected with your access to or use of the Service, your violation of these Terms, or your violation of any rights of another.
                   </p>
                 </section>
 
@@ -224,7 +224,7 @@ export default function TermsPage() {
                     13. Changes to Terms
                   </h2>
                   <p className="text-neutral-700 dark:text-neutral-300 leading-relaxed">
-                    We reserve the right to modify or replace these Terms at any time. If a revision is material, we will provide at least 30 days' notice prior to any new terms taking effect. What constitutes a material change will be determined at our sole discretion.
+                    We reserve the right to modify or replace these Terms at any time. If a revision is material, we will provide at least 30 days&apos; notice prior to any new terms taking effect. What constitutes a material change will be determined at our sole discretion.
                   </p>
                 </section>
 

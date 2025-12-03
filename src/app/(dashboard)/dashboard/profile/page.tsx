@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
 import { getCurrentUserProfile } from "@/server/actions/users";
 import { ProfileForm } from "@/components/features/profile/ProfileForm";
+import Image from "next/image";
 
 export default async function ProfilePage() {
   const user = await getCurrentUser();
@@ -87,11 +88,13 @@ export default async function ProfilePage() {
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div className="flex items-center gap-4">
             {/* Avatar */}
-            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary-100 to-secondary-100 dark:from-primary-900 dark:to-secondary-900 flex items-center justify-center text-2xl font-bold text-primary-700 dark:text-primary-300 flex-shrink-0">
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary-100 to-secondary-100 dark:from-primary-900 dark:to-secondary-900 flex items-center justify-center text-2xl font-bold text-primary-700 dark:text-primary-300 flex-shrink-0 overflow-hidden">
               {profile.avatar ? (
-                <img
+                <Image
                   src={profile.avatar}
                   alt={profile.name || profile.email}
+                  width={80}
+                  height={80}
                   className="w-full h-full rounded-full object-cover"
                 />
               ) : (

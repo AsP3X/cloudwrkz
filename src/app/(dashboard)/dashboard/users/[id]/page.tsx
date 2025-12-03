@@ -332,7 +332,7 @@ export default async function UserDetailPage({ params, searchParams }: UserDetai
                   No tickets found
                 </h3>
                 <p className="text-neutral-600 dark:text-neutral-400">
-                  {formatUserName(user)} hasn't created any tickets yet.
+                  {formatUserName(user)} hasn&apos;t created any tickets yet.
                 </p>
               </div>
             ) : (

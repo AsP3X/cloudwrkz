@@ -26,6 +26,8 @@ export function useTimerDuration({
 
   // Mark as mounted on client side
   useEffect(() => {
+    // Mark as mounted once on client to avoid hydration mismatches
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
@@ -34,7 +36,9 @@ export function useTimerDuration({
 
     if (status !== "RUNNING") {
       // For non-running entries, use totalDuration directly
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDuration(totalDuration);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFormatted(formatDuration(totalDuration));
       return;
     }

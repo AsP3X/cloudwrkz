@@ -34,7 +34,7 @@ interface TicketActivityProps {
   ticket: {
     activities: Array<{
       id: string;
-      activityType: TicketActivityType;
+      activityType: TicketActivityType | string;
       changedById: string | null;
       changedByName: string | null;
       oldValue: string | null;
@@ -51,7 +51,11 @@ interface TicketActivityProps {
   };
 }
 
-const getActivityDescription = (activityType: TicketActivityType, oldValue: string | null, newValue: string | null): string => {
+const getActivityDescription = (
+  activityType: TicketActivityType | string,
+  oldValue: string | null,
+  newValue: string | null
+): string => {
   switch (activityType) {
     case "CREATED":
       return "Ticket created";
@@ -102,7 +106,7 @@ const getActivityDescription = (activityType: TicketActivityType, oldValue: stri
   }
 };
 
-const formatValue = (value: string | null, activityType: TicketActivityType): string => {
+const formatValue = (value: string | null, activityType: TicketActivityType | string): string => {
   if (!value) return "";
   
   // Format status values
@@ -123,7 +127,7 @@ export const TicketActivity = ({ ticket }: TicketActivityProps) => {
 
   const activities = ticket.activities || [];
 
-  const getActivityIcon = (type: TicketActivityType) => {
+  const getActivityIcon = (type: TicketActivityType | string) => {
     switch (type) {
       case "CREATED":
         return (
@@ -216,7 +220,7 @@ export const TicketActivity = ({ ticket }: TicketActivityProps) => {
     }
   };
 
-  const getActivityColor = (type: TicketActivityType) => {
+  const getActivityColor = (type: TicketActivityType | string): string => {
     switch (type) {
       case "CREATED":
         return "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300";
@@ -365,7 +369,20 @@ export const TicketActivity = ({ ticket }: TicketActivityProps) => {
                       </p>
                       {(activity.changedBy || activity.changedByName) && (
                         <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">
-                          by {formatUserName(activity.changedBy, activity.changedByName)}
+                          by {formatUserName(
+                            activity.changedBy
+                              ? {
+                                  ...activity.changedBy,
+                                  status: activity.changedBy.status as
+                                    | "ACTIVE"
+                                    | "PENDING"
+                                    | "SUSPENDED"
+                                    | "DELETED"
+                                    | undefined,
+                                }
+                              : null,
+                            activity.changedByName
+                          )}
                         </p>
                       )}
                       {showChangeDetails && (

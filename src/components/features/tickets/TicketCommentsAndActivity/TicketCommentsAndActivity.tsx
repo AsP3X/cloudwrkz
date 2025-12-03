@@ -164,13 +164,33 @@ export const TicketCommentsAndActivity = ({
                         comment.isAgentOnly ? "text-orange-700 dark:text-orange-300" : "text-primary-700 dark:text-primary-300"
                       }`}
                     >
-                      {formatUserInitial(comment.user, comment.authorName)}
+                      {formatUserInitial(
+                        comment.user
+                          ? {
+                              id: comment.user.id,
+                              name: comment.user.name ?? null,
+                              email: comment.user.email,
+                              status: comment.user.status,
+                            }
+                          : null,
+                        comment.authorName
+                      )}
                     </span>
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                        {formatUserName(comment.user, comment.authorName)}
+                        {formatUserName(
+                          comment.user
+                            ? {
+                                id: comment.user.id,
+                                name: comment.user.name ?? null,
+                                email: comment.user.email,
+                                status: comment.user.status,
+                              }
+                            : null,
+                          comment.authorName
+                        )}
                       </p>
                       {comment.isAgentOnly && (
                         <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 border border-orange-200 dark:bg-orange-900 dark:text-orange-300 dark:border-orange-800">

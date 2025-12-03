@@ -48,7 +48,7 @@ export default function AboutPage() {
                     Our Mission
                   </h2>
                   <p className="text-neutral-700 dark:text-neutral-300 leading-relaxed mb-4">
-                    At {APP_CONFIG.name}, we're dedicated to empowering businesses and developers with cutting-edge technology solutions that simplify complex workflows, accelerate development cycles, and drive innovation. We believe that modern applications should be powerful, scalable, and accessible to everyone.
+                    At {APP_CONFIG.name}, we&apos;re dedicated to empowering businesses and developers with cutting-edge technology solutions that simplify complex workflows, accelerate development cycles, and drive innovation. We believe that modern applications should be powerful, scalable, and accessible to everyone.
                   </p>
                   <p className="text-neutral-700 dark:text-neutral-300 leading-relaxed">
                     Our mission is to bridge the gap between enterprise needs and developer productivity, creating tools that enable teams to build, deploy, and scale applications faster than ever before.
@@ -64,7 +64,7 @@ export default function AboutPage() {
                     We envision a world where building enterprise-grade applications is as intuitive as building a simple website. Our platform combines the reliability and security that enterprises demand with the developer experience that modern teams expect.
                   </p>
                   <p className="text-neutral-700 dark:text-neutral-300 leading-relaxed">
-                    Through continuous innovation and a commitment to open standards, we're shaping the future of application development—making it faster, more secure, and more accessible for everyone.
+                    Through continuous innovation and a commitment to open standards, we&apos;re shaping the future of application development—making it faster, more secure, and more accessible for everyone.
                   </p>
                 </section>
 
@@ -150,7 +150,7 @@ export default function AboutPage() {
                     Join Us on This Journey
                   </h2>
                   <p className="text-neutral-700 dark:text-neutral-300 leading-relaxed mb-4">
-                    Whether you're a startup looking to scale quickly or an enterprise seeking reliable infrastructure, {APP_CONFIG.name} is here to support your growth. We're committed to providing the tools, support, and innovation you need to succeed.
+                    Whether you&apos;re a startup looking to scale quickly or an enterprise seeking reliable infrastructure, {APP_CONFIG.name} is here to support your growth. We&apos;re committed to providing the tools, support, and innovation you need to succeed.
                   </p>
                   <p className="text-neutral-700 dark:text-neutral-300 leading-relaxed">
                     Ready to get started? <Link href={ROUTES.REGISTER} className="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-semibold">Sign up for free</Link> and experience the power of modern application development.
@@ -163,7 +163,7 @@ export default function AboutPage() {
                     Get in Touch
                   </h2>
                   <p className="text-neutral-700 dark:text-neutral-300 leading-relaxed mb-4">
-                    Have questions or want to learn more? We'd love to hear from you.
+                    Have questions or want to learn more? We&apos;d love to hear from you.
                   </p>
                   <div className="mt-4 p-4 bg-neutral-50 dark:bg-neutral-800 rounded-lg">
                     <p className="text-neutral-700 dark:text-neutral-300">

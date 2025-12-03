@@ -59,9 +59,12 @@ export const TicketAssignmentFields = ({
     setError(null);
 
     try {
-      const result = await updateTicket(ticketId, {
-        assignedToId: value === "" ? null : value,
-      });
+      const result = await updateTicket(
+        ticketId,
+        {
+          assignedToId: value === "" ? null : value,
+        } as Parameters<typeof updateTicket>[1]
+      );
 
       if (result.success) {
         router.refresh();

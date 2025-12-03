@@ -65,6 +65,7 @@ type TimeEntry = {
   lastResumedAt: Date | null;
   tags: string[];
   location: string | null;
+  billable: boolean;
   ticket: {
     id: string;
     ticketNumber: string;

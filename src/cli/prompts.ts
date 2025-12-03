@@ -7,7 +7,7 @@
 
 import inquirer from "inquirer";
 import chalk from "chalk";
-import ora from "ora";
+import ora, { type Ora } from "ora";
 import boxen from "boxen";
 import Table from "cli-table3";
 
@@ -270,7 +270,7 @@ export async function checkbox(
 /**
  * Create a loading spinner
  */
-export function createSpinner(text: string): ora.Ora {
+export function createSpinner(text: string): Ora {
   return ora({
     text: chalk.cyan(text),
     spinner: "dots",
@@ -436,23 +436,31 @@ export function displayKeyValue(key: string, value: string | number | null | und
  * Display a notice box
  */
 export function notice(message: string, type: "info" | "warning" | "error" | "success" = "info"): void {
-  const colors = {
-    info: "blue",
-    warning: "yellow",
-    error: "red",
-    success: "green",
+  const colorFns: Record<typeof type, (text: string) => string> = {
+    info: chalk.blue,
+    warning: chalk.yellow,
+    error: chalk.red,
+    success: chalk.green,
   };
-  const icons = {
+  const icons: Record<typeof type, string> = {
     info: "ℹ",
     warning: "⚠",
     error: "✗",
     success: "✓",
   };
 
+  const colorize = colorFns[type] || ((text: string) => text);
+
   console.log(
-    boxen(`${chalk[colors[type]](icons[type])} ${message}`, {
+    boxen(`${colorize(icons[type])} ${message}`, {
       padding: 1,
-      borderColor: colors[type],
+      borderColor: type === "info"
+        ? "blue"
+        : type === "warning"
+        ? "yellow"
+        : type === "error"
+        ? "red"
+        : "green",
       borderStyle: "round",
     })
   );

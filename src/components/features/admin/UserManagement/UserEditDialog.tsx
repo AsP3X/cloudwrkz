@@ -30,6 +30,8 @@ export function UserEditDialog({ open, onOpenChange, user, onSubmit, isLoading }
 
   useEffect(() => {
     if (open) {
+      // Resync form state when dialog opens or user changes
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFormData({
         email: user.email,
         name: user.name || "",

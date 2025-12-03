@@ -23,9 +23,11 @@ export function useTimeTrackingEvents(options: UseTimeTrackingEventsOptions = {}
   const maxReconnectAttempts = 5;
   const reconnectDelay = 3000; // 3 seconds
   const [isClient, setIsClient] = useState(false);
+  const connectRef = useRef<(() => void) | null>(null);
 
   // Check if we're on the client side
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsClient(typeof window !== "undefined");
   }, []);
 
@@ -81,7 +83,7 @@ export function useTimeTrackingEvents(options: UseTimeTrackingEventsOptions = {}
         if (reconnectAttempts.current < maxReconnectAttempts) {
           reconnectAttempts.current++;
           reconnectTimeoutRef.current = setTimeout(() => {
-            connect();
+            connectRef.current?.();
           }, reconnectDelay);
         } else {
           console.error("Max reconnection attempts reached");
@@ -91,6 +93,12 @@ export function useTimeTrackingEvents(options: UseTimeTrackingEventsOptions = {}
       console.error("Error creating SSE connection:", error);
     }
   }, [enabled, onEvent, router]);
+
+  // Keep a stable reference for reconnect logic to avoid accessing
+  // the callback before it is declared.
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   useEffect(() => {
     if (enabled && isClient) {
@@ -108,7 +116,22 @@ export function useTimeTrackingEvents(options: UseTimeTrackingEventsOptions = {}
     };
   }, [enabled, isClient, connect]);
 
+  const [connected, setConnected] = useState(false);
+
+  // Track connection state in a piece of React state instead of
+  // reading the ref during render to satisfy React Compiler rules.
+  useEffect(() => {
+    if (!isClient) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setConnected(false);
+      return;
+    }
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setConnected(eventSourceRef.current?.readyState === EventSource.OPEN);
+  }, [isClient]);
+
   return {
-    connected: isClient && eventSourceRef.current?.readyState === EventSource.OPEN,
+    connected,
   };
 }

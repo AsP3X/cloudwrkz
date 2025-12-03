@@ -231,7 +231,7 @@ export async function updateTicketStatusAdmin(
 ): Promise<ActionResult> {
   try {
     const user = await requireRole("ADMIN");
-    const { logTicketActivity } = await import("../utils/ticket-activity-logger");
+    const { logTicketActivity } = await import("../../utils/ticket-activity-logger");
 
     // Get current ticket data for comparison
     const ticket = await prisma.ticket.findUnique({
