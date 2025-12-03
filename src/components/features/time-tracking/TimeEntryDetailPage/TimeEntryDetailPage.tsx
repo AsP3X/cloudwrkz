@@ -303,6 +303,10 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
             <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">Timeline</h2>
             <div className="space-y-4">
               <div>
+                <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">Timezone</label>
+                <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400 font-mono">{userTimezone || "UTC"}</p>
+              </div>
+              <div>
                 <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">Started</label>
                 <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">{formatDate(entry.startedAt)}</p>
               </div>

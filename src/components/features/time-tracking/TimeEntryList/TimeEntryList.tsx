@@ -290,6 +290,9 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
                 Started
               </th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                Timezone
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                 Location
               </th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
@@ -351,6 +354,9 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
                   </td>
                   <td className="px-6 py-4 text-sm text-neutral-600 dark:text-neutral-400">
                     {formatDate(entry.startedAt)}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-neutral-600 dark:text-neutral-400">
+                    <span className="font-mono text-xs">{userTimezone}</span>
                   </td>
                   <td className="px-6 py-4 text-sm text-neutral-600 dark:text-neutral-400">
                     {entry.location ? (

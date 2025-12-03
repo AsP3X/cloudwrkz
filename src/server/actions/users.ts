@@ -88,6 +88,7 @@ export async function getCurrentUserProfile() {
       role: true,
       status: true,
       emailVerified: true,
+      timezone: true,
       createdAt: true,
       updatedAt: true,
       lastLoginAt: true,
