@@ -14,8 +14,13 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
     },
     ref
   ) => {
-    const generatedId = React.useId();
-    const inputId = id || generatedId;
+    // Use a deterministic, prop-based ID instead of React.useId
+    // to avoid SSR/client hydration mismatches.
+    const inputId = React.useMemo(() => {
+      if (id) return id;
+      if (props.name) return `input-${props.name}`;
+      return undefined;
+    }, [id, props.name]);
 
     return (
       <div className="w-full">
