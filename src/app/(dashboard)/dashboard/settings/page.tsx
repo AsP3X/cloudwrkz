@@ -2,6 +2,7 @@ import { getCurrentUser } from "@/lib/utils/auth-server";
 import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
 import { getCurrentUserProfile } from "@/server/actions/users";
+import { getPreferences } from "@/server/actions/preferences";
 import { AccountSettingsForm } from "@/components/features/settings/AccountSettingsForm";
 import { PreferencesForm } from "@/components/features/settings/PreferencesForm";
 import { PrivacySecurityForm } from "@/components/features/settings/PrivacySecurityForm";
@@ -20,6 +21,8 @@ export default async function SettingsPage() {
   if (!profile) {
     redirect(ROUTES.DASHBOARD);
   }
+
+  const preferences = await getPreferences();
 
   return (
     <div className="space-y-6">
@@ -104,7 +107,7 @@ export default async function SettingsPage() {
         }
         defaultExpanded={true}
       >
-        <PreferencesForm />
+        <PreferencesForm initialValues={preferences} />
       </CollapsibleSection>
 
       {/* Privacy & Security Section */}

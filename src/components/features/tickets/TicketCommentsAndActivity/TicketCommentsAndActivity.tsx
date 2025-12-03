@@ -5,6 +5,9 @@ import { Tabs } from "@/components/ui/Tabs";
 import { formatUserName, formatUserInitial } from "@/lib/utils/users";
 import { TicketActivity } from "../TicketActivity";
 import { TicketCommentForm } from "../TicketCommentForm";
+import { formatDuration } from "@/lib/utils/time-tracking";
+import Link from "next/link";
+import { ROUTES } from "@/lib/constants/routes";
 
 interface Comment {
   id: string;
@@ -44,8 +47,34 @@ interface TicketCommentsAndActivityProps {
       status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
     } | null;
     comments: Comment[];
+    activities: Array<{
+      id: string;
+      activityType: string;
+      changedById: string | null;
+      changedByName: string | null;
+      oldValue: string | null;
+      newValue: string | null;
+      metadata: any;
+      createdAt: Date;
+      changedBy: {
+        id: string;
+        name: string | null;
+        email: string;
+        status: string;
+      } | null;
+    }>;
   };
   userRole: string;
+  stoppedTimeEntries?: Array<{
+    id: string;
+    name: string;
+    description: string | null;
+    status: string;
+    startedAt: Date;
+    totalDuration: number;
+    lastResumedAt: Date | null;
+    createdAt: Date;
+  }>;
 }
 
 const formatDate = (date: Date) => {
@@ -83,7 +112,15 @@ const getRoleBadge = (role: string) => {
 export const TicketCommentsAndActivity = ({
   ticket,
   userRole,
+  stoppedTimeEntries = [],
 }: TicketCommentsAndActivityProps) => {
+  const [mounted, setMounted] = React.useState(false);
+
+  // Ensure component is mounted before formatting dates to avoid hydration mismatch
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const commentsTabContent = (
     <div>
       {/* Comments List */}
@@ -127,13 +164,33 @@ export const TicketCommentsAndActivity = ({
                         comment.isAgentOnly ? "text-orange-700 dark:text-orange-300" : "text-primary-700 dark:text-primary-300"
                       }`}
                     >
-                      {formatUserInitial(comment.user, comment.authorName)}
+                      {formatUserInitial(
+                        comment.user
+                          ? {
+                              id: comment.user.id,
+                              name: comment.user.name ?? null,
+                              email: comment.user.email,
+                              status: comment.user.status,
+                            }
+                          : null,
+                        comment.authorName
+                      )}
                     </span>
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                        {formatUserName(comment.user, comment.authorName)}
+                        {formatUserName(
+                          comment.user
+                            ? {
+                                id: comment.user.id,
+                                name: comment.user.name ?? null,
+                                email: comment.user.email,
+                                status: comment.user.status,
+                              }
+                            : null,
+                          comment.authorName
+                        )}
                       </p>
                       {comment.isAgentOnly && (
                         <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 border border-orange-200 dark:bg-orange-900 dark:text-orange-300 dark:border-orange-800">
@@ -149,7 +206,7 @@ export const TicketCommentsAndActivity = ({
                       )}
                     </div>
                     <p className="text-xs text-neutral-500 dark:text-neutral-500">
-                      {formatDate(comment.createdAt)}
+                      {mounted ? formatDate(comment.createdAt) : ""}
                     </p>
                   </div>
                 </div>
@@ -171,7 +228,77 @@ export const TicketCommentsAndActivity = ({
 
   const activityTabContent = (
     <div>
-      <TicketActivity ticket={ticket} />
+      <TicketActivity 
+        key={`activity-${ticket.id}-v2`}
+        ticket={{ activities: ticket.activities || [] }} 
+      />
+    </div>
+  );
+
+  const timersTabContent = (
+    <div>
+      {stoppedTimeEntries.length === 0 ? (
+        <div className="text-center py-8">
+          <svg
+            className="w-12 h-12 text-neutral-300 dark:text-neutral-700 mx-auto mb-3"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+          <p className="text-neutral-600 dark:text-neutral-400">No stopped timers yet.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {stoppedTimeEntries.map((entry) => {
+            const statusColors = {
+              STOPPED: "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300",
+              COMPLETED: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300",
+            };
+            const statusColor = statusColors[entry.status as keyof typeof statusColors] || statusColors.STOPPED;
+            
+            return (
+              <div
+                key={entry.id}
+                className="p-4 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Link
+                        href={`${ROUTES.DASHBOARD}/time-tracking/${entry.id}`}
+                        className="font-medium text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400"
+                      >
+                        {entry.name}
+                      </Link>
+                      <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${statusColor}`}>
+                        {entry.status}
+                      </span>
+                    </div>
+                    {entry.description && (
+                      <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-2">
+                        {entry.description}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-4 text-xs text-neutral-500 dark:text-neutral-500">
+                      <span>Duration: {formatDuration(entry.totalDuration)}</span>
+                      <span>
+                        Started: {mounted ? new Date(entry.startedAt).toLocaleDateString() : ""}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 
@@ -185,6 +312,11 @@ export const TicketCommentsAndActivity = ({
       id: "activity",
       label: "Activity",
       content: activityTabContent,
+    },
+    {
+      id: "timers",
+      label: `Timers (${stoppedTimeEntries.length})`,
+      content: timersTabContent,
     },
   ];
 

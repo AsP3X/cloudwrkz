@@ -86,10 +86,6 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false);
   const selectAllRef = React.useRef<HTMLInputElement>(null);
 
-  if (tickets.length === 0) {
-    return null;
-  }
-
   const formatDate = (date: Date) => {
     return new Date(date).toLocaleDateString("en-US", {
       year: "numeric",
@@ -253,6 +249,10 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
     setSelectedTickets(new Set());
     setError(null);
   };
+
+  if (tickets.length === 0) {
+    return null;
+  }
 
   return (
     <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">

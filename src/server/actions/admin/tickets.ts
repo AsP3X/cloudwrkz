@@ -230,16 +230,13 @@ export async function updateTicketStatusAdmin(
   status: string
 ): Promise<ActionResult> {
   try {
-    await requireRole("ADMIN");
+    const user = await requireRole("ADMIN");
+    const { logTicketActivity } = await import("../../utils/ticket-activity-logger");
 
-    const updateData: any = {
-      status,
-    };
-
-    // Set resolvedAt or closedAt based on status
+    // Get current ticket data for comparison
     const ticket = await prisma.ticket.findUnique({
       where: { id: ticketId },
-      select: { resolvedAt: true, closedAt: true },
+      select: { resolvedAt: true, closedAt: true, status: true },
     });
 
     if (!ticket) {
@@ -249,11 +246,47 @@ export async function updateTicketStatusAdmin(
       };
     }
 
+    const updateData: any = {
+      status,
+    };
+
+    // Set resolvedAt or closedAt based on status
     if (status === "RESOLVED" && !ticket.resolvedAt) {
       updateData.resolvedAt = new Date();
-    }
-    if (status === "CLOSED" && !ticket.closedAt) {
+      await logTicketActivity(
+        ticketId,
+        "RESOLVED",
+        user.id,
+        user.name || null
+      );
+    } else if (status === "CLOSED" && !ticket.closedAt) {
       updateData.closedAt = new Date();
+      await logTicketActivity(
+        ticketId,
+        "CLOSED",
+        user.id,
+        user.name || null
+      );
+    } else if (status === "OPEN" && (ticket.status === "RESOLVED" || ticket.status === "CLOSED")) {
+      // Reopening a ticket
+      await logTicketActivity(
+        ticketId,
+        "REOPENED",
+        user.id,
+        user.name || null,
+        ticket.status,
+        status
+      );
+    } else if (status !== ticket.status) {
+      // Regular status change
+      await logTicketActivity(
+        ticketId,
+        "STATUS_CHANGED",
+        user.id,
+        user.name || null,
+        ticket.status,
+        status
+      );
     }
 
     await prisma.ticket.update({

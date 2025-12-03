@@ -595,7 +595,7 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                       />
                     </svg>
                     <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                      No results found for "{query}"
+                      No results found for &quot;{query}&quot;
                     </p>
                   </div>
                 )}

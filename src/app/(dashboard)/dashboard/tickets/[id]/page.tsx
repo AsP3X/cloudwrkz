@@ -10,14 +10,20 @@ import { Button } from "@/components/ui/Button";
 import { TicketCommentsAndActivity } from "@/components/features/tickets/TicketCommentsAndActivity";
 import { TicketAssignmentFields } from "@/components/features/tickets/TicketAssignmentFields";
 import { TicketStatusPriorityFields } from "@/components/features/tickets/TicketStatusPriorityFields";
+import { TicketTimerSection } from "@/components/features/tickets/TicketTimerSection";
 import { getTicketTypeLabel, type TicketType } from "@/lib/utils/tickets";
 import { notFound } from "next/navigation";
 import { getAgents } from "@/server/actions/users";
 import { getGroups } from "@/server/actions/groups";
+import { getTimeEntriesForTicket, getAvailableTimeEntriesForAssignment } from "@/server/actions/time-tracking";
 
 interface TicketDetailPageProps {
   params: Promise<{ id: string }>;
 }
+
+// Force dynamic rendering to prevent caching issues
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export default async function TicketDetailPage({ params }: TicketDetailPageProps) {
   const { id } = await params;
@@ -67,6 +73,21 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
   const isAgent = user.role === "AGENT" || user.role === "ADMIN" || user.role === "MODERATOR";
   const agents = isAgent ? await getAgents() : [];
   const groups = isAgent ? await getGroups() : [];
+
+  // Check if time tracking module is enabled and get timers
+  const timeTrackingEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
+  const timeEntries = timeTrackingEnabled ? await getTimeEntriesForTicket(ticket.id) : [];
+  const availableTimeEntries = timeTrackingEnabled ? await getAvailableTimeEntriesForAssignment() : [];
+  
+  // Filter stopped timers for the Timers tab
+  const stoppedTimeEntries = timeTrackingEnabled 
+    ? timeEntries.filter((entry) => entry.status === "STOPPED")
+    : [];
+  
+  // Only show running and paused timers in sidebar (active timers that can be controlled)
+  const activeTimeEntries = timeTrackingEnabled
+    ? timeEntries.filter((entry) => entry.status === "RUNNING" || entry.status === "PAUSED")
+    : [];
 
   const formatDate = (date: Date) => {
     return new Date(date).toLocaleString("en-US", {
@@ -243,6 +264,16 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
             <TicketCommentsAndActivity
               ticket={ticket}
               userRole={user.role}
+              stoppedTimeEntries={stoppedTimeEntries.map((entry) => ({
+                id: entry.id,
+                name: entry.name,
+                description: entry.description,
+                status: entry.status,
+                startedAt: entry.startedAt,
+                totalDuration: entry.totalDuration,
+                lastResumedAt: entry.lastResumedAt,
+                createdAt: entry.createdAt,
+              }))}
             />
           </div>
         </div>
@@ -422,6 +453,34 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
               </div>
             </div>
           </div>
+
+          {/* Time Tracking Section */}
+          {timeTrackingEnabled && (
+            <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
+              <TicketTimerSection
+                ticketId={ticket.id}
+                ticketNumber={ticket.ticketNumber}
+                ticketTitle={ticket.title}
+                initialTimeEntries={activeTimeEntries.map((entry) => ({
+                  id: entry.id,
+                  name: entry.name,
+                  description: entry.description,
+                  status: entry.status,
+                  startedAt: entry.startedAt,
+                  totalDuration: entry.totalDuration,
+                  lastResumedAt: entry.lastResumedAt,
+                  createdAt: entry.createdAt,
+                }))}
+                initialAvailableEntries={availableTimeEntries.map((entry) => ({
+                  id: entry.id,
+                  name: entry.name,
+                  status: entry.status,
+                  createdAt: entry.createdAt,
+                }))}
+                userTimezone={user.timezone ?? "UTC"}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>

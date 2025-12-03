@@ -81,7 +81,7 @@ export default function ContactPage() {
                 Contact Us
               </h1>
               <p className="text-neutral-600 dark:text-neutral-400">
-                We'd love to hear from you. Send us a message and we'll respond as soon as possible.
+                We&apos;d love to hear from you. Send us a message and we&apos;ll respond as soon as possible.
               </p>
             </div>
 
@@ -183,7 +183,7 @@ export default function ContactPage() {
                   {/* Additional Info */}
                   <div className="mt-8 pt-6 border-t border-neutral-200 dark:border-neutral-800">
                     <p className="text-xs text-neutral-500 dark:text-neutral-500">
-                      For urgent matters, please email us directly or use our support portal if you're a registered user.
+                      For urgent matters, please email us directly or use our support portal if you&apos;re a registered user.
                     </p>
                   </div>
                 </div>

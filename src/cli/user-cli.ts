@@ -215,7 +215,10 @@ async function handleCreate() {
       password: hashedPassword,
       name,
       role: "USER",
-      status: "PENDING",
+      // When created via CLI, users should start with a verified email
+      // and an ACTIVE account status to simplify admin bootstrap flows.
+      status: "ACTIVE",
+      emailVerified: true,
     },
     select: {
       id: true,
@@ -1267,8 +1270,6 @@ export async function handleCreateInteractive() {
 
     const role = await select("Select user role:", ["USER", "ADMIN", "MODERATOR", "AGENT"]);
 
-    const status = await select("Select initial status:", ["PENDING", "ACTIVE"]);
-
     const spinner2 = createSpinner("Creating user...");
     spinner2.start();
 
@@ -1280,7 +1281,10 @@ export async function handleCreateInteractive() {
         password: hashedPassword,
         name: name || null,
         role: role as any,
-        status: status as any,
+        // For users created via the interactive CLI, we automatically
+        // mark the email as verified and set the account status to ACTIVE.
+        status: "ACTIVE",
+        emailVerified: true,
       },
       select: {
         id: true,

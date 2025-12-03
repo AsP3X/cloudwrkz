@@ -4,7 +4,9 @@ import { ROUTES } from "@/lib/constants/routes";
 import { DashboardSidebar } from "@/components/layout/DashboardSidebar";
 import { AdminSidebarWrapper } from "@/components/layout/AdminSidebar/AdminSidebarWrapper";
 import { DashboardHeader } from "@/components/layout/DashboardHeader";
-import { getAllModules } from "@/server/actions/modules";
+import { getAllModules, isModuleEnabled } from "@/server/actions/modules";
+import { MODULE_KEYS } from "@/lib/constants/modules";
+import { FloatingTimerWidgetProvider } from "@/components/features/time-tracking/FloatingTimerWidget/FloatingTimerWidgetProvider";
 
 export default async function DashboardLayout({
   children,
@@ -41,6 +43,9 @@ export default async function DashboardLayout({
   // Use sorted modules to ensure consistent key generation
   const moduleStatusKey = sortedModules.map((m: typeof modules[0]) => `${m.key}:${m.enabled}`).join(",");
 
+  // Check if time tracking module is enabled for floating timer widget
+  const timeTrackingEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-secondary-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950">
       {/* Background decoration */}
@@ -60,6 +65,7 @@ export default async function DashboardLayout({
           {children}
         </main>
       </div>
+      <FloatingTimerWidgetProvider timeTrackingEnabled={timeTrackingEnabled} />
     </div>
   );
 }

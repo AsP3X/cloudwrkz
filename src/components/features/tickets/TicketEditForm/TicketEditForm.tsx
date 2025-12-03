@@ -108,15 +108,24 @@ export const TicketEditForm = ({ ticket, agents, groups = [] }: TicketEditFormPr
     setServerError(null);
 
     try {
-      const result = await updateTicket(ticket.id, {
-        title: data.title,
-        description: data.description || undefined,
-        type: data.type,
-        priority: data.priority,
-        status: data.status,
-        assignedToId: data.assignedToId || undefined,
-        assignedToGroupId: data.assignedToGroupId || undefined,
-      });
+      const result = await updateTicket(
+        ticket.id,
+        {
+          title: data.title,
+          description: data.description || undefined,
+          type: data.type,
+          priority: data.priority,
+          status: data.status,
+          assignedToId:
+            data.assignedToId === "" || data.assignedToId === null
+              ? null
+              : (data.assignedToId || undefined),
+          assignedToGroupId:
+            data.assignedToGroupId === "" || data.assignedToGroupId === null
+              ? null
+              : (data.assignedToGroupId || undefined),
+        } as Parameters<typeof updateTicket>[1]
+      );
 
       if (result.success) {
         router.push(`/dashboard/tickets/${ticket.id}`);

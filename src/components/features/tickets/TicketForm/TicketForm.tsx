@@ -83,6 +83,7 @@ export const TicketForm = ({ isAgent = false, users = [], agents = [], groups = 
     control,
     handleSubmit,
     formState: { errors, isSubmitting },
+    watch,
   } = useForm<CreateTicketInput>({
     resolver: zodResolver(createTicketSchema),
     defaultValues: {
@@ -91,8 +92,11 @@ export const TicketForm = ({ isAgent = false, users = [], agents = [], groups = 
       createdForUserId: "",
       assignedToId: isAgent && agents.length > 0 ? "myself" : "",
       assignedToGroupId: "",
+      createTimer: false,
     },
   });
+
+  const createTimer = watch("createTimer"); // used for UI-only logic
 
   const onSubmit = async (data: CreateTicketInput) => {
     setServerError(null);
@@ -109,6 +113,7 @@ export const TicketForm = ({ isAgent = false, users = [], agents = [], groups = 
         createdForUserId: data.createdForUserId || undefined,
         assignedToId,
         assignedToGroupId: data.assignedToGroupId || undefined,
+        createTimer: data.createTimer || false,
       });
 
       if (result.success && result.data) {
@@ -264,6 +269,27 @@ export const TicketForm = ({ isAgent = false, users = [], agents = [], groups = 
           )}
         </div>
       )}
+
+      {/* Timer Creation Option */}
+      <div className="flex items-start gap-3 p-4 rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
+        <input
+          type="checkbox"
+          id="createTimer"
+          {...register("createTimer")}
+          className="mt-1 w-4 h-4 text-primary-600 bg-white border-neutral-300 rounded focus:ring-primary-500 focus:ring-2 dark:bg-neutral-700 dark:border-neutral-600 dark:focus:ring-primary-400"
+        />
+        <div className="flex-1">
+          <label
+            htmlFor="createTimer"
+            className="text-sm font-medium text-neutral-900 dark:text-neutral-100 cursor-pointer"
+          >
+            Create timer for this ticket
+          </label>
+          <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
+            Automatically create a time tracking timer linked to this ticket. The timer name will be the ticket number and title.
+          </p>
+        </div>
+      </div>
 
       {/* Submit Buttons */}
       <div className="flex items-center justify-end gap-4 pt-4 border-t border-neutral-200">

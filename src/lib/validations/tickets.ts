@@ -20,6 +20,7 @@ export const createTicketSchema = z.object({
   createdForUserId: z.string().optional().or(z.literal("")), // For agents to create tickets for other users
   assignedToId: z.string().optional().or(z.literal("")), // For agents to assign tickets to agents
   assignedToGroupId: z.string().optional().or(z.literal("")), // For assigning tickets to groups
+  createTimer: z.boolean().optional().default(false), // Create a timer for this ticket
 });
 
 export type CreateTicketInput = z.infer<typeof createTicketSchema>;

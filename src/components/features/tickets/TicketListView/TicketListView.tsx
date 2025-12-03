@@ -19,7 +19,7 @@ type Ticket = {
     name: string | null;
     email: string;
     status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
-  };
+  } | null;
   assignedTo: {
     id: string;
     name: string | null;

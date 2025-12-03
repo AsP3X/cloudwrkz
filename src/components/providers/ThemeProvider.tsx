@@ -78,6 +78,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   // Mark as mounted after initial render
   useEffect(() => {
+    // Mark as mounted once on client; safe state sync
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
@@ -101,6 +103,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
     
     // Update effective theme state
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEffectiveTheme((prev) => {
       if (prev === resolved) return prev;
       return resolved;
@@ -130,7 +133,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         root.classList.remove("dark");
       }
       
-      // Update effective theme state
+      // Update effective theme state based on system preference
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setEffectiveTheme((prev) => {
         if (prev === resolved) return prev;
         return resolved;

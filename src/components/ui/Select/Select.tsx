@@ -16,8 +16,13 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
     },
     ref
   ) => {
-    const generatedId = React.useId();
-    const selectId = id || generatedId;
+    // Use a deterministic, prop-based ID instead of React.useId
+    // to avoid SSR/client hydration mismatches.
+    const selectId = React.useMemo(() => {
+      if (id) return id;
+      if (props.name) return `select-${props.name}`;
+      return undefined;
+    }, [id, props.name]);
 
     return (
       <div className="w-full">

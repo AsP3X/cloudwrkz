@@ -48,7 +48,7 @@ export default function PrivacyPage() {
                 {/* Introduction */}
                 <section className="mb-8">
                   <p className="text-neutral-700 dark:text-neutral-300 leading-relaxed">
-                    At {APP_CONFIG.name}, we take your privacy seriously. This Privacy Policy explains how we collect, use, disclose, and safeguard your personal data when you use our services, website, and applications (collectively, the "Service"). This policy is designed to comply with the General Data Protection Regulation (GDPR) (EU) 2016/679 and the German Federal Data Protection Act (Bundesdatenschutzgesetz - BDSG).
+                    At {APP_CONFIG.name}, we take your privacy seriously. This Privacy Policy explains how we collect, use, disclose, and safeguard your personal data when you use our services, website, and applications (collectively, the &quot;Service&quot;). This policy is designed to comply with the General Data Protection Regulation (GDPR) (EU) 2016/679 and the German Federal Data Protection Act (Bundesdatenschutzgesetz - BDSG).
                   </p>
                   <p className="text-neutral-700 dark:text-neutral-300 leading-relaxed mt-4">
                     By using our Service, you consent to the data practices described in this Privacy Policy. If you do not agree with the practices described in this policy, please do not use our Service.
@@ -290,7 +290,7 @@ export default function PrivacyPage() {
                   </p>
 
                   <h3 className="text-xl font-semibold text-neutral-900 mb-3 mt-6">
-                    7.3 Right to Erasure ("Right to be Forgotten") (Article 17 GDPR)
+                    7.3 Right to Erasure (&quot;Right to be Forgotten&quot;) (Article 17 GDPR)
                   </h3>
                   <p className="text-neutral-700 dark:text-neutral-300 leading-relaxed mb-4">
                     You have the right to request deletion of your personal data when:
@@ -341,7 +341,7 @@ export default function PrivacyPage() {
                       <strong>Email:</strong> privacy@{APP_CONFIG.name.toLowerCase()}.com
                     </p>
                     <p className="text-neutral-700 dark:text-neutral-300 mt-2">
-                      <strong>Subject Line:</strong> "GDPR Data Subject Request"
+                      <strong>Subject Line:</strong> &quot;GDPR Data Subject Request&quot;
                     </p>
                   </div>
                   <p className="text-neutral-700 dark:text-neutral-300 leading-relaxed mt-4">
@@ -421,7 +421,7 @@ export default function PrivacyPage() {
                 {/* Children's Privacy */}
                 <section className="mb-8">
                   <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">
-                    11. Children's Privacy
+                    11. Children&apos;s Privacy
                   </h2>
                   <p className="text-neutral-700 dark:text-neutral-300 leading-relaxed mb-4">
                     Our Service is not intended for individuals under the age of 16 (or the age of digital consent in your jurisdiction). We do not knowingly collect personal data from children without parental consent.
@@ -440,7 +440,7 @@ export default function PrivacyPage() {
                     We may update this Privacy Policy from time to time to reflect changes in our practices, technology, legal requirements, or other factors. We will notify you of any material changes by:
                   </p>
                   <ul className="list-disc pl-6 space-y-2 text-neutral-700 dark:text-neutral-300 mb-4">
-                    <li>Posting the updated policy on this page with a new "Last updated" date</li>
+                    <li>Posting the updated policy on this page with a new &quot;Last updated&quot; date</li>
                     <li>Sending an email notification to registered users (for significant changes)</li>
                     <li>Displaying a prominent notice on our Service</li>
                   </ul>

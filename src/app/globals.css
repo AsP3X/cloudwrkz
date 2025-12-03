@@ -69,4 +69,45 @@
     @apply bg-primary-200 text-primary-900 dark:bg-primary-800 dark:text-primary-100;
   }
 
+  /* Ensure floating timer widget is always fixed to viewport */
+  #floating-timer-widget {
+    position: fixed !important;
+    bottom: 24px !important;
+    right: 24px !important;
+    z-index: 99999 !important;
+  }
+
+}
+
+/* Fix calendar picker icon visibility in dark mode - outside layer for higher specificity */
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(0);
+  cursor: pointer;
+  opacity: 1;
+}
+
+html.dark input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+.dark input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(2) contrast(1.2);
+  opacity: 1;
+}
+
+/* Specifically target the startedAt field with maximum specificity */
+input#startedAt[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(0);
+  cursor: pointer;
+  opacity: 1;
+}
+
+html.dark input#startedAt[type="datetime-local"]::-webkit-calendar-picker-indicator,
+.dark input#startedAt[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(2) contrast(1.2) !important;
+  opacity: 1 !important;
+}
+
+/* Alternative approach using background for browsers that support it */
+html.dark input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+.dark input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  background-color: transparent;
+  color-scheme: dark;
 }

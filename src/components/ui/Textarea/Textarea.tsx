@@ -14,8 +14,13 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
     },
     ref
   ) => {
-    const generatedId = React.useId();
-    const textareaId = id || generatedId;
+    // Use a deterministic, prop-based ID instead of React.useId
+    // to avoid SSR/client hydration mismatches.
+    const textareaId = React.useMemo(() => {
+      if (id) return id;
+      if (props.name) return `textarea-${props.name}`;
+      return undefined;
+    }, [id, props.name]);
     const textareaRef = React.useRef<HTMLTextAreaElement>(null);
     
     // Combine refs

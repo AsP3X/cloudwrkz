@@ -16,7 +16,9 @@ interface TabsProps {
 }
 
 export const Tabs = ({ tabs, defaultTab, className }: TabsProps) => {
-  const [activeTab, setActiveTab] = React.useState<string>(defaultTab || tabs[0]?.id || "");
+  // Calculate initial tab ID consistently for SSR and client
+  const initialTabId = defaultTab || tabs[0]?.id || "";
+  const [activeTab, setActiveTab] = React.useState<string>(initialTabId);
 
   if (tabs.length === 0) {
     return null;

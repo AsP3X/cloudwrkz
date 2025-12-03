@@ -13,8 +13,7 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
         ref(node);
       } else if (ref) {
         // Type assertion needed for readonly refs in forwardRef
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (ref as any).current = node;
+        (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
       }
     }, [ref]);
 

@@ -8,6 +8,7 @@ export type CurrentUser = {
   role: "USER" | "ADMIN" | "MODERATOR" | "AGENT";
   status: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
   emailVerified: boolean;
+   timezone?: string;
 };
 
 /**
@@ -35,6 +36,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
             role: true,
             status: true,
             emailVerified: true,
+            timezone: true,
           },
         },
       },
@@ -74,6 +76,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
       role: session.user.role,
       status: session.user.status,
       emailVerified: session.user.emailVerified,
+      timezone: session.user.timezone ?? "UTC",
     };
   } catch (error) {
     console.error("Error getting current user:", error);

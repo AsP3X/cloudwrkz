@@ -12,7 +12,11 @@ import {
 import { updatePreferences } from "@/server/actions/preferences";
 import { useTheme } from "@/components/providers/ThemeProvider";
 
-export const PreferencesForm = () => {
+type PreferencesFormProps = {
+  initialValues?: Partial<PreferencesInput>;
+};
+
+export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
   const [error, setError] = React.useState<string | null>(null);
   const [success, setSuccess] = React.useState<string | null>(null);
   const { theme, setTheme } = useTheme();
@@ -23,16 +27,32 @@ export const PreferencesForm = () => {
     formState: { errors, isSubmitting },
     watch,
     setValue,
+    reset,
   } = useForm<PreferencesInput>({
     resolver: zodResolver(preferencesSchema),
     defaultValues: {
-      language: "en",
-      theme: theme,
-      emailNotifications: true,
-      pushNotifications: false,
-      marketingEmails: false,
+      language: initialValues?.language ?? "en",
+      theme: initialValues?.theme ?? theme,
+      emailNotifications: initialValues?.emailNotifications ?? true,
+      pushNotifications: initialValues?.pushNotifications ?? false,
+      marketingEmails: initialValues?.marketingEmails ?? false,
+      timezone: initialValues?.timezone ?? "UTC",
     },
   });
+
+  // Reset form when initialValues change (e.g., after successful save and page revalidation)
+  React.useEffect(() => {
+    if (initialValues) {
+      reset({
+        language: initialValues.language ?? "en",
+        theme: initialValues.theme ?? theme,
+        emailNotifications: initialValues.emailNotifications ?? true,
+        pushNotifications: initialValues.pushNotifications ?? false,
+        marketingEmails: initialValues.marketingEmails ?? false,
+        timezone: initialValues.timezone ?? "UTC",
+      });
+    }
+  }, [initialValues, reset, theme]);
 
   // Sync form value with theme from context when theme changes externally
   React.useEffect(() => {
@@ -143,6 +163,27 @@ export const PreferencesForm = () => {
           error={errors.theme?.message}
           helperText="Choose your preferred theme"
           {...register("theme")}
+        />
+
+        {/* Timezone */}
+        <Select
+          label="Time Zone"
+          options={[
+            { value: "UTC", label: "UTC" },
+            { value: "America/New_York", label: "America / New York" },
+            { value: "America/Chicago", label: "America / Chicago" },
+            { value: "America/Denver", label: "America / Denver" },
+            { value: "America/Los_Angeles", label: "America / Los Angeles" },
+            { value: "Europe/London", label: "Europe / London" },
+            { value: "Europe/Berlin", label: "Europe / Berlin" },
+            { value: "Europe/Paris", label: "Europe / Paris" },
+            { value: "Asia/Tokyo", label: "Asia / Tokyo" },
+            { value: "Asia/Singapore", label: "Asia / Singapore" },
+            { value: "Australia/Sydney", label: "Australia / Sydney" },
+          ]}
+          error={errors.timezone?.message}
+          helperText="Choose your preferred time zone for displaying dates and times"
+          {...register("timezone")}
         />
       </div>
 
