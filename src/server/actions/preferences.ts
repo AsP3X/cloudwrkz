@@ -13,6 +13,35 @@ export type ActionResult<T = void> =
   | { success: false; error: string; fieldErrors?: Record<string, string[]> };
 
 /**
+ * Valid timezone values from the preferences schema
+ */
+const VALID_TIMEZONES = [
+  "UTC",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "Europe/London",
+  "Europe/Berlin",
+  "Europe/Paris",
+  "Asia/Tokyo",
+  "Asia/Singapore",
+  "Australia/Sydney",
+] as const;
+
+type ValidTimezone = (typeof VALID_TIMEZONES)[number];
+
+/**
+ * Validate and normalize timezone value
+ */
+function validateTimezone(timezone: string | null | undefined): ValidTimezone {
+  if (!timezone) return "UTC";
+  return VALID_TIMEZONES.includes(timezone as ValidTimezone)
+    ? (timezone as ValidTimezone)
+    : "UTC";
+}
+
+/**
  * Get current user preferences
  */
 export async function getPreferences() {
@@ -32,7 +61,7 @@ export async function getPreferences() {
     emailNotifications: true,
     pushNotifications: false,
     marketingEmails: false,
-    timezone: dbUser?.timezone ?? "UTC",
+    timezone: validateTimezone(dbUser?.timezone),
   };
 }
 
