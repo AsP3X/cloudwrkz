@@ -65,6 +65,11 @@ export default async function TimeTrackingPageRoute({ searchParams }: TimeTracki
   });
 
   return (
-    <TimeTrackingPage initialEntries={result.entries} initialTotal={result.total} initialPage={page} />
+    <TimeTrackingPage
+      initialEntries={result.entries}
+      initialTotal={result.total}
+      initialPage={page}
+      userTimezone={user.timezone ?? "UTC"}
+    />
   );
 }

@@ -477,6 +477,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                   status: entry.status,
                   createdAt: entry.createdAt,
                 }))}
+                userTimezone={user.timezone ?? "UTC"}
               />
             </div>
           )}

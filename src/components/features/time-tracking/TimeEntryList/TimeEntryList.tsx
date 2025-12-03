@@ -9,6 +9,7 @@ import { TimeEntryBulkActionsToolbar } from "../TimeEntryBulkActionsToolbar";
 import { TimeEntryBulkDeleteDialog } from "../TimeEntryBulkDeleteDialog";
 import { TimeEntryBulkTagDialog } from "../TimeEntryBulkTagDialog";
 import { getStatusColor, getStatusLabel, canPause, canResume, canStop } from "@/lib/utils/time-tracking";
+import { formatDateTimeInTimezone } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
 import { pauseTimeEntry, resumeTimeEntry, stopTimeEntry, deleteTimeEntry, bulkUpdateTimeEntries, bulkDeleteTimeEntries } from "@/server/actions/time-tracking";
 import { type TimeEntryStatus } from "@prisma/client";
@@ -36,9 +37,10 @@ type TimeEntry = {
 
 interface TimeEntryListProps {
   entries: TimeEntry[];
+  userTimezone?: string;
 }
 
-export function TimeEntryList({ entries }: TimeEntryListProps) {
+export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListProps) {
   const router = useRouter();
   const [processing, setProcessing] = React.useState<Set<string>>(new Set());
   const [selectedEntries, setSelectedEntries] = React.useState<Set<string>>(new Set());
@@ -55,16 +57,13 @@ export function TimeEntryList({ entries }: TimeEntryListProps) {
   }, []);
 
   // Format date consistently between server and client
-  const formatDate = React.useCallback((date: Date) => {
-    // Use a consistent format that works the same on server and client
-    const d = new Date(date);
-    const year = d.getFullYear();
-    const month = d.toLocaleString("en-US", { month: "short" });
-    const day = d.getDate();
-    const hours = String(d.getHours()).padStart(2, "0");
-    const minutes = String(d.getMinutes()).padStart(2, "0");
-    return `${month} ${day}, ${year} ${hours}:${minutes}`;
-  }, []);
+  const formatDate = React.useCallback(
+    (date: Date) => {
+      // Use deterministic timezone-aware formatting to avoid hydration mismatches
+      return formatDateTimeInTimezone(date, userTimezone);
+    },
+    [userTimezone]
+  );
 
   const allSelected = entries.length > 0 && selectedEntries.size === entries.length;
   const someSelected = selectedEntries.size > 0 && selectedEntries.size < entries.length;

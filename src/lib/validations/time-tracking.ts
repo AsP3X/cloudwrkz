@@ -33,6 +33,7 @@ export const updateTimeEntrySchema = z.object({
   billable: z.boolean().optional(),
   location: z.string().nullable().optional(),
   startedAt: z.date().optional(),
+  stoppedAt: z.date().optional(),
 });
 
 export type CreateTimeEntryInput = z.infer<typeof createTimeEntrySchema>;

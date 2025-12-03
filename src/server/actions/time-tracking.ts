@@ -42,6 +42,8 @@ export type UpdateTimeEntryInput = {
   ticketId?: string | null;
   billable?: boolean;
   location?: string | null;
+  stoppedAt?: Date;
+  startedAt?: Date;
 };
 
 export type TimeEntryFilters = {
@@ -256,7 +258,7 @@ export async function updateTimeEntry(
     // Verify ownership and get current ticketId for logging
     const existing = await prisma.timeEntry.findUnique({
       where: { id },
-      select: { userId: true, ticketId: true, name: true },
+      select: { userId: true, ticketId: true, name: true, startedAt: true },
     });
 
     if (!existing) {
@@ -302,6 +304,7 @@ export async function updateTimeEntry(
           location: input.location?.trim() || null,
         }),
         ...(input.startedAt !== undefined && { startedAt: input.startedAt }),
+        ...(input.stoppedAt !== undefined && { stoppedAt: input.stoppedAt }),
       },
     });
 

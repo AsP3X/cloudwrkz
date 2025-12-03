@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ROUTES } from "@/lib/constants/routes";
 import { calculateElapsedTime } from "@/lib/utils/time-tracking";
+import { formatDateTimeInTimezone } from "@/lib/utils/date";
 
 interface TicketTimerSectionProps {
   ticketId: string;
@@ -28,6 +29,7 @@ interface TicketTimerSectionProps {
     status: string;
     createdAt: Date;
   }>;
+  userTimezone?: string;
 }
 
 export function TicketTimerSection({
@@ -36,6 +38,7 @@ export function TicketTimerSection({
   ticketTitle,
   initialTimeEntries,
   initialAvailableEntries,
+  userTimezone = "UTC",
 }: TicketTimerSectionProps) {
   const router = useRouter();
   const [timeEntries, setTimeEntries] = React.useState(initialTimeEntries);
@@ -297,7 +300,7 @@ export function TicketTimerSection({
                     <div className="flex items-center gap-4 text-xs text-neutral-500 dark:text-neutral-500">
                       <span>Duration: {formatDuration(currentDuration)}</span>
                       <span>
-                        Started: {new Date(entry.startedAt).toLocaleDateString()}
+                        Started: {formatDateTimeInTimezone(entry.startedAt, userTimezone)}
                       </span>
                     </div>
                   </div>

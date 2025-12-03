@@ -32,6 +32,7 @@ model User {
   password      String // Hashed password
   role          Role       @default(USER)
   status        UserStatus @default(PENDING)
+  timezone      String     @default("UTC") // IANA timezone identifier, e.g. "Europe/Berlin"
 
   // Email verification
   emailVerificationToken   String?

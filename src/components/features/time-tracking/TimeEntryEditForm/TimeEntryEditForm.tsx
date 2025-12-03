@@ -18,6 +18,7 @@ type TimeEntry = {
   billable: boolean;
   location: string | null;
   startedAt: Date;
+  stoppedAt: Date | null;
   ticket: {
     id: string;
     ticketNumber: string;
@@ -60,6 +61,7 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting }: Tim
       billable: entry.billable,
       location: entry.location || "",
       startedAt: entry.startedAt,
+      stoppedAt: entry.stoppedAt ?? undefined,
     },
   });
 
@@ -192,6 +194,28 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting }: Tim
         />
         {errors.startedAt && (
           <p className="mt-1 text-sm text-error-600 dark:text-error-400">{errors.startedAt.message}</p>
+        )}
+      </div>
+
+      <div>
+        <label htmlFor="stoppedAt" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+          End Date & Time
+        </label>
+        <Controller
+          name="stoppedAt"
+          control={control}
+          render={({ field }) => (
+            <input
+              type="datetime-local"
+              id="stoppedAt"
+              value={field.value ? dateToLocalDateTimeString(new Date(field.value)) : ""}
+              onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : undefined)}
+              className="w-full px-4 py-2 rounded-lg border-2 border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            />
+          )}
+        />
+        {errors.stoppedAt && (
+          <p className="mt-1 text-sm text-error-600 dark:text-error-400">{errors.stoppedAt.message}</p>
         )}
       </div>
 

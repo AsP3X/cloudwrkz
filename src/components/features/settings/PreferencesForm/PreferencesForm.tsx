@@ -31,6 +31,7 @@ export const PreferencesForm = () => {
       emailNotifications: true,
       pushNotifications: false,
       marketingEmails: false,
+      timezone: "UTC",
     },
   });
 
@@ -143,6 +144,27 @@ export const PreferencesForm = () => {
           error={errors.theme?.message}
           helperText="Choose your preferred theme"
           {...register("theme")}
+        />
+
+        {/* Timezone */}
+        <Select
+          label="Time Zone"
+          options={[
+            { value: "UTC", label: "UTC" },
+            { value: "America/New_York", label: "America / New York" },
+            { value: "America/Chicago", label: "America / Chicago" },
+            { value: "America/Denver", label: "America / Denver" },
+            { value: "America/Los_Angeles", label: "America / Los Angeles" },
+            { value: "Europe/London", label: "Europe / London" },
+            { value: "Europe/Berlin", label: "Europe / Berlin" },
+            { value: "Europe/Paris", label: "Europe / Paris" },
+            { value: "Asia/Tokyo", label: "Asia / Tokyo" },
+            { value: "Asia/Singapore", label: "Asia / Singapore" },
+            { value: "Australia/Sydney", label: "Australia / Sydney" },
+          ]}
+          error={errors.timezone?.message}
+          helperText="Choose your preferred time zone for displaying dates and times"
+          {...register("timezone")}
         />
       </div>
 

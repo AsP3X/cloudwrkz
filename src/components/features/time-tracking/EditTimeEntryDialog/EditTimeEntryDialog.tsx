@@ -16,6 +16,7 @@ type TimeEntry = {
   billable: boolean;
   location: string | null;
   startedAt: Date;
+  stoppedAt: Date | null;
   ticket: {
     id: string;
     ticketNumber: string;

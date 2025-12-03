@@ -51,6 +51,21 @@ export const preferencesSchema = z.object({
   emailNotifications: z.boolean().optional(),
   pushNotifications: z.boolean().optional(),
   marketingEmails: z.boolean().optional(),
+  timezone: z
+    .enum([
+      "UTC",
+      "America/New_York",
+      "America/Chicago",
+      "America/Denver",
+      "America/Los_Angeles",
+      "Europe/London",
+      "Europe/Berlin",
+      "Europe/Paris",
+      "Asia/Tokyo",
+      "Asia/Singapore",
+      "Australia/Sydney",
+    ])
+    .optional(),
 });
 
 export type PreferencesInput = z.infer<typeof preferencesSchema>;

@@ -9,6 +9,7 @@ import { getActiveTimeEntries } from "@/server/actions/time-tracking";
 import { useTimeTrackingEvents } from "@/lib/hooks/useTimeTrackingEvents";
 import { type TimeEntryStatus } from "@prisma/client";
 import { calculateElapsedTime } from "@/lib/utils/time-tracking";
+import { formatDateTimeInTimezone } from "@/lib/utils/date";
 
 // Client-only component to calculate total time to avoid hydration mismatch
 function TotalTimeDisplay({ entries }: { entries: TimeEntry[] }) {
@@ -75,9 +76,10 @@ interface TimeTrackingPageProps {
   initialEntries: TimeEntry[];
   initialTotal: number;
   initialPage: number;
+  userTimezone: string;
 }
 
-export function TimeTrackingPage({ initialEntries, initialTotal, initialPage }: TimeTrackingPageProps) {
+export function TimeTrackingPage({ initialEntries, initialTotal, initialPage, userTimezone }: TimeTrackingPageProps) {
   const [showStartDialog, setShowStartDialog] = React.useState(false);
   const [showAddDialog, setShowAddDialog] = React.useState(false);
   const [activeEntries, setActiveEntries] = React.useState<TimeEntry[]>(
@@ -155,7 +157,7 @@ export function TimeTrackingPage({ initialEntries, initialTotal, initialPage }: 
       </div>
 
       {/* Time Entries List */}
-      <TimeEntryList entries={initialEntries} />
+      <TimeEntryList entries={initialEntries} userTimezone={userTimezone} />
 
       {/* Dialogs */}
       <StartTimerDialog open={showStartDialog} onOpenChange={setShowStartDialog} />

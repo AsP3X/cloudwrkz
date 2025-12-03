@@ -50,3 +50,22 @@ export function formatTime(date: Date | string): string {
     minute: "2-digit",
   });
 }
+
+/**
+ * Format a date-time in a specific IANA timezone (e.g., "Europe/Berlin")
+ * using a deterministic "en-US" locale so server and client match.
+ */
+export function formatDateTimeInTimezone(
+  date: Date | string,
+  timeZone: string
+): string {
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZone,
+  }).format(new Date(date));
+}

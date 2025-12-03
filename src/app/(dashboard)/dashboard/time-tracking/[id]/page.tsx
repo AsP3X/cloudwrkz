@@ -46,7 +46,7 @@ export default async function TimeEntryDetailPageRoute({ params }: TimeEntryDeta
     notFound();
   }
 
-  return <TimeEntryDetailPage initialEntry={entry} />;
+  return <TimeEntryDetailPage initialEntry={entry} userTimezone={user.timezone ?? "UTC"} />;
 }
 
 export const dynamic = "force-dynamic";

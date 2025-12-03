@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { DurationDisplay } from "../DurationDisplay";
 import { getStatusColor, getStatusLabel, formatDuration, canPause, canResume, canStop } from "@/lib/utils/time-tracking";
+import { formatDateTimeInTimezone } from "@/lib/utils/date";
 import { pauseTimeEntry, resumeTimeEntry, stopTimeEntry, completeTimeEntry, deleteTimeEntry, updateTimeEntry } from "@/server/actions/time-tracking";
 import { type TimeEntryStatus } from "@prisma/client";
 import { TimeEntryEditForm } from "../TimeEntryEditForm";
@@ -42,9 +43,10 @@ type TimeEntry = {
 
 interface TimeEntryDetailPageProps {
   initialEntry: TimeEntry;
+  userTimezone: string;
 }
 
-export function TimeEntryDetailPage({ initialEntry }: TimeEntryDetailPageProps) {
+export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDetailPageProps) {
   const router = useRouter();
   const [entry, setEntry] = React.useState<TimeEntry>(initialEntry);
   const [isEditing, setIsEditing] = React.useState(false);
@@ -52,14 +54,7 @@ export function TimeEntryDetailPage({ initialEntry }: TimeEntryDetailPageProps) 
   const [error, setError] = React.useState<string | null>(null);
 
   const formatDate = (date: Date) => {
-    return new Date(date).toLocaleString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
+    return formatDateTimeInTimezone(date, userTimezone || "UTC");
   };
 
   const handleAction = async (action: () => Promise<any>) => {
