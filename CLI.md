@@ -46,6 +46,8 @@ pnpm cli user create admin@example.com SecurePass123 "Admin User"
 pnpm cli user create user@example.com Password123
 ```
 
+**Note:** Users created via the CLI are **immediately marked as email-verified** and their account status is set to **ACTIVE**. This is intended for administrator/bootstrap scenarios and avoids the usual email verification flow.
+
 ### List Users
 
 List all users with optional filters.
@@ -167,15 +169,8 @@ pnpm cli user delete user@example.com
 ```bash
 # Create an admin user
 pnpm cli user create admin@example.com AdminPass123 "System Administrator"
-
-# Activate the user
-pnpm cli user update-status admin@example.com ACTIVE
-
-# Promote to admin role
+# Promote to admin role (user is already ACTIVE and verified)
 pnpm cli user update-role admin@example.com ADMIN
-
-# Verify the user
-pnpm cli user show admin@example.com
 ```
 
 ### User Management
