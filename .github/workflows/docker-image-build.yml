@@ -36,6 +36,7 @@ jobs:
         id: vars
         run: |
           BRANCH_NAME="${GITHUB_REF_NAME}"
+          BASE_REF="${GITHUB_BASE_REF}"
           # Sanitize branch name for Docker tag (no slashes, lowercase)
           SAFE_BRANCH_NAME="${BRANCH_NAME//\//-}"
           SAFE_BRANCH_NAME="${SAFE_BRANCH_NAME,,}"
@@ -43,6 +44,9 @@ jobs:
             echo "TAG=latest" >> $GITHUB_OUTPUT
           elif [ "$BRANCH_NAME" = "dev" ]; then
             echo "TAG=preview" >> $GITHUB_OUTPUT
+          elif [ "$BASE_REF" = "dev" ]; then
+            # For PRs targeting the dev branch, prefix tag with 'dev-'
+            echo "TAG=dev-${SAFE_BRANCH_NAME}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
           else
             # For PRs from forks or other branches, use a short SHA tag
             echo "TAG=${SAFE_BRANCH_NAME}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
