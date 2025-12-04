@@ -48,6 +48,12 @@ jobs:
             echo "TAG=${SAFE_BRANCH_NAME}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
           fi
 
+      - name: Compute lowercase image repository
+        id: image
+        run: |
+          REPO_LOWER=$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')
+          echo "repo=$REPO_LOWER" >> "$GITHUB_OUTPUT"
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
@@ -55,4 +61,4 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ lower(github.repository) }}:${{ steps.vars.outputs.TAG }}
+            ghcr.io/${{ steps.image.outputs.repo }}:${{ steps.vars.outputs.TAG }}
