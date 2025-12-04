@@ -15,6 +15,10 @@ RUN pnpm install --frozen-lockfile
 # Copy the rest of the app source
 COPY . .
 
+# Generate Prisma client so TypeScript can find PrismaClient
+ENV DATABASE_URL="postgresql://user:password@localhost:5432/db?schema=public"
+RUN pnpm prisma generate
+
 # Build the Next.js app
 ENV NODE_ENV=production
 RUN pnpm build
