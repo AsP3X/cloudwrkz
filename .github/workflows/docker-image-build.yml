@@ -55,4 +55,4 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:${{ steps.vars.outputs.TAG }}
+            ghcr.io/${{ toLower(github.repository) }}:${{ steps.vars.outputs.TAG }}
