@@ -6,11 +6,9 @@ on:
       - master
       - dev
   pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - ready_for_review
+    branches:
+      - master
+      - dev
 
 jobs:
   build-docker-image:
