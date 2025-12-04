@@ -37,15 +37,13 @@ export function FloatingTimerWidget({ activeEntries }: FloatingTimerWidgetProps)
     }
   }, []);
 
-  // Don't render anything during SSR or if no active entries or body not ready
-  if (!mounted || activeEntries.length === 0 || !bodyElement) {
-    return null;
-  }
-
-  const handleAction = async (id: string, action: () => Promise<any>) => {
-    setProcessing((prev) => new Set(prev).add(id));
+  // Create handler functions that directly call server actions to avoid serialization issues
+  // Wrapping server actions in arrow functions causes hash mismatches in production builds
+  // IMPORTANT: All hooks must be called before any early returns to follow Rules of Hooks
+  const handlePause = React.useCallback(async (entryId: string) => {
+    setProcessing((prev) => new Set(prev).add(entryId));
     try {
-      const result = await action();
+      const result = await pauseTimeEntry(entryId);
       if (result.success) {
         router.refresh();
       }
@@ -54,11 +52,53 @@ export function FloatingTimerWidget({ activeEntries }: FloatingTimerWidgetProps)
     } finally {
       setProcessing((prev) => {
         const next = new Set(prev);
-        next.delete(id);
+        next.delete(entryId);
         return next;
       });
     }
-  };
+  }, [router]);
+
+  const handleResume = React.useCallback(async (entryId: string) => {
+    setProcessing((prev) => new Set(prev).add(entryId));
+    try {
+      const result = await resumeTimeEntry(entryId);
+      if (result.success) {
+        router.refresh();
+      }
+    } catch (error) {
+      console.error("Error:", error);
+    } finally {
+      setProcessing((prev) => {
+        const next = new Set(prev);
+        next.delete(entryId);
+        return next;
+      });
+    }
+  }, [router]);
+
+  const handleStop = React.useCallback(async (entryId: string) => {
+    setProcessing((prev) => new Set(prev).add(entryId));
+    try {
+      const result = await stopTimeEntry(entryId);
+      if (result.success) {
+        router.refresh();
+      }
+    } catch (error) {
+      console.error("Error:", error);
+    } finally {
+      setProcessing((prev) => {
+        const next = new Set(prev);
+        next.delete(entryId);
+        return next;
+      });
+    }
+  }, [router]);
+
+  // Don't render anything during SSR or if no active entries or body not ready
+  // This must come AFTER all hooks are called
+  if (!mounted || activeEntries.length === 0 || !bodyElement) {
+    return null;
+  }
 
   const widgetContent = (
     <div
@@ -150,7 +190,7 @@ export function FloatingTimerWidget({ activeEntries }: FloatingTimerWidgetProps)
                   <div className="flex items-center gap-2">
                     {entry.status === "RUNNING" && (
                       <button
-                        onClick={() => handleAction(entry.id, () => pauseTimeEntry(entry.id))}
+                        onClick={() => handlePause(entry.id)}
                         disabled={isProcessingEntry}
                         className="flex-1 px-3 py-1.5 text-xs font-medium bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300 rounded hover:bg-yellow-200 dark:hover:bg-yellow-800 disabled:opacity-50 transition-colors"
                       >
@@ -159,7 +199,7 @@ export function FloatingTimerWidget({ activeEntries }: FloatingTimerWidgetProps)
                     )}
                     {entry.status === "PAUSED" && (
                       <button
-                        onClick={() => handleAction(entry.id, () => resumeTimeEntry(entry.id))}
+                        onClick={() => handleResume(entry.id)}
                         disabled={isProcessingEntry}
                         className="flex-1 px-3 py-1.5 text-xs font-medium bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded hover:bg-green-200 dark:hover:bg-green-800 disabled:opacity-50 transition-colors"
                       >
@@ -167,7 +207,7 @@ export function FloatingTimerWidget({ activeEntries }: FloatingTimerWidgetProps)
                       </button>
                     )}
                     <button
-                      onClick={() => handleAction(entry.id, () => stopTimeEntry(entry.id))}
+                      onClick={() => handleStop(entry.id)}
                       disabled={isProcessingEntry}
                       className="flex-1 px-3 py-1.5 text-xs font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 disabled:opacity-50 transition-colors"
                     >

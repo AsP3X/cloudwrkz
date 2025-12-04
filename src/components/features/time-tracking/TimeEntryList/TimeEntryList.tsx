@@ -87,6 +87,84 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
     return Array.from(tagSet);
   }, [entries, selectedEntries]);
 
+  // Create handler functions that directly call server actions to avoid serialization issues
+  // Wrapping server actions in arrow functions causes hash mismatches in production builds
+  // IMPORTANT: All hooks must be called before any early returns to follow Rules of Hooks
+  const handlePause = React.useCallback(async (entryId: string) => {
+    setProcessing((prev) => new Set(prev).add(entryId));
+    try {
+      const result = await pauseTimeEntry(entryId);
+      if (result.success) {
+        router.refresh();
+      }
+    } catch (error) {
+      console.error("Error:", error);
+    } finally {
+      setProcessing((prev) => {
+        const next = new Set(prev);
+        next.delete(entryId);
+        return next;
+      });
+    }
+  }, [router]);
+
+  const handleResume = React.useCallback(async (entryId: string) => {
+    setProcessing((prev) => new Set(prev).add(entryId));
+    try {
+      const result = await resumeTimeEntry(entryId);
+      if (result.success) {
+        router.refresh();
+      }
+    } catch (error) {
+      console.error("Error:", error);
+    } finally {
+      setProcessing((prev) => {
+        const next = new Set(prev);
+        next.delete(entryId);
+        return next;
+      });
+    }
+  }, [router]);
+
+  const handleStop = React.useCallback(async (entryId: string) => {
+    setProcessing((prev) => new Set(prev).add(entryId));
+    try {
+      const result = await stopTimeEntry(entryId);
+      if (result.success) {
+        router.refresh();
+      }
+    } catch (error) {
+      console.error("Error:", error);
+    } finally {
+      setProcessing((prev) => {
+        const next = new Set(prev);
+        next.delete(entryId);
+        return next;
+      });
+    }
+  }, [router]);
+
+  const handleDelete = React.useCallback(async (entryId: string) => {
+    if (!confirm("Are you sure you want to delete this time entry?")) {
+      return;
+    }
+    setProcessing((prev) => new Set(prev).add(entryId));
+    try {
+      const result = await deleteTimeEntry(entryId);
+      if (result.success) {
+        router.refresh();
+      }
+    } catch (error) {
+      console.error("Error:", error);
+    } finally {
+      setProcessing((prev) => {
+        const next = new Set(prev);
+        next.delete(entryId);
+        return next;
+      });
+    }
+  }, [router]);
+
   // Early return after all hooks
   if (entries.length === 0) {
     return (
@@ -210,24 +288,6 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
   const handleClearSelection = () => {
     setSelectedEntries(new Set());
     setError(null);
-  };
-
-  const handleAction = async (id: string, action: () => Promise<any>) => {
-    setProcessing((prev) => new Set(prev).add(id));
-    try {
-      const result = await action();
-      if (result.success) {
-        router.refresh();
-      }
-    } catch (error) {
-      console.error("Error:", error);
-    } finally {
-      setProcessing((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }
   };
 
   return (
@@ -393,7 +453,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleAction(entry.id, () => pauseTimeEntry(entry.id));
+                            handlePause(entry.id);
                           }}
                           disabled={isProcessingEntry || isProcessing}
                           className="p-2 text-neutral-600 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 disabled:opacity-50"
@@ -408,7 +468,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleAction(entry.id, () => resumeTimeEntry(entry.id));
+                            handleResume(entry.id);
                           }}
                           disabled={isProcessingEntry || isProcessing}
                           className="p-2 text-neutral-600 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 disabled:opacity-50"
@@ -424,7 +484,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleAction(entry.id, () => stopTimeEntry(entry.id));
+                            handleStop(entry.id);
                           }}
                           disabled={isProcessingEntry || isProcessing}
                           className="p-2 text-neutral-600 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 disabled:opacity-50"
@@ -452,9 +512,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (confirm("Are you sure you want to delete this time entry?")) {
-                            handleAction(entry.id, () => deleteTimeEntry(entry.id));
-                          }
+                          handleDelete(entry.id);
                         }}
                         disabled={isProcessingEntry || isProcessing}
                         className="p-2 text-neutral-600 dark:text-neutral-400 hover:text-error-600 dark:hover:text-error-400 disabled:opacity-50"

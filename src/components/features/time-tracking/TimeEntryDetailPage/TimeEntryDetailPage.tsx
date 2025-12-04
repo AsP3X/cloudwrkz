@@ -57,13 +57,14 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
     return formatDateTimeInTimezone(date, userTimezone || "UTC");
   };
 
-  const handleAction = async (action: () => Promise<any>) => {
+  // Create handler functions that directly call server actions to avoid serialization issues
+  // Wrapping server actions in arrow functions causes hash mismatches in production builds
+  const handlePause = React.useCallback(async () => {
     setProcessing(true);
     setError(null);
     try {
-      const result = await action();
+      const result = await pauseTimeEntry(entry.id);
       if (result.success) {
-        // Refresh the page to get updated data
         router.refresh();
       } else {
         setError(result.error || "An error occurred");
@@ -73,7 +74,58 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
     } finally {
       setProcessing(false);
     }
-  };
+  }, [entry.id, router]);
+
+  const handleResume = React.useCallback(async () => {
+    setProcessing(true);
+    setError(null);
+    try {
+      const result = await resumeTimeEntry(entry.id);
+      if (result.success) {
+        router.refresh();
+      } else {
+        setError(result.error || "An error occurred");
+      }
+    } catch (error: any) {
+      setError(error.message || "An error occurred");
+    } finally {
+      setProcessing(false);
+    }
+  }, [entry.id, router]);
+
+  const handleStop = React.useCallback(async () => {
+    setProcessing(true);
+    setError(null);
+    try {
+      const result = await stopTimeEntry(entry.id);
+      if (result.success) {
+        router.refresh();
+      } else {
+        setError(result.error || "An error occurred");
+      }
+    } catch (error: any) {
+      setError(error.message || "An error occurred");
+    } finally {
+      setProcessing(false);
+    }
+  }, [entry.id, router]);
+
+  const handleComplete = React.useCallback(async () => {
+    setProcessing(true);
+    setError(null);
+    try {
+      const result = await completeTimeEntry(entry.id);
+      if (result.success) {
+        router.refresh();
+      } else {
+        setError(result.error || "An error occurred");
+      }
+    } catch (error: any) {
+      setError(error.message || "An error occurred");
+    } finally {
+      setProcessing(false);
+    }
+  }, [entry.id, router]);
 
   const handleUpdate = async (data: any) => {
     setProcessing(true);
@@ -147,7 +199,7 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handleAction(() => pauseTimeEntry(entry.id))}
+                  onClick={handlePause}
                   disabled={processing}
                 >
                   Pause
@@ -157,7 +209,7 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handleAction(() => resumeTimeEntry(entry.id))}
+                  onClick={handleResume}
                   disabled={processing}
                 >
                   Resume
@@ -167,7 +219,7 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handleAction(() => stopTimeEntry(entry.id))}
+                  onClick={handleStop}
                   disabled={processing}
                 >
                   Stop
@@ -177,7 +229,7 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handleAction(() => completeTimeEntry(entry.id))}
+                  onClick={handleComplete}
                   disabled={processing}
                 >
                   Complete
