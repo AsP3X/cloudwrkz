@@ -12,6 +12,10 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 COPY package.json pnpm-lock.yaml .npmrc* ./
 RUN pnpm install --frozen-lockfile
 
+# Generate Prisma client so TypeScript can find PrismaClient
+ENV DATABASE_URL="postgresql://user:password@localhost:5432/db?schema=public"
+RUN pnpm prisma generate
+
 # Copy the rest of the app source
 COPY . .
 
