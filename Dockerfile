@@ -12,12 +12,12 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 COPY package.json pnpm-lock.yaml .npmrc* ./
 RUN pnpm install --frozen-lockfile
 
+# Copy the rest of the app source
+COPY . .
+
 # Generate Prisma client so TypeScript can find PrismaClient
 ENV DATABASE_URL="postgresql://user:password@localhost:5432/db?schema=public"
 RUN pnpm prisma generate
-
-# Copy the rest of the app source
-COPY . .
 
 # Build the Next.js app
 ENV NODE_ENV=production
