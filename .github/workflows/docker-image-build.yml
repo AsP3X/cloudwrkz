@@ -36,13 +36,16 @@ jobs:
         id: vars
         run: |
           BRANCH_NAME="${GITHUB_REF_NAME}"
+          # Sanitize branch name for Docker tag (no slashes, lowercase)
+          SAFE_BRANCH_NAME="${BRANCH_NAME//\//-}"
+          SAFE_BRANCH_NAME="${SAFE_BRANCH_NAME,,}"
           if [ "$BRANCH_NAME" = "master" ]; then
             echo "TAG=latest" >> $GITHUB_OUTPUT
           elif [ "$BRANCH_NAME" = "dev" ]; then
             echo "TAG=preview" >> $GITHUB_OUTPUT
           else
             # For PRs from forks or other branches, use a short SHA tag
-            echo "TAG=${BRANCH_NAME}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+            echo "TAG=${SAFE_BRANCH_NAME}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
           fi
 
       - name: Build and push Docker image
