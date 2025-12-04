@@ -66,3 +66,14 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ steps.image.outputs.repo }}:${{ steps.vars.outputs.TAG }}
+          labels: |
+            org.opencontainers.image.title=cloudwrkz
+            org.opencontainers.image.description=Cloudwrkz web application and CLI (Next.js + PNPM)
+            org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.vars.outputs.TAG }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp || github.event.pull_request.updated_at || github.run_started_at }}
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.ref.name=${{ github.ref_name }}
+            org.opencontainers.image.workflow=${{ github.workflow }}
