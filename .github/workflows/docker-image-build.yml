@@ -45,8 +45,8 @@ jobs:
           elif [ "$BRANCH_NAME" = "dev" ]; then
             echo "TAG=preview" >> $GITHUB_OUTPUT
           elif [ "$BASE_REF" = "dev" ]; then
-            # For PRs targeting the dev branch, prefix tag with 'dev-'
-            echo "TAG=dev-${SAFE_BRANCH_NAME}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+            # For PRs targeting the dev branch, prefix tag with 'preview-'
+            echo "TAG=preview-${SAFE_BRANCH_NAME}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
           else
             # For PRs from forks or other branches, use a short SHA tag
             echo "TAG=${SAFE_BRANCH_NAME}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
