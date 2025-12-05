@@ -5,7 +5,19 @@ import { isModuleEnabled } from "@/server/actions/modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { ProjectsPage } from "@/components/features/projects/ProjectsPage";
 
-export default async function UserProjectsPage() {
+interface ProjectsPageProps {
+  searchParams: Promise<{
+    status?: string;
+    priority?: string;
+    createdFrom?: string;
+    createdTo?: string;
+    updatedFrom?: string;
+    updatedTo?: string;
+    sort?: string;
+  }>;
+}
+
+export default async function UserProjectsPage({ searchParams }: ProjectsPageProps) {
   const user = await getCurrentUser();
   
   if (!user) {
@@ -21,6 +33,7 @@ export default async function UserProjectsPage() {
 
   // Get projects the user has access to (as member, manager, or via groups)
   const projects = await getAllProjects();
+  const params = await searchParams;
 
-  return <ProjectsPage initialProjects={projects} />;
+  return <ProjectsPage initialProjects={projects} searchParams={params} />;
 }

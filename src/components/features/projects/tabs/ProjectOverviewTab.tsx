@@ -196,54 +196,54 @@ export function ProjectOverviewTab({ project, analytics }: ProjectOverviewTabPro
           Project Details
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400 mb-1">
-              Status
-            </p>
-            <Badge variant="info" size="sm">
-              {project.status.replace("_", " ")}
-            </Badge>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400 mb-1">
-              Priority
-            </p>
-            <Badge variant="info" size="sm">
-              {project.priority}
-            </Badge>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400 mb-1">
-              Start Date
-            </p>
-            <p className="text-base text-neutral-900 dark:text-neutral-100">
-              {project.startDate ? formatDate(project.startDate) : "—"}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400 mb-1">
-              End Date
-            </p>
-            <p className="text-base text-neutral-900 dark:text-neutral-100">
-              {project.endDate ? formatDate(project.endDate) : "—"}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400 mb-1">
-              Client
-            </p>
-            <p className="text-base text-neutral-900 dark:text-neutral-100">
-              {project.client || "—"}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400 mb-1">
-              Budget
-            </p>
-            <p className="text-base text-neutral-900 dark:text-neutral-100">
-              {project.budget ? `$${project.budget.toLocaleString()}` : "—"}
-            </p>
-          </div>
+            <div>
+              <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400 mb-1">
+                Status
+              </p>
+              <Badge variant="info" size="sm">
+                {project.status.replace("_", " ")}
+              </Badge>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400 mb-1">
+                Priority
+              </p>
+              <Badge variant="info" size="sm">
+                {project.priority}
+              </Badge>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400 mb-1">
+                Start Date
+              </p>
+              <p className="text-base text-neutral-900 dark:text-neutral-100">
+                {project.startDate ? formatDate(project.startDate) : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400 mb-1">
+                End Date
+              </p>
+              <p className="text-base text-neutral-900 dark:text-neutral-100">
+                {project.endDate ? formatDate(project.endDate) : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400 mb-1">
+                Client
+              </p>
+              <p className="text-base text-neutral-900 dark:text-neutral-100">
+                {project.client || "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400 mb-1">
+                Budget
+              </p>
+              <p className="text-base text-neutral-900 dark:text-neutral-100">
+                {project.budget ? `$${project.budget.toLocaleString()}` : "—"}
+              </p>
+            </div>
         </div>
       </div>
     </div>
