@@ -465,7 +465,7 @@ export const FilterDialog = ({
             <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
               Save Current Filters as Preset
             </label>
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
               <Input
                 type="text"
                 placeholder="Enter preset name..."
@@ -482,6 +482,7 @@ export const FilterDialog = ({
                 variant="outline"
                 onClick={savePreset}
                 disabled={!presetName.trim()}
+                className="px-6"
               >
                 Save
               </Button>
