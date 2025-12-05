@@ -175,7 +175,7 @@ export function ProjectOwnerPage({ project, analytics }: ProjectOwnerPageProps) 
       </div>
 
       {/* Tabs */}
-      <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
+      <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-4 md:p-6">
         <Tabs tabs={tabs} defaultTab="overview" />
       </div>
     </div>
