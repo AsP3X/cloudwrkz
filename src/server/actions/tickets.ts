@@ -467,6 +467,15 @@ export async function getTicket(id: string) {
           description: true,
         },
       },
+      projectId: true,
+      project: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          color: true,
+        },
+      },
       comments: {
         where: {
           // Filter out agent-only comments for non-agents

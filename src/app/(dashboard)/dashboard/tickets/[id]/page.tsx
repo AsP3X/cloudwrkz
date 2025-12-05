@@ -415,6 +415,34 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                 </>
               )}
 
+              {/* Project - Only show if project is assigned */}
+              {ticket.project && (
+                <>
+                  {/* Divider */}
+                  <div className="border-t border-neutral-200 pt-4"></div>
+                  <div>
+                    <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
+                      Project
+                    </label>
+                    <Link
+                      href={`/dashboard/projects/${ticket.project.id}`}
+                      className="flex items-center gap-2 text-sm text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                    >
+                      {ticket.project.color && (
+                        <div
+                          className="w-3 h-3 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: ticket.project.color }}
+                        />
+                      )}
+                      <span className="font-medium">{ticket.project.name}</span>
+                      <span className="text-neutral-500 dark:text-neutral-500 font-mono text-xs">
+                        ({ticket.project.code})
+                      </span>
+                    </Link>
+                  </div>
+                </>
+              )}
+
               {/* Divider */}
               <div className="border-t border-neutral-200 pt-4"></div>
 
