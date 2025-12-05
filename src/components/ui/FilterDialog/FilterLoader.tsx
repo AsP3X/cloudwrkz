@@ -69,7 +69,7 @@ export const FilterLoader = ({ config, enabled = true }: FilterLoaderProps) => {
       // Apply preset filters to URL
       const params = new URLSearchParams();
       Object.entries(preset.filters).forEach(([key, value]) => {
-        if (value && value !== (config.defaultFilters[key] || config.defaultSort)) {
+        if (value && typeof value === 'string' && value !== (config.defaultFilters[key] || config.defaultSort)) {
           params.set(key, value);
         }
       });

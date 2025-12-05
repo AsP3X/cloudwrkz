@@ -161,7 +161,15 @@ export const FilterDialog = ({
   });
 
   const updateFilters = (updates: Partial<typeof filters>) => {
-    setFilters((prev) => ({ ...prev, ...updates }));
+    setFilters((prev) => {
+      const result = { ...prev };
+      for (const [key, value] of Object.entries(updates)) {
+        if (value !== undefined) {
+          result[key] = value;
+        }
+      }
+      return result;
+    });
   };
 
   const applyFilters = () => {
