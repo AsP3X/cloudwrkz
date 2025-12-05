@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { type SearchResult } from "@/server/actions/search";
 import { getTicketTypeLabel, type TicketType } from "@/lib/utils/tickets";
+import { formatDate, formatDateTime } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
 
 interface SearchResultsTableProps {
@@ -103,23 +104,6 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
         );
       }
       return <React.Fragment key={index}>{part}</React.Fragment>;
-    });
-  };
-  const formatDate = (date: Date | string) => {
-    return new Date(date).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  };
-
-  const formatDateTime = (date: Date | string) => {
-    return new Date(date).toLocaleString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
     });
   };
 

@@ -1,5 +1,6 @@
 import { getCurrentUser } from "@/lib/utils/auth-server";
 import { formatUserName } from "@/lib/utils/users";
+import { formatDateTime } from "@/lib/utils/date";
 import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
 import { isModuleEnabled } from "@/server/actions/modules";
@@ -110,15 +111,6 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
     ? timeEntries.filter((entry) => entry.status === "RUNNING" || entry.status === "PAUSED")
     : [];
 
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -238,7 +230,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
           <div>
             <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">{ticket.title}</h1>
             <p className="text-neutral-600 dark:text-neutral-400">
-              Created {formatDate(ticket.createdAt)}
+              Created {formatDateTime(ticket.createdAt)}
             </p>
           </div>
         </div>
@@ -475,14 +467,14 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                   <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                     Created
                   </label>
-                  <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDate(ticket.createdAt)}</p>
+                  <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDateTime(ticket.createdAt)}</p>
                 </div>
                 {ticket.updatedAt && ticket.updatedAt.getTime() !== ticket.createdAt.getTime() && (
                   <div>
                     <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                       Last Updated
                     </label>
-                    <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDate(ticket.updatedAt)}</p>
+                    <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDateTime(ticket.updatedAt)}</p>
                   </div>
                 )}
                 {ticket.resolvedAt && (
@@ -490,7 +482,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                     <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                       Resolved
                     </label>
-                    <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDate(ticket.resolvedAt)}</p>
+                    <p className="text-sm text-neutral-900 dark:text-neutral-100">{ticket.resolvedAt ? formatDateTime(ticket.resolvedAt) : "—"}</p>
                   </div>
                 )}
                 {ticket.closedAt && (
@@ -498,7 +490,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                     <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                       Closed
                     </label>
-                    <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDate(ticket.closedAt)}</p>
+                    <p className="text-sm text-neutral-900 dark:text-neutral-100">{ticket.closedAt ? formatDateTime(ticket.closedAt) : "—"}</p>
                   </div>
                 )}
               </div>

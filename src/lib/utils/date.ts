@@ -1,6 +1,6 @@
 /**
- * Date formatting utilities with consistent locale to prevent hydration mismatches
- * Always uses "en-US" locale to ensure server and client render the same output
+ * Date formatting utilities with consistent locale and timezone to prevent hydration mismatches
+ * Always uses "en-US" locale and UTC timezone to ensure server and client render the same output
  */
 
 /**
@@ -11,6 +11,7 @@ export function formatDate(date: Date | string): string {
     year: "numeric",
     month: "short",
     day: "numeric",
+    timeZone: "UTC",
   });
 }
 
@@ -24,6 +25,7 @@ export function formatDateTime(date: Date | string): string {
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "UTC",
   });
 }
 
@@ -38,6 +40,7 @@ export function formatDateTimeFull(date: Date | string): string {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
+    timeZone: "UTC",
   });
 }
 
@@ -48,6 +51,7 @@ export function formatTime(date: Date | string): string {
   return new Date(date).toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "UTC",
   });
 }
 

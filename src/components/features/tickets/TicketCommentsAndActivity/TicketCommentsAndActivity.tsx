@@ -6,6 +6,7 @@ import { formatUserName, formatUserInitial } from "@/lib/utils/users";
 import { TicketActivity } from "../TicketActivity";
 import { TicketCommentForm } from "../TicketCommentForm";
 import { formatDuration } from "@/lib/utils/time-tracking";
+import { formatDate, formatDateTime } from "@/lib/utils/date";
 import Link from "next/link";
 import { ROUTES } from "@/lib/constants/routes";
 
@@ -77,15 +78,6 @@ interface TicketCommentsAndActivityProps {
   }>;
 }
 
-const formatDate = (date: Date) => {
-  return new Date(date).toLocaleString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-};
 
 const getRoleBadge = (role: string) => {
   switch (role) {
@@ -200,7 +192,7 @@ export const TicketCommentsAndActivity = ({
                       )}
                     </div>
                     <p className="text-xs text-neutral-500 dark:text-neutral-500">
-                      {formatDate(comment.createdAt)}
+                      {formatDateTime(comment.createdAt)}
                     </p>
                   </div>
                 </div>
@@ -283,7 +275,7 @@ export const TicketCommentsAndActivity = ({
                     <div className="flex items-center gap-4 text-xs text-neutral-500 dark:text-neutral-500">
                       <span>Duration: {formatDuration(entry.totalDuration)}</span>
                       <span>
-                        Started: {new Date(entry.startedAt).toLocaleDateString("en-US")}
+                        Started: {formatDate(entry.startedAt)}
                       </span>
                     </div>
                   </div>

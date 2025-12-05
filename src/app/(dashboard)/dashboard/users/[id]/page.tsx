@@ -1,5 +1,6 @@
 import { getCurrentUser } from "@/lib/utils/auth-server";
 import { formatUserName, formatUserInitial } from "@/lib/utils/users";
+import { formatDateTime } from "@/lib/utils/date";
 import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
 import { isModuleEnabled } from "@/server/actions/modules";
@@ -105,15 +106,6 @@ export default async function UserDetailPage({ params, searchParams }: UserDetai
   // Get groups for filter dropdown
   const groups = await getGroups();
 
-  const formatDate = (date: Date | string) => {
-    return new Date(date).toLocaleString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
 
   const getRoleBadge = (role: string) => {
     switch (role) {

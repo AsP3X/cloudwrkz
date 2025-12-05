@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { formatDate } from "@/lib/utils/date";
 import type { getProject } from "@/server/actions/projects";
 import type { getProjectAnalytics } from "@/server/actions/project-analytics";
 
@@ -92,7 +93,7 @@ export function ProjectAnalyticsTab({ project, analytics }: ProjectAnalyticsTabP
               <div className="space-y-1">
                 {analytics.tickets.createdTrend.map((trend) => (
                   <div key={trend.date} className="flex justify-between text-sm">
-                    <span>{new Date(trend.date).toLocaleDateString()}</span>
+                    <span>{formatDate(trend.date)}</span>
                     <span className="font-medium">{trend.count} tickets</span>
                   </div>
                 ))}
