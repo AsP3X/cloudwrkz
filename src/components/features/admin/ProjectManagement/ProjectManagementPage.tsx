@@ -1,10 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { formatDate } from "@/lib/utils/date";
 import type { getAllProjects } from "@/server/actions/projects";
+import { ProjectCreateDialog } from "./ProjectCreateDialog";
 
 type Project = Awaited<ReturnType<typeof getAllProjects>>[0];
 
@@ -13,11 +15,17 @@ interface ProjectManagementPageProps {
 }
 
 export function ProjectManagementPage({ initialProjects }: ProjectManagementPageProps) {
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const handleCreateSuccess = () => {
+    router.refresh();
+  };
 
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {
@@ -63,7 +71,7 @@ export function ProjectManagementPage({ initialProjects }: ProjectManagementPage
             Manage all projects ({initialProjects.length} total)
           </p>
         </div>
-        <Button variant="primary">
+        <Button variant="primary" onClick={() => setCreateDialogOpen(true)}>
           Create Project
         </Button>
       </div>
@@ -90,7 +98,7 @@ export function ProjectManagementPage({ initialProjects }: ProjectManagementPage
           <p className="text-neutral-600 dark:text-neutral-400 mb-6">
             Get started by creating your first project.
           </p>
-          <Button variant="primary">
+          <Button variant="primary" onClick={() => setCreateDialogOpen(true)}>
             Create Project
           </Button>
         </div>
@@ -191,6 +199,13 @@ export function ProjectManagementPage({ initialProjects }: ProjectManagementPage
           </div>
         </div>
       )}
+
+      {/* Create Project Dialog */}
+      <ProjectCreateDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        onSuccess={handleCreateSuccess}
+      />
     </div>
   );
 }
