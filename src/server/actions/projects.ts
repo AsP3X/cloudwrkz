@@ -263,8 +263,14 @@ export async function createProject(input: ProjectInput): Promise<ActionResult<{
     });
 
     // Add project members (managers and members)
+    // Ensure creator is always added as a manager if not already included
+    const managerIdsToAdd = input.managerIds || [];
+    if (!managerIdsToAdd.includes(user.id)) {
+      managerIdsToAdd.push(user.id);
+    }
+
     const allUserIds = [
-      ...(input.managerIds || []),
+      ...managerIdsToAdd,
       ...(input.memberIds || []),
     ];
     const uniqueUserIds = Array.from(new Set(allUserIds));
@@ -279,7 +285,7 @@ export async function createProject(input: ProjectInput): Promise<ActionResult<{
       });
 
       const validUserIds = users.map((u) => u.id);
-      const managerIds = input.managerIds?.filter((id) => validUserIds.includes(id)) || [];
+      const managerIds = managerIdsToAdd.filter((id) => validUserIds.includes(id));
       const memberIds = input.memberIds?.filter((id) => validUserIds.includes(id)) || [];
 
       // Create manager memberships
@@ -711,6 +717,14 @@ export async function getAllProjects() {
 
   const projectIdsFromMembership = userMemberships.map((m) => m.projectId);
 
+  // Get projects where user is the creator
+  const createdProjects = await prisma.project.findMany({
+    where: { createdById: user.id },
+    select: { id: true },
+  });
+
+  const projectIdsFromCreator = createdProjects.map((p) => p.id);
+
   // Get user's groups
   const userGroups = await prisma.groupMembership.findMany({
     where: { userId: user.id },
@@ -731,7 +745,7 @@ export async function getAllProjects() {
 
   // Combine all project IDs
   const allProjectIds = Array.from(
-    new Set([...projectIdsFromMembership, ...projectIdsFromGroups])
+    new Set([...projectIdsFromMembership, ...projectIdsFromCreator, ...projectIdsFromGroups])
   );
 
   if (allProjectIds.length === 0) {
