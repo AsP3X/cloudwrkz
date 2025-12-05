@@ -110,7 +110,7 @@ export async function createProject(input: ProjectInput): Promise<ActionResult<{
         client: input.client?.trim() || null,
         color: input.color || null,
         icon: input.icon || null,
-        permissions: input.permissions || null,
+        permissions: input.permissions || undefined,
         createdById: user.id,
       },
     });
@@ -458,6 +458,7 @@ export async function getProject(id: string) {
             select: {
               id: true,
               name: true,
+              description: true,
             },
           },
         },
@@ -666,6 +667,7 @@ export async function getProjects() {
             select: {
               id: true,
               name: true,
+              description: true,
             },
           },
         },

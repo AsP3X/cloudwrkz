@@ -451,7 +451,7 @@ export function ProjectDetailPage({ project: initialProject }: ProjectDetailPage
             <Input
               label="Start Date"
               type="date"
-              value={formData.startDate || ""}
+              value={typeof formData.startDate === "string" ? formData.startDate : formData.startDate ? new Date(formData.startDate).toISOString().split("T")[0] : ""}
               onChange={(e) =>
                 setFormData({
                   ...formData,
@@ -464,7 +464,7 @@ export function ProjectDetailPage({ project: initialProject }: ProjectDetailPage
             <Input
               label="End Date"
               type="date"
-              value={formData.endDate || ""}
+              value={typeof formData.endDate === "string" ? formData.endDate : formData.endDate ? new Date(formData.endDate).toISOString().split("T")[0] : ""}
               onChange={(e) =>
                 setFormData({
                   ...formData,

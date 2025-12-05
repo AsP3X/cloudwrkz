@@ -244,12 +244,12 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
     };
   });
 
-  const timeByTicket = new Map<string, { planned: number; actual: number; ticketNumber: string; ticketTitle: string }>();
+  const timeByTicket = new Map<string, { ticketId: string; planned: number; actual: number; ticketNumber: string; ticketTitle: string }>();
   for (const task of tasks) {
     if (task.ticketId) {
       const ticket = tickets.find((t) => t.id === task.ticketId);
       if (ticket) {
-        const current = timeByTicket.get(task.ticketId) || { planned: 0, actual: 0, ticketNumber: ticket.ticketNumber, ticketTitle: ticket.title };
+        const current = timeByTicket.get(task.ticketId) || { ticketId: task.ticketId, planned: 0, actual: 0, ticketNumber: ticket.ticketNumber, ticketTitle: ticket.title };
         current.planned += task.estimatedHours || 0;
         timeByTicket.set(task.ticketId, current);
       }

@@ -648,7 +648,7 @@ export function ProjectDetailPage({ project, initialTickets = [], initialTimeAll
           {project.color && (
             <div
               className="w-4 h-4 rounded-full"
-              style={{ backgroundColor: project.color }}
+              style={{ backgroundColor: project.color as string }}
             />
           )}
           <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100">
@@ -726,19 +726,19 @@ export function ProjectDetailPage({ project, initialTickets = [], initialTimeAll
           <div>
             <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Budget</p>
             <p className="text-base text-neutral-900 dark:text-neutral-100 mt-1">
-              {project.budget ? `$${project.budget.toLocaleString()}` : "—"}
+              {project.budget != null ? `$${(project.budget as number).toLocaleString()}` : "—"}
             </p>
           </div>
           <div>
             <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Start Date</p>
             <p className="text-base text-neutral-900 dark:text-neutral-100 mt-1">
-              {project.startDate ? formatDate(project.startDate) : "—"}
+              {project.startDate != null ? formatDate(project.startDate as Date) : "—"}
             </p>
           </div>
           <div>
             <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">End Date</p>
             <p className="text-base text-neutral-900 dark:text-neutral-100 mt-1">
-              {project.endDate ? formatDate(project.endDate) : "—"}
+              {project.endDate != null ? formatDate(project.endDate as Date) : "—"}
             </p>
           </div>
           <div>

@@ -433,7 +433,7 @@ function RiskDialog({
   }));
 
   return (
-    <Dialog open={open} onClose={onClose} title={risk ? "Edit Risk" : "Create Risk"}>
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()} title={risk ? "Edit Risk" : "Create Risk"}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input label="Title" value={title} onChange={(e) => setTitle(e.target.value)} required />
         <Textarea
@@ -566,7 +566,7 @@ function IssueDialog({
   }));
 
   return (
-    <Dialog open={open} onClose={onClose} title={issue ? "Edit Issue" : "Create Issue"}>
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()} title={issue ? "Edit Issue" : "Create Issue"}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input label="Title" value={title} onChange={(e) => setTitle(e.target.value)} required />
         <Textarea

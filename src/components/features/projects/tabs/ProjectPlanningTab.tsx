@@ -371,9 +371,9 @@ export function ProjectPlanningTab({ project }: ProjectPlanningTabProps) {
         tasks={tasks}
         onSubmit={
           editingItem
-            ? (data) => {
-                const result = updateTask(editingItem.id, data);
-                if (result) {
+            ? async (data) => {
+                const result = await updateTask(editingItem.id, data);
+                if (result.success) {
                   router.refresh();
                   loadData();
                   setTaskDialogOpen(false);
@@ -381,9 +381,9 @@ export function ProjectPlanningTab({ project }: ProjectPlanningTabProps) {
                 }
                 return result;
               }
-            : (data) => {
-                const result = createTask(project.id, data);
-                if (result) {
+            : async (data) => {
+                const result = await createTask(project.id, data);
+                if (result.success) {
                   router.refresh();
                   loadData();
                   setTaskDialogOpen(false);
@@ -403,9 +403,9 @@ export function ProjectPlanningTab({ project }: ProjectPlanningTabProps) {
         category={editingItem}
         onSubmit={
           editingItem
-            ? (data) => {
-                const result = updateBudgetCategory(editingItem.id, data);
-                if (result) {
+            ? async (data) => {
+                const result = await updateBudgetCategory(editingItem.id, data);
+                if (result.success) {
                   router.refresh();
                   loadData();
                   setBudgetDialogOpen(false);
@@ -413,9 +413,9 @@ export function ProjectPlanningTab({ project }: ProjectPlanningTabProps) {
                 }
                 return result;
               }
-            : (data) => {
-                const result = createBudgetCategory(project.id, data);
-                if (result) {
+            : async (data) => {
+                const result = await createBudgetCategory(project.id, data);
+                if (result.success) {
                   router.refresh();
                   loadData();
                   setBudgetDialogOpen(false);
@@ -555,7 +555,7 @@ function MilestoneDialog({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title={milestone ? "Edit Milestone" : "Create Milestone"}>
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()} title={milestone ? "Edit Milestone" : "Create Milestone"}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input
           label="Name"
@@ -691,7 +691,7 @@ function TaskDialog({
     }));
 
   return (
-    <Dialog open={open} onClose={onClose} title={task ? "Edit Task" : "Create Task"}>
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()} title={task ? "Edit Task" : "Create Task"}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input label="Title" value={title} onChange={(e) => setTitle(e.target.value)} required />
         <Textarea
@@ -815,7 +815,7 @@ function BudgetDialog({
   return (
     <Dialog
       open={open}
-      onClose={onClose}
+      onOpenChange={(isOpen) => !isOpen && onClose()}
       title={category ? "Edit Budget Category" : "Create Budget Category"}
     >
       <form onSubmit={handleSubmit} className="space-y-4">
