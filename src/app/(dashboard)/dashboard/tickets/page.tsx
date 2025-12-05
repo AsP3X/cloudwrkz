@@ -125,7 +125,7 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
     <TicketViewProvider>
       <div className="space-y-6">
           {/* Auto-load filter preset for agents */}
-          <TicketFilterLoader isAgent={user.role === "AGENT"} />
+          <TicketFilterLoader users={users} groups={groups} projects={projects} isAgent={user.role === "AGENT"} />
           
           {/* Header */}
           <div className="flex items-center justify-between flex-wrap gap-4">

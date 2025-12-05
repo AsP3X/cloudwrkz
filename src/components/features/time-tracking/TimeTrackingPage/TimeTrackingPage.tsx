@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { TimeEntryList } from "../TimeEntryList";
 import { StartTimerDialog } from "../StartTimerDialog";
 import { AddTimeEntryDialog } from "../AddTimeEntryDialog";
+import { TimeTrackingFilterButton } from "../TimeTrackingFilterButton";
 import { getActiveTimeEntries } from "@/server/actions/time-tracking";
 import { useTimeTrackingEvents } from "@/lib/hooks/useTimeTrackingEvents";
 import { type TimeEntryStatus } from "@prisma/client";
@@ -126,6 +127,7 @@ export function TimeTrackingPage({ initialEntries, initialTotal, initialPage, us
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <TimeTrackingFilterButton />
           <Button variant="outline" onClick={() => setShowAddDialog(true)}>
             <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
