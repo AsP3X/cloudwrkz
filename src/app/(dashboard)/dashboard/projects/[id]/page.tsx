@@ -33,11 +33,12 @@ export default async function UserProjectDetailPage({
     redirect("/dashboard/projects");
   }
 
-  // Check if user is owner or manager
+  // Check if user is owner, manager, or agent
   const isOwnerOrManager = project.userRole === "OWNER" || project.userRole === "MANAGER";
+  const isAgent = user.role === "AGENT" || user.role === "ADMIN" || user.role === "MODERATOR";
 
-  if (isOwnerOrManager) {
-    // Fetch analytics for owner/manager view
+  if (isOwnerOrManager || isAgent) {
+    // Fetch analytics for owner/manager/agent view
     const analytics = await getProjectAnalytics(id);
     
     if (!analytics) {
