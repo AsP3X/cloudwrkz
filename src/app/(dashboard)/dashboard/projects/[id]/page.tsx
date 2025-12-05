@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/utils/auth-server";
-import { getProject } from "@/server/actions/projects";
+import { getProject, getProjectTickets, getProjectTimeAllocation } from "@/server/actions/projects";
 import { isModuleEnabled } from "@/server/actions/modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { ProjectDetailPage } from "@/components/features/projects/ProjectDetailPage";
@@ -31,5 +31,11 @@ export default async function UserProjectDetailPage({
     redirect("/dashboard/projects");
   }
 
-  return <ProjectDetailPage project={project} />;
+  // Fetch tickets and time allocation for members
+  const [tickets, timeAllocation] = await Promise.all([
+    getProjectTickets(id),
+    getProjectTimeAllocation(id),
+  ]);
+
+  return <ProjectDetailPage project={project} initialTickets={tickets} initialTimeAllocation={timeAllocation} />;
 }

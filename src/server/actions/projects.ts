@@ -649,7 +649,163 @@ export async function getProject(projectId: string) {
     },
   });
 
-  return project;
+  if (!project) {
+    return null;
+  }
+
+  // Determine user's role in the project
+  let userRole: "OWNER" | "MANAGER" | "MEMBER" | null = null;
+  
+  if (user.role === "ADMIN") {
+    userRole = "OWNER"; // Admins are treated as owners
+  } else if (project.createdById === user.id) {
+    userRole = "OWNER";
+  } else {
+    const membership = project.members.find((m) => m.user.id === user.id);
+    if (membership) {
+      userRole = membership.role as "MANAGER" | "MEMBER";
+    }
+  }
+
+  return {
+    ...project,
+    userRole, // Add user role to the returned project
+  };
+}
+
+/**
+ * Get all tickets for a project
+ */
+export async function getProjectTickets(projectId: string) {
+  const user = await requireAuth();
+
+  // Check if user can view the project
+  if (!(await canViewProject(user.id, projectId))) {
+    return [];
+  }
+
+  // Check if tickets module is enabled
+  const moduleEnabled = await isModuleEnabled(MODULE_KEYS.TICKETS);
+  if (!moduleEnabled) {
+    return [];
+  }
+
+  return prisma.ticket.findMany({
+    where: {
+      projectId,
+    },
+    select: {
+      id: true,
+      ticketNumber: true,
+      title: true,
+      description: true,
+      status: true,
+      priority: true,
+      type: true,
+      assignedToId: true,
+      assignedTo: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      createdAt: true,
+      updatedAt: true,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+}
+
+/**
+ * Get time entries for a project grouped by user and ticket
+ */
+export async function getProjectTimeAllocation(projectId: string) {
+  const user = await requireAuth();
+
+  // Check if user can view the project
+  if (!(await canViewProject(user.id, projectId))) {
+    return [];
+  }
+
+  // Check if time tracking module is enabled
+  const moduleEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
+  if (!moduleEnabled) {
+    return [];
+  }
+
+  const timeEntries = await prisma.timeEntry.findMany({
+    where: {
+      projectId,
+      status: "COMPLETED", // Only count completed time entries
+    },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      totalDuration: true,
+      userId: true,
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      ticketId: true,
+      ticket: {
+        select: {
+          id: true,
+          ticketNumber: true,
+          title: true,
+        },
+      },
+      createdAt: true,
+      completedAt: true,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  // Group by user and ticket
+  const allocation: Array<{
+    userId: string;
+    userName: string;
+    userEmail: string;
+    ticketId: string | null;
+    ticketTitle: string | null;
+    ticketNumber: string | null;
+    totalDuration: number; // in seconds
+    entries: typeof timeEntries;
+  }> = [];
+
+  const grouped = new Map<string, typeof allocation[0]>();
+
+  for (const entry of timeEntries) {
+    const key = `${entry.userId}-${entry.ticketId || "no-ticket"}`;
+    
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        userId: entry.user.id,
+        userName: entry.user.name || entry.user.email,
+        userEmail: entry.user.email,
+        ticketId: entry.ticketId,
+        ticketTitle: entry.ticket?.title || null,
+        ticketNumber: entry.ticket?.ticketNumber || null,
+        totalDuration: 0,
+        entries: [],
+      });
+    }
+
+    const group = grouped.get(key)!;
+    group.totalDuration += entry.totalDuration;
+    group.entries.push(entry);
+  }
+
+  return Array.from(grouped.values());
 }
 
 /**
