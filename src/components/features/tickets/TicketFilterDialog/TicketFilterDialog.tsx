@@ -45,6 +45,12 @@ interface TicketFilterDialogProps {
     name: string;
     description: string | null;
   }>;
+  projects?: Array<{
+    id: string;
+    code: string;
+    name: string;
+    color: string | null;
+  }>;
   isAgent: boolean;
 }
 
@@ -56,6 +62,7 @@ export const TicketFilterDialog = ({
   onOpenChange,
   users,
   groups = [],
+  projects = [],
   isAgent,
 }: TicketFilterDialogProps) => {
   const router = useRouter();
@@ -66,6 +73,7 @@ export const TicketFilterDialog = ({
     status: searchParams.get("status") || "",
     createdBy: searchParams.get("createdBy") || "",
     assignedToGroup: searchParams.get("assignedToGroup") || "",
+    projectId: searchParams.get("projectId") || "",
     createdFrom: searchParams.get("createdFrom") || "",
     createdTo: searchParams.get("createdTo") || "",
     updatedFrom: searchParams.get("updatedFrom") || "",
@@ -138,10 +146,10 @@ export const TicketFilterDialog = ({
     }
   }, [searchParams, savedPresets, currentFilters]);
 
-  // Update local filters when URL params change
+  // Update local filters when URL params change or dialog opens
   React.useEffect(() => {
     setFilters(currentFilters);
-  }, [searchParams]);
+  }, [searchParams, open]);
 
   const userOptions = [
     { value: "", label: "All Users" },
@@ -159,10 +167,19 @@ export const TicketFilterDialog = ({
     })),
   ];
 
+  const projectOptions = [
+    { value: "", label: "All Projects" },
+    ...projects.map((project) => ({
+      value: project.id,
+      label: `${project.name} (${project.code})`,
+    })),
+  ];
+
   const hasActiveFilters =
     filters.status ||
     filters.createdBy ||
     filters.assignedToGroup ||
+    filters.projectId ||
     filters.createdFrom ||
     filters.createdTo ||
     filters.updatedFrom ||
@@ -191,6 +208,7 @@ export const TicketFilterDialog = ({
       status: "",
       createdBy: "",
       assignedToGroup: "",
+      projectId: "",
       createdFrom: "",
       createdTo: "",
       updatedFrom: "",
@@ -254,6 +272,7 @@ export const TicketFilterDialog = ({
         status: preset.filters.status || "",
         createdBy: preset.filters.createdBy || "",
         assignedToGroup: preset.filters.assignedToGroup || "",
+        projectId: preset.filters.projectId || "",
         createdFrom: preset.filters.createdFrom || "",
         createdTo: preset.filters.createdTo || "",
         updatedFrom: preset.filters.updatedFrom || "",
@@ -293,6 +312,7 @@ export const TicketFilterDialog = ({
       status: "",
       createdBy: "",
       assignedToGroup: "",
+      projectId: "",
       createdFrom: "",
       createdTo: "",
       updatedFrom: "",
@@ -432,6 +452,15 @@ export const TicketFilterDialog = ({
                 options={groupOptions}
                 defaultValue={filters.assignedToGroup}
                 onChange={(e) => updateFilters({ assignedToGroup: e.target.value })}
+              />
+            )}
+            {projects.length > 0 && (
+              <Select
+                key={`project-${filters.projectId}`}
+                label="Project"
+                options={projectOptions}
+                value={filters.projectId}
+                onChange={(e) => updateFilters({ projectId: e.target.value })}
               />
             )}
           </div>

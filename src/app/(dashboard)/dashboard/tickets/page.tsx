@@ -6,6 +6,7 @@ import { MODULE_KEYS } from "@/lib/constants/modules";
 import { getTickets } from "@/server/actions/tickets";
 import { getAllUsers } from "@/server/actions/users";
 import { getGroups } from "@/server/actions/groups";
+import { getUserProjectsForAssignment } from "@/server/actions/projects";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { TicketFilterButton } from "@/components/features/tickets/TicketFilterButton";
@@ -90,9 +91,10 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
     filters.createdById = user.id;
   }
 
-  // Get users and groups for filter dropdown (only for agents)
+  // Get users, groups, and projects for filter dropdown (only for agents)
   const users = user.role === "AGENT" ? await getAllUsers() : [];
   const groups = user.role === "AGENT" ? await getGroups() : [];
+  const projects = user.role === "AGENT" ? await getUserProjectsForAssignment() : [];
 
   // Get tickets with filters
   const tickets = await getTickets(filters);
@@ -117,7 +119,7 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
             </div>
             <div className="flex items-center gap-3">
               <TicketViewControls />
-              <TicketFilterButton users={users} groups={groups} isAgent={user.role === "AGENT"} />
+              <TicketFilterButton users={users} groups={groups} projects={projects} isAgent={user.role === "AGENT"} />
               <Link href="/dashboard/tickets/new">
                 <Button variant="primary">Create Ticket</Button>
               </Link>
