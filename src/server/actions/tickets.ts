@@ -30,6 +30,7 @@ export type TicketInput = {
 export type TicketUpdateInput = Partial<TicketInput> & {
   status?: "OPEN" | "IN_PROGRESS" | "PENDING" | "RESOLVED" | "CLOSED" | "CANCELLED";
   assignedToGroupId?: string | null;
+  projectId?: string | null;
 };
 
 export type ActionResult<T = void> =
@@ -573,6 +574,7 @@ export async function updateTicket(
         createdById: true,
         assignedToId: true,
         assignedToGroupId: true,
+        projectId: true,
         resolvedAt: true,
         closedAt: true,
         status: true,
@@ -836,6 +838,118 @@ export async function updateTicket(
             oldGroup?.name || currentTicket.assignedToGroupId,
             newGroup?.name || newGroupId,
             { oldGroupId: currentTicket.assignedToGroupId, groupId: newGroupId }
+          );
+        }
+      }
+    }
+
+    // Track project assignment changes
+    if (input.projectId !== undefined) {
+      const newProjectId = input.projectId || null;
+      if (newProjectId !== currentTicket.projectId) {
+        // Validate project if provided and check user membership
+        if (newProjectId) {
+          const project = await prisma.project.findUnique({
+            where: { id: newProjectId },
+            select: { id: true, name: true },
+          });
+          if (!project) {
+            return {
+              success: false,
+              error: "Selected project not found",
+            };
+          }
+
+          // Check if user is a member of the project (for agents)
+          if (user.role === "AGENT" || user.role === "ADMIN" || user.role === "MODERATOR") {
+            const membership = await prisma.projectUser.findFirst({
+              where: {
+                projectId: newProjectId,
+                userId: user.id,
+              },
+            });
+            // Also check if user is creator or if user's groups are assigned
+            const isCreator = await prisma.project.findFirst({
+              where: {
+                id: newProjectId,
+                createdById: user.id,
+              },
+            });
+            const userGroups = await prisma.groupMembership.findMany({
+              where: { userId: user.id },
+              select: { groupId: true },
+            });
+            const groupIds = userGroups.map((g) => g.groupId);
+            const isInGroup = groupIds.length > 0 ? await prisma.projectGroup.findFirst({
+              where: {
+                projectId: newProjectId,
+                groupId: { in: groupIds },
+              },
+            }) : null;
+
+            if (!membership && !isCreator && !isInGroup) {
+              return {
+                success: false,
+                error: "You must be a member of the project to assign tickets to it",
+              };
+            }
+          }
+        }
+
+        updateData.projectId = newProjectId;
+        
+        if (newProjectId && !currentTicket.projectId) {
+          // Assigned to project
+          const project = await prisma.project.findUnique({
+            where: { id: newProjectId },
+            select: { name: true, code: true },
+          });
+          // TODO: Add ASSIGNED_TO_PROJECT to TicketActivityType enum in schema
+          // For now, using DESCRIPTION_CHANGED as placeholder
+          await logTicketActivity(
+            id,
+            "DESCRIPTION_CHANGED",
+            user.id,
+            userDisplayName,
+            null,
+            `Project assigned: ${project ? `${project.name} (${project.code})` : newProjectId}`,
+            { projectId: newProjectId, activityType: "ASSIGNED_TO_PROJECT" }
+          );
+        } else if (!newProjectId && currentTicket.projectId) {
+          // Unassigned from project
+          const oldProject = await prisma.project.findUnique({
+            where: { id: currentTicket.projectId },
+            select: { name: true, code: true },
+          });
+          // TODO: Add UNASSIGNED_FROM_PROJECT to TicketActivityType enum in schema
+          await logTicketActivity(
+            id,
+            "DESCRIPTION_CHANGED",
+            user.id,
+            userDisplayName,
+            `Project: ${oldProject ? `${oldProject.name} (${oldProject.code})` : currentTicket.projectId}`,
+            "Project unassigned",
+            { projectId: currentTicket.projectId, activityType: "UNASSIGNED_FROM_PROJECT" }
+          );
+        } else if (newProjectId && currentTicket.projectId) {
+          // Reassigned to different project
+          const oldProject = await prisma.project.findUnique({
+            where: { id: currentTicket.projectId },
+            select: { name: true, code: true },
+          });
+          const newProject = await prisma.project.findUnique({
+            where: { id: newProjectId },
+            select: { name: true, code: true },
+          });
+          // TODO: Add ASSIGNED_TO_PROJECT to TicketActivityType enum in schema
+          await logTicketActivity(
+            id,
+            "DESCRIPTION_CHANGED",
+            user.id,
+            userDisplayName,
+            `Project: ${oldProject ? `${oldProject.name} (${oldProject.code})` : currentTicket.projectId}`,
+            `Project: ${newProject ? `${newProject.name} (${newProject.code})` : newProjectId}`,
+            { oldProjectId: currentTicket.projectId, projectId: newProjectId, activityType: "ASSIGNED_TO_PROJECT" }
           );
         }
       }

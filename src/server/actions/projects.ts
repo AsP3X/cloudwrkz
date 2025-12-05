@@ -56,122 +56,16 @@ async function generateProjectCode(): Promise<string> {
     take: 1,
   });
 
-  let nextSequence = 1;
+  let nextNumber = 1;
   if (existingProjects.length > 0) {
     const lastCode = existingProjects[0].code;
-    const match = lastCode.match(/PROJ-(\d+)$/);
+    const match = lastCode.match(/PROJ-(\d+)/);
     if (match) {
-      nextSequence = parseInt(match[1], 10) + 1;
+      nextNumber = parseInt(match[1], 10) + 1;
     }
   }
 
-  // Format with leading zeros (e.g., PROJ-001, PROJ-002)
-  const paddedSequence = nextSequence.toString().padStart(6, "0");
-  return `PROJ-${paddedSequence}`;
-}
-
-/**
- * Validate project status transition
- */
-function isValidStatusTransition(
-  currentStatus: ProjectStatus,
-  newStatus: ProjectStatus
-): boolean {
-  // Can't go back from completed, cancelled, or archived
-  if (["COMPLETED", "CANCELLED", "ARCHIVED"].includes(currentStatus)) {
-    return false;
-  }
-  
-  // Can transition to any status except backwards from terminal states
-  return true;
-}
-
-/**
- * Check if user has permission to view a project
- */
-export async function canViewProject(userId: string, projectId: string): Promise<boolean> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { role: true },
-  });
-
-  // Admins can view all projects
-  if (user?.role === "ADMIN") {
-    return true;
-  }
-
-  // Check if user is a member or manager of the project
-  const membership = await prisma.projectUser.findFirst({
-    where: {
-      projectId,
-      userId,
-    },
-  });
-
-  if (membership) {
-    return true;
-  }
-
-  // Check if user is in a group assigned to the project
-  const userGroups = await prisma.groupMembership.findMany({
-    where: { userId },
-    select: { groupId: true },
-  });
-
-  if (userGroups.length > 0) {
-    const groupIds = userGroups.map((g) => g.groupId);
-    const projectGroup = await prisma.projectGroup.findFirst({
-      where: {
-        projectId,
-        groupId: { in: groupIds },
-      },
-    });
-
-    if (projectGroup) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-/**
- * Check if user has permission to edit a project
- */
-export async function canEditProject(userId: string, projectId: string): Promise<boolean> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { role: true },
-  });
-
-  // Admins can edit all projects
-  if (user?.role === "ADMIN") {
-    return true;
-  }
-
-  // Check if user is a manager or member of the project
-  const membership = await prisma.projectUser.findFirst({
-    where: {
-      projectId,
-      userId,
-      role: { in: ["MANAGER", "MEMBER"] },
-    },
-  });
-
-  return !!membership;
-}
-
-/**
- * Check if user has permission to delete a project
- */
-async function canDeleteProject(userId: string): Promise<boolean> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { role: true },
-  });
-
-  // Only admins can delete projects
-  return user?.role === "ADMIN" ?? false;
+  return `PROJ-${nextNumber.toString().padStart(6, "0")}`;
 }
 
 /**
@@ -179,6 +73,8 @@ async function canDeleteProject(userId: string): Promise<boolean> {
  */
 export async function createProject(input: ProjectInput): Promise<ActionResult<{ id: string }>> {
   try {
+    const user = await requireAuth();
+
     // Check if projects module is enabled
     const moduleEnabled = await isModuleEnabled(MODULE_KEYS.PROJECTS);
     if (!moduleEnabled) {
@@ -187,10 +83,6 @@ export async function createProject(input: ProjectInput): Promise<ActionResult<{
         error: "Projects module is not enabled",
       };
     }
-
-    // Only admins can create projects
-    await requireRole("ADMIN");
-    const user = await requireAuth();
 
     // Validate input
     if (!input.name || input.name.trim().length === 0) {
@@ -201,136 +93,58 @@ export async function createProject(input: ProjectInput): Promise<ActionResult<{
       };
     }
 
-    // Parse dates first
-    const startDate = input.startDate
-      ? new Date(input.startDate)
-      : null;
-    const endDate = input.endDate ? new Date(input.endDate) : null;
-
-    // Validate date range
-    if (startDate && endDate && startDate > endDate) {
-      return {
-        success: false,
-        error: "End date must be after start date",
-        fieldErrors: { endDate: ["End date must be after start date"] },
-      };
-    }
-
     // Generate unique project code
-    const projectCode = await generateProjectCode();
-    
-    // Double-check code doesn't exist (race condition protection)
-    const existing = await prisma.project.findUnique({
-      where: { code: projectCode },
-    });
-    
-    let finalCode = projectCode;
-    if (existing) {
-      // If code exists, generate a new one with timestamp fallback
-      const timestamp = Date.now().toString(36).toUpperCase();
-      const fallbackCode = `PROJ-${timestamp.slice(-6)}`;
-      const fallbackExists = await prisma.project.findUnique({
-        where: { code: fallbackCode },
-      });
-      
-      if (fallbackExists) {
-        return {
-          success: false,
-          error: "Failed to generate unique project code. Please try again.",
-        };
-      }
-      
-      finalCode = fallbackCode;
-    }
+    const code = await generateProjectCode();
 
     // Create project
     const project = await prisma.project.create({
       data: {
-        code: finalCode,
+        code,
         name: input.name.trim(),
-        description: input.description?.trim(),
+        description: input.description?.trim() || null,
         status: input.status || "PLANNING",
         priority: input.priority || "MEDIUM",
-        startDate,
-        endDate,
-        budget: input.budget,
-        client: input.client?.trim(),
-        color: input.color,
-        icon: input.icon,
-        permissions: input.permissions || {},
+        startDate: input.startDate ? new Date(input.startDate) : null,
+        endDate: input.endDate ? new Date(input.endDate) : null,
+        budget: input.budget || null,
+        client: input.client?.trim() || null,
+        color: input.color || null,
+        icon: input.icon || null,
+        permissions: input.permissions || null,
         createdById: user.id,
       },
     });
 
     // Add project members (managers and members)
-    // Ensure creator is always added as a manager if not already included
-    const managerIdsToAdd = input.managerIds || [];
-    if (!managerIdsToAdd.includes(user.id)) {
-      managerIdsToAdd.push(user.id);
-    }
-
-    const allUserIds = [
-      ...managerIdsToAdd,
+    const memberIds = [
+      ...(input.managerIds || []),
       ...(input.memberIds || []),
     ];
-    const uniqueUserIds = Array.from(new Set(allUserIds));
 
-    if (uniqueUserIds.length > 0) {
-      // Verify users exist
-      const users = await prisma.user.findMany({
-        where: {
-          id: { in: uniqueUserIds },
-        },
-        select: { id: true },
+    if (memberIds.length > 0) {
+      // Remove duplicates
+      const uniqueMemberIds = Array.from(new Set(memberIds));
+
+      // Create project memberships
+      await prisma.projectUser.createMany({
+        data: uniqueMemberIds.map((userId, index) => ({
+          projectId: project.id,
+          userId,
+          role: input.managerIds?.includes(userId) ? "MANAGER" : "MEMBER",
+        })),
+        skipDuplicates: true,
       });
-
-      const validUserIds = users.map((u) => u.id);
-      const managerIds = managerIdsToAdd.filter((id) => validUserIds.includes(id));
-      const memberIds = input.memberIds?.filter((id) => validUserIds.includes(id)) || [];
-
-      // Create manager memberships
-      if (managerIds.length > 0) {
-        await prisma.projectUser.createMany({
-          data: managerIds.map((userId) => ({
-            projectId: project.id,
-            userId,
-            role: "MANAGER",
-          })),
-        });
-      }
-
-      // Create member memberships (excluding those already added as managers)
-      const memberOnlyIds = memberIds.filter((id) => !managerIds.includes(id));
-      if (memberOnlyIds.length > 0) {
-        await prisma.projectUser.createMany({
-          data: memberOnlyIds.map((userId) => ({
-            projectId: project.id,
-            userId,
-            role: "MEMBER",
-          })),
-        });
-      }
     }
 
     // Add project groups
     if (input.groupIds && input.groupIds.length > 0) {
-      // Verify groups exist
-      const groups = await prisma.group.findMany({
-        where: {
-          id: { in: input.groupIds },
-        },
-        select: { id: true },
+      await prisma.projectGroup.createMany({
+        data: input.groupIds.map((groupId) => ({
+          projectId: project.id,
+          groupId,
+        })),
+        skipDuplicates: true,
       });
-
-      const validGroupIds = groups.map((g) => g.id);
-      if (validGroupIds.length > 0) {
-        await prisma.projectGroup.createMany({
-          data: validGroupIds.map((groupId) => ({
-            projectId: project.id,
-            groupId,
-          })),
-        });
-      }
     }
 
     revalidatePath("/dashboard/projects");
@@ -342,7 +156,7 @@ export async function createProject(input: ProjectInput): Promise<ActionResult<{
       message: "Project created successfully",
     };
   } catch (error) {
-    console.error("Error creating project:", error);
+    console.error("Create project error:", error);
     return {
       success: false,
       error: "Failed to create project. Please try again.",
@@ -354,10 +168,12 @@ export async function createProject(input: ProjectInput): Promise<ActionResult<{
  * Update a project
  */
 export async function updateProject(
-  projectId: string,
+  id: string,
   input: ProjectUpdateInput
 ): Promise<ActionResult> {
   try {
+    const user = await requireAuth();
+
     // Check if projects module is enabled
     const moduleEnabled = await isModuleEnabled(MODULE_KEYS.PROJECTS);
     if (!moduleEnabled) {
@@ -367,76 +183,113 @@ export async function updateProject(
       };
     }
 
-    const user = await requireAuth();
-
-    // Check permissions
-    if (!(await canEditProject(user.id, projectId))) {
-      return {
-        success: false,
-        error: "You don't have permission to edit this project",
-      };
-    }
-
-    // Get current project
-    const currentProject = await prisma.project.findUnique({
-      where: { id: projectId },
-      select: { status: true },
+    // Fetch current project
+    const project = await prisma.project.findUnique({
+      where: { id },
+      include: {
+        members: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+        groups: {
+          include: {
+            group: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
     });
 
-    if (!currentProject) {
+    if (!project) {
       return {
         success: false,
         error: "Project not found",
       };
     }
 
-    // Validate status transition
-    if (input.status && input.status !== currentProject.status) {
-      if (!isValidStatusTransition(currentProject.status as ProjectStatus, input.status)) {
-        return {
-          success: false,
-          error: `Cannot change status from ${currentProject.status} to ${input.status}`,
-          fieldErrors: {
-            status: [
-              `Cannot change status from ${currentProject.status} to ${input.status}. Once a project is completed, cancelled, or archived, it cannot be changed.`,
-            ],
-          },
-        };
-      }
-    }
+    // Check permissions: creator, managers, admins, or moderators can update
+    const membership = project.members.find((m) => m.user.id === user.id);
+    const canUpdate =
+      project.createdById === user.id ||
+      membership?.role === "MANAGER" ||
+      user.role === "ADMIN" ||
+      user.role === "MODERATOR";
 
-    // Parse dates
-    const startDate = input.startDate
-      ? new Date(input.startDate)
-      : undefined;
-    const endDate = input.endDate ? new Date(input.endDate) : undefined;
-
-    // Validate date range
-    if (startDate && endDate && startDate > endDate) {
+    if (!canUpdate) {
       return {
         success: false,
-        error: "End date must be after start date",
-        fieldErrors: { endDate: ["End date must be after start date"] },
+        error: "You don't have permission to update this project",
       };
     }
 
-    // Prepare update data
+    // Build update data
     const updateData: any = {};
-    if (input.name !== undefined) updateData.name = input.name.trim();
-    if (input.description !== undefined) updateData.description = input.description?.trim();
-    if (input.status !== undefined) updateData.status = input.status;
-    if (input.priority !== undefined) updateData.priority = input.priority;
-    if (input.startDate !== undefined) updateData.startDate = startDate;
-    if (input.endDate !== undefined) updateData.endDate = endDate;
-    if (input.budget !== undefined) updateData.budget = input.budget;
-    if (input.client !== undefined) updateData.client = input.client?.trim();
-    if (input.color !== undefined) updateData.color = input.color;
-    if (input.icon !== undefined) updateData.icon = input.icon;
-    if (input.permissions !== undefined) updateData.permissions = input.permissions;
+
+    if (input.name !== undefined) {
+      if (!input.name || input.name.trim().length === 0) {
+        return {
+          success: false,
+          error: "Project name cannot be empty",
+          fieldErrors: { name: ["Project name cannot be empty"] },
+        };
+      }
+      updateData.name = input.name.trim();
+    }
+
+    if (input.description !== undefined) {
+      updateData.description = input.description?.trim() || null;
+    }
+
+    if (input.status !== undefined) {
+      updateData.status = input.status;
+    }
+
+    if (input.priority !== undefined) {
+      updateData.priority = input.priority;
+    }
+
+    if (input.startDate !== undefined) {
+      updateData.startDate = input.startDate ? new Date(input.startDate) : null;
+    }
+
+    if (input.endDate !== undefined) {
+      updateData.endDate = input.endDate ? new Date(input.endDate) : null;
+    }
+
+    if (input.budget !== undefined) {
+      updateData.budget = input.budget || null;
+    }
+
+    if (input.client !== undefined) {
+      updateData.client = input.client?.trim() || null;
+    }
+
+    if (input.color !== undefined) {
+      updateData.color = input.color || null;
+    }
+
+    if (input.icon !== undefined) {
+      updateData.icon = input.icon || null;
+    }
+
+    if (input.permissions !== undefined) {
+      updateData.permissions = input.permissions || null;
+    }
 
     // Update project
     await prisma.project.update({
-      where: { id: projectId },
+      where: { id },
       data: updateData,
     });
 
@@ -444,81 +297,50 @@ export async function updateProject(
     if (input.managerIds !== undefined || input.memberIds !== undefined) {
       // Remove all existing memberships
       await prisma.projectUser.deleteMany({
-        where: { projectId },
+        where: { projectId: id },
       });
 
       // Add new memberships
-      const allUserIds = [
+      const memberIds = [
         ...(input.managerIds || []),
         ...(input.memberIds || []),
       ];
-      const uniqueUserIds = Array.from(new Set(allUserIds));
 
-      if (uniqueUserIds.length > 0) {
-        const users = await prisma.user.findMany({
-          where: {
-            id: { in: uniqueUserIds },
-          },
-          select: { id: true },
+      if (memberIds.length > 0) {
+        const uniqueMemberIds = Array.from(new Set(memberIds));
+
+        await prisma.projectUser.createMany({
+          data: uniqueMemberIds.map((userId) => ({
+            projectId: id,
+            userId,
+            role: input.managerIds?.includes(userId) ? "MANAGER" : "MEMBER",
+          })),
+          skipDuplicates: true,
         });
-
-        const validUserIds = users.map((u) => u.id);
-        const managerIds = input.managerIds?.filter((id) => validUserIds.includes(id)) || [];
-        const memberIds = input.memberIds?.filter((id) => validUserIds.includes(id)) || [];
-
-        if (managerIds.length > 0) {
-          await prisma.projectUser.createMany({
-            data: managerIds.map((userId) => ({
-              projectId,
-              userId,
-              role: "MANAGER",
-            })),
-          });
-        }
-
-        const memberOnlyIds = memberIds.filter((id) => !managerIds.includes(id));
-        if (memberOnlyIds.length > 0) {
-          await prisma.projectUser.createMany({
-            data: memberOnlyIds.map((userId) => ({
-              projectId,
-              userId,
-              role: "MEMBER",
-            })),
-          });
-        }
       }
     }
 
     // Update groups if provided
     if (input.groupIds !== undefined) {
-      // Remove all existing group memberships
+      // Remove all existing group assignments
       await prisma.projectGroup.deleteMany({
-        where: { projectId },
+        where: { projectId: id },
       });
 
-      // Add new group memberships
+      // Add new group assignments
       if (input.groupIds.length > 0) {
-        const groups = await prisma.group.findMany({
-          where: {
-            id: { in: input.groupIds },
-          },
-          select: { id: true },
+        await prisma.projectGroup.createMany({
+          data: input.groupIds.map((groupId) => ({
+            projectId: id,
+            groupId,
+          })),
+          skipDuplicates: true,
         });
-
-        const validGroupIds = groups.map((g) => g.id);
-        if (validGroupIds.length > 0) {
-          await prisma.projectGroup.createMany({
-            data: validGroupIds.map((groupId) => ({
-              projectId,
-              groupId,
-            })),
-          });
-        }
       }
     }
 
+    revalidatePath(`/dashboard/projects/${id}`);
     revalidatePath("/dashboard/projects");
-    revalidatePath(`/dashboard/projects/${projectId}`);
     revalidatePath("/dashboard");
 
     return {
@@ -526,7 +348,7 @@ export async function updateProject(
       message: "Project updated successfully",
     };
   } catch (error) {
-    console.error("Error updating project:", error);
+    console.error("Update project error:", error);
     return {
       success: false,
       error: "Failed to update project. Please try again.",
@@ -537,8 +359,10 @@ export async function updateProject(
 /**
  * Delete a project
  */
-export async function deleteProject(projectId: string): Promise<ActionResult> {
+export async function deleteProject(id: string): Promise<ActionResult> {
   try {
+    const user = await requireAuth();
+
     // Check if projects module is enabled
     const moduleEnabled = await isModuleEnabled(MODULE_KEYS.PROJECTS);
     if (!moduleEnabled) {
@@ -548,19 +372,9 @@ export async function deleteProject(projectId: string): Promise<ActionResult> {
       };
     }
 
-    const user = await requireAuth();
-
-    // Check permissions (only admins can delete)
-    if (!(await canDeleteProject(user.id))) {
-      return {
-        success: false,
-        error: "You don't have permission to delete projects",
-      };
-    }
-
-    // Check if project exists
+    // Fetch current project
     const project = await prisma.project.findUnique({
-      where: { id: projectId },
+      where: { id },
     });
 
     if (!project) {
@@ -570,9 +384,22 @@ export async function deleteProject(projectId: string): Promise<ActionResult> {
       };
     }
 
+    // Only creator, admins, or moderators can delete
+    const canDelete =
+      project.createdById === user.id ||
+      user.role === "ADMIN" ||
+      user.role === "MODERATOR";
+
+    if (!canDelete) {
+      return {
+        success: false,
+        error: "You don't have permission to delete this project",
+      };
+    }
+
     // Delete project (cascade will handle related records)
     await prisma.project.delete({
-      where: { id: projectId },
+      where: { id },
     });
 
     revalidatePath("/dashboard/projects");
@@ -583,7 +410,7 @@ export async function deleteProject(projectId: string): Promise<ActionResult> {
       message: "Project deleted successfully",
     };
   } catch (error) {
-    console.error("Error deleting project:", error);
+    console.error("Delete project error:", error);
     return {
       success: false,
       error: "Failed to delete project. Please try again.",
@@ -594,7 +421,7 @@ export async function deleteProject(projectId: string): Promise<ActionResult> {
 /**
  * Get a single project by ID
  */
-export async function getProject(projectId: string) {
+export async function getProject(id: string) {
   const user = await requireAuth();
 
   // Check if projects module is enabled
@@ -603,13 +430,8 @@ export async function getProject(projectId: string) {
     return null;
   }
 
-  // Check permissions
-  if (!(await canViewProject(user.id, projectId))) {
-    return null;
-  }
-
   const project = await prisma.project.findUnique({
-    where: { id: projectId },
+    where: { id },
     include: {
       createdBy: {
         select: {
@@ -625,6 +447,7 @@ export async function getProject(projectId: string) {
               id: true,
               name: true,
               email: true,
+              status: true,
             },
           },
         },
@@ -635,7 +458,6 @@ export async function getProject(projectId: string) {
             select: {
               id: true,
               name: true,
-              description: true,
             },
           },
         },
@@ -653,165 +475,69 @@ export async function getProject(projectId: string) {
     return null;
   }
 
-  // Determine user's role in the project
-  let userRole: "OWNER" | "MANAGER" | "MEMBER" | null = null;
-  
-  if (user.role === "ADMIN") {
-    userRole = "OWNER"; // Admins are treated as owners
-  } else if (project.createdById === user.id) {
-    userRole = "OWNER";
-  } else {
+  // Check if user has permission to view this project
+  // For admins and moderators, they can view all projects
+  if (user.role === "ADMIN" || user.role === "MODERATOR") {
+    // Determine userRole for admins/moderators
+    const membership = project.members.find((m) => m.user.id === user.id);
+    const userRole = project.createdById === user.id 
+      ? "OWNER" 
+      : membership?.role === "MANAGER" 
+        ? "MANAGER" 
+        : membership 
+          ? "MEMBER" 
+          : "MEMBER";
+    return { ...project, userRole };
+  }
+
+  // For agents, check if they're a member or if their groups are assigned
+  if (user.role === "AGENT") {
     const membership = project.members.find((m) => m.user.id === user.id);
     if (membership) {
-      userRole = membership.role as "MANAGER" | "MEMBER";
-    }
-  }
-
-  return {
-    ...project,
-    userRole, // Add user role to the returned project
-  };
-}
-
-/**
- * Get all tickets for a project
- */
-export async function getProjectTickets(projectId: string) {
-  const user = await requireAuth();
-
-  // Check if user can view the project
-  if (!(await canViewProject(user.id, projectId))) {
-    return [];
-  }
-
-  // Check if tickets module is enabled
-  const moduleEnabled = await isModuleEnabled(MODULE_KEYS.TICKETS);
-  if (!moduleEnabled) {
-    return [];
-  }
-
-  return prisma.ticket.findMany({
-    where: {
-      projectId,
-    },
-    select: {
-      id: true,
-      ticketNumber: true,
-      title: true,
-      description: true,
-      status: true,
-      priority: true,
-      type: true,
-      assignedToId: true,
-      assignedTo: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-        },
-      },
-      createdAt: true,
-      updatedAt: true,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
-}
-
-/**
- * Get time entries for a project grouped by user and ticket
- */
-export async function getProjectTimeAllocation(projectId: string) {
-  const user = await requireAuth();
-
-  // Check if user can view the project
-  if (!(await canViewProject(user.id, projectId))) {
-    return [];
-  }
-
-  // Check if time tracking module is enabled
-  const moduleEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
-  if (!moduleEnabled) {
-    return [];
-  }
-
-  const timeEntries = await prisma.timeEntry.findMany({
-    where: {
-      projectId,
-      status: "COMPLETED", // Only count completed time entries
-    },
-    select: {
-      id: true,
-      name: true,
-      description: true,
-      totalDuration: true,
-      userId: true,
-      user: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-        },
-      },
-      ticketId: true,
-      ticket: {
-        select: {
-          id: true,
-          ticketNumber: true,
-          title: true,
-        },
-      },
-      createdAt: true,
-      completedAt: true,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
-
-  // Group by user and ticket
-  const allocation: Array<{
-    userId: string;
-    userName: string;
-    userEmail: string;
-    ticketId: string | null;
-    ticketTitle: string | null;
-    ticketNumber: string | null;
-    totalDuration: number; // in seconds
-    entries: typeof timeEntries;
-  }> = [];
-
-  const grouped = new Map<string, typeof allocation[0]>();
-
-  for (const entry of timeEntries) {
-    const key = `${entry.userId}-${entry.ticketId || "no-ticket"}`;
-    
-    if (!grouped.has(key)) {
-      grouped.set(key, {
-        userId: entry.user.id,
-        userName: entry.user.name || entry.user.email,
-        userEmail: entry.user.email,
-        ticketId: entry.ticketId,
-        ticketTitle: entry.ticket?.title || null,
-        ticketNumber: entry.ticket?.ticketNumber || null,
-        totalDuration: 0,
-        entries: [],
-      });
+      const userRole = membership.role === "MANAGER" ? "MANAGER" : "MEMBER";
+      return { ...project, userRole };
     }
 
-    const group = grouped.get(key)!;
-    group.totalDuration += entry.totalDuration;
-    group.entries.push(entry);
+    // Check if user's groups are assigned to the project
+    const userGroups = await prisma.groupMembership.findMany({
+      where: { userId: user.id },
+      select: { groupId: true },
+    });
+
+    const groupIds = userGroups.map((g) => g.groupId);
+    const projectGroupIds = project.groups.map((g) => g.groupId);
+
+    if (groupIds.some((gid) => projectGroupIds.includes(gid))) {
+      return { ...project, userRole: "MEMBER" as const };
+    }
+
+    // Check if user is the creator
+    if (project.createdById === user.id) {
+      return { ...project, userRole: "OWNER" as const };
+    }
+
+    return null;
   }
 
-  return Array.from(grouped.values());
+  // For regular users, check if they're a member or creator
+  const membership = project.members.find((m) => m.user.id === user.id);
+  if (membership || project.createdById === user.id) {
+    // Add userRole to the project object
+    const userRole = project.createdById === user.id 
+      ? "OWNER" 
+      : membership?.role === "MANAGER" 
+        ? "MANAGER" 
+        : "MEMBER";
+    return { ...project, userRole };
+  }
+
+  return null;
 }
 
 /**
  * Get all projects accessible to the current user
  */
-export async function getAllProjects() {
+export async function getProjects() {
   const user = await requireAuth();
 
   // Check if projects module is enabled
@@ -820,8 +546,8 @@ export async function getAllProjects() {
     return [];
   }
 
-  // If admin, return all projects
-  if (user.role === "ADMIN") {
+  // For admins and moderators, return all projects
+  if (user.role === "ADMIN" || user.role === "MODERATOR") {
     return prisma.project.findMany({
       include: {
         createdBy: {
@@ -955,4 +681,327 @@ export async function getAllProjects() {
       createdAt: "desc",
     },
   });
+}
+
+/**
+ * Get all projects (alias for getProjects for backward compatibility)
+ * For admins/moderators, returns all projects
+ * For other users, returns projects they have access to
+ */
+export async function getAllProjects() {
+  return getProjects();
+}
+
+/**
+ * Check if a user can view a project
+ * Returns true if user is admin, moderator, creator, member, or agent with group access
+ */
+export async function canViewProject(userId: string, projectId: string): Promise<boolean> {
+  // Get user
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, role: true },
+  });
+
+  if (!user) {
+    return false;
+  }
+
+  // Admins and moderators can view all projects
+  if (user.role === "ADMIN" || user.role === "MODERATOR") {
+    return true;
+  }
+
+  // Get project with members and groups
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    include: {
+      members: {
+        include: {
+          user: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      },
+      groups: {
+        include: {
+          group: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!project) {
+    return false;
+  }
+
+  // Creator can view
+  if (project.createdById === userId) {
+    return true;
+  }
+
+  // Check if user is a member
+  const membership = project.members.find((m) => m.user.id === userId);
+  if (membership) {
+    return true;
+  }
+
+  // For agents, check if their groups are assigned to the project
+  if (user.role === "AGENT") {
+    const userGroups = await prisma.groupMembership.findMany({
+      where: { userId: userId },
+      select: { groupId: true },
+    });
+
+    const groupIds = userGroups.map((g) => g.groupId);
+    const projectGroupIds = project.groups.map((g) => g.groupId);
+
+    if (groupIds.some((gid) => projectGroupIds.includes(gid))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Check if a user can edit a project
+ * Returns true if user is creator, manager, admin, or moderator
+ */
+export async function canEditProject(userId: string, projectId: string): Promise<boolean> {
+  // Get user
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, role: true },
+  });
+
+  if (!user) {
+    return false;
+  }
+
+  // Admins and moderators can edit all projects
+  if (user.role === "ADMIN" || user.role === "MODERATOR") {
+    return true;
+  }
+
+  // Get project with members
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    include: {
+      members: {
+        include: {
+          user: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!project) {
+    return false;
+  }
+
+  // Creator can edit
+  if (project.createdById === userId) {
+    return true;
+  }
+
+  // Managers can edit
+  const membership = project.members.find((m) => m.user.id === userId);
+  if (membership?.role === "MANAGER") {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Get projects that the current user is a member of
+ * Used for ticket assignment - agents can only assign tickets to projects they're members of
+ */
+export async function getUserProjectsForAssignment() {
+  const user = await requireAuth();
+
+  // Get user's project memberships (includes both MANAGER and MEMBER roles)
+  const userMemberships = await prisma.projectUser.findMany({
+    where: { 
+      userId: user.id,
+    },
+    select: { projectId: true },
+  });
+
+  const projectIdsFromMembership = userMemberships.map((m) => m.projectId);
+
+  // Get projects where user is the creator
+  const createdProjects = await prisma.project.findMany({
+    where: { createdById: user.id },
+    select: { id: true },
+  });
+
+  const projectIdsFromCreator = createdProjects.map((p) => p.id);
+
+  // Get user's groups
+  const userGroups = await prisma.groupMembership.findMany({
+    where: { userId: user.id },
+    select: { groupId: true },
+  });
+
+  const groupIds = userGroups.map((g) => g.groupId);
+
+  // Get projects where user's groups are assigned
+  const projectGroups = await prisma.projectGroup.findMany({
+    where: {
+      groupId: { in: groupIds },
+    },
+    select: { projectId: true },
+  });
+
+  const projectIdsFromGroups = projectGroups.map((pg) => pg.projectId);
+
+  // Combine all project IDs
+  const allProjectIds = Array.from(
+    new Set([...projectIdsFromMembership, ...projectIdsFromCreator, ...projectIdsFromGroups])
+  );
+
+  if (allProjectIds.length === 0) {
+    return [];
+  }
+
+  return prisma.project.findMany({
+    where: {
+      id: { in: allProjectIds },
+    },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      color: true,
+      status: true,
+    },
+    orderBy: {
+      name: "asc",
+    },
+  });
+}
+
+/**
+ * Get tickets for a project
+ */
+export async function getProjectTickets(projectId: string) {
+  const user = await requireAuth();
+
+  // Check if user can view the project
+  if (!(await canViewProject(user.id, projectId))) {
+    return [];
+  }
+
+  return prisma.ticket.findMany({
+    where: {
+      projectId,
+    },
+    select: {
+      id: true,
+      ticketNumber: true,
+      title: true,
+      status: true,
+      priority: true,
+      assignedToId: true,
+      assignedTo: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+}
+
+/**
+ * Get time allocation summary for a project
+ * Groups time entries by user and ticket
+ */
+export async function getProjectTimeAllocation(projectId: string) {
+  const user = await requireAuth();
+
+  // Check if user can view the project
+  if (!(await canViewProject(user.id, projectId))) {
+    return [];
+  }
+
+  // Get all time entries for this project
+  const timeEntries = await prisma.timeEntry.findMany({
+    where: {
+      projectId,
+      status: "COMPLETED",
+    },
+    select: {
+      id: true,
+      userId: true,
+      ticketId: true,
+      totalDuration: true,
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      ticket: {
+        select: {
+          id: true,
+          ticketNumber: true,
+          title: true,
+        },
+      },
+    },
+  });
+
+  // Group by user and ticket
+  const allocationMap = new Map<string, {
+    userId: string;
+    userName: string;
+    ticketId: string | null;
+    ticketNumber: string | null;
+    ticketTitle: string | null;
+    totalDuration: number;
+    entries: Array<{ id: string; totalDuration: number }>;
+  }>();
+
+  for (const entry of timeEntries) {
+    const key = `${entry.userId}-${entry.ticketId || "no-ticket"}`;
+    
+    if (!allocationMap.has(key)) {
+      allocationMap.set(key, {
+        userId: entry.userId,
+        userName: entry.user.name || entry.user.email,
+        ticketId: entry.ticketId,
+        ticketNumber: entry.ticket?.ticketNumber || null,
+        ticketTitle: entry.ticket?.title || null,
+        totalDuration: 0,
+        entries: [],
+      });
+    }
+
+    const allocation = allocationMap.get(key)!;
+    allocation.totalDuration += entry.totalDuration;
+    allocation.entries.push({
+      id: entry.id,
+      totalDuration: entry.totalDuration,
+    });
+  }
+
+  return Array.from(allocationMap.values());
 }

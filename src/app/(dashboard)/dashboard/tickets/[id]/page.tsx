@@ -16,6 +16,7 @@ import { notFound } from "next/navigation";
 import { getAgents } from "@/server/actions/users";
 import { getGroups } from "@/server/actions/groups";
 import { getTimeEntriesForTicket, getAvailableTimeEntriesForAssignment } from "@/server/actions/time-tracking";
+import { getUserProjectsForAssignment } from "@/server/actions/projects";
 
 interface TicketDetailPageProps {
   params: Promise<{ id: string }>;
@@ -73,6 +74,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
   const isAgent = user.role === "AGENT" || user.role === "ADMIN" || user.role === "MODERATOR";
   const agents = isAgent ? await getAgents() : [];
   const groups = isAgent ? await getGroups() : [];
+  const projects = isAgent ? await getUserProjectsForAssignment() : [];
 
   // Check if time tracking module is enabled and get timers
   const timeTrackingEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
@@ -365,8 +367,10 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                   ticketId={ticket.id}
                   assignedToId={ticket.assignedToId}
                   assignedToGroupId={ticket.assignedToGroupId}
+                  projectId={ticket.projectId}
                   agents={agents}
                   groups={groups}
+                  projects={projects}
                 />
               ) : (
                 <>
