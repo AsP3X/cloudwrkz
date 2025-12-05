@@ -945,16 +945,14 @@ export async function updateTicket(
             where: { id: newProjectId },
             select: { name: true, code: true },
           });
-          // TODO: Add ASSIGNED_TO_PROJECT to TicketActivityType enum in schema
-          // For now, using DESCRIPTION_CHANGED as placeholder
           await logTicketActivity(
             id,
-            "DESCRIPTION_CHANGED",
+            "ASSIGNED_TO_PROJECT",
             user.id,
             userDisplayName,
             null,
-            `Project assigned: ${project ? `${project.name} (${project.code})` : newProjectId}`,
-            { projectId: newProjectId, activityType: "ASSIGNED_TO_PROJECT" }
+            project ? `${project.name} (${project.code})` : newProjectId,
+            { projectId: newProjectId }
           );
         } else if (!newProjectId && currentTicket.projectId) {
           // Unassigned from project
@@ -962,15 +960,14 @@ export async function updateTicket(
             where: { id: currentTicket.projectId },
             select: { name: true, code: true },
           });
-          // TODO: Add UNASSIGNED_FROM_PROJECT to TicketActivityType enum in schema
           await logTicketActivity(
             id,
-            "DESCRIPTION_CHANGED",
+            "UNASSIGNED_FROM_PROJECT",
             user.id,
             userDisplayName,
-            `Project: ${oldProject ? `${oldProject.name} (${oldProject.code})` : currentTicket.projectId}`,
-            "Project unassigned",
-            { projectId: currentTicket.projectId, activityType: "UNASSIGNED_FROM_PROJECT" }
+            oldProject ? `${oldProject.name} (${oldProject.code})` : currentTicket.projectId,
+            null,
+            { projectId: currentTicket.projectId }
           );
         } else if (newProjectId && currentTicket.projectId) {
           // Reassigned to different project
@@ -982,15 +979,14 @@ export async function updateTicket(
             where: { id: newProjectId },
             select: { name: true, code: true },
           });
-          // TODO: Add ASSIGNED_TO_PROJECT to TicketActivityType enum in schema
           await logTicketActivity(
             id,
-            "DESCRIPTION_CHANGED",
+            "ASSIGNED_TO_PROJECT",
             user.id,
             userDisplayName,
-            `Project: ${oldProject ? `${oldProject.name} (${oldProject.code})` : currentTicket.projectId}`,
-            `Project: ${newProject ? `${newProject.name} (${newProject.code})` : newProjectId}`,
-            { oldProjectId: currentTicket.projectId, projectId: newProjectId, activityType: "ASSIGNED_TO_PROJECT" }
+            oldProject ? `${oldProject.name} (${oldProject.code})` : currentTicket.projectId,
+            newProject ? `${newProject.name} (${newProject.code})` : newProjectId,
+            { oldProjectId: currentTicket.projectId, projectId: newProjectId }
           );
         }
       }
