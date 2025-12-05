@@ -264,6 +264,7 @@ export async function getTickets(filters?: {
   assignedToId?: string;
   assignedToGroupId?: string;
   createdById?: string;
+  projectId?: string;
   createdFrom?: string; // ISO date string
   createdTo?: string; // ISO date string
   updatedFrom?: string; // ISO date string
@@ -300,6 +301,9 @@ export async function getTickets(filters?: {
   }
   if (filters?.createdById) {
     where.createdById = filters.createdById;
+  }
+  if (filters?.projectId) {
+    where.projectId = filters.projectId;
   }
 
   // Date filtering for created date

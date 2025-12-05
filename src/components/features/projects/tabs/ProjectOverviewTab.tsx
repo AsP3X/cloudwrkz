@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
 import type { getProject } from "@/server/actions/projects";
 import type { getProjectAnalytics } from "@/server/actions/project-analytics";
@@ -147,7 +148,10 @@ export function ProjectOverviewTab({ project, analytics }: ProjectOverviewTabPro
         </div>
 
         {/* Tickets */}
-        <div className="bg-white dark:bg-neutral-800 rounded-lg p-6 border border-neutral-200 dark:border-neutral-700">
+        <Link
+          href={`/dashboard/tickets?projectId=${project.id}`}
+          className="bg-white dark:bg-neutral-800 rounded-lg p-6 border border-neutral-200 dark:border-neutral-700 hover:border-primary-300 dark:hover:border-primary-700 hover:shadow-md transition-all cursor-pointer block"
+        >
           <h4 className="text-sm font-medium text-neutral-600 dark:text-neutral-400 mb-2">
             Tickets
           </h4>
@@ -157,7 +161,7 @@ export function ProjectOverviewTab({ project, analytics }: ProjectOverviewTabPro
           <div className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
             {analytics.tickets.openTickets} open, {analytics.tickets.resolvedTickets} resolved
           </div>
-        </div>
+        </Link>
 
         {/* Risks */}
         <div className="bg-white dark:bg-neutral-800 rounded-lg p-6 border border-neutral-200 dark:border-neutral-700">

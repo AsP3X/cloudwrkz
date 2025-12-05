@@ -19,6 +19,7 @@ interface TicketsPageProps {
     status?: string;
     createdBy?: string;
     assignedToGroup?: string;
+    projectId?: string;
     createdFrom?: string;
     createdTo?: string;
     updatedFrom?: string;
@@ -67,6 +68,9 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
   }
   if (params.assignedToGroup) {
     filters.assignedToGroupId = params.assignedToGroup;
+  }
+  if (params.projectId) {
+    filters.projectId = params.projectId;
   }
   if (params.createdFrom) {
     filters.createdFrom = params.createdFrom;
