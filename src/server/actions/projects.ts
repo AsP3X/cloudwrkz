@@ -709,9 +709,12 @@ export async function getAllProjects() {
     });
   }
 
-  // Get user's project memberships
+  // Get user's project memberships (includes both MANAGER and MEMBER roles)
   const userMemberships = await prisma.projectUser.findMany({
-    where: { userId: user.id },
+    where: { 
+      userId: user.id,
+      // No role filter - we want both MANAGER and MEMBER roles
+    },
     select: { projectId: true },
   });
 
