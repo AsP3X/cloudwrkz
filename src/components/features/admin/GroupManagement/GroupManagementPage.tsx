@@ -96,49 +96,82 @@ export function GroupManagementPage({ initialGroups }: GroupManagementPageProps)
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {groups.map((group) => (
-            <div
-              key={group.id}
-              className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6 hover:shadow-soft-md transition-all duration-200"
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
-                    {group.name}
-                  </h3>
-                  {group.description && (
-                    <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                      {group.description}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-4 border-t border-neutral-200 dark:border-neutral-800">
-                <div className="text-sm text-neutral-600 dark:text-neutral-400">
-                  {group._count.members} member{group._count.members !== 1 ? "s" : ""} • {group._count.tickets} ticket{group._count.tickets !== 1 ? "s" : ""}
-                </div>
-                <div className="flex gap-2">
-                  <Link href={`/dashboard/admin/groups/${group.id}`}>
-                    <Button variant="ghost" size="sm">
-                      View
-                    </Button>
-                  </Link>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    onClick={() => {
-                      setSelectedGroup(group);
-                      setDeleteDialogOpen(true);
-                    }}
+        <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-neutral-50 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                    Group
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                    Description
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                    Members
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                    Tickets
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-200 dark:divide-neutral-700">
+                {groups.map((group) => (
+                  <tr
+                    key={group.id}
+                    className="hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
                   >
-                    Delete
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ))}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+                        {group.name}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="text-sm text-neutral-600 dark:text-neutral-400 max-w-md">
+                        {group.description || (
+                          <span className="text-neutral-400 dark:text-neutral-500">
+                            No description
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-neutral-700 dark:text-neutral-300">
+                        {group._count.members} member{group._count.members !== 1 ? "s" : ""}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-neutral-700 dark:text-neutral-300">
+                        {group._count.tickets} ticket{group._count.tickets !== 1 ? "s" : ""}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-2">
+                        <Link href={`/dashboard/admin/groups/${group.id}`}>
+                          <Button variant="ghost" size="sm">
+                            View
+                          </Button>
+                        </Link>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedGroup(group);
+                            setDeleteDialogOpen(true);
+                          }}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
