@@ -30,6 +30,7 @@ export type TicketInput = {
 export type TicketUpdateInput = Partial<TicketInput> & {
   status?: "OPEN" | "IN_PROGRESS" | "PENDING" | "RESOLVED" | "CLOSED" | "CANCELLED";
   assignedToGroupId?: string | null;
+  projectId?: string | null;
 };
 
 export type ActionResult<T = void> =
@@ -264,6 +265,8 @@ export async function getTickets(filters?: {
   assignedToId?: string;
   assignedToGroupId?: string;
   createdById?: string;
+  projectId?: string;
+  projectIds?: string[]; // Array of project IDs for OR condition
   createdFrom?: string; // ISO date string
   createdTo?: string; // ISO date string
   updatedFrom?: string; // ISO date string
@@ -274,60 +277,98 @@ export async function getTickets(filters?: {
   const user = await requireAuth();
 
   const where: any = {};
+  const baseFilters: any = {};
 
-  // Build filter conditions first
+  // Build base filter conditions (status, priority, type, etc.)
   if (filters?.status) {
     // Handle special "UNRESOLVED" status filter
     if (filters.status === "UNRESOLVED") {
-      where.status = {
+      baseFilters.status = {
         in: ["OPEN", "IN_PROGRESS", "PENDING"],
       };
     } else {
-      where.status = filters.status;
+      baseFilters.status = filters.status;
     }
   }
   if (filters?.priority) {
-    where.priority = filters.priority;
+    baseFilters.priority = filters.priority;
   }
   if (filters?.type) {
-    where.type = filters.type;
+    baseFilters.type = filters.type;
   }
   if (filters?.assignedToId) {
-    where.assignedToId = filters.assignedToId;
+    baseFilters.assignedToId = filters.assignedToId;
   }
   if (filters?.assignedToGroupId) {
-    where.assignedToGroupId = filters.assignedToGroupId;
+    baseFilters.assignedToGroupId = filters.assignedToGroupId;
   }
-  if (filters?.createdById) {
-    where.createdById = filters.createdById;
-  }
-
+  
   // Date filtering for created date
   if (filters?.createdFrom || filters?.createdTo) {
-    where.createdAt = {};
+    baseFilters.createdAt = {};
     if (filters.createdFrom) {
-      where.createdAt.gte = new Date(filters.createdFrom);
+      baseFilters.createdAt.gte = new Date(filters.createdFrom);
     }
     if (filters.createdTo) {
       // Add one day to include the entire end date
       const endDate = new Date(filters.createdTo);
       endDate.setHours(23, 59, 59, 999);
-      where.createdAt.lte = endDate;
+      baseFilters.createdAt.lte = endDate;
     }
   }
 
   // Date filtering for updated date
   if (filters?.updatedFrom || filters?.updatedTo) {
-    where.updatedAt = {};
+    baseFilters.updatedAt = {};
     if (filters.updatedFrom) {
-      where.updatedAt.gte = new Date(filters.updatedFrom);
+      baseFilters.updatedAt.gte = new Date(filters.updatedFrom);
     }
     if (filters.updatedTo) {
       // Add one day to include the entire end date
       const endDate = new Date(filters.updatedTo);
       endDate.setHours(23, 59, 59, 999);
-      where.updatedAt.lte = endDate;
+      baseFilters.updatedAt.lte = endDate;
     }
+  }
+
+  // Handle projectId filter (single project) - this takes precedence
+  if (filters?.projectId) {
+    baseFilters.projectId = filters.projectId;
+  }
+  
+  // Support OR condition: tickets created by user OR tickets from their projects
+  // This is used for project owners/managers to see all tickets for their projects
+  if (filters?.projectIds && filters.projectIds.length > 0 && filters?.createdById && !filters?.projectId) {
+    // Create an OR condition: tickets created by user OR tickets from their projects
+    const orCondition = {
+      OR: [
+        { createdById: filters.createdById },
+        { projectId: { in: filters.projectIds } },
+      ],
+    };
+    
+    // Combine OR condition with base filters using AND
+    const andConditions: any[] = [orCondition];
+    if (Object.keys(baseFilters).length > 0) {
+      andConditions.push(baseFilters);
+    }
+    
+    if (andConditions.length > 1) {
+      where.AND = andConditions;
+    } else {
+      Object.assign(where, orCondition);
+    }
+  } else if (filters?.createdById && !filters?.projectId) {
+    // Just filter by createdById if no projectIds
+    baseFilters.createdById = filters.createdById;
+    Object.assign(where, baseFilters);
+  } else if (filters?.projectIds && filters.projectIds.length > 0 && !filters?.projectId) {
+    // Just filter by projectIds if no createdById
+    baseFilters.projectId = { in: filters.projectIds };
+    Object.assign(where, baseFilters);
+  } else {
+    // No special OR condition, just use base filters
+    Object.assign(where, baseFilters);
   }
 
   // For agents, apply group membership filter
@@ -350,13 +391,18 @@ export async function getTickets(filters?: {
     };
 
     // Combine group filter with other filters using AND
-    const otherFilters = { ...where };
-    delete otherFilters.AND; // Remove AND if it exists
-    
-    where.AND = [
-      groupFilter,
-      ...(Object.keys(otherFilters).length > 0 ? [otherFilters] : []),
-    ];
+    // If where already has AND conditions, merge them
+    if (where.AND) {
+      where.AND = [groupFilter, ...where.AND];
+    } else {
+      const otherFilters = { ...where };
+      delete otherFilters.AND; // Remove AND if it exists
+      
+      where.AND = [
+        groupFilter,
+        ...(Object.keys(otherFilters).length > 0 ? [otherFilters] : []),
+      ];
+    }
   }
 
   // Determine sort order
@@ -463,6 +509,15 @@ export async function getTicket(id: string) {
           description: true,
         },
       },
+      projectId: true,
+      project: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          color: true,
+        },
+      },
       comments: {
         where: {
           // Filter out agent-only comments for non-agents
@@ -560,6 +615,7 @@ export async function updateTicket(
         createdById: true,
         assignedToId: true,
         assignedToGroupId: true,
+        projectId: true,
         resolvedAt: true,
         closedAt: true,
         status: true,
@@ -823,6 +879,114 @@ export async function updateTicket(
             oldGroup?.name || currentTicket.assignedToGroupId,
             newGroup?.name || newGroupId,
             { oldGroupId: currentTicket.assignedToGroupId, groupId: newGroupId }
+          );
+        }
+      }
+    }
+
+    // Track project assignment changes
+    if (input.projectId !== undefined) {
+      const newProjectId = input.projectId || null;
+      if (newProjectId !== currentTicket.projectId) {
+        // Validate project if provided and check user membership
+        if (newProjectId) {
+          const project = await prisma.project.findUnique({
+            where: { id: newProjectId },
+            select: { id: true, name: true },
+          });
+          if (!project) {
+            return {
+              success: false,
+              error: "Selected project not found",
+            };
+          }
+
+          // Check if user is a member of the project (for agents)
+          if (user.role === "AGENT" || user.role === "ADMIN" || user.role === "MODERATOR") {
+            const membership = await prisma.projectUser.findFirst({
+              where: {
+                projectId: newProjectId,
+                userId: user.id,
+              },
+            });
+            // Also check if user is creator or if user's groups are assigned
+            const isCreator = await prisma.project.findFirst({
+              where: {
+                id: newProjectId,
+                createdById: user.id,
+              },
+            });
+            const userGroups = await prisma.groupMembership.findMany({
+              where: { userId: user.id },
+              select: { groupId: true },
+            });
+            const groupIds = userGroups.map((g) => g.groupId);
+            const isInGroup = groupIds.length > 0 ? await prisma.projectGroup.findFirst({
+              where: {
+                projectId: newProjectId,
+                groupId: { in: groupIds },
+              },
+            }) : null;
+
+            if (!membership && !isCreator && !isInGroup) {
+              return {
+                success: false,
+                error: "You must be a member of the project to assign tickets to it",
+              };
+            }
+          }
+        }
+
+        updateData.projectId = newProjectId;
+        
+        if (newProjectId && !currentTicket.projectId) {
+          // Assigned to project
+          const project = await prisma.project.findUnique({
+            where: { id: newProjectId },
+            select: { name: true, code: true },
+          });
+          await logTicketActivity(
+            id,
+            "ASSIGNED_TO_PROJECT",
+            user.id,
+            userDisplayName,
+            null,
+            project ? `${project.name} (${project.code})` : newProjectId,
+            { projectId: newProjectId }
+          );
+        } else if (!newProjectId && currentTicket.projectId) {
+          // Unassigned from project
+          const oldProject = await prisma.project.findUnique({
+            where: { id: currentTicket.projectId },
+            select: { name: true, code: true },
+          });
+          await logTicketActivity(
+            id,
+            "UNASSIGNED_FROM_PROJECT",
+            user.id,
+            userDisplayName,
+            oldProject ? `${oldProject.name} (${oldProject.code})` : currentTicket.projectId,
+            null,
+            { projectId: currentTicket.projectId }
+          );
+        } else if (newProjectId && currentTicket.projectId) {
+          // Reassigned to different project
+          const oldProject = await prisma.project.findUnique({
+            where: { id: currentTicket.projectId },
+            select: { name: true, code: true },
+          });
+          const newProject = await prisma.project.findUnique({
+            where: { id: newProjectId },
+            select: { name: true, code: true },
+          });
+          await logTicketActivity(
+            id,
+            "ASSIGNED_TO_PROJECT",
+            user.id,
+            userDisplayName,
+            oldProject ? `${oldProject.name} (${oldProject.code})` : currentTicket.projectId,
+            newProject ? `${newProject.name} (${newProject.code})` : newProjectId,
+            { oldProjectId: currentTicket.projectId, projectId: newProjectId }
           );
         }
       }

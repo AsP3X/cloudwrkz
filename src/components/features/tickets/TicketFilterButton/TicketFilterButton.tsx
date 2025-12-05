@@ -20,10 +20,16 @@ interface TicketFilterButtonProps {
     name: string;
     description: string | null;
   }>;
+  projects?: Array<{
+    id: string;
+    code: string;
+    name: string;
+    color: string | null;
+  }>;
   isAgent: boolean;
 }
 
-export const TicketFilterButton = ({ users, groups = [], isAgent }: TicketFilterButtonProps) => {
+export const TicketFilterButton = ({ users, groups = [], projects = [], isAgent }: TicketFilterButtonProps) => {
   const [isOpen, setIsOpen] = React.useState(false);
   const [hasPreset, setHasPreset] = React.useState(false);
   const searchParams = useSearchParams();
@@ -34,6 +40,7 @@ export const TicketFilterButton = ({ users, groups = [], isAgent }: TicketFilter
     !!searchParams.get("status") ||
     !!searchParams.get("createdBy") ||
     !!searchParams.get("assignedToGroup") ||
+    !!searchParams.get("projectId") ||
     !!searchParams.get("createdFrom") ||
     !!searchParams.get("createdTo") ||
     !!searchParams.get("updatedFrom") ||
@@ -131,6 +138,7 @@ export const TicketFilterButton = ({ users, groups = [], isAgent }: TicketFilter
         onOpenChange={setIsOpen}
         users={users}
         groups={groups}
+        projects={projects}
         isAgent={isAgent}
       />
     </>

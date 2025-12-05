@@ -67,7 +67,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
           Search
         </h1>
         <p className="text-neutral-600 dark:text-neutral-400 mt-1">
-          Search across all tickets and modules
+          Search across tickets, users, time entries, and projects
         </p>
       </div>
 

@@ -114,12 +114,6 @@ export const TicketCommentsAndActivity = ({
   userRole,
   stoppedTimeEntries = [],
 }: TicketCommentsAndActivityProps) => {
-  const [mounted, setMounted] = React.useState(false);
-
-  // Ensure component is mounted before formatting dates to avoid hydration mismatch
-  React.useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const commentsTabContent = (
     <div>
@@ -206,7 +200,7 @@ export const TicketCommentsAndActivity = ({
                       )}
                     </div>
                     <p className="text-xs text-neutral-500 dark:text-neutral-500">
-                      {mounted ? formatDate(comment.createdAt) : ""}
+                      {formatDate(comment.createdAt)}
                     </p>
                   </div>
                 </div>
@@ -289,7 +283,7 @@ export const TicketCommentsAndActivity = ({
                     <div className="flex items-center gap-4 text-xs text-neutral-500 dark:text-neutral-500">
                       <span>Duration: {formatDuration(entry.totalDuration)}</span>
                       <span>
-                        Started: {mounted ? new Date(entry.startedAt).toLocaleDateString() : ""}
+                        Started: {new Date(entry.startedAt).toLocaleDateString("en-US")}
                       </span>
                     </div>
                   </div>

@@ -16,6 +16,7 @@ import { notFound } from "next/navigation";
 import { getAgents } from "@/server/actions/users";
 import { getGroups } from "@/server/actions/groups";
 import { getTimeEntriesForTicket, getAvailableTimeEntriesForAssignment } from "@/server/actions/time-tracking";
+import { getUserProjectsForAssignment, getProject } from "@/server/actions/projects";
 
 interface TicketDetailPageProps {
   params: Promise<{ id: string }>;
@@ -56,14 +57,33 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
     notFound();
   }
 
+  // Check if user is the owner or manager of the project this ticket belongs to
+  let isProjectOwnerOrManager = false;
+  if (ticket.projectId) {
+    const project = await getProject(ticket.projectId);
+    if (project) {
+      // Check if user is the project creator (owner)
+      if (project.createdById === user.id) {
+        isProjectOwnerOrManager = true;
+      } else {
+        // Check if user is a manager of the project
+        const membership = project.members.find((m) => m.user.id === user.id);
+        if (membership?.role === "MANAGER") {
+          isProjectOwnerOrManager = true;
+        }
+      }
+    }
+  }
+
   // Check if user has permission to view this ticket
-  // Creator, assigned agent, admin, or moderator can view
+  // Creator, assigned agent, admin, moderator, or project owner/manager can view
   const canView = 
     ticket.createdById === user.id ||
     user.role === "ADMIN" ||
     user.role === "MODERATOR" ||
     (user.role === "AGENT" && ticket.assignedToId === user.id) ||
-    user.role === "AGENT"; // Agents can view all tickets
+    user.role === "AGENT" || // Agents can view all tickets
+    isProjectOwnerOrManager; // Project owners and managers can view tickets for their projects
   
   if (!canView) {
     redirect(ROUTES.DASHBOARD);
@@ -73,6 +93,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
   const isAgent = user.role === "AGENT" || user.role === "ADMIN" || user.role === "MODERATOR";
   const agents = isAgent ? await getAgents() : [];
   const groups = isAgent ? await getGroups() : [];
+  const projects = isAgent ? await getUserProjectsForAssignment() : [];
 
   // Check if time tracking module is enabled and get timers
   const timeTrackingEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
@@ -365,8 +386,10 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                   ticketId={ticket.id}
                   assignedToId={ticket.assignedToId}
                   assignedToGroupId={ticket.assignedToGroupId}
+                  projectId={ticket.projectId}
                   agents={agents}
                   groups={groups}
+                  projects={projects}
                 />
               ) : (
                 <>
@@ -412,6 +435,34 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                       <p className="text-sm text-neutral-500 dark:text-neutral-500 italic">No group assignment</p>
                     </div>
                   )}
+                </>
+              )}
+
+              {/* Project - Only show if project is assigned */}
+              {ticket.project && (
+                <>
+                  {/* Divider */}
+                  <div className="border-t border-neutral-200 pt-4"></div>
+                  <div>
+                    <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
+                      Project
+                    </label>
+                    <Link
+                      href={`/dashboard/projects/${ticket.project.id}`}
+                      className="flex items-center gap-2 text-sm text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                    >
+                      {ticket.project.color && (
+                        <div
+                          className="w-3 h-3 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: ticket.project.color }}
+                        />
+                      )}
+                      <span className="font-medium">{ticket.project.name}</span>
+                      <span className="text-neutral-500 dark:text-neutral-500 font-mono text-xs">
+                        ({ticket.project.code})
+                      </span>
+                    </Link>
+                  </div>
                 </>
               )}
 

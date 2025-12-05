@@ -257,7 +257,7 @@ export async function AdminDashboard({ user }: { user: CurrentUser }) {
             </Link>
             <Link
               href={ROUTES.ADMIN_GROUPS}
-              className="group p-5 border-2 border-neutral-200/50 rounded-xl hover:border-warning-300 hover:bg-gradient-to-br hover:from-warning-50 hover:to-warning-50/50 transition-all duration-200 text-left hover:shadow-md relative overflow-hidden"
+              className="group p-5 border-2 border-neutral-200/50 rounded-xl hover:border-warning-300 dark:hover:border-warning-700 hover:bg-gradient-to-br hover:from-warning-50 dark:hover:from-warning-900 hover:to-warning-50/50 dark:hover:to-warning-900/50 transition-all duration-200 text-left hover:shadow-md relative overflow-hidden"
             >
               <div className="absolute top-0 right-0 w-24 h-24 bg-warning-100 dark:bg-warning-900/0 group-hover:bg-warning-100 dark:bg-warning-900/20 rounded-full blur-2xl -mr-12 -mt-12 transition-all" />
               <div className="relative z-10">
@@ -266,13 +266,13 @@ export async function AdminDashboard({ user }: { user: CurrentUser }) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
                 </div>
-                <h3 className="font-semibold text-neutral-900 dark:text-neutral-100 mb-1 group-hover:text-warning-700 dark:group-hover:text-warning-300 transition-colors">Manage Groups</h3>
+                <h3 className="font-semibold text-neutral-900 dark:text-neutral-100 mb-1 group-hover:text-warning-700 dark:group-hover:text-warning-200 transition-colors">Manage Groups</h3>
                 <p className="text-sm text-neutral-600 dark:text-neutral-400">Manage agent groups</p>
               </div>
             </Link>
             <Link
               href={ROUTES.ADMIN_SETTINGS}
-              className="group p-5 border-2 border-neutral-200/50 rounded-xl hover:border-neutral-300 dark:hover:border-neutral-700 hover:bg-gradient-to-br hover:from-neutral-50 hover:to-neutral-50/50 transition-all duration-200 text-left hover:shadow-md relative overflow-hidden"
+              className="group p-5 border-2 border-neutral-200/50 rounded-xl hover:border-neutral-300 dark:hover:border-neutral-700 hover:bg-gradient-to-br hover:from-neutral-50 dark:hover:from-neutral-800 hover:to-neutral-50/50 dark:hover:to-neutral-800/50 transition-all duration-200 text-left hover:shadow-md relative overflow-hidden"
             >
               <div className="absolute top-0 right-0 w-24 h-24 bg-neutral-100 dark:bg-neutral-800/0 group-hover:bg-neutral-100 dark:bg-neutral-800/20 rounded-full blur-2xl -mr-12 -mt-12 transition-all" />
               <div className="relative z-10">
@@ -282,7 +282,7 @@ export async function AdminDashboard({ user }: { user: CurrentUser }) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
                 </div>
-                <h3 className="font-semibold text-neutral-900 dark:text-neutral-100 mb-1 group-hover:text-neutral-700 dark:group-hover:text-neutral-300 transition-colors">System Settings</h3>
+                <h3 className="font-semibold text-neutral-900 dark:text-neutral-100 mb-1 group-hover:text-neutral-700 dark:group-hover:text-neutral-200 transition-colors">System Settings</h3>
                 <p className="text-sm text-neutral-600 dark:text-neutral-400">System configuration</p>
               </div>
             </Link>
