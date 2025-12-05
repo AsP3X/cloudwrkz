@@ -20,6 +20,8 @@ export const ROUTES = {
   ADMIN_SESSIONS: "/dashboard/admin/sessions",
   ADMIN_TICKETS: "/dashboard/admin/tickets",
   ADMIN_PROJECTS: "/dashboard/admin/projects",
+  // Projects
+  PROJECTS: "/dashboard/projects",
   // Time tracking
   TIME_TRACKING: "/dashboard/time-tracking",
 } as const;
