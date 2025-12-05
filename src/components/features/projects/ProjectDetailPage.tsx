@@ -634,8 +634,12 @@ export function ProjectDetailPage({ project, initialTickets = [], initialTimeAll
     );
   }
 
-  // Owner/Manager view - standard detail view (read-only for now)
-  return (
+  // Owner/Manager view - use the new comprehensive ProjectOwnerPage
+  // This will be handled by the page component, so we don't render it here
+  return null;
+  
+  // Old owner/manager view (kept for reference, but not used)
+  const oldOwnerView = (
     <div className="space-y-6">
       {/* Header */}
       <div>

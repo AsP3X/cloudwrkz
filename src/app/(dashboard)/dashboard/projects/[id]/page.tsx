@@ -1,9 +1,11 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/utils/auth-server";
 import { getProject, getProjectTickets, getProjectTimeAllocation } from "@/server/actions/projects";
+import { getProjectAnalytics } from "@/server/actions/project-analytics";
 import { isModuleEnabled } from "@/server/actions/modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { ProjectDetailPage } from "@/components/features/projects/ProjectDetailPage";
+import { ProjectOwnerPage } from "@/components/features/projects/ProjectOwnerPage";
 
 export default async function UserProjectDetailPage({
   params,
@@ -29,6 +31,20 @@ export default async function UserProjectDetailPage({
   // getProject already checks permissions, so if it returns null, user doesn't have access
   if (!project) {
     redirect("/dashboard/projects");
+  }
+
+  // Check if user is owner or manager
+  const isOwnerOrManager = project.userRole === "OWNER" || project.userRole === "MANAGER";
+
+  if (isOwnerOrManager) {
+    // Fetch analytics for owner/manager view
+    const analytics = await getProjectAnalytics(id);
+    
+    if (!analytics) {
+      redirect("/dashboard/projects");
+    }
+
+    return <ProjectOwnerPage project={project} analytics={analytics} />;
   }
 
   // Fetch tickets and time allocation for members

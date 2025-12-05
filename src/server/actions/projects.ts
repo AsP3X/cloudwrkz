@@ -89,7 +89,7 @@ function isValidStatusTransition(
 /**
  * Check if user has permission to view a project
  */
-async function canViewProject(userId: string, projectId: string): Promise<boolean> {
+export async function canViewProject(userId: string, projectId: string): Promise<boolean> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { role: true },
@@ -138,7 +138,7 @@ async function canViewProject(userId: string, projectId: string): Promise<boolea
 /**
  * Check if user has permission to edit a project
  */
-async function canEditProject(userId: string, projectId: string): Promise<boolean> {
+export async function canEditProject(userId: string, projectId: string): Promise<boolean> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { role: true },
