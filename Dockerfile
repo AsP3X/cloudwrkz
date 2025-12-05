@@ -5,9 +5,6 @@ FROM node:22-alpine AS builder
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies required by Prisma (libssl 1.1)
-RUN apk add --no-cache openssl1.1-compat
-
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
