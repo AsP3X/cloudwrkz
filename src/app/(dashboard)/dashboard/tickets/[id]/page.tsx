@@ -16,7 +16,7 @@ import { notFound } from "next/navigation";
 import { getAgents } from "@/server/actions/users";
 import { getGroups } from "@/server/actions/groups";
 import { getTimeEntriesForTicket, getAvailableTimeEntriesForAssignment } from "@/server/actions/time-tracking";
-import { getUserProjectsForAssignment } from "@/server/actions/projects";
+import { getUserProjectsForAssignment, getProject } from "@/server/actions/projects";
 
 interface TicketDetailPageProps {
   params: Promise<{ id: string }>;
@@ -57,14 +57,33 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
     notFound();
   }
 
+  // Check if user is the owner or manager of the project this ticket belongs to
+  let isProjectOwnerOrManager = false;
+  if (ticket.projectId) {
+    const project = await getProject(ticket.projectId);
+    if (project) {
+      // Check if user is the project creator (owner)
+      if (project.createdById === user.id) {
+        isProjectOwnerOrManager = true;
+      } else {
+        // Check if user is a manager of the project
+        const membership = project.members.find((m) => m.user.id === user.id);
+        if (membership?.role === "MANAGER") {
+          isProjectOwnerOrManager = true;
+        }
+      }
+    }
+  }
+
   // Check if user has permission to view this ticket
-  // Creator, assigned agent, admin, or moderator can view
+  // Creator, assigned agent, admin, moderator, or project owner/manager can view
   const canView = 
     ticket.createdById === user.id ||
     user.role === "ADMIN" ||
     user.role === "MODERATOR" ||
     (user.role === "AGENT" && ticket.assignedToId === user.id) ||
-    user.role === "AGENT"; // Agents can view all tickets
+    user.role === "AGENT" || // Agents can view all tickets
+    isProjectOwnerOrManager; // Project owners and managers can view tickets for their projects
   
   if (!canView) {
     redirect(ROUTES.DASHBOARD);

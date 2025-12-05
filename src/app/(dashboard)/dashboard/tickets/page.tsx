@@ -6,7 +6,7 @@ import { MODULE_KEYS } from "@/lib/constants/modules";
 import { getTickets } from "@/server/actions/tickets";
 import { getAllUsers } from "@/server/actions/users";
 import { getGroups } from "@/server/actions/groups";
-import { getUserProjectsForAssignment } from "@/server/actions/projects";
+import { getUserProjectsForAssignment, getProjects } from "@/server/actions/projects";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { TicketFilterButton } from "@/components/features/tickets/TicketFilterButton";
@@ -86,9 +86,31 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
     filters.updatedTo = params.updatedTo;
   }
 
-  // For regular users, always filter by their own tickets
+  // For regular users, show tickets they created OR tickets from projects they own/manage
   if (user.role !== "AGENT") {
-    filters.createdById = user.id;
+    // Get all projects the user has access to
+    const userProjects = await getProjects();
+    
+    // Filter projects where user is owner or manager
+    const ownedOrManagedProjects = userProjects.filter((project) => {
+      if (project.createdById === user.id) return true; // Owner
+      const membership = project.members.find((m) => m.user.id === user.id);
+      return membership?.role === "MANAGER"; // Manager
+    });
+    
+    const projectIds = ownedOrManagedProjects.map((p) => p.id);
+    
+    // If user has projects they own/manage, include tickets from those projects
+    // Otherwise, just show tickets they created
+    if (projectIds.length > 0) {
+      // We'll need to modify getTickets to support OR conditions
+      // For now, we'll fetch tickets they created and tickets from their projects separately
+      // and combine them, or we can pass projectIds to getTickets
+      filters.createdById = user.id;
+      filters.projectIds = projectIds; // We'll need to add this to getTickets
+    } else {
+      filters.createdById = user.id;
+    }
   }
 
   // Get users, groups, and projects for filter dropdown (only for agents)

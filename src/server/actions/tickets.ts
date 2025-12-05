@@ -266,6 +266,7 @@ export async function getTickets(filters?: {
   assignedToGroupId?: string;
   createdById?: string;
   projectId?: string;
+  projectIds?: string[]; // Array of project IDs for OR condition
   createdFrom?: string; // ISO date string
   createdTo?: string; // ISO date string
   updatedFrom?: string; // ISO date string
@@ -276,63 +277,98 @@ export async function getTickets(filters?: {
   const user = await requireAuth();
 
   const where: any = {};
+  const baseFilters: any = {};
 
-  // Build filter conditions first
+  // Build base filter conditions (status, priority, type, etc.)
   if (filters?.status) {
     // Handle special "UNRESOLVED" status filter
     if (filters.status === "UNRESOLVED") {
-      where.status = {
+      baseFilters.status = {
         in: ["OPEN", "IN_PROGRESS", "PENDING"],
       };
     } else {
-      where.status = filters.status;
+      baseFilters.status = filters.status;
     }
   }
   if (filters?.priority) {
-    where.priority = filters.priority;
+    baseFilters.priority = filters.priority;
   }
   if (filters?.type) {
-    where.type = filters.type;
+    baseFilters.type = filters.type;
   }
   if (filters?.assignedToId) {
-    where.assignedToId = filters.assignedToId;
+    baseFilters.assignedToId = filters.assignedToId;
   }
   if (filters?.assignedToGroupId) {
-    where.assignedToGroupId = filters.assignedToGroupId;
+    baseFilters.assignedToGroupId = filters.assignedToGroupId;
   }
-  if (filters?.createdById) {
-    where.createdById = filters.createdById;
-  }
-  if (filters?.projectId) {
-    where.projectId = filters.projectId;
-  }
-
+  
   // Date filtering for created date
   if (filters?.createdFrom || filters?.createdTo) {
-    where.createdAt = {};
+    baseFilters.createdAt = {};
     if (filters.createdFrom) {
-      where.createdAt.gte = new Date(filters.createdFrom);
+      baseFilters.createdAt.gte = new Date(filters.createdFrom);
     }
     if (filters.createdTo) {
       // Add one day to include the entire end date
       const endDate = new Date(filters.createdTo);
       endDate.setHours(23, 59, 59, 999);
-      where.createdAt.lte = endDate;
+      baseFilters.createdAt.lte = endDate;
     }
   }
 
   // Date filtering for updated date
   if (filters?.updatedFrom || filters?.updatedTo) {
-    where.updatedAt = {};
+    baseFilters.updatedAt = {};
     if (filters.updatedFrom) {
-      where.updatedAt.gte = new Date(filters.updatedFrom);
+      baseFilters.updatedAt.gte = new Date(filters.updatedFrom);
     }
     if (filters.updatedTo) {
       // Add one day to include the entire end date
       const endDate = new Date(filters.updatedTo);
       endDate.setHours(23, 59, 59, 999);
-      where.updatedAt.lte = endDate;
+      baseFilters.updatedAt.lte = endDate;
     }
+  }
+
+  // Handle projectId filter (single project) - this takes precedence
+  if (filters?.projectId) {
+    baseFilters.projectId = filters.projectId;
+  }
+  
+  // Support OR condition: tickets created by user OR tickets from their projects
+  // This is used for project owners/managers to see all tickets for their projects
+  if (filters?.projectIds && filters.projectIds.length > 0 && filters?.createdById && !filters?.projectId) {
+    // Create an OR condition: tickets created by user OR tickets from their projects
+    const orCondition = {
+      OR: [
+        { createdById: filters.createdById },
+        { projectId: { in: filters.projectIds } },
+      ],
+    };
+    
+    // Combine OR condition with base filters using AND
+    const andConditions: any[] = [orCondition];
+    if (Object.keys(baseFilters).length > 0) {
+      andConditions.push(baseFilters);
+    }
+    
+    if (andConditions.length > 1) {
+      where.AND = andConditions;
+    } else {
+      Object.assign(where, orCondition);
+    }
+  } else if (filters?.createdById && !filters?.projectId) {
+    // Just filter by createdById if no projectIds
+    baseFilters.createdById = filters.createdById;
+    Object.assign(where, baseFilters);
+  } else if (filters?.projectIds && filters.projectIds.length > 0 && !filters?.projectId) {
+    // Just filter by projectIds if no createdById
+    baseFilters.projectId = { in: filters.projectIds };
+    Object.assign(where, baseFilters);
+  } else {
+    // No special OR condition, just use base filters
+    Object.assign(where, baseFilters);
   }
 
   // For agents, apply group membership filter
@@ -355,13 +391,18 @@ export async function getTickets(filters?: {
     };
 
     // Combine group filter with other filters using AND
-    const otherFilters = { ...where };
-    delete otherFilters.AND; // Remove AND if it exists
-    
-    where.AND = [
-      groupFilter,
-      ...(Object.keys(otherFilters).length > 0 ? [otherFilters] : []),
-    ];
+    // If where already has AND conditions, merge them
+    if (where.AND) {
+      where.AND = [groupFilter, ...where.AND];
+    } else {
+      const otherFilters = { ...where };
+      delete otherFilters.AND; // Remove AND if it exists
+      
+      where.AND = [
+        groupFilter,
+        ...(Object.keys(otherFilters).length > 0 ? [otherFilters] : []),
+      ];
+    }
   }
 
   // Determine sort order
