@@ -5,6 +5,7 @@
 export const MODULE_KEYS = {
   TICKETS: "tickets",
   TIMETRACKING: "timetracking",
+  PROJECTS: "projects",
 } as const;
 
 export type ModuleKey = typeof MODULE_KEYS[keyof typeof MODULE_KEYS];
@@ -20,6 +21,12 @@ export const MODULE_CONFIG = {
     key: MODULE_KEYS.TIMETRACKING,
     name: "Time Tracking",
     description: "Track time spent on projects and tasks",
+    defaultEnabled: false,
+  },
+  [MODULE_KEYS.PROJECTS]: {
+    key: MODULE_KEYS.PROJECTS,
+    name: "Projects",
+    description: "Project management and organization",
     defaultEnabled: false,
   },
 } as const;

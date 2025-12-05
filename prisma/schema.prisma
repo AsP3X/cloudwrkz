@@ -64,6 +64,8 @@ model User {
   ticketActivities TicketActivity[]  @relation("TicketActivityChanger")
   groupMemberships GroupMembership[]
   timeEntries      TimeEntry[]
+  projectMemberships ProjectUser[]
+  createdProjects  Project[]         @relation("ProjectCreator")
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -143,6 +145,24 @@ enum TimeEntryStatus {
   COMPLETED
 }
 
+// Project Status
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+  ARCHIVED
+}
+
+// Project Priority
+enum ProjectPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
 // Agent Groups - only for agents
 model Group {
   id          String  @id @default(cuid())
@@ -152,6 +172,7 @@ model Group {
   // Relations
   members GroupMembership[]
   tickets Ticket[]
+  projectMemberships ProjectGroup[]
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -199,6 +220,10 @@ model Ticket {
   tags        String[] @default([])
   attachments String[] @default([])
 
+  // Project relation
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
   // Relations
   comments    TicketComment[]
   activities  TicketActivity[]
@@ -213,6 +238,7 @@ model Ticket {
   @@index([createdById])
   @@index([assignedToId])
   @@index([assignedToGroupId])
+  @@index([projectId])
   @@index([status])
   @@index([priority])
   @@index([type])
@@ -306,8 +332,10 @@ model TimeEntry {
   // Relations
   userId   String
   user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  ticketId String? // Future: Link to ticket
+  ticketId String? // Link to ticket
   ticket   Ticket? @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  projectId String? // Direct link to project
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   // Tags and metadata
   tags     String[] @default([])
@@ -321,6 +349,93 @@ model TimeEntry {
   @@index([userId])
   @@index([status])
   @@index([ticketId])
+  @@index([projectId])
   @@index([createdAt])
   @@map("time_entries")
+}
+
+// Project model
+model Project {
+  id          String   @id @default(cuid())
+  code        String   @unique // Project code/identifier (e.g., PROJ-001)
+  name        String
+  description String?
+  status      ProjectStatus @default(PLANNING)
+  priority    ProjectPriority @default(MEDIUM)
+  
+  // Dates
+  startDate   DateTime?
+  endDate     DateTime?
+  
+  // Budget and client
+  budget      Float?
+  client      String? // Client/customer name
+  
+  // Visual
+  color       String? // Hex color code
+  icon        String? // Icon identifier
+  
+  // Permissions (stored as JSON for flexibility)
+  permissions Json? // Project-specific permissions configuration
+  
+  // Relations
+  createdById String?
+  createdBy   User?   @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  
+  // Many-to-many relationships
+  members     ProjectUser[]
+  groups      ProjectGroup[]
+  
+  // One-to-many relationships
+  tickets     Ticket[]
+  timeEntries TimeEntry[]
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([code])
+  @@index([status])
+  @@index([priority])
+  @@index([createdById])
+  @@index([createdAt])
+  @@map("projects")
+}
+
+// Project User Role
+enum ProjectUserRole {
+  MANAGER
+  MEMBER
+}
+
+// Many-to-many relationship between Users and Projects
+model ProjectUser {
+  id        String          @id @default(cuid())
+  userId    String
+  projectId String
+  role      ProjectUserRole @default(MEMBER)
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime        @default(now())
+  
+  @@unique([userId, projectId])
+  @@index([userId])
+  @@index([projectId])
+  @@index([role])
+  @@map("project_users")
+}
+
+// Many-to-many relationship between Groups and Projects
+model ProjectGroup {
+  id        String   @id @default(cuid())
+  groupId   String
+  projectId String
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  
+  @@unique([groupId, projectId])
+  @@index([groupId])
+  @@index([projectId])
+  @@map("project_groups")
 }
