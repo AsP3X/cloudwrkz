@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -184,12 +185,11 @@ export function ProjectManagementPage({ initialProjects }: ProjectManagementPage
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <Button variant="outline" size="sm">
-                          View
-                        </Button>
-                        <Button variant="outline" size="sm">
-                          Edit
-                        </Button>
+                        <Link href={`/dashboard/admin/projects/${project.id}`}>
+                          <Button variant="outline" size="sm">
+                            View
+                          </Button>
+                        </Link>
                       </div>
                     </td>
                   </tr>
