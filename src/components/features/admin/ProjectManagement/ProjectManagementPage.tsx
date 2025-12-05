@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
@@ -17,12 +17,7 @@ interface ProjectManagementPageProps {
 
 export function ProjectManagementPage({ initialProjects }: ProjectManagementPageProps) {
   const router = useRouter();
-  const [mounted, setMounted] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const handleCreateSuccess = () => {
     router.refresh();
@@ -180,7 +175,7 @@ export function ProjectManagementPage({ initialProjects }: ProjectManagementPage
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-sm text-neutral-600 dark:text-neutral-400">
-                        {mounted ? formatDate(project.createdAt) : ""}
+                        {formatDate(project.createdAt)}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">

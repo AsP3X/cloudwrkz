@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Tabs } from "@/components/ui/Tabs";
@@ -28,12 +28,7 @@ interface ProjectOwnerPageProps {
 
 export function ProjectOwnerPage({ project, analytics }: ProjectOwnerPageProps) {
   const router = useRouter();
-  const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {

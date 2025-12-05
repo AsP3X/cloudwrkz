@@ -40,7 +40,6 @@ const PRIORITY_OPTIONS = [
 export function ProjectDetailPage({ project: initialProject }: ProjectDetailPageProps) {
   const router = useRouter();
   const [project, setProject] = useState(initialProject);
-  const [mounted, setMounted] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -64,10 +63,6 @@ export function ProjectDetailPage({ project: initialProject }: ProjectDetailPage
   });
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   useEffect(() => {
     if (editDialogOpen) {
@@ -305,13 +300,13 @@ export function ProjectDetailPage({ project: initialProject }: ProjectDetailPage
           <div>
             <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Start Date</p>
             <p className="text-base text-neutral-900 dark:text-neutral-100 mt-1">
-              {project.startDate && mounted ? formatDate(project.startDate) : project.startDate ? "" : "—"}
+              {project.startDate ? formatDate(project.startDate) : "—"}
             </p>
           </div>
           <div>
             <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">End Date</p>
             <p className="text-base text-neutral-900 dark:text-neutral-100 mt-1">
-              {project.endDate && mounted ? formatDate(project.endDate) : project.endDate ? "" : "—"}
+              {project.endDate ? formatDate(project.endDate) : "—"}
             </p>
           </div>
           <div>
@@ -323,7 +318,7 @@ export function ProjectDetailPage({ project: initialProject }: ProjectDetailPage
           <div>
             <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Created At</p>
             <p className="text-base text-neutral-900 dark:text-neutral-100 mt-1">
-              {mounted ? formatDateTimeFull(project.createdAt) : ""}
+              {formatDateTimeFull(project.createdAt)}
             </p>
           </div>
         </div>

@@ -672,5 +672,10 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
   );
 
   // Render portal at document body level to ensure backdrop covers entire page
+  // Only render portal on client side to avoid SSR hydration issues
+  if (!mounted || typeof document === "undefined" || !document.body) {
+    return null;
+  }
+  
   return createPortal(dialogContent, document.body);
 };

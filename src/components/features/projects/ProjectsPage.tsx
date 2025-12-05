@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -14,11 +14,6 @@ interface ProjectsPageProps {
 }
 
 export function ProjectsPage({ initialProjects }: ProjectsPageProps) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {
@@ -133,7 +128,7 @@ export function ProjectsPage({ initialProjects }: ProjectsPageProps) {
                   {project._count.tickets} ticket{project._count.tickets !== 1 ? "s" : ""}
                 </span>
                 <span>
-                  {mounted ? formatDate(project.createdAt) : ""}
+                  {formatDate(project.createdAt)}
                 </span>
               </div>
             </Link>

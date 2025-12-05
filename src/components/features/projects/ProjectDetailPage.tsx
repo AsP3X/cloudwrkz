@@ -35,7 +35,6 @@ const TICKET_STATUSES = [
 
 export function ProjectDetailPage({ project, initialTickets = [], initialTimeAllocation = [] }: ProjectDetailPageProps) {
   const router = useRouter();
-  const [mounted, setMounted] = useState(false);
   const [viewMode, setViewMode] = useState<ProjectViewMode>("list");
   const [tickets, setTickets] = useState<Ticket[]>(initialTickets);
   const [timeAllocation, setTimeAllocation] = useState<TimeAllocation[]>(initialTimeAllocation);
@@ -43,7 +42,6 @@ export function ProjectDetailPage({ project, initialTickets = [], initialTimeAll
   const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
     // Load view mode from localStorage (only allow list)
     try {
       const stored = localStorage.getItem(VIEW_MODE_STORAGE_KEY);
@@ -349,13 +347,13 @@ export function ProjectDetailPage({ project, initialTickets = [], initialTimeAll
                 <div>
                   <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400 mb-2">Start Date</p>
                   <p className="text-base text-neutral-900 dark:text-neutral-100">
-                    {project.startDate && mounted ? formatDate(project.startDate) : project.startDate ? "" : "—"}
+                    {project.startDate ? formatDate(project.startDate) : "—"}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400 mb-2">End Date</p>
                   <p className="text-base text-neutral-900 dark:text-neutral-100">
-                    {project.endDate && mounted ? formatDate(project.endDate) : project.endDate ? "" : "—"}
+                    {project.endDate ? formatDate(project.endDate) : "—"}
                   </p>
                 </div>
                 <div>
@@ -377,13 +375,13 @@ export function ProjectDetailPage({ project, initialTickets = [], initialTimeAll
                 <div>
                   <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400 mb-2">Created At</p>
                   <p className="text-base text-neutral-900 dark:text-neutral-100">
-                    {mounted ? formatDateTimeFull(project.createdAt) : ""}
+                    {formatDateTimeFull(project.createdAt)}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400 mb-2">Last Updated</p>
                   <p className="text-base text-neutral-900 dark:text-neutral-100">
-                    {mounted ? formatDateTimeFull(project.updatedAt) : ""}
+                    {formatDateTimeFull(project.updatedAt)}
                   </p>
                 </div>
               </div>
@@ -734,13 +732,13 @@ export function ProjectDetailPage({ project, initialTickets = [], initialTimeAll
           <div>
             <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Start Date</p>
             <p className="text-base text-neutral-900 dark:text-neutral-100 mt-1">
-              {project.startDate && mounted ? formatDate(project.startDate) : project.startDate ? "" : "—"}
+              {project.startDate ? formatDate(project.startDate) : "—"}
             </p>
           </div>
           <div>
             <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">End Date</p>
             <p className="text-base text-neutral-900 dark:text-neutral-100 mt-1">
-              {project.endDate && mounted ? formatDate(project.endDate) : project.endDate ? "" : "—"}
+              {project.endDate ? formatDate(project.endDate) : "—"}
             </p>
           </div>
           <div>
@@ -752,7 +750,7 @@ export function ProjectDetailPage({ project, initialTickets = [], initialTimeAll
           <div>
             <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Created At</p>
             <p className="text-base text-neutral-900 dark:text-neutral-100 mt-1">
-              {mounted ? formatDateTimeFull(project.createdAt) : ""}
+              {formatDateTimeFull(project.createdAt)}
             </p>
           </div>
         </div>

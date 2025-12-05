@@ -118,12 +118,6 @@ const formatValue = (value: string | null, activityType: TicketActivityType | st
 };
 
 export const TicketActivity = ({ ticket }: TicketActivityProps) => {
-  const [mounted, setMounted] = React.useState(false);
-
-  // Ensure component is mounted before formatting dates to avoid hydration mismatch
-  React.useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const activities = ticket.activities || [];
 
@@ -415,7 +409,7 @@ export const TicketActivity = ({ ticket }: TicketActivityProps) => {
                       )}
                     </div>
                     <p className="text-xs text-neutral-500 dark:text-neutral-500 whitespace-nowrap">
-                      {mounted ? formatDate(activity.createdAt) : ""}
+                      {formatDate(activity.createdAt)}
                     </p>
                   </div>
                 </div>
