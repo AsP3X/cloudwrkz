@@ -8,7 +8,7 @@ import { MODULE_KEYS } from "@/lib/constants/modules";
 import { fuzzySearch, rankAndLimit } from "@/lib/utils/fuzzy-search";
 
 export type SearchResult = {
-  type: "ticket" | "module" | "user" | "comment";
+  type: "ticket" | "module" | "user" | "comment" | "timeentry" | "project";
   id: string;
   title: string;
   description?: string;
@@ -39,7 +39,7 @@ export type SearchFilters = {
 
 /**
  * Global search across all enabled modules
- * Currently supports tickets and users, extensible for future modules
+ * Supports tickets, users, time entries, and projects
  */
 export async function globalSearch(query: string, limit: number = 10): Promise<SearchResponse> {
   const user = await requireAuth();
@@ -52,15 +52,17 @@ export async function globalSearch(query: string, limit: number = 10): Promise<S
   const results: SearchResult[] = [];
   let totalCount = 0;
 
-  // Distribute limit between users and tickets (roughly 40% users, 60% tickets)
-  const userLimit = Math.max(1, Math.floor(limit * 0.4));
-  const ticketLimit = limit - userLimit;
+  // Distribute limit across different result types
+  // 30% users, 40% tickets, 15% time entries, 15% projects
+  const userLimit = Math.max(1, Math.floor(limit * 0.3));
+  const ticketLimit = Math.max(1, Math.floor(limit * 0.4));
+  const timeEntryLimit = Math.max(1, Math.floor(limit * 0.15));
+  const projectLimit = Math.max(1, Math.floor(limit * 0.15));
 
   // Search users if user is agent/admin/moderator
   if (user.role === "AGENT" || user.role === "ADMIN" || user.role === "MODERATOR") {
     const userResults = await searchUsers(searchTerm, user);
     totalCount += userResults.length;
-    // Limit user results to allocated portion
     results.push(...userResults.slice(0, userLimit));
   }
 
@@ -72,14 +74,21 @@ export async function globalSearch(query: string, limit: number = 10): Promise<S
     results.push(...ticketResults);
   }
 
-  // Future: Add search for other modules here
-  // Example:
-  // const accountingEnabled = await isModuleEnabled(MODULE_KEYS.ACCOUNTING);
-  // if (accountingEnabled) {
-  //   const accountingResults = await searchAccounting(searchTerm, user, limit);
-  //   totalCount += accountingResults.length;
-  //   results.push(...accountingResults);
-  // }
+  // Search time entries if module is enabled
+  const timeTrackingEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
+  if (timeTrackingEnabled) {
+    const timeEntryResults = await searchTimeEntries(searchTerm, user, timeEntryLimit);
+    totalCount += timeEntryResults.length;
+    results.push(...timeEntryResults);
+  }
+
+  // Search projects if module is enabled
+  const projectsEnabled = await isModuleEnabled(MODULE_KEYS.PROJECTS);
+  if (projectsEnabled) {
+    const projectResults = await searchProjects(searchTerm, user, projectLimit);
+    totalCount += projectResults.length;
+    results.push(...projectResults);
+  }
 
   return {
     results: results.slice(0, limit),
@@ -108,6 +117,20 @@ export async function advancedSearch(filters: SearchFilters): Promise<SearchResp
   if (ticketsEnabled) {
     const ticketResults = await searchTicketsWithFilters(searchTerm, user, filters);
     results.push(...ticketResults);
+  }
+
+  // Search time entries if module is enabled
+  const timeTrackingEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
+  if (timeTrackingEnabled) {
+    const timeEntryResults = await searchTimeEntries(searchTerm, user, filters.limit || 100);
+    results.push(...timeEntryResults);
+  }
+
+  // Search projects if module is enabled
+  const projectsEnabled = await isModuleEnabled(MODULE_KEYS.PROJECTS);
+  if (projectsEnabled) {
+    const projectResults = await searchProjects(searchTerm, user, filters.limit || 100);
+    results.push(...projectResults);
   }
 
   return {
@@ -606,6 +629,302 @@ async function searchTicketsWithFilters(
   });
   
   return results;
+}
+
+/**
+ * Search time entries by name, description, tags, and location with fuzzy matching
+ */
+async function searchTimeEntries(
+  searchTerm: string,
+  user: Awaited<ReturnType<typeof requireAuth>>,
+  limit: number
+): Promise<SearchResult[]> {
+  const where: any = {
+    userId: user.id, // Users can only see their own time entries
+  };
+
+  // For agents/admins/moderators, they can see all time entries
+  if (user.role === "AGENT" || user.role === "ADMIN" || user.role === "MODERATOR") {
+    delete where.userId;
+  }
+
+  // Fetch more candidates for fuzzy search (3x the limit, or at least 50)
+  const candidateLimit = Math.max(limit * 3, 50);
+
+  const timeEntries = await prisma.timeEntry.findMany({
+    where,
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      status: true,
+      tags: true,
+      location: true,
+      startedAt: true,
+      stoppedAt: true,
+      completedAt: true,
+      totalDuration: true,
+      createdAt: true,
+      updatedAt: true,
+      userId: true,
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      ticketId: true,
+      ticket: {
+        select: {
+          id: true,
+          ticketNumber: true,
+          title: true,
+        },
+      },
+      projectId: true,
+      project: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+        },
+      },
+    },
+    orderBy: {
+      updatedAt: "desc",
+    },
+    take: candidateLimit,
+  });
+
+  // If no search term, return all time entries
+  if (!searchTerm || searchTerm.trim().length === 0) {
+    return timeEntries.slice(0, limit).map((entry) => ({
+      type: "timeentry" as const,
+      id: entry.id,
+      title: entry.name,
+      description: entry.description || undefined,
+      url: `/dashboard/time-tracking/${entry.id}`,
+      metadata: {
+        status: entry.status,
+        tags: entry.tags,
+        location: entry.location,
+        totalDuration: entry.totalDuration,
+        startedAt: entry.startedAt,
+        stoppedAt: entry.stoppedAt,
+        completedAt: entry.completedAt,
+        user: formatUserName(entry.user),
+        ticketNumber: entry.ticket?.ticketNumber,
+        ticketTitle: entry.ticket?.title,
+        projectCode: entry.project?.code,
+        projectName: entry.project?.name,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
+      },
+    }));
+  }
+
+  // Prepare time entries for fuzzy search
+  const entriesForFuzzy = timeEntries.map((entry) => ({
+    ...entry,
+    searchableText: [
+      entry.name,
+      entry.description || "",
+      entry.location || "",
+      ...entry.tags,
+    ].join(" "),
+    tagsString: entry.tags.join(" "),
+  }));
+
+  // Apply fuzzy search on time entry fields
+  const fuzzyResults = fuzzySearch(
+    entriesForFuzzy,
+    searchTerm,
+    {
+      keys: [
+        { name: "name", weight: 0.5 },
+        { name: "description", weight: 0.3 },
+        { name: "location", weight: 0.1 },
+        { name: "tagsString", weight: 0.1 },
+      ],
+      threshold: 0.4,
+      minMatchCharLength: 2,
+    }
+  );
+
+  // Rank and limit results
+  const rankedEntries = rankAndLimit(fuzzyResults, limit);
+
+  return rankedEntries.map((entry) => ({
+    type: "timeentry" as const,
+    id: entry.id,
+    title: entry.name,
+    description: entry.description || undefined,
+    url: `/dashboard/time-tracking/${entry.id}`,
+    metadata: {
+      status: entry.status,
+      tags: entry.tags,
+      location: entry.location,
+      totalDuration: entry.totalDuration,
+      startedAt: entry.startedAt,
+      stoppedAt: entry.stoppedAt,
+      completedAt: entry.completedAt,
+      user: formatUserName(entry.user),
+      ticketNumber: entry.ticket?.ticketNumber,
+      ticketTitle: entry.ticket?.title,
+      projectCode: entry.project?.code,
+      projectName: entry.project?.name,
+      createdAt: entry.createdAt,
+      updatedAt: entry.updatedAt,
+    },
+  }));
+}
+
+/**
+ * Search projects by name, description, code, and client with fuzzy matching
+ */
+async function searchProjects(
+  searchTerm: string,
+  user: Awaited<ReturnType<typeof requireAuth>>,
+  limit: number
+): Promise<SearchResult[]> {
+  // For regular users, they can only see projects they're members of
+  // For agents/admins/moderators, they can see all projects
+  let where: any = {};
+
+  if (user.role === "USER") {
+    // Get projects where user is a member
+    const userProjects = await prisma.projectUser.findMany({
+      where: { userId: user.id },
+      select: { projectId: true },
+    });
+    const projectIds = userProjects.map((up) => up.projectId);
+    
+    if (projectIds.length === 0) {
+      return [];
+    }
+    
+    where.id = { in: projectIds };
+  }
+  // AGENT, ADMIN, MODERATOR can see all projects (no filter needed)
+
+  // Fetch more candidates for fuzzy search (3x the limit, or at least 50)
+  const candidateLimit = Math.max(limit * 3, 50);
+
+  const projects = await prisma.project.findMany({
+    where,
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      description: true,
+      status: true,
+      priority: true,
+      startDate: true,
+      endDate: true,
+      client: true,
+      color: true,
+      icon: true,
+      createdAt: true,
+      updatedAt: true,
+      createdById: true,
+      createdBy: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      _count: {
+        select: {
+          tickets: true,
+          timeEntries: true,
+          members: true,
+        },
+      },
+    },
+    orderBy: {
+      updatedAt: "desc",
+    },
+    take: candidateLimit,
+  });
+
+  // If no search term, return all projects
+  if (!searchTerm || searchTerm.trim().length === 0) {
+    return projects.slice(0, limit).map((project) => ({
+      type: "project" as const,
+      id: project.id,
+      title: project.name,
+      description: project.description || undefined,
+      url: `/dashboard/projects/${project.id}`,
+      metadata: {
+        code: project.code,
+        status: project.status,
+        priority: project.priority,
+        client: project.client,
+        startDate: project.startDate,
+        endDate: project.endDate,
+        createdBy: formatUserName(project.createdBy),
+        ticketCount: project._count.tickets,
+        timeEntryCount: project._count.timeEntries,
+        memberCount: project._count.members,
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt,
+      },
+    }));
+  }
+
+  // Prepare projects for fuzzy search
+  const projectsForFuzzy = projects.map((project) => ({
+    ...project,
+    searchableText: [
+      project.name,
+      project.description || "",
+      project.code,
+      project.client || "",
+    ].join(" "),
+  }));
+
+  // Apply fuzzy search on project fields
+  const fuzzyResults = fuzzySearch(
+    projectsForFuzzy,
+    searchTerm,
+    {
+      keys: [
+        { name: "name", weight: 0.4 },
+        { name: "description", weight: 0.3 },
+        { name: "code", weight: 0.2 },
+        { name: "client", weight: 0.1 },
+      ],
+      threshold: 0.4,
+      minMatchCharLength: 2,
+    }
+  );
+
+  // Rank and limit results
+  const rankedProjects = rankAndLimit(fuzzyResults, limit);
+
+  return rankedProjects.map((project) => ({
+    type: "project" as const,
+    id: project.id,
+    title: project.name,
+    description: project.description || undefined,
+    url: `/dashboard/projects/${project.id}`,
+    metadata: {
+      code: project.code,
+      status: project.status,
+      priority: project.priority,
+      client: project.client,
+      startDate: project.startDate,
+      endDate: project.endDate,
+      createdBy: formatUserName(project.createdBy),
+      ticketCount: project._count.tickets,
+      timeEntryCount: project._count.timeEntries,
+      memberCount: project._count.members,
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt,
+    },
+  }));
 }
 
 /**

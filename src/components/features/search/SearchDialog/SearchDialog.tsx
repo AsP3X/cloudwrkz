@@ -243,6 +243,40 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
         </svg>
       );
     }
+    if (type === "timeentry") {
+      return (
+        <svg
+          className="w-5 h-5 text-purple-600 dark:text-purple-400"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
+        </svg>
+      );
+    }
+    if (type === "project") {
+      return (
+        <svg
+          className="w-5 h-5 text-blue-600 dark:text-blue-400"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+          />
+        </svg>
+      );
+    }
     return null;
   };
 
@@ -341,7 +375,7 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Search tickets, users..."
+                placeholder="Search tickets, users, time entries, projects..."
                 className={cn(
                   "w-full pl-10 pr-10 py-3 rounded-lg border-2 transition-all duration-200",
                   "bg-white text-neutral-900 border-neutral-200",
@@ -493,6 +527,16 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                                         {group.ticket.metadata.email}
                                       </span>
                                     )}
+                                    {group.ticket.type === "timeentry" && group.ticket.metadata?.status && (
+                                      <span className="text-xs text-neutral-500 dark:text-neutral-400 flex-shrink-0">
+                                        {group.ticket.metadata.status}
+                                      </span>
+                                    )}
+                                    {group.ticket.type === "project" && group.ticket.metadata?.code && (
+                                      <span className="text-xs text-neutral-500 dark:text-neutral-400 font-mono flex-shrink-0">
+                                        {group.ticket.metadata.code}
+                                      </span>
+                                    )}
                                     {isTicket && hasComments && (
                                       <span className="text-xs text-neutral-500 dark:text-neutral-400">
                                         ({group.comments.length} comment{group.comments.length !== 1 ? "s" : ""})
@@ -523,6 +567,26 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                                     {group.ticket.type === "user" && group.ticket.metadata?.role && (
                                       <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 capitalize">
                                         {group.ticket.metadata.role.toLowerCase()}
+                                      </span>
+                                    )}
+                                    {group.ticket.type === "timeentry" && group.ticket.metadata?.ticketNumber && (
+                                      <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                                        Ticket: {group.ticket.metadata.ticketNumber}
+                                      </span>
+                                    )}
+                                    {group.ticket.type === "timeentry" && group.ticket.metadata?.projectCode && (
+                                      <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                                        Project: {group.ticket.metadata.projectCode}
+                                      </span>
+                                    )}
+                                    {group.ticket.type === "project" && group.ticket.metadata?.status && (
+                                      <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 capitalize">
+                                        {group.ticket.metadata.status.replace("_", " ").toLowerCase()}
+                                      </span>
+                                    )}
+                                    {group.ticket.type === "project" && group.ticket.metadata?.priority && (
+                                      <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                                        {group.ticket.metadata.priority}
                                       </span>
                                     )}
                                   </div>
