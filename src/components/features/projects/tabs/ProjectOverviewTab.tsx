@@ -251,8 +251,12 @@ function calculateHealthScore(analytics: Analytics): number {
   let factors = 0;
 
   // Progress factor (30%)
-  score += analytics.progress.overall * 0.3;
-  factors += 0.3;
+  // Only count if there are tasks to track progress
+  const hasTasks = analytics.progress.overall > 0 || Object.keys(analytics.progress.byStatus).length > 0;
+  if (hasTasks) {
+    score += analytics.progress.overall * 0.3;
+    factors += 0.3;
+  }
 
   // Budget factor (25%) - lower is better
   if (analytics.budget.totalBudget > 0) {
@@ -271,19 +275,27 @@ function calculateHealthScore(analytics: Analytics): number {
   }
 
   // Issues factor (15%) - fewer is better
-  const issuesScore = analytics.issues.total > 0
-    ? Math.max(0, 100 - (analytics.issues.open / analytics.issues.total) * 100)
-    : 100;
-  score += issuesScore * 0.15;
-  factors += 0.15;
+  // Only count if there are actual issues to evaluate
+  if (analytics.issues.total > 0) {
+    const issuesScore = Math.max(0, 100 - (analytics.issues.open / analytics.issues.total) * 100);
+    score += issuesScore * 0.15;
+    factors += 0.15;
+  }
 
   // Risks factor (10%) - fewer critical is better
-  const risksScore = analytics.risks.total > 0
-    ? Math.max(0, 100 - (analytics.risks.critical / analytics.risks.total) * 100)
-    : 100;
-  score += risksScore * 0.1;
-  factors += 0.1;
+  // Only count if there are actual risks to evaluate
+  if (analytics.risks.total > 0) {
+    const risksScore = Math.max(0, 100 - (analytics.risks.critical / analytics.risks.total) * 100);
+    score += risksScore * 0.1;
+    factors += 0.1;
+  }
+
+  // If no meaningful data exists, return 0 instead of normalizing
+  // This prevents showing a score when the project has no activity
+  if (factors === 0) {
+    return 0;
+  }
 
   // Normalize by actual factors used
-  return factors > 0 ? Math.round(score / factors) : 0;
+  return Math.round(score / factors);
 }
