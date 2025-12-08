@@ -43,7 +43,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
     if (asChild && href) {
       return (
-        <Link href={href} className={classes}>
+        <Link href={href} className={classes} onClick={props.onClick}>
           {loading && (
             <svg
               className="mr-2 h-4 w-4 animate-spin"

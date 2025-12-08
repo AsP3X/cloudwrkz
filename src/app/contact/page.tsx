@@ -35,22 +35,50 @@ export default function ContactPage() {
     setIsSubmitting(true);
     setSubmitStatus({ type: null, message: "" });
 
-    // Simulate form submission (replace with actual API call)
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      
-      // In a real application, you would make an API call here
-      // await fetch('/api/contact', { method: 'POST', body: JSON.stringify(formData) });
-      
+      const response = await fetch("/api/contact", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        // Handle validation errors or rate limiting
+        if (response.status === 429) {
+          setSubmitStatus({
+            type: "error",
+            message: data.error || "Too many requests. Please try again later.",
+          });
+        } else if (response.status === 400 && data.details) {
+          // Show first validation error
+          const firstError = data.details[0];
+          setSubmitStatus({
+            type: "error",
+            message: `${firstError.field}: ${firstError.message}`,
+          });
+        } else {
+          setSubmitStatus({
+            type: "error",
+            message: data.error || "Something went wrong. Please try again later.",
+          });
+        }
+        return;
+      }
+
       setSubmitStatus({
         type: "success",
-        message: "Thank you for your message! We'll get back to you soon.",
+        message: data.message || "Thank you for your message! We'll get back to you soon.",
       });
       setFormData({ name: "", email: "", subject: "", message: "" });
     } catch (error) {
+      console.error("Contact form submission error:", error);
       setSubmitStatus({
         type: "error",
-        message: "Something went wrong. Please try again later.",
+        message: "Network error. Please check your connection and try again.",
       });
     } finally {
       setIsSubmitting(false);

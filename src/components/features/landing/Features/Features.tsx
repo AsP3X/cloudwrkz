@@ -2,6 +2,7 @@
 
 import React from "react";
 import { cn } from "@/lib/utils/cn";
+import { ScrollAnimation } from "../ScrollAnimation";
 
 interface Feature {
   icon: React.ReactNode;
@@ -68,7 +69,11 @@ const features: Feature[] = [
 
 export const Features = () => {
   return (
-    <section id="features" className="py-20 bg-white dark:bg-neutral-900">
+    <section 
+      id="features" 
+      className="py-20 bg-white dark:bg-neutral-900"
+      aria-label="Features section"
+    >
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
           <h2 className="text-4xl sm:text-5xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">
@@ -84,26 +89,36 @@ export const Features = () => {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8" role="list" aria-label="Feature list">
           {features.map((feature, index) => (
-            <div
+            <ScrollAnimation
               key={index}
-              className={cn(
-                "p-8 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
-                "hover:shadow-soft-lg hover:border-primary-200 dark:hover:border-primary-800",
-                "transition-all duration-300 group"
-              )}
+              direction="up"
+              delay={index * 100}
+              className="will-change-transform"
             >
-              <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-primary-100 to-secondary-100 dark:from-primary-900 dark:to-secondary-900 flex items-center justify-center text-primary-600 dark:text-primary-400 mb-6 group-hover:scale-110 transition-transform duration-300">
-                {feature.icon}
-              </div>
-              <h3 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-3">
-                {feature.title}
-              </h3>
-              <p className="text-neutral-600 dark:text-neutral-400 leading-relaxed">
-                {feature.description}
-              </p>
-            </div>
+              <article
+                className={cn(
+                  "p-8 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
+                  "hover:shadow-soft-lg hover:border-primary-200 dark:hover:border-primary-800",
+                  "transition-all duration-300 group"
+                )}
+                role="listitem"
+              >
+                <div 
+                  className="w-16 h-16 rounded-lg bg-gradient-to-br from-primary-100 to-secondary-100 dark:from-primary-900 dark:to-secondary-900 flex items-center justify-center text-primary-600 dark:text-primary-400 mb-6 group-hover:scale-110 transition-transform duration-300"
+                  aria-hidden="true"
+                >
+                  {feature.icon}
+                </div>
+                <h3 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-3">
+                  {feature.title}
+                </h3>
+                <p className="text-neutral-600 dark:text-neutral-400 leading-relaxed">
+                  {feature.description}
+                </p>
+              </article>
+            </ScrollAnimation>
           ))}
         </div>
       </div>
