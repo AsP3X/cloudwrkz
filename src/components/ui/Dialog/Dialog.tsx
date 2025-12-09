@@ -51,7 +51,7 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
         
         {/* Dialog */}
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4"
           onClick={(e) => {
             // Close when clicking backdrop
             if (e.target === e.currentTarget) {
@@ -63,7 +63,7 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
             ref={internalRef}
             className={cn(
               "bg-white dark:bg-neutral-900 rounded-xl shadow-soft-xl border border-neutral-200 dark:border-neutral-800",
-              "w-full max-w-2xl max-h-[90vh] overflow-hidden",
+              "w-full max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-hidden",
               "animate-slide-in",
               className
             )}

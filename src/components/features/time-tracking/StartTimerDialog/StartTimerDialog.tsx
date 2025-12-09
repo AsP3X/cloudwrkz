@@ -87,7 +87,7 @@ export function StartTimerDialog({ open, onOpenChange }: StartTimerDialogProps) 
       title="Start Timer"
       description="Create a new time tracking entry"
     >
-      <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
+      <form onSubmit={handleSubmit(onSubmit)} className="p-4 sm:p-6 space-y-4 sm:space-y-6">
         {serverError && (
           <div className="p-4 rounded-lg bg-error-50 dark:bg-error-900/20 border border-error-200 dark:border-error-800">
             <p className="text-sm text-error-600 dark:text-error-400">{serverError}</p>

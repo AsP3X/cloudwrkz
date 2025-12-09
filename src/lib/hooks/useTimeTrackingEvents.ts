@@ -76,8 +76,26 @@ export function useTimeTrackingEvents(options: UseTimeTrackingEventsOptions = {}
       };
 
       eventSource.onerror = (error) => {
-        console.error("SSE error:", error);
-        eventSource.close();
+        // Check the readyState to determine the type of error
+        // 0 = CONNECTING, 1 = OPEN, 2 = CLOSED
+        if (eventSource.readyState === EventSource.CLOSED) {
+          // Connection was closed - this is normal when the server closes the connection
+          // Only log if we weren't expecting it (i.e., not during cleanup)
+          if (reconnectAttempts.current < maxReconnectAttempts) {
+            console.log("SSE connection closed, attempting to reconnect...");
+          }
+        } else if (eventSource.readyState === EventSource.CONNECTING) {
+          // Connection failed to establish
+          console.warn("SSE connection failed to establish");
+        } else {
+          // Other errors
+          console.warn("SSE error occurred, readyState:", eventSource.readyState);
+        }
+
+        // Close the connection if it's not already closed
+        if (eventSource.readyState !== EventSource.CLOSED) {
+          eventSource.close();
+        }
 
         // Attempt to reconnect
         if (reconnectAttempts.current < maxReconnectAttempts) {
@@ -86,7 +104,7 @@ export function useTimeTrackingEvents(options: UseTimeTrackingEventsOptions = {}
             connectRef.current?.();
           }, reconnectDelay);
         } else {
-          console.error("Max reconnection attempts reached");
+          console.warn("Max SSE reconnection attempts reached");
         }
       };
     } catch (error) {
