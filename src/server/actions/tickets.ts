@@ -1041,7 +1041,7 @@ export async function deleteTicket(id: string): Promise<ActionResult> {
 
     const ticket = await prisma.ticket.findUnique({
       where: { id },
-      select: { createdById: true, assignedToId: true },
+      select: { createdById: true, assignedToId: true, projectId: true },
     });
 
     if (!ticket) {
@@ -1051,18 +1051,42 @@ export async function deleteTicket(id: string): Promise<ActionResult> {
       };
     }
 
-    // Creator, assigned agent, admin, or moderator can delete
-    const canDelete = 
-      ticket.createdById === user.id ||
-      user.role === "ADMIN" ||
-      user.role === "MODERATOR" ||
-      (user.role === "AGENT" && ticket.assignedToId === user.id);
-    
-    if (!canDelete) {
-      return {
-        success: false,
-        error: "You don't have permission to delete this ticket",
-      };
+    // For users with role USER, they can only delete if they are the project owner
+    if (user.role === "USER") {
+      if (!ticket.projectId) {
+        return {
+          success: false,
+          error: "You don't have permission to delete this ticket",
+        };
+      }
+
+      // Check if user is the owner of the project
+      const project = await prisma.project.findUnique({
+        where: { id: ticket.projectId },
+        select: { createdById: true },
+      });
+
+      if (!project || project.createdById !== user.id) {
+        return {
+          success: false,
+          error: "You don't have permission to delete this ticket. Only project owners can delete tickets.",
+        };
+      }
+      // If USER is project owner, allow deletion (skip to deletion)
+    } else {
+      // For other roles: Creator, assigned agent, admin, or moderator can delete
+      const canDelete = 
+        ticket.createdById === user.id ||
+        user.role === "ADMIN" ||
+        user.role === "MODERATOR" ||
+        (user.role === "AGENT" && ticket.assignedToId === user.id);
+      
+      if (!canDelete) {
+        return {
+          success: false,
+          error: "You don't have permission to delete this ticket",
+        };
+      }
     }
 
     await prisma.ticket.delete({
@@ -1472,6 +1496,7 @@ export async function bulkDeleteTickets(
         id: true,
         createdById: true,
         assignedToId: true,
+        projectId: true,
       },
     });
 
@@ -1482,21 +1507,61 @@ export async function bulkDeleteTickets(
       };
     }
 
-    // Verify user has permission to delete all selected tickets
-    // Creator, assigned agent (for assigned tickets), admin, or moderator can delete
-    const canDeleteAll = tickets.every(
-      (ticket) =>
-        ticket.createdById === user.id ||
-        user.role === "ADMIN" ||
-        user.role === "MODERATOR" ||
-        (user.role === "AGENT" && ticket.assignedToId === user.id)
-    );
+    // For users with role USER, they can only delete if they are the project owner
+    if (user.role === "USER") {
+      // Get all unique project IDs from tickets
+      const projectIds = tickets
+        .map((t) => t.projectId)
+        .filter((id): id is string => id !== null);
 
-    if (!canDeleteAll) {
-      return {
-        success: false,
-        error: "You don't have permission to delete all selected tickets",
-      };
+      if (projectIds.length === 0) {
+        return {
+          success: false,
+          error: "You don't have permission to delete these tickets",
+        };
+      }
+
+      // Check if user is the owner of all projects
+      const projects = await prisma.project.findMany({
+        where: { id: { in: projectIds } },
+        select: { id: true, createdById: true },
+      });
+
+      const userOwnedProjectIds = new Set(
+        projects.filter((p) => p.createdById === user.id).map((p) => p.id)
+      );
+
+      // Verify user can delete all tickets
+      const canDeleteAll = tickets.every((ticket) => {
+        if (!ticket.projectId) {
+          return false; // USER cannot delete tickets without a project
+        }
+        return userOwnedProjectIds.has(ticket.projectId);
+      });
+
+      if (!canDeleteAll) {
+        return {
+          success: false,
+          error: "You don't have permission to delete all selected tickets. Only project owners can delete tickets.",
+        };
+      }
+    } else {
+      // Verify user has permission to delete all selected tickets
+      // Creator, assigned agent (for assigned tickets), admin, or moderator can delete
+      const canDeleteAll = tickets.every(
+        (ticket) =>
+          ticket.createdById === user.id ||
+          user.role === "ADMIN" ||
+          user.role === "MODERATOR" ||
+          (user.role === "AGENT" && ticket.assignedToId === user.id)
+      );
+
+      if (!canDeleteAll) {
+        return {
+          success: false,
+          error: "You don't have permission to delete all selected tickets",
+        };
+      }
     }
 
     const result = await prisma.ticket.deleteMany({
