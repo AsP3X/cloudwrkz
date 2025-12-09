@@ -170,7 +170,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
   // Early return after all hooks
   if (entries.length === 0) {
     return (
-      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8 sm:p-12 text-center">
+      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden p-8 sm:p-12 text-center">
         <svg
           className="w-12 h-12 sm:w-16 sm:h-16 mx-auto text-neutral-400 dark:text-neutral-600 mb-4"
           fill="none"
@@ -293,7 +293,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
   };
 
   return (
-    <div className="overflow-hidden">
+    <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
       {selectedEntries.size > 0 && (
         <>
           <TimeEntryBulkActionsToolbar
@@ -304,7 +304,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
             onClearSelection={handleClearSelection}
           />
           {error && (
-            <div className="px-4 sm:px-6 py-3 bg-error-50 dark:bg-error-950 border-b border-error-200 dark:border-error-800">
+            <div className="px-6 py-3 bg-error-50 dark:bg-error-950 border-b border-error-200 dark:border-error-800">
               <div className="flex items-center gap-2">
                 <svg
                   className="w-5 h-5 text-error-600 dark:text-error-400 flex-shrink-0"
@@ -481,10 +481,10 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
       {/* Table View */}
       {viewMode === "table" && (
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[800px]">
+        <table className="w-full">
           <thead className="bg-neutral-50 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700">
             <tr>
-              <th className="px-3 sm:px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider w-12">
+              <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider w-12">
                 <input
                   type="checkbox"
                   ref={selectAllRef}
@@ -494,28 +494,28 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
                   aria-label="Select all entries"
                 />
               </th>
-              <th className="px-3 sm:px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                 Name
               </th>
-              <th className="px-3 sm:px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                 Status
               </th>
-              <th className="px-3 sm:px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                 Duration
               </th>
-              <th className="px-3 sm:px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                 Started
               </th>
-              <th className="px-3 sm:px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden lg:table-cell">
+              <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden lg:table-cell">
                 Timezone
               </th>
-              <th className="px-3 sm:px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden md:table-cell">
+              <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden md:table-cell">
                 Location
               </th>
-              <th className="px-3 sm:px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                 Tags
               </th>
-              <th className="px-3 sm:px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                 Actions
               </th>
             </tr>
@@ -526,8 +526,8 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
               const isSelected = mounted && selectedEntries.has(entry.id);
               
               const rowClassName = cn(
-                "hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors",
-                isSelected && "bg-primary-50/50 dark:bg-primary-900/10"
+                "hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors",
+                isSelected && "bg-primary-50 dark:bg-primary-900/20"
               );
 
               return (
@@ -535,7 +535,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
                   key={entry.id}
                   className={rowClassName}
                 >
-                  <td className="px-3 sm:px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-6 py-4 whitespace-nowrap w-12" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
                       checked={isSelected}
@@ -543,36 +543,39 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
                         e.stopPropagation();
                         handleSelectEntry(entry.id, e.target.checked);
                       }}
+                      onClick={(e) => e.stopPropagation()}
                       className="w-4 h-4 text-primary-600 bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 cursor-pointer"
                       aria-label={`Select ${entry.name}`}
                     />
                   </td>
-                  <td className="px-3 sm:px-6 py-4">
+                  <td className="px-6 py-4">
                     <Link 
                       href={`/dashboard/time-tracking/${entry.id}`}
-                      className="font-medium text-sm sm:text-base text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400"
+                      className="font-medium text-sm text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400"
                     >
-                      {entry.name}
-                    </Link>
-                    {entry.description && (
-                      <div className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 mt-1 line-clamp-1">
-                        {entry.description}
+                      <div className="max-w-md">
+                        <div className="truncate">{entry.name}</div>
+                        {entry.description && (
+                          <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 line-clamp-1">
+                            {entry.description}
+                          </div>
+                        )}
                       </div>
-                    )}
+                    </Link>
                   </td>
-                  <td className="px-3 sm:px-6 py-4">
+                  <td className="px-6 py-4 whitespace-nowrap">
                     <Badge className={getStatusColor(entry.status)}>{getStatusLabel(entry.status)}</Badge>
                   </td>
-                  <td className="px-3 sm:px-6 py-4">
-                    <DurationDisplay entry={entry} className="font-mono text-xs sm:text-sm" />
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <DurationDisplay entry={entry} className="font-mono text-sm" />
                   </td>
-                  <td className="px-3 sm:px-6 py-4 text-xs sm:text-sm text-neutral-600 dark:text-neutral-400">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-600 dark:text-neutral-400">
                     {formatDate(entry.startedAt)}
                   </td>
-                  <td className="px-3 sm:px-6 py-4 text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 hidden lg:table-cell">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-600 dark:text-neutral-400 hidden lg:table-cell">
                     <span className="font-mono text-xs">{userTimezone}</span>
                   </td>
-                  <td className="px-3 sm:px-6 py-4 text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 hidden md:table-cell">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-600 dark:text-neutral-400 hidden md:table-cell">
                     {entry.location ? (
                       <div className="flex items-center gap-1">
                         <svg className="w-4 h-4 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -585,7 +588,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
                       <span className="text-xs text-neutral-400">—</span>
                     )}
                   </td>
-                  <td className="px-3 sm:px-6 py-4">
+                  <td className="px-6 py-4">
                     {entry.tags.length > 0 ? (
                       <div className="flex flex-wrap gap-1">
                         {entry.tags.slice(0, 2).map((tag) => (
@@ -606,7 +609,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
                       <span className="text-xs text-neutral-400">—</span>
                     )}
                   </td>
-                  <td className="px-3 sm:px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-2">
                       {canPause(entry.status) && (
                         <button

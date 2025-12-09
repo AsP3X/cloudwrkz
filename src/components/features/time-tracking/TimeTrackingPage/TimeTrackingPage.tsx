@@ -164,9 +164,7 @@ function TimeTrackingPageContent({ initialEntries, initialTotal, initialPage, us
       </div>
 
       {/* Time Entries List */}
-      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
-        <TimeEntryList entries={initialEntries} userTimezone={userTimezone} />
-      </div>
+      <TimeEntryList entries={initialEntries} userTimezone={userTimezone} />
 
       {/* Dialogs */}
       <StartTimerDialog open={showStartDialog} onOpenChange={setShowStartDialog} />
