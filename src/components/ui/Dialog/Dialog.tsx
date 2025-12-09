@@ -39,6 +39,99 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
       }
     }, [open]);
 
+    // Prevent horizontal scrolling on mobile/iOS when dialog is open
+    React.useEffect(() => {
+      if (!open) return;
+
+      // Check if mobile (viewport width < 640px which is sm breakpoint)
+      const isMobile = window.innerWidth < 640;
+      
+      if (isMobile) {
+        // Store original values
+        const originalBodyOverflowX = document.body.style.overflowX;
+        const originalBodyOverflowY = document.body.style.overflowY;
+        const originalBodyPosition = document.body.style.position;
+        const originalBodyWidth = document.body.style.width;
+        const originalBodyTop = document.body.style.top;
+        const originalHtmlOverflowX = document.documentElement.style.overflowX;
+        const originalHtmlOverflowY = document.documentElement.style.overflowY;
+        
+        // Get current scroll position
+        const scrollY = window.scrollY;
+        
+        // Lock body to prevent scrolling
+        document.body.style.overflowX = "hidden";
+        document.body.style.overflowY = "hidden";
+        document.body.style.position = "fixed";
+        document.body.style.width = "100%";
+        document.body.style.top = `-${scrollY}px`;
+        
+        document.documentElement.style.overflowX = "hidden";
+        document.documentElement.style.overflowY = "hidden";
+
+        // Prevent horizontal touch scrolling on iOS
+        let touchStartX = 0;
+        let touchStartY = 0;
+
+        const handleTouchStart = (e: TouchEvent) => {
+          if (e.touches.length === 1) {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+          }
+        };
+
+        const handleTouchMove = (e: TouchEvent) => {
+          if (e.touches.length === 1) {
+            const touch = e.touches[0];
+            const deltaX = Math.abs(touch.clientX - touchStartX);
+            const deltaY = Math.abs(touch.clientY - touchStartY);
+            
+            // Check if we're trying to scroll horizontally
+            if (deltaX > deltaY && deltaX > 10) {
+              // Check if the target is in a scrollable container
+              const target = e.target as HTMLElement;
+              const scrollableContainer = target.closest('[class*="overflow-y-auto"], [class*="overflow-y-scroll"]');
+              
+              // Only prevent if not in a scrollable container or if horizontal scroll is detected
+              if (!scrollableContainer) {
+                e.preventDefault();
+              } else {
+                // Even in scrollable containers, prevent horizontal scrolling
+                const container = scrollableContainer as HTMLElement;
+                if (container.scrollWidth <= container.clientWidth) {
+                  e.preventDefault();
+                }
+              }
+            }
+          }
+        };
+
+        document.addEventListener('touchstart', handleTouchStart, { passive: true });
+        document.addEventListener('touchmove', handleTouchMove, { passive: false });
+
+        return () => {
+          // Restore original values
+          document.body.style.overflowX = originalBodyOverflowX;
+          document.body.style.overflowY = originalBodyOverflowY;
+          document.body.style.position = originalBodyPosition;
+          document.body.style.width = originalBodyWidth;
+          document.body.style.top = originalBodyTop;
+          document.documentElement.style.overflowX = originalHtmlOverflowX;
+          document.documentElement.style.overflowY = originalHtmlOverflowY;
+          
+          // Restore scroll position
+          if (originalBodyPosition !== 'fixed') {
+            window.scrollTo(0, scrollY);
+          }
+          
+          document.removeEventListener('touchstart', handleTouchStart);
+          document.removeEventListener('touchmove', handleTouchMove);
+        };
+      }
+
+      return undefined;
+    }, [open]);
+
     if (!open) return null;
 
     return (
@@ -51,7 +144,8 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
         
         {/* Dialog */}
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 overflow-x-hidden sm:overflow-x-auto touch-none sm:touch-auto"
+          style={{ touchAction: 'pan-y' }}
           onClick={(e) => {
             // Close when clicking backdrop
             if (e.target === e.currentTarget) {
@@ -63,10 +157,11 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
             ref={internalRef}
             className={cn(
               "bg-white dark:bg-neutral-900 rounded-xl shadow-soft-xl border border-neutral-200 dark:border-neutral-800",
-              "w-full max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-hidden",
+              "w-full max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-hidden overflow-x-hidden",
               "animate-slide-in",
               className
             )}
+            style={{ touchAction: 'pan-y' }}
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -75,15 +170,15 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
           >
             {/* Header */}
             {(title || description) && (
-              <div className="px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 flex items-start justify-between">
-                <div>
+              <div className="px-4 sm:px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 flex items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
                   {title && (
-                    <h2 id="dialog-title" className="text-xl font-bold text-neutral-900 dark:text-neutral-100">
+                    <h2 id="dialog-title" className="text-xl font-bold text-neutral-900 dark:text-neutral-100 break-words">
                       {title}
                     </h2>
                   )}
                   {description && (
-                    <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">{description}</p>
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1 break-words">{description}</p>
                   )}
                 </div>
                 <button
@@ -109,7 +204,14 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
             )}
 
             {/* Content */}
-            <div className="overflow-y-auto max-h-[calc(90vh-120px)]">
+            <div 
+              className="overflow-y-auto overflow-x-hidden max-h-[calc(90vh-120px)]"
+              style={{ 
+                WebkitOverflowScrolling: 'touch',
+                touchAction: 'pan-y',
+                overscrollBehaviorX: 'contain'
+              }}
+            >
               {children}
             </div>
           </div>
