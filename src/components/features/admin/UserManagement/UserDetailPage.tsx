@@ -8,9 +8,10 @@ import { Badge } from "@/components/ui/Badge";
 import { Dialog } from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { updateUserAdmin, deleteUserAdmin } from "@/server/actions/admin/users";
+import { updateUserAdmin, deleteUserAdmin, unbanUserAdmin } from "@/server/actions/admin/users";
 import type { getUserByIdAdmin } from "@/server/actions/admin/users";
 import { formatDateTimeFull } from "@/lib/utils/date";
+import { UserUnbanDialog } from "./UserUnbanDialog";
 
 type User = NonNullable<Awaited<ReturnType<typeof getUserByIdAdmin>>>;
 
@@ -23,6 +24,7 @@ export function UserDetailPage({ user: initialUser }: UserDetailPageProps) {
   const [user, setUser] = useState(initialUser);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [unbanDialogOpen, setUnbanDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: user.email,
@@ -90,6 +92,19 @@ export function UserDetailPage({ user: initialUser }: UserDetailPageProps) {
     }
   };
 
+  const handleUnban = async (reason: string) => {
+    setIsLoading(true);
+    setError(null);
+    const result = await unbanUserAdmin(user.id, { reason });
+    setIsLoading(false);
+    if (result.success) {
+      router.refresh();
+    } else {
+      setError(result.error);
+    }
+    return result;
+  };
+
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {
       case "ACTIVE":
@@ -140,6 +155,11 @@ export function UserDetailPage({ user: initialUser }: UserDetailPageProps) {
           <p className="text-neutral-600 dark:text-neutral-400 mt-1">{user.email}</p>
         </div>
         <div className="flex gap-2">
+          {user.status === "BANNED" && (
+            <Button variant="primary" onClick={() => setUnbanDialogOpen(true)}>
+              Unban User
+            </Button>
+          )}
           <Button variant="outline" onClick={() => setEditDialogOpen(true)}>
             Edit User
           </Button>
@@ -203,6 +223,31 @@ export function UserDetailPage({ user: initialUser }: UserDetailPageProps) {
           )}
         </div>
       </div>
+
+      {/* Ban Information */}
+      {user.status === "BANNED" && (user as any).bannedAt && (
+        <div className="bg-error-50 dark:bg-error-950 border-2 border-error-200 dark:border-error-800 rounded-xl shadow-soft-lg p-6">
+          <h2 className="text-xl font-semibold text-error-900 dark:text-error-100 mb-4">Ban Information</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {(user as any).bannedAt && (
+              <div>
+                <p className="text-sm font-medium text-error-700 dark:text-error-300">Banned On</p>
+                <p className="text-base text-error-900 dark:text-error-100 mt-1">
+                  {formatDateTimeFull((user as any).bannedAt)}
+                </p>
+              </div>
+            )}
+            {(user as any).banReason && (
+              <div className="md:col-span-2">
+                <p className="text-sm font-medium text-error-700 dark:text-error-300">Ban Reason</p>
+                <p className="text-base text-error-900 dark:text-error-100 mt-1 whitespace-pre-wrap">
+                  {(user as any).banReason}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Edit Dialog */}
       <Dialog
@@ -306,6 +351,15 @@ export function UserDetailPage({ user: initialUser }: UserDetailPageProps) {
           </div>
         </div>
       </Dialog>
+
+      {/* Unban Dialog */}
+      <UserUnbanDialog
+        open={unbanDialogOpen}
+        onOpenChange={setUnbanDialogOpen}
+        user={user}
+        onConfirm={handleUnban}
+        isLoading={isLoading}
+      />
     </div>
   );
 }

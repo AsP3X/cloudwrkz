@@ -5,6 +5,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
+import { formatDateTime } from "@/lib/utils/date";
 import type { getAllUsersAdmin } from "@/server/actions/admin/users";
 
 type User = Awaited<ReturnType<typeof getAllUsersAdmin>>["users"][0];
@@ -23,7 +24,7 @@ export function UserEditDialog({ open, onOpenChange, user, onSubmit, isLoading }
     name: user.name || "",
     password: "",
     role: user.role as "USER" | "AGENT" | "ADMIN" | "MODERATOR",
-    status: user.status as "ACTIVE" | "PENDING" | "SUSPENDED" | "DELETED",
+    status: user.status as "ACTIVE" | "PENDING" | "SUSPENDED" | "BANNED" | "DELETED",
   });
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
@@ -132,12 +133,45 @@ export function UserEditDialog({ open, onOpenChange, user, onSubmit, isLoading }
             { value: "ACTIVE", label: "Active" },
             { value: "PENDING", label: "Pending" },
             { value: "SUSPENDED", label: "Suspended" },
+            { value: "BANNED", label: "Banned" },
             { value: "DELETED", label: "Deleted" },
           ]}
           value={formData.status}
           onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
           error={fieldErrors.status?.[0]}
         />
+
+        {/* Show ban information if user is banned */}
+        {user.status === "BANNED" && (user as any).banReason && (
+          <div className="p-4 bg-error-50 dark:bg-error-950 border-2 border-error-200 dark:border-error-800 rounded-lg space-y-2">
+            <h3 className="text-sm font-semibold text-error-800 dark:text-error-200">
+              Ban Information
+            </h3>
+            {(user as any).banReason && (
+              <div>
+                <p className="text-xs font-medium text-error-700 dark:text-error-300 mb-1">
+                  Reason:
+                </p>
+                <p className="text-sm text-error-600 dark:text-error-400">
+                  {(user as any).banReason}
+                </p>
+              </div>
+            )}
+            {(user as any).bannedAt && (
+              <div>
+                <p className="text-xs font-medium text-error-700 dark:text-error-300 mb-1">
+                  Banned On:
+                </p>
+                <p className="text-sm text-error-600 dark:text-error-400">
+                  {formatDateTime((user as any).bannedAt)}
+                </p>
+              </div>
+            )}
+            <p className="text-xs text-error-600 dark:text-error-400 mt-2">
+              Change status to "Active" to unban this user.
+            </p>
+          </div>
+        )}
 
         <div className="flex items-center justify-end gap-3 pt-4 border-t border-neutral-200 dark:border-neutral-800">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>

@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/utils/auth-server";
+import { getCurrentUser, getBannedUserInfo } from "@/lib/utils/auth-server";
 import { ROUTES } from "@/lib/constants/routes";
 import { DashboardSidebar } from "@/components/layout/DashboardSidebar";
 import { AdminSidebarWrapper } from "@/components/layout/AdminSidebar/AdminSidebarWrapper";
@@ -20,6 +20,11 @@ export default async function DashboardLayout({
 
   // Redirect to login if not authenticated, active, or verified
   if (!user) {
+    // Check if user is banned (they might have a session but be banned)
+    const bannedUser = await getBannedUserInfo();
+    if (bannedUser) {
+      redirect(ROUTES.BANNED);
+    }
     redirect(`${ROUTES.LOGIN}?error=account_not_verified`);
   }
 
