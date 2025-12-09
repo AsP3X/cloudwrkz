@@ -66,6 +66,7 @@ export const preferencesSchema = z.object({
       "Australia/Sydney",
     ])
     .optional(),
+  timerWidgetMobileMode: z.enum(["dialog", "floating"]).optional(),
 });
 
 export type PreferencesInput = z.infer<typeof preferencesSchema>;

@@ -11,6 +11,7 @@ import {
 } from "@/lib/validations/settings";
 import { updatePreferences } from "@/server/actions/preferences";
 import { useTheme } from "@/components/providers/ThemeProvider";
+import { useTimerWidgetPreference, getTimerWidgetPreference } from "@/lib/hooks/useTimerWidgetPreference";
 
 type PreferencesFormProps = {
   initialValues?: Partial<PreferencesInput>;
@@ -20,6 +21,7 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
   const [error, setError] = React.useState<string | null>(null);
   const [success, setSuccess] = React.useState<string | null>(null);
   const { theme, setTheme } = useTheme();
+  const { preference: timerWidgetPreference, setPreference: setTimerWidgetPreference } = useTimerWidgetPreference();
 
   const {
     register,
@@ -37,6 +39,7 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
       pushNotifications: initialValues?.pushNotifications ?? false,
       marketingEmails: initialValues?.marketingEmails ?? false,
       timezone: initialValues?.timezone ?? "UTC",
+      timerWidgetMobileMode: initialValues?.timerWidgetMobileMode ?? getTimerWidgetPreference(),
     },
   });
 
@@ -50,6 +53,7 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
         pushNotifications: initialValues.pushNotifications ?? false,
         marketingEmails: initialValues.marketingEmails ?? false,
         timezone: initialValues.timezone ?? "UTC",
+        timerWidgetMobileMode: initialValues.timerWidgetMobileMode ?? getTimerWidgetPreference(),
       });
     }
   }, [initialValues, reset, theme]);
@@ -59,6 +63,11 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
     setValue("theme", theme);
   }, [theme, setValue]);
 
+  // Sync form value with timer widget preference when it changes externally
+  React.useEffect(() => {
+    setValue("timerWidgetMobileMode", timerWidgetPreference);
+  }, [timerWidgetPreference, setValue]);
+
   // Watch theme changes and apply immediately
   const watchedTheme = watch("theme");
   React.useEffect(() => {
@@ -66,6 +75,14 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
       setTheme(watchedTheme as "light" | "dark" | "system");
     }
   }, [watchedTheme, theme, setTheme]);
+
+  // Watch timer widget preference changes and apply immediately
+  const watchedTimerWidgetMode = watch("timerWidgetMobileMode");
+  React.useEffect(() => {
+    if (watchedTimerWidgetMode && watchedTimerWidgetMode !== timerWidgetPreference) {
+      setTimerWidgetPreference(watchedTimerWidgetMode as "dialog" | "floating");
+    }
+  }, [watchedTimerWidgetMode, timerWidgetPreference, setTimerWidgetPreference]);
 
   const onSubmit = async (data: PreferencesInput) => {
     setError(null);
@@ -75,6 +92,11 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
       // Apply theme immediately via context
       if (data.theme && data.theme !== theme) {
         setTheme(data.theme as "light" | "dark" | "system");
+      }
+
+      // Apply timer widget preference immediately
+      if (data.timerWidgetMobileMode && data.timerWidgetMobileMode !== timerWidgetPreference) {
+        setTimerWidgetPreference(data.timerWidgetMobileMode as "dialog" | "floating");
       }
 
       // Save preferences to server
@@ -184,6 +206,18 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
           error={errors.timezone?.message}
           helperText="Choose your preferred time zone for displaying dates and times"
           {...register("timezone")}
+        />
+
+        {/* Timer Widget Mode */}
+        <Select
+          label="Timer Widget Display"
+          options={[
+            { value: "dialog", label: "Dialog" },
+            { value: "floating", label: "Floating Widget" },
+          ]}
+          error={errors.timerWidgetMobileMode?.message}
+          helperText="Choose how the timer widget appears when opened (applies to all devices)"
+          {...register("timerWidgetMobileMode")}
         />
       </div>
 
