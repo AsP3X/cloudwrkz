@@ -116,10 +116,34 @@ export function canStop(status: TimeEntryStatus): boolean {
 
 /**
  * Generate a random timer name
+ * @deprecated Use generateTimerNumber instead for consistent naming
  */
 export function generateRandomTimerName(): string {
   const prefixes = ["Timer", "Session", "Task", "Work"];
   const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
   const randomChars = Math.random().toString(36).substring(2, 8).toUpperCase();
   return `${prefix}-${randomChars}`;
+}
+
+/**
+ * Generate a timer number in the format TMR-000001
+ */
+export function generateTimerNumber(sequenceNumber: number): string {
+  const paddedNumber = sequenceNumber.toString().padStart(6, "0");
+  return `TMR-${paddedNumber}`;
+}
+
+/**
+ * Parse timer number to extract sequence
+ * Returns null if the name doesn't match the TMR-XXXXXX format
+ */
+export function parseTimerNumber(timerName: string): { prefix: string; sequence: number } | null {
+  const match = timerName.match(/^TMR-(\d+)$/);
+  if (!match) {
+    return null;
+  }
+  return {
+    prefix: "TMR",
+    sequence: parseInt(match[1], 10),
+  };
 }
