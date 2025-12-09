@@ -12,7 +12,6 @@ import { updateUserAdmin, deleteUserAdmin, unbanUserAdmin, getUserEffectivePermi
 import type { getUserByIdAdmin } from "@/server/actions/admin/users";
 import { formatDateTimeFull } from "@/lib/utils/date";
 import { UserUnbanDialog } from "./UserUnbanDialog";
-import Link from "next/link";
 
 type User = NonNullable<Awaited<ReturnType<typeof getUserByIdAdmin>>>;
 

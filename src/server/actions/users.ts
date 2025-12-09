@@ -108,6 +108,12 @@ export async function getUserById(userId: string) {
       timezone: true,
       createdAt: true,
       lastLoginAt: true,
+      _count: {
+        select: {
+          createdTickets: true,
+          assignedTickets: true,
+        },
+      },
     },
   });
 }

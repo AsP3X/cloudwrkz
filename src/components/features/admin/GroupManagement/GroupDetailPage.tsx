@@ -11,7 +11,6 @@ import { Badge } from "@/components/ui/Badge";
 import { Tabs } from "@/components/ui/Tabs";
 import { updateGroup, addUserToGroup, removeUserFromGroup, getGroup } from "@/server/actions/groups";
 import { getAllUsers } from "@/server/actions/users";
-import type { getGroup } from "@/server/actions/groups";
 import { formatDate } from "@/lib/utils/date";
 import { GroupPermissionsManager } from "./GroupPermissionsManager";
 

@@ -7,6 +7,9 @@ import { prisma } from "@/lib/db/prisma";
 import { ROLE_PERMISSIONS, type PermissionKey } from "@/lib/constants/permissions";
 import type { CurrentUser } from "./auth-server";
 
+// Re-export PermissionKey for convenience
+export type { PermissionKey };
+
 /**
  * Get all permissions for a user (from role + groups)
  */
