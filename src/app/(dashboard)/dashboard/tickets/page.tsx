@@ -143,7 +143,7 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
               <TicketViewControls />
               <TicketFilterButton users={users} groups={groups} projects={projects} isAgent={user.role === "AGENT"} />
               <Link href="/dashboard/tickets/new">
-                <Button variant="primary">Create Ticket</Button>
+                <Button variant="primary">Create</Button>
               </Link>
             </div>
           </div>
@@ -174,7 +174,7 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
               <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">No tickets yet</h3>
               <p className="text-neutral-600 dark:text-neutral-400 mb-4">Get started by creating your first ticket</p>
               <Link href="/dashboard/tickets/new">
-                <Button variant="primary">Create Ticket</Button>
+                <Button variant="primary">Create</Button>
               </Link>
             </div>
           ) : (
