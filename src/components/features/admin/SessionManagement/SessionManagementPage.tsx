@@ -185,12 +185,12 @@ export function SessionManagementPage({ initialData }: SessionManagementPageProp
     return (
       <div className="space-y-1 border border-neutral-200 dark:border-neutral-800 rounded-lg overflow-hidden">
         {/* Header with toggle */}
-        <button
-          type="button"
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-neutral-50 dark:bg-neutral-900 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900"
-        >
-          <div className="flex items-center gap-3 flex-1 min-w-0">
+        <div className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-neutral-50 dark:bg-neutral-900 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
+          <button
+            type="button"
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="flex items-center gap-3 flex-1 min-w-0 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900 rounded"
+          >
             <span className="text-neutral-500 dark:text-neutral-400 flex-shrink-0">
               <UserIcon />
             </span>
@@ -215,24 +215,43 @@ export function SessionManagementPage({ initialData }: SessionManagementPageProp
                 </Badge>
               </div>
             </div>
+          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedUserId(group.userId);
+                setDeleteAllUserDialogOpen(true);
+              }}
+            >
+              Revoke All
+            </Button>
+            <button
+              type="button"
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900 rounded"
+            >
+              <svg
+                className={cn(
+                  "w-4 h-4 text-neutral-500 dark:text-neutral-400 transition-transform duration-200",
+                  isExpanded ? "transform rotate-180" : ""
+                )}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
+                />
+              </svg>
+            </button>
           </div>
-          <svg
-            className={cn(
-              "w-4 h-4 text-neutral-500 dark:text-neutral-400 transition-transform duration-200 flex-shrink-0",
-              isExpanded ? "transform rotate-180" : ""
-            )}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M19 9l-7 7-7-7"
-            />
-          </svg>
-        </button>
+        </div>
 
         {/* Content */}
         <div
@@ -266,28 +285,16 @@ export function SessionManagementPage({ initialData }: SessionManagementPageProp
                           {formatDateTimeFull(session.updatedAt)}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <Button
-                              variant="danger"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedSession(session);
-                                setDeleteDialogOpen(true);
-                              }}
-                            >
-                              Revoke
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedUserId(session.userId);
-                                setDeleteAllUserDialogOpen(true);
-                              }}
-                            >
-                              Revoke All
-                            </Button>
-                          </div>
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedSession(session);
+                              setDeleteDialogOpen(true);
+                            }}
+                          >
+                            Revoke
+                          </Button>
                         </td>
                       </tr>
                     ))}
