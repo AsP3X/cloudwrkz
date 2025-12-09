@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils/cn";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
+import { useSidebar } from "../SidebarContext";
 
 // Icon components - simple functions to avoid hydration issues
 const DashboardIcon = () => (
@@ -170,39 +171,10 @@ const ADMIN_NAVIGATION = Object.freeze([
 
 export const AdminSidebar = () => {
   const pathname = usePathname();
-  const [isMobileOpen, setIsMobileOpen] = React.useState(false);
+  const { isMobileOpen, setIsMobileOpen } = useSidebar();
 
   return (
     <>
-      {/* Mobile menu button */}
-      <button
-        onClick={() => setIsMobileOpen(!isMobileOpen)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-white dark:bg-neutral-900 shadow-lg border border-neutral-200 dark:border-neutral-800"
-      >
-        <svg
-          className="w-6 h-6 text-neutral-700 dark:text-neutral-300"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          {isMobileOpen ? (
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M6 18L18 6M6 6l12 12"
-            />
-          ) : (
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 6h16M4 12h16M4 18h16"
-            />
-          )}
-        </svg>
-      </button>
-
       {/* Sidebar */}
       <aside
         className={cn(
@@ -211,6 +183,29 @@ export const AdminSidebar = () => {
           isMobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
+        {/* Mobile close button - sticky on right side outside sidebar */}
+        {isMobileOpen && (
+          <button
+            onClick={() => setIsMobileOpen(false)}
+            className="lg:hidden fixed top-4 z-50 p-2 rounded-lg bg-white dark:bg-neutral-900 shadow-lg border border-neutral-200 dark:border-neutral-800"
+            aria-label="Close sidebar"
+            style={{ left: 'calc(16rem + 1rem)' }}
+          >
+            <svg
+              className="w-6 h-6 text-neutral-700 dark:text-neutral-300"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+        )}
         <div className="flex flex-col h-full">
           {/* Logo */}
           <div className="flex items-center h-16 px-6 border-b border-neutral-200 dark:border-neutral-800">
