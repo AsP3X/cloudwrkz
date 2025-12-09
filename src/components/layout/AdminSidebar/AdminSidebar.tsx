@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils/cn";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 import { useSidebar } from "../SidebarContext";
+import { CollapsibleNavSection } from "@/components/ui/CollapsibleNavSection";
 
 // Icon components - simple functions to avoid hydration issues
 const DashboardIcon = () => (
@@ -114,60 +115,93 @@ const SettingsIcon = () => (
   </svg>
 );
 
-// Define navigation as a module-level constant with hardcoded routes
-// IMPORTANT: Order must match exactly between server and client to prevent hydration mismatches
-// Freeze the array to ensure it's truly immutable
-const ADMIN_NAVIGATION = Object.freeze([
+// Define navigation items
+type NavItem = {
+  readonly name: string;
+  readonly href: string;
+  readonly icon: () => JSX.Element;
+};
+
+// Standalone navigation items (not in collapsible sections)
+const STANDALONE_NAV_ITEMS = Object.freeze([
   Object.freeze({
     name: "Dashboard",
     href: "/dashboard",
     icon: DashboardIcon,
   }),
-  Object.freeze({
-    name: "Statistics",
-    href: "/dashboard/admin/statistics",
-    icon: StatisticsIcon,
-  }),
-  Object.freeze({
-    name: "Users",
-    href: "/dashboard/admin/users",
-    icon: UsersIcon,
-  }),
-  Object.freeze({
-    name: "Sessions",
-    href: "/dashboard/admin/sessions",
-    icon: SessionsIcon,
-  }),
-  Object.freeze({
-    name: "Tickets",
-    href: "/dashboard/admin/tickets",
-    icon: TicketsIcon,
-  }),
-  Object.freeze({
-    name: "Modules",
-    href: "/dashboard/admin/modules",
-    icon: ModulesIcon,
-  }),
-  Object.freeze({
-    name: "Projects",
-    href: "/dashboard/admin/projects",
-    icon: ProjectsIcon,
-  }),
-  Object.freeze({
-    name: "Groups",
-    href: "/dashboard/admin/groups",
-    icon: GroupsIcon,
-  }),
-  Object.freeze({
-    name: "System Settings",
-    href: "/dashboard/admin/settings",
-    icon: SettingsIcon,
-  }),
-]) as ReadonlyArray<{
-  readonly name: string;
-  readonly href: string;
+]) as ReadonlyArray<NavItem>;
+
+// Navigation sections with grouped items
+type NavSection = {
+  readonly title: string;
   readonly icon: () => JSX.Element;
-}>;
+  readonly items: ReadonlyArray<NavItem>;
+  readonly defaultExpanded?: boolean;
+};
+
+const NAV_SECTIONS = Object.freeze([
+  Object.freeze({
+    title: "User Management",
+    icon: UsersIcon,
+    defaultExpanded: true,
+    items: Object.freeze([
+      Object.freeze({
+        name: "Users",
+        href: "/dashboard/admin/users",
+        icon: UsersIcon,
+      }),
+      Object.freeze({
+        name: "Sessions",
+        href: "/dashboard/admin/sessions",
+        icon: SessionsIcon,
+      }),
+      Object.freeze({
+        name: "Groups",
+        href: "/dashboard/admin/groups",
+        icon: GroupsIcon,
+      }),
+    ]),
+  }),
+  Object.freeze({
+    title: "Content & Projects",
+    icon: ProjectsIcon,
+    defaultExpanded: true,
+    items: Object.freeze([
+      Object.freeze({
+        name: "Tickets",
+        href: "/dashboard/admin/tickets",
+        icon: TicketsIcon,
+      }),
+      Object.freeze({
+        name: "Projects",
+        href: "/dashboard/admin/projects",
+        icon: ProjectsIcon,
+      }),
+    ]),
+  }),
+  Object.freeze({
+    title: "System",
+    icon: SettingsIcon,
+    defaultExpanded: true,
+    items: Object.freeze([
+      Object.freeze({
+        name: "Statistics",
+        href: "/dashboard/admin/statistics",
+        icon: StatisticsIcon,
+      }),
+      Object.freeze({
+        name: "Modules",
+        href: "/dashboard/admin/modules",
+        icon: ModulesIcon,
+      }),
+      Object.freeze({
+        name: "System Settings",
+        href: "/dashboard/admin/settings",
+        icon: SettingsIcon,
+      }),
+    ]),
+  }),
+]) as ReadonlyArray<NavSection>;
 
 export const AdminSidebar = () => {
   const pathname = usePathname();
@@ -221,15 +255,14 @@ export const AdminSidebar = () => {
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 px-4 py-6 space-y-2">
-            {ADMIN_NAVIGATION.map((item, index) => {
-              // Dashboard should only match exactly, not sub-routes
+          <nav className="flex-1 px-4 py-6 space-y-4 overflow-y-auto">
+            {/* Standalone navigation items */}
+            {STANDALONE_NAV_ITEMS.map((item, index) => {
               const isActive =
                 item.href === "/dashboard"
                   ? pathname === item.href
                   : pathname === item.href || pathname.startsWith(item.href + "/");
               const IconComponent = item.icon;
-              // Use both index and name for key to ensure stability
               return (
                 <Link
                   key={`nav-${index}-${item.name}`}
@@ -247,6 +280,48 @@ export const AdminSidebar = () => {
                   </span>
                   {item.name}
                 </Link>
+              );
+            })}
+
+            {/* Collapsible navigation sections */}
+            {NAV_SECTIONS.map((section, sectionIndex) => {
+              const SectionIcon = section.icon;
+              // Check if any item in this section is active
+              const hasActiveItem = section.items.some((item) => {
+                return pathname === item.href || pathname.startsWith(item.href + "/");
+              });
+
+              return (
+                <CollapsibleNavSection
+                  key={`section-${sectionIndex}-${section.title}`}
+                  title={section.title}
+                  icon={<SectionIcon />}
+                  defaultExpanded={section.defaultExpanded ?? hasActiveItem}
+                >
+                  {section.items.map((item, itemIndex) => {
+                    const isActive =
+                      pathname === item.href || pathname.startsWith(item.href + "/");
+                    const IconComponent = item.icon;
+                    return (
+                      <Link
+                        key={`nav-${sectionIndex}-${itemIndex}-${item.name}`}
+                        href={item.href}
+                        onClick={() => setIsMobileOpen(false)}
+                        className={cn(
+                          "flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
+                          isActive
+                            ? "bg-primary-50 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-800"
+                            : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:text-primary-600 dark:hover:text-primary-400"
+                        )}
+                      >
+                        <span className={cn(isActive ? "text-primary-600 dark:text-primary-400" : "text-neutral-500 dark:text-neutral-400")}>
+                          <IconComponent />
+                        </span>
+                        {item.name}
+                      </Link>
+                    );
+                  })}
+                </CollapsibleNavSection>
               );
             })}
           </nav>
