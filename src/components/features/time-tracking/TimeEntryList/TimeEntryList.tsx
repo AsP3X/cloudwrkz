@@ -293,7 +293,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
   };
 
   return (
-    <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+    <div className="overflow-hidden">
       {selectedEntries.size > 0 && (
         <>
           <TimeEntryBulkActionsToolbar
