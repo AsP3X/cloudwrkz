@@ -58,7 +58,11 @@ export type PermissionKey =
   | "admin.modules.manage"
   | "admin.sessions.view"
   | "admin.statistics.view"
-  | "admin.tickets.manage";
+  | "admin.tickets.manage"
+  // Module Visibility
+  | "modules.tickets.view"
+  | "modules.timetracking.view"
+  | "modules.projects.view";
 
 export interface PermissionDefinition {
   key: PermissionKey;
@@ -396,6 +400,28 @@ export const PERMISSIONS: PermissionDefinition[] = [
     description: "Full ticket management (admin view)",
     category: "admin",
   },
+  // Module Visibility
+  {
+    key: "modules.tickets.view",
+    name: "View Tickets Module",
+    description: "Access to the Tickets module in navigation and dashboard",
+    category: "modules",
+    module: "tickets",
+  },
+  {
+    key: "modules.timetracking.view",
+    name: "View Time Tracking Module",
+    description: "Access to the Time Tracking module in navigation and dashboard",
+    category: "modules",
+    module: "timetracking",
+  },
+  {
+    key: "modules.projects.view",
+    name: "View Projects Module",
+    description: "Access to the Projects module in navigation and dashboard",
+    category: "modules",
+    module: "projects",
+  },
 ];
 
 /**
@@ -475,6 +501,10 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     "admin.sessions.view",
     "admin.statistics.view",
     "admin.tickets.manage",
+    // Module Visibility
+    "modules.tickets.view",
+    "modules.timetracking.view",
+    "modules.projects.view",
   ],
   AGENT: [
     // Tickets
@@ -494,17 +524,13 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     "tasks.view",
     "tasks.create",
     "tasks.update",
+    // Module Visibility
+    "modules.tickets.view",
+    "modules.timetracking.view",
+    "modules.projects.view",
   ],
   USER: [
-    // Tickets (own only)
-    "tickets.view",
-    "tickets.create",
-    "tickets.time_entries.view",
-    "tickets.time_entries.create",
-    // Time Tracking (own only)
-    "time_tracking.view",
-    "time_tracking.create",
-    // Projects (assigned only)
-    "projects.view",
+    // Default users have no permissions - they must be added to groups to get permissions
+    // This ensures that permissions are explicitly granted through group membership
   ],
 };

@@ -279,14 +279,16 @@ export async function getTickets(filters?: {
 }) {
   const user = await requireAuth();
   
-  // Check permission (admins always pass)
-  try {
-    await requireAnyPermission("tickets.view", "tickets.view_all", "admin.tickets.manage");
-  } catch {
-    // Fallback to role check for backward compatibility
-    if (!["ADMIN", "MODERATOR", "AGENT", "USER"].includes(user.role)) {
-      return [];
-    }
+  // Check permission
+  const { getUserPermissions } = await import("@/lib/utils/permissions");
+  const userPermissions = await getUserPermissions(user.id);
+  
+  const canViewAllTickets = userPermissions.has("tickets.view_all") || userPermissions.has("admin.tickets.manage");
+  const canViewTickets = userPermissions.has("tickets.view") || canViewAllTickets;
+
+  if (!canViewTickets) {
+    // User has no permission to view tickets
+    return [];
   }
 
   const where: any = {};
@@ -384,39 +386,53 @@ export async function getTickets(filters?: {
     Object.assign(where, baseFilters);
   }
 
-  // For agents, apply group membership filter
-  if (user.role === "AGENT") {
-    // Get groups the agent is a member of
-    const memberships = await prisma.groupMembership.findMany({
-      where: { userId: user.id },
-      select: { groupId: true },
-    });
-    const agentGroupIds = memberships.map((m) => m.groupId);
+  // Apply permission-based filtering
+  if (!canViewAllTickets) {
+    // User can only view specific tickets
+    if (user.role === "AGENT") {
+      // Agents can see tickets assigned to them or their groups
+      const memberships = await prisma.groupMembership.findMany({
+        where: { userId: user.id },
+        select: { groupId: true },
+      });
+      const agentGroupIds = memberships.map((m) => m.groupId);
 
-    // Agents can only see tickets that:
-    // 1. Are not assigned to any group (assignedToGroupId is null), OR
-    // 2. Are assigned to a group the agent is a member of
-    const groupFilter = {
-      OR: [
-        { assignedToGroupId: null },
-        ...(agentGroupIds.length > 0 ? [{ assignedToGroupId: { in: agentGroupIds } }] : []),
-      ],
-    };
+      const groupFilter = {
+        OR: [
+          { assignedToId: user.id },
+          { assignedToGroupId: null },
+          ...(agentGroupIds.length > 0 ? [{ assignedToGroupId: { in: agentGroupIds } }] : []),
+        ],
+      };
 
-    // Combine group filter with other filters using AND
-    // If where already has AND conditions, merge them
-    if (where.AND) {
-      where.AND = [groupFilter, ...where.AND];
-    } else {
-      const otherFilters = { ...where };
-      delete otherFilters.AND; // Remove AND if it exists
-      
-      where.AND = [
-        groupFilter,
-        ...(Object.keys(otherFilters).length > 0 ? [otherFilters] : []),
-      ];
+      // Combine group filter with other filters using AND
+      // If where already has AND conditions, merge them
+      if (where.AND) {
+        where.AND = [groupFilter, ...where.AND];
+      } else {
+        const otherFilters = { ...where };
+        delete otherFilters.AND; // Remove AND if it exists
+        
+        where.AND = [
+          groupFilter,
+          ...(Object.keys(otherFilters).length > 0 ? [otherFilters] : []),
+        ];
+      }
+    } else if (user.role === "USER") {
+      // Regular users can only see tickets they created
+      // This is already handled by the createdById filter if provided
+      // But we need to ensure it's set if not already in filters
+      if (!filters?.createdById && !filters?.projectIds) {
+        const userFilter = { createdById: user.id };
+        if (where.AND) {
+          where.AND.push(userFilter);
+        } else {
+          where.AND = [userFilter, ...(Object.keys(where).length > 0 ? [where] : [])];
+        }
+      }
     }
   }
+  // Users with view_all permission can see all tickets (no additional filter)
 
   // Determine sort order
   const sortBy = filters?.sortBy || "createdAt";

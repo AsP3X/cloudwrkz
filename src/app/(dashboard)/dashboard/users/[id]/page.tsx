@@ -37,9 +37,14 @@ export default async function UserDetailPage({ params, searchParams }: UserDetai
   const { id } = await params;
   const urlParams = await searchParams;
 
-  // Only agents, admins, and moderators can view user details
-  if (!currentUser || (currentUser.role !== "AGENT" && currentUser.role !== "ADMIN" && currentUser.role !== "MODERATOR")) {
+  // Users can view their own profile, agents/admins/moderators can view any user
+  if (!currentUser) {
     redirect(ROUTES.LOGIN);
+  }
+  
+  // Regular users can only view their own profile
+  if (currentUser.role === "USER" && currentUser.id !== id) {
+    redirect(ROUTES.DASHBOARD);
   }
 
   // Validate user ID

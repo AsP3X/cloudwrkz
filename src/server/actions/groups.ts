@@ -223,24 +223,42 @@ export async function deleteGroup(id: string): Promise<ActionResult> {
 
 /**
  * Add an agent to a group (only admins and moderators)
+ * @deprecated Use addUserToGroup instead
  */
 export async function addAgentToGroup(
   groupId: string,
   agentId: string
 ): Promise<ActionResult> {
+  return addUserToGroup(groupId, agentId);
+}
+
+/**
+ * Add a user to a group (only admins and moderators)
+ */
+export async function addUserToGroup(
+  groupId: string,
+  userId: string
+): Promise<ActionResult> {
   try {
     await requireAnyRole("ADMIN", "MODERATOR");
 
-    // Verify the user is an agent
-    const agent = await prisma.user.findUnique({
-      where: { id: agentId },
-      select: { role: true },
+    // Verify the user exists and is active
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true, status: true },
     });
 
-    if (!agent || (agent.role !== "AGENT" && agent.role !== "ADMIN" && agent.role !== "MODERATOR")) {
+    if (!user) {
       return {
         success: false,
-        error: "User must be an agent, admin, or moderator",
+        error: "User not found",
+      };
+    }
+
+    if (user.status !== "ACTIVE") {
+      return {
+        success: false,
+        error: "Cannot add inactive users to groups",
       };
     }
 
@@ -248,7 +266,7 @@ export async function addAgentToGroup(
     const existing = await prisma.groupMembership.findUnique({
       where: {
         userId_groupId: {
-          userId: agentId,
+          userId: userId,
           groupId,
         },
       },
@@ -257,39 +275,50 @@ export async function addAgentToGroup(
     if (existing) {
       return {
         success: false,
-        error: "Agent is already a member of this group",
+        error: "User is already a member of this group",
       };
     }
 
     await prisma.groupMembership.create({
       data: {
-        userId: agentId,
+        userId: userId,
         groupId,
       },
     });
 
     // Clear permission cache for the user
-    clearPermissionCache(agentId);
+    clearPermissionCache(userId);
 
     return {
       success: true,
-      message: "Agent added to group successfully",
+      message: "User added to group successfully",
     };
   } catch (error: any) {
-    console.error("Add agent to group error:", error);
+    console.error("Add user to group error:", error);
     return {
       success: false,
-      error: error.message || "Failed to add agent to group",
+      error: error.message || "Failed to add user to group",
     };
   }
 }
 
 /**
  * Remove an agent from a group (only admins and moderators)
+ * @deprecated Use removeUserFromGroup instead
  */
 export async function removeAgentFromGroup(
   groupId: string,
   agentId: string
+): Promise<ActionResult> {
+  return removeUserFromGroup(groupId, agentId);
+}
+
+/**
+ * Remove a user from a group (only admins and moderators)
+ */
+export async function removeUserFromGroup(
+  groupId: string,
+  userId: string
 ): Promise<ActionResult> {
   try {
     await requireAnyRole("ADMIN", "MODERATOR");
@@ -297,24 +326,24 @@ export async function removeAgentFromGroup(
     await prisma.groupMembership.delete({
       where: {
         userId_groupId: {
-          userId: agentId,
+          userId: userId,
           groupId,
         },
       },
     });
 
     // Clear permission cache for the user
-    clearPermissionCache(agentId);
+    clearPermissionCache(userId);
 
     return {
       success: true,
-      message: "Agent removed from group successfully",
+      message: "User removed from group successfully",
     };
   } catch (error: any) {
-    console.error("Remove agent from group error:", error);
+    console.error("Remove user from group error:", error);
     return {
       success: false,
-      error: error.message || "Failed to remove agent from group",
+      error: error.message || "Failed to remove user from group",
     };
   }
 }

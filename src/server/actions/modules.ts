@@ -1,8 +1,9 @@
 "use server";
 
 import { prisma } from "@/lib/db/prisma";
-import { MODULE_CONFIG, type ModuleKey } from "@/lib/constants/modules";
+import { MODULE_CONFIG, MODULE_KEYS, type ModuleKey } from "@/lib/constants/modules";
 import { revalidatePath } from "next/cache";
+import { getUserPermissions } from "@/lib/utils/permissions";
 
 /**
  * Initialize modules in the database
@@ -50,6 +51,50 @@ export async function isModuleEnabled(moduleKey: ModuleKey): Promise<boolean> {
   });
 
   return moduleRecord?.enabled ?? false;
+}
+
+/**
+ * Check if a user can view a module (module must be enabled AND user must have permission)
+ * Auto-initializes modules if they don't exist
+ */
+export async function canUserViewModule(userId: string, moduleKey: ModuleKey): Promise<boolean> {
+  // First check if module is enabled
+  const enabled = await isModuleEnabled(moduleKey);
+  if (!enabled) {
+    return false;
+  }
+
+  // Get user to check role
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+
+  if (!user) {
+    return false;
+  }
+
+  // Admins can view all enabled modules
+  if (user.role === "ADMIN") {
+    return true;
+  }
+
+  // Map module keys to permission keys
+  const modulePermissionMap: Record<string, string> = {
+    [MODULE_KEYS.TICKETS]: "modules.tickets.view",
+    [MODULE_KEYS.TIMETRACKING]: "modules.timetracking.view",
+    [MODULE_KEYS.PROJECTS]: "modules.projects.view",
+  };
+
+  const permissionKey = modulePermissionMap[moduleKey];
+  if (!permissionKey) {
+    // If no permission mapping, allow (backward compatibility)
+    return true;
+  }
+
+  // Check if user has permission to view this module
+  const userPermissions = await getUserPermissions(userId);
+  return userPermissions.has(permissionKey as any);
 }
 
 /**

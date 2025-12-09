@@ -25,6 +25,7 @@ export function GroupPermissionsManager({
   const [selectedPermissionIds, setSelectedPermissionIds] = useState<Set<string>>(
     new Set(initialPermissionIds)
   );
+  const [basePermissionIds, setBasePermissionIds] = useState<string[]>(initialPermissionIds);
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
@@ -44,7 +45,9 @@ export function GroupPermissionsManager({
         ]);
         setPermissions(perms);
         setCategories(cats);
-        setSelectedPermissionIds(new Set(groupPerms.map((p) => p.id)));
+        const loadedPermissionIds = groupPerms.map((p) => p.id);
+        setSelectedPermissionIds(new Set(loadedPermissionIds));
+        setBasePermissionIds(loadedPermissionIds);
         // All categories collapsed by default
         setExpandedCategories(new Set());
       } catch (err: any) {
@@ -151,10 +154,17 @@ export function GroupPermissionsManager({
       setError(null);
       setSuccess(null);
 
-      const result = await updateGroupPermissions(groupId, Array.from(selectedPermissionIds));
+      const permissionIdsArray = Array.from(selectedPermissionIds);
+      
+      const result = await updateGroupPermissions(groupId, permissionIdsArray);
 
       if (result.success) {
         setSuccess(result.message || "Permissions updated successfully");
+        // Reload group permissions to update the UI
+        const updatedGroupPerms = await getGroupPermissions(groupId);
+        const updatedPermissionIds = updatedGroupPerms.map((p) => p.id);
+        setSelectedPermissionIds(new Set(updatedPermissionIds));
+        setBasePermissionIds(updatedPermissionIds);
         setTimeout(() => {
           setSuccess(null);
           onSave?.();
@@ -171,13 +181,16 @@ export function GroupPermissionsManager({
 
   // Check if there are changes
   const hasChanges = useMemo(() => {
-    const initialSet = new Set(initialPermissionIds);
+    const initialSet = new Set(basePermissionIds);
     if (initialSet.size !== selectedPermissionIds.size) return true;
     for (const id of selectedPermissionIds) {
       if (!initialSet.has(id)) return true;
     }
+    for (const id of basePermissionIds) {
+      if (!selectedPermissionIds.has(id)) return true;
+    }
     return false;
-  }, [initialPermissionIds, selectedPermissionIds]);
+  }, [basePermissionIds, selectedPermissionIds]);
 
   if (isLoading) {
     return (
