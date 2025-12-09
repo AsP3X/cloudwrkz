@@ -343,10 +343,10 @@ export const FilterDialog = ({
       title={config.title}
       description={config.description}
     >
-      <div className="px-6 py-6 space-y-6">
+      <div className="px-4 py-4 md:px-6 md:py-6 space-y-4 md:space-y-6">
         {/* Saved Presets */}
         {enablePresets && savedPresets.length > 0 && (
-          <div className="border-b border-neutral-200 dark:border-neutral-700 pb-4">
+          <div className="border-b border-neutral-200 dark:border-neutral-700 pb-3 md:pb-4">
             <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
               Saved Filter Presets
             </label>
@@ -405,7 +405,7 @@ export const FilterDialog = ({
 
         {/* Select Fields (Quick Filters) */}
         {selectFields.length > 0 && (
-          <div className={getGridClass(selectGridCols) + " gap-4"}>
+          <div className={getGridClass(selectGridCols) + " gap-3 md:gap-4"}>
             {selectFields.map((field) => (
               <Select
                 key={`${field.key}-${filters[field.key]}`}
@@ -420,7 +420,7 @@ export const FilterDialog = ({
 
         {/* Text Fields */}
         {textFields.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
             {textFields.map((field) => (
               <div key={field.key}>
                 <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
@@ -443,9 +443,9 @@ export const FilterDialog = ({
 
         {/* Date Filters */}
         {enableDateFilters && dateFields.length > 0 && (
-          <div className="space-y-4">
+          <div className="space-y-3 md:space-y-4">
             <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Date Filters</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
               {dateFields.map((field) => (
                 <div key={field.key}>
                   <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
@@ -469,11 +469,11 @@ export const FilterDialog = ({
 
         {/* Save Preset */}
         {enablePresets && (
-          <div className="border-t border-neutral-200 dark:border-neutral-700 pt-4">
+          <div className="border-t border-neutral-200 dark:border-neutral-700 pt-3 md:pt-4">
             <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
               Save Current Filters as Preset
             </label>
-            <div className="flex gap-2 items-center">
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
               <Input
                 type="text"
                 placeholder="Enter preset name..."
@@ -484,13 +484,13 @@ export const FilterDialog = ({
                     savePreset();
                   }
                 }}
-                className="flex-1"
+                className="flex-1 w-full sm:w-auto"
               />
               <Button
                 variant="outline"
                 onClick={savePreset}
                 disabled={!presetName.trim()}
-                className="px-6"
+                className="px-6 w-full sm:w-auto"
               >
                 Save
               </Button>
@@ -499,7 +499,7 @@ export const FilterDialog = ({
         )}
 
         {/* Actions */}
-        <div className="flex items-center justify-between pt-4 border-t border-neutral-200 dark:border-neutral-700">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-3 md:pt-4 border-t border-neutral-200 dark:border-neutral-700">
           <div className="flex items-center gap-2">
             {hasActiveFilters && (
               <span className="px-2 py-1 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full text-xs font-medium">
@@ -507,16 +507,16 @@ export const FilterDialog = ({
               </span>
             )}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
             {hasActiveFilters && (
-              <Button variant="outline" onClick={clearFilters}>
+              <Button variant="outline" onClick={clearFilters} className="w-full sm:w-auto">
                 Clear All
               </Button>
             )}
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
+            <Button variant="outline" onClick={() => onOpenChange(false)} className="w-full sm:w-auto">
               Cancel
             </Button>
-            <Button variant="primary" onClick={applyFilters}>
+            <Button variant="primary" onClick={applyFilters} className="w-full sm:w-auto">
               Apply Filters
             </Button>
           </div>
