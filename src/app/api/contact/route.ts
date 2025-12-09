@@ -42,7 +42,7 @@ function getClientIP(request: NextRequest): string {
     return realIP;
   }
   // Fallback to a default (in production, this should be handled better)
-  return request.ip || "unknown";
+  return "unknown";
 }
 
 export async function POST(request: NextRequest) {

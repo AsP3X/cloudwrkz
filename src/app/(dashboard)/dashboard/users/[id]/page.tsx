@@ -1,6 +1,6 @@
 import { getCurrentUser } from "@/lib/utils/auth-server";
 import { formatUserName, formatUserInitial } from "@/lib/utils/users";
-import { formatDateTime } from "@/lib/utils/date";
+import { formatDate, formatDateTime } from "@/lib/utils/date";
 import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
 import { isModuleEnabled } from "@/server/actions/modules";

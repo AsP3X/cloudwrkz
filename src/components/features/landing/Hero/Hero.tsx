@@ -4,7 +4,7 @@ import React from "react";
 import { Button } from "@/components/ui/Button";
 import { ROUTES } from "@/lib/constants/routes";
 
-const handleLearnMoreClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+const handleLearnMoreClick = (e: React.MouseEvent<HTMLElement>) => {
   e.preventDefault();
   const featuresSection = document.getElementById("features");
   if (featuresSection) {
