@@ -18,6 +18,7 @@
     "db:reset": "dotenv -e .env.local -- prisma db push --force-reset --skip-generate && dotenv -e .env.local -- prisma generate",
     "db:studio": "dotenv -e .env.local -- prisma studio",
     "db:setup": "bash scripts/setup-db.sh",
+    "db:seed-permissions": "dotenv -e .env.local -- tsx scripts/seed-permissions.ts",
     "cli": "dotenv -e .env.local -- tsx src/cli/index.ts"
   },
   "dependencies": {

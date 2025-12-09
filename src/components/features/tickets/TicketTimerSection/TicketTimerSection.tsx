@@ -30,6 +30,7 @@ interface TicketTimerSectionProps {
     createdAt: Date;
   }>;
   userTimezone?: string;
+  canCreate?: boolean; // Permission to create time entries
 }
 
 export function TicketTimerSection({
@@ -39,6 +40,7 @@ export function TicketTimerSection({
   initialTimeEntries,
   initialAvailableEntries,
   userTimezone = "UTC",
+  canCreate = true, // Default to true for backward compatibility
 }: TicketTimerSectionProps) {
   const router = useRouter();
   const [timeEntries, setTimeEntries] = React.useState(initialTimeEntries);
@@ -227,14 +229,15 @@ export function TicketTimerSection({
       )}
 
       {/* Create Timer Button */}
-      <div className="flex gap-2">
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={handleCreateTimer}
-          loading={isCreating}
-          disabled={isCreating}
-        >
+      {canCreate && (
+        <div className="flex gap-2">
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={handleCreateTimer}
+            loading={isCreating}
+            disabled={isCreating}
+          >
           <svg
             className="w-4 h-4 mr-2"
             fill="none"
@@ -250,7 +253,8 @@ export function TicketTimerSection({
           </svg>
           Create Timer
         </Button>
-      </div>
+        </div>
+      )}
 
       {/* Timer List */}
       {timeEntries.length > 0 ? (

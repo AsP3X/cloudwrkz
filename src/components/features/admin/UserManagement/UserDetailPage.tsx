@@ -8,10 +8,11 @@ import { Badge } from "@/components/ui/Badge";
 import { Dialog } from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { updateUserAdmin, deleteUserAdmin, unbanUserAdmin } from "@/server/actions/admin/users";
+import { updateUserAdmin, deleteUserAdmin, unbanUserAdmin, getUserEffectivePermissions } from "@/server/actions/admin/users";
 import type { getUserByIdAdmin } from "@/server/actions/admin/users";
 import { formatDateTimeFull } from "@/lib/utils/date";
 import { UserUnbanDialog } from "./UserUnbanDialog";
+import Link from "next/link";
 
 type User = NonNullable<Awaited<ReturnType<typeof getUserByIdAdmin>>>;
 
@@ -35,6 +36,8 @@ export function UserDetailPage({ user: initialUser }: UserDetailPageProps) {
   });
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
+  const [effectivePermissions, setEffectivePermissions] = useState<string[]>([]);
+  const [loadingPermissions, setLoadingPermissions] = useState(false);
 
   React.useEffect(() => {
     if (editDialogOpen) {
@@ -49,6 +52,21 @@ export function UserDetailPage({ user: initialUser }: UserDetailPageProps) {
       setFieldErrors({});
     }
   }, [editDialogOpen, user]);
+
+  React.useEffect(() => {
+    async function loadPermissions() {
+      try {
+        setLoadingPermissions(true);
+        const perms = await getUserEffectivePermissions(user.id);
+        setEffectivePermissions(perms);
+      } catch (err) {
+        console.error("Failed to load permissions:", err);
+      } finally {
+        setLoadingPermissions(false);
+      }
+    }
+    loadPermissions();
+  }, [user.id]);
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -222,6 +240,58 @@ export function UserDetailPage({ user: initialUser }: UserDetailPageProps) {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Group Memberships */}
+      {user.groupMemberships && user.groupMemberships.length > 0 && (
+        <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
+          <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">Group Memberships</h2>
+          <div className="space-y-3">
+            {user.groupMemberships.map((membership) => (
+              <div
+                key={membership.id}
+                className="flex items-center justify-between p-3 border border-neutral-200 dark:border-neutral-800 rounded-lg"
+              >
+                <div>
+                  <Link
+                    href={`/dashboard/admin/groups/${membership.group.id}`}
+                    className="font-medium text-primary-600 dark:text-primary-400 hover:underline"
+                  >
+                    {membership.group.name}
+                  </Link>
+                  {membership.group.description && (
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                      {membership.group.description}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Effective Permissions */}
+      <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
+        <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">Effective Permissions</h2>
+        {loadingPermissions ? (
+          <p className="text-neutral-600 dark:text-neutral-400">Loading permissions...</p>
+        ) : effectivePermissions.length > 0 ? (
+          <div className="space-y-2">
+            <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-3">
+              This user has {effectivePermissions.length} permission{effectivePermissions.length !== 1 ? "s" : ""} (from role + groups):
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {effectivePermissions.map((perm) => (
+                <Badge key={perm} variant="default" size="sm">
+                  {perm}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="text-neutral-600 dark:text-neutral-400">No permissions assigned.</p>
+        )}
       </div>
 
       {/* Ban Information */}

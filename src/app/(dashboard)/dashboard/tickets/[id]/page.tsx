@@ -1,4 +1,5 @@
 import { getCurrentUser } from "@/lib/utils/auth-server";
+import { hasPermission } from "@/lib/utils/permissions";
 import { formatUserName } from "@/lib/utils/users";
 import { formatDateTime } from "@/lib/utils/date";
 import { redirect } from "next/navigation";
@@ -96,10 +97,21 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
   const groups = isAgent ? await getGroups() : [];
   const projects = isAgent ? await getUserProjectsForAssignment() : [];
 
-  // Check if time tracking module is enabled and get timers
+  // Check if time tracking module is enabled and user has permission to view ticket time entries
   const timeTrackingEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
-  const timeEntries = timeTrackingEnabled ? await getTimeEntriesForTicket(ticket.id) : [];
-  const availableTimeEntries = timeTrackingEnabled ? await getAvailableTimeEntriesForAssignment() : [];
+  const canViewTimeEntries = timeTrackingEnabled && (
+    user.role === "ADMIN" || 
+    await hasPermission(user.id, "tickets.time_entries.view") ||
+    await hasPermission(user.id, "time_tracking.view") ||
+    await hasPermission(user.id, "time_tracking.view_all")
+  );
+  const canCreateTimeEntries = timeTrackingEnabled && (
+    user.role === "ADMIN" ||
+    await hasPermission(user.id, "tickets.time_entries.create") ||
+    await hasPermission(user.id, "time_tracking.create")
+  );
+  const timeEntries = canViewTimeEntries ? await getTimeEntriesForTicket(ticket.id) : [];
+  const availableTimeEntries = canViewTimeEntries ? await getAvailableTimeEntriesForAssignment() : [];
   
   // Filter stopped timers for the Timers tab
   const stoppedTimeEntries = timeTrackingEnabled 
@@ -497,8 +509,8 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
             </div>
           </div>
 
-          {/* Time Tracking Section - Only visible to agents, admins, and moderators */}
-          {timeTrackingEnabled && isAgent && (
+          {/* Time Tracking Section - Only visible if user has permission */}
+          {canViewTimeEntries && (
             <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
               <TicketTimerSection
                 ticketId={ticket.id}
@@ -521,6 +533,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                   createdAt: entry.createdAt,
                 }))}
                 userTimezone={user.timezone ?? "UTC"}
+                canCreate={canCreateTimeEntries}
               />
             </div>
           )}

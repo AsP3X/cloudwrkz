@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db/prisma";
-import { requireAuth } from "@/lib/utils/auth-server";
+import { requireAuth, requireAnyPermission } from "@/lib/utils/auth-server";
 import { isModuleEnabled } from "./modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { revalidatePath } from "next/cache";
@@ -81,6 +81,34 @@ export async function createTimeEntry(
     }
 
     const user = await requireAuth();
+
+    // Check permission if creating from a ticket
+    if (input.ticketId) {
+      try {
+        await requireAnyPermission("tickets.time_entries.create", "time_tracking.create");
+      } catch {
+        // Fallback to role check for backward compatibility
+        if (!["ADMIN", "MODERATOR", "AGENT"].includes(user.role)) {
+          return {
+            success: false,
+            error: "You don't have permission to create time entries for tickets",
+          };
+        }
+      }
+    } else {
+      // For non-ticket time entries, check general time tracking permission
+      try {
+        await requireAnyPermission("time_tracking.create");
+      } catch {
+        // Fallback to role check for backward compatibility
+        if (!["ADMIN", "MODERATOR", "AGENT", "USER"].includes(user.role)) {
+          return {
+            success: false,
+            error: "You don't have permission to create time entries",
+          };
+        }
+      }
+    }
 
     // Generate name if not provided
     let name = input.name?.trim();
@@ -1222,6 +1250,16 @@ export async function getTimeEntriesForTicket(ticketId: string) {
     }
 
     const user = await requireAuth();
+
+    // Check permission to view ticket time entries
+    try {
+      await requireAnyPermission("tickets.time_entries.view", "time_tracking.view", "time_tracking.view_all");
+    } catch {
+      // Fallback to role check for backward compatibility
+      if (!["ADMIN", "MODERATOR", "AGENT", "USER"].includes(user.role)) {
+        return [];
+      }
+    }
 
     const entries = await prisma.timeEntry.findMany({
       where: {

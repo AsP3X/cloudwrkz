@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/utils/auth-server";
+import { getUserPermissions } from "@/lib/utils/permissions";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
@@ -244,6 +245,17 @@ export async function getUserByIdAdmin(userId: string) {
       updatedAt: true,
       lastLoginAt: true,
       lastLoginIp: true,
+      groupMemberships: {
+        include: {
+          group: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+            },
+          },
+        },
+      },
       _count: {
         select: {
           createdTickets: true,
@@ -257,6 +269,17 @@ export async function getUserByIdAdmin(userId: string) {
   });
 
   return user;
+}
+
+/**
+ * Get effective permissions for a user (admin only)
+ */
+export async function getUserEffectivePermissions(userId: string) {
+  await requireRole("ADMIN");
+  
+  const permissions = await getUserPermissions(userId);
+  
+  return Array.from(permissions).sort();
 }
 
 /**

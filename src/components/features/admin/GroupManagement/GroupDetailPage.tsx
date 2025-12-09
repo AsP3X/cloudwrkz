@@ -8,10 +8,12 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
+import { Tabs } from "@/components/ui/Tabs";
 import { updateGroup, addAgentToGroup, removeAgentFromGroup } from "@/server/actions/groups";
 import { getAgents } from "@/server/actions/users";
 import type { getGroup } from "@/server/actions/groups";
 import { formatDate } from "@/lib/utils/date";
+import { GroupPermissionsManager } from "./GroupPermissionsManager";
 
 type Group = NonNullable<Awaited<ReturnType<typeof getGroup>>>;
 
@@ -100,7 +102,7 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
           <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Members</p>
           <p className="text-3xl font-bold text-neutral-900 dark:text-neutral-100 mt-2">{group._count.members}</p>
@@ -110,6 +112,10 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
           <p className="text-3xl font-bold text-neutral-900 dark:text-neutral-100 mt-2">{group._count.tickets}</p>
         </div>
         <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
+          <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Permissions</p>
+          <p className="text-3xl font-bold text-neutral-900 dark:text-neutral-100 mt-2">{group._count.permissions || 0}</p>
+        </div>
+        <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
           <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Created</p>
           <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-2">
             {formatDate(group.createdAt)}
@@ -117,39 +123,96 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
         </div>
       </div>
 
-      {/* Members List */}
+      {/* Tabs */}
       <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
-        <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">Members</h2>
-        {group.members.length === 0 ? (
-          <p className="text-neutral-600 dark:text-neutral-400">No members in this group.</p>
-        ) : (
-          <div className="space-y-3">
-            {group.members.map((membership) => (
-              <div
-                key={membership.id}
-                className="flex items-center justify-between p-3 border border-neutral-200 dark:border-neutral-800 rounded-lg"
-              >
+        <Tabs
+          tabs={[
+            {
+              id: "overview",
+              label: "Overview",
+              content: (
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Group Information</h3>
+                    <div className="space-y-2">
+                      <div>
+                        <span className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Name:</span>
+                        <span className="ml-2 text-neutral-900 dark:text-neutral-100">{group.name}</span>
+                      </div>
+                      {group.description && (
+                        <div>
+                          <span className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Description:</span>
+                          <p className="mt-1 text-neutral-900 dark:text-neutral-100">{group.description}</p>
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Created:</span>
+                        <span className="ml-2 text-neutral-900 dark:text-neutral-100">{formatDate(group.createdAt)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ),
+            },
+            {
+              id: "members",
+              label: "Members",
+              content: (
                 <div>
-                  <p className="font-medium text-neutral-900 dark:text-neutral-100">
-                    {membership.user.name || membership.user.email}
+                  <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-4">Group Members</h3>
+                  {group.members.length === 0 ? (
+                    <p className="text-neutral-600 dark:text-neutral-400">No members in this group.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {group.members.map((membership) => (
+                        <div
+                          key={membership.id}
+                          className="flex items-center justify-between p-3 border border-neutral-200 dark:border-neutral-800 rounded-lg"
+                        >
+                          <div>
+                            <p className="font-medium text-neutral-900 dark:text-neutral-100">
+                              {membership.user.name || membership.user.email}
+                            </p>
+                            <p className="text-sm text-neutral-600 dark:text-neutral-400">{membership.user.email}</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <Badge variant="info" size="sm">{membership.user.role}</Badge>
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              onClick={() => handleRemoveAgent(membership.userId)}
+                              disabled={isLoading}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ),
+            },
+            {
+              id: "permissions",
+              label: "Permissions",
+              content: (
+                <div>
+                  <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-4">Group Permissions</h3>
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
+                    Manage what this group can access. Permissions are additive - users get permissions from their role plus all groups they belong to.
                   </p>
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400">{membership.user.email}</p>
+                  <GroupPermissionsManager
+                    groupId={group.id}
+                    initialPermissionIds={group.permissions?.map((p) => p.permission.id) || []}
+                    onSave={() => router.refresh()}
+                  />
                 </div>
-                <div className="flex items-center gap-3">
-                  <Badge variant="info" size="sm">{membership.user.role}</Badge>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    onClick={() => handleRemoveAgent(membership.userId)}
-                    disabled={isLoading}
-                  >
-                    Remove
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ),
+            },
+          ]}
+          defaultTab="overview"
+        />
       </div>
 
       {/* Edit Dialog */}

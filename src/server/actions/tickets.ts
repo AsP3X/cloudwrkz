@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db/prisma";
-import { requireAuth } from "@/lib/utils/auth-server";
+import { requireAuth, requireAnyPermission } from "@/lib/utils/auth-server";
 import { isModuleEnabled } from "./modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { revalidatePath } from "next/cache";
@@ -52,6 +52,9 @@ export async function createTicket(input: TicketInput): Promise<ActionResult<{ i
     }
 
     const user = await requireAuth();
+
+    // Check permission
+    await requireAnyPermission("tickets.create");
 
     // Validate input
     if (!input.title || input.title.trim().length === 0) {
@@ -275,6 +278,16 @@ export async function getTickets(filters?: {
   sortOrder?: "asc" | "desc";
 }) {
   const user = await requireAuth();
+  
+  // Check permission (admins always pass)
+  try {
+    await requireAnyPermission("tickets.view", "tickets.view_all", "admin.tickets.manage");
+  } catch {
+    // Fallback to role check for backward compatibility
+    if (!["ADMIN", "MODERATOR", "AGENT", "USER"].includes(user.role)) {
+      return [];
+    }
+  }
 
   const where: any = {};
   const baseFilters: any = {};
@@ -467,6 +480,16 @@ export async function getTickets(filters?: {
  */
 export async function getTicket(id: string) {
   const user = await requireAuth();
+  
+  // Check permission (admins always pass)
+  try {
+    await requireAnyPermission("tickets.view", "tickets.view_all", "admin.tickets.manage");
+  } catch {
+    // Fallback to role check for backward compatibility
+    if (!["ADMIN", "MODERATOR", "AGENT", "USER"].includes(user.role)) {
+      return null;
+    }
+  }
 
   const ticket = await prisma.ticket.findUnique({
     where: { id },
@@ -607,6 +630,19 @@ export async function updateTicket(
 ): Promise<ActionResult> {
   try {
     const user = await requireAuth();
+    
+    // Check permission (admins always pass)
+    try {
+      await requireAnyPermission("tickets.update", "admin.tickets.manage");
+    } catch {
+      // Fallback to role check for backward compatibility
+      if (!["ADMIN", "MODERATOR", "AGENT"].includes(user.role)) {
+        return {
+          success: false,
+          error: "You don't have permission to update this ticket",
+        };
+      }
+    }
 
     // Fetch current ticket data to compare changes
     const currentTicket = await prisma.ticket.findUnique({
@@ -1038,6 +1074,13 @@ export async function updateTicket(
 export async function deleteTicket(id: string): Promise<ActionResult> {
   try {
     const user = await requireAuth();
+    
+    // Check permission (admins always pass)
+    try {
+      await requireAnyPermission("tickets.delete", "admin.tickets.manage");
+    } catch {
+      // Fallback to role check for backward compatibility - continue with existing logic
+    }
 
     const ticket = await prisma.ticket.findUnique({
       where: { id },

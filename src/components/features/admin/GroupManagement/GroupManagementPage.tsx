@@ -254,6 +254,9 @@ export function GroupManagementPage({ initialGroups }: GroupManagementPageProps)
                   <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                     Tickets
                   </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                    Permissions
+                  </th>
                   <th className="px-6 py-3 text-right text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                     Actions
                   </th>
@@ -304,6 +307,11 @@ export function GroupManagementPage({ initialGroups }: GroupManagementPageProps)
                     <td className="px-6 py-4 whitespace-nowrap">
                       <Badge variant="info" size="sm">
                         {group._count.tickets} ticket{group._count.tickets !== 1 ? "s" : ""}
+                      </Badge>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <Badge variant="default" size="sm">
+                        {group._count.permissions || 0} permission{(group._count.permissions || 0) !== 1 ? "s" : ""}
                       </Badge>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

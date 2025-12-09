@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db/prisma";
+import { hasPermission, hasAnyPermission, type PermissionKey } from "./permissions";
 
 export type CurrentUser = {
   id: string;
@@ -187,4 +188,46 @@ export async function getBannedUserInfo(): Promise<{
     console.error("Error getting banned user info:", error);
     return null;
   }
+}
+
+/**
+ * Require a specific permission - throws error if user doesn't have it
+ * Admins always pass permission checks
+ */
+export async function requirePermission(permissionKey: PermissionKey): Promise<CurrentUser> {
+  const user = await requireAuth();
+  
+  // Admins always have all permissions
+  if (user.role === "ADMIN") {
+    return user;
+  }
+  
+  const hasAccess = await hasPermission(user.id, permissionKey);
+  
+  if (!hasAccess) {
+    throw new Error(`Forbidden: Missing permission '${permissionKey}'`);
+  }
+  
+  return user;
+}
+
+/**
+ * Require any of the specified permissions - throws error if user doesn't have any
+ * Admins always pass permission checks
+ */
+export async function requireAnyPermission(...permissionKeys: PermissionKey[]): Promise<CurrentUser> {
+  const user = await requireAuth();
+  
+  // Admins always have all permissions
+  if (user.role === "ADMIN") {
+    return user;
+  }
+  
+  const hasAccess = await hasAnyPermission(user.id, permissionKeys);
+  
+  if (!hasAccess) {
+    throw new Error(`Forbidden: Missing required permissions`);
+  }
+  
+  return user;
 }
