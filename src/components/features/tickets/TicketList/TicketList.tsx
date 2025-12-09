@@ -28,13 +28,13 @@ type Ticket = {
     id: string;
     name: string | null;
     email: string;
-    status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
+    status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED" | "BANNED";
   } | null;
   assignedTo: {
     id: string;
     name: string | null;
     email: string;
-    status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
+    status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED" | "BANNED";
   } | null;
   assignedToGroup: {
     id: string;

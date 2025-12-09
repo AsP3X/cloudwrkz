@@ -7,7 +7,7 @@ type UserWithStatus = {
   id?: string;
   name: string | null;
   email: string;
-  status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
+  status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "BANNED" | "DELETED";
 };
 
 /**

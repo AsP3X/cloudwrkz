@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db/prisma";
-import { requireAuth } from "@/lib/utils/auth-server";
+import { requireAuth, requireAnyPermission } from "@/lib/utils/auth-server";
 import { isModuleEnabled } from "./modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { revalidatePath } from "next/cache";
@@ -52,6 +52,9 @@ export async function createTicket(input: TicketInput): Promise<ActionResult<{ i
     }
 
     const user = await requireAuth();
+
+    // Check permission
+    await requireAnyPermission("tickets.create");
 
     // Validate input
     if (!input.title || input.title.trim().length === 0) {
@@ -275,6 +278,18 @@ export async function getTickets(filters?: {
   sortOrder?: "asc" | "desc";
 }) {
   const user = await requireAuth();
+  
+  // Check permission
+  const { getUserPermissions } = await import("@/lib/utils/permissions");
+  const userPermissions = await getUserPermissions(user.id);
+  
+  const canViewAllTickets = userPermissions.has("tickets.view_all") || userPermissions.has("admin.tickets.manage");
+  const canViewTickets = userPermissions.has("tickets.view") || canViewAllTickets;
+
+  if (!canViewTickets) {
+    // User has no permission to view tickets
+    return [];
+  }
 
   const where: any = {};
   const baseFilters: any = {};
@@ -371,39 +386,53 @@ export async function getTickets(filters?: {
     Object.assign(where, baseFilters);
   }
 
-  // For agents, apply group membership filter
-  if (user.role === "AGENT") {
-    // Get groups the agent is a member of
-    const memberships = await prisma.groupMembership.findMany({
-      where: { userId: user.id },
-      select: { groupId: true },
-    });
-    const agentGroupIds = memberships.map((m) => m.groupId);
+  // Apply permission-based filtering
+  if (!canViewAllTickets) {
+    // User can only view specific tickets
+    if (user.role === "AGENT") {
+      // Agents can see tickets assigned to them or their groups
+      const memberships = await prisma.groupMembership.findMany({
+        where: { userId: user.id },
+        select: { groupId: true },
+      });
+      const agentGroupIds = memberships.map((m) => m.groupId);
 
-    // Agents can only see tickets that:
-    // 1. Are not assigned to any group (assignedToGroupId is null), OR
-    // 2. Are assigned to a group the agent is a member of
-    const groupFilter = {
-      OR: [
-        { assignedToGroupId: null },
-        ...(agentGroupIds.length > 0 ? [{ assignedToGroupId: { in: agentGroupIds } }] : []),
-      ],
-    };
+      const groupFilter = {
+        OR: [
+          { assignedToId: user.id },
+          { assignedToGroupId: null },
+          ...(agentGroupIds.length > 0 ? [{ assignedToGroupId: { in: agentGroupIds } }] : []),
+        ],
+      };
 
-    // Combine group filter with other filters using AND
-    // If where already has AND conditions, merge them
-    if (where.AND) {
-      where.AND = [groupFilter, ...where.AND];
-    } else {
-      const otherFilters = { ...where };
-      delete otherFilters.AND; // Remove AND if it exists
-      
-      where.AND = [
-        groupFilter,
-        ...(Object.keys(otherFilters).length > 0 ? [otherFilters] : []),
-      ];
+      // Combine group filter with other filters using AND
+      // If where already has AND conditions, merge them
+      if (where.AND) {
+        where.AND = [groupFilter, ...where.AND];
+      } else {
+        const otherFilters = { ...where };
+        delete otherFilters.AND; // Remove AND if it exists
+        
+        where.AND = [
+          groupFilter,
+          ...(Object.keys(otherFilters).length > 0 ? [otherFilters] : []),
+        ];
+      }
+    } else if (user.role === "USER") {
+      // Regular users can only see tickets they created
+      // This is already handled by the createdById filter if provided
+      // But we need to ensure it's set if not already in filters
+      if (!filters?.createdById && !filters?.projectIds) {
+        const userFilter = { createdById: user.id };
+        if (where.AND) {
+          where.AND.push(userFilter);
+        } else {
+          where.AND = [userFilter, ...(Object.keys(where).length > 0 ? [where] : [])];
+        }
+      }
     }
   }
+  // Users with view_all permission can see all tickets (no additional filter)
 
   // Determine sort order
   const sortBy = filters?.sortBy || "createdAt";
@@ -467,6 +496,16 @@ export async function getTickets(filters?: {
  */
 export async function getTicket(id: string) {
   const user = await requireAuth();
+  
+  // Check permission (admins always pass)
+  try {
+    await requireAnyPermission("tickets.view", "tickets.view_all", "admin.tickets.manage");
+  } catch {
+    // Fallback to role check for backward compatibility
+    if (!["ADMIN", "MODERATOR", "AGENT", "USER"].includes(user.role)) {
+      return null;
+    }
+  }
 
   const ticket = await prisma.ticket.findUnique({
     where: { id },
@@ -607,6 +646,19 @@ export async function updateTicket(
 ): Promise<ActionResult> {
   try {
     const user = await requireAuth();
+    
+    // Check permission (admins always pass)
+    try {
+      await requireAnyPermission("tickets.update", "admin.tickets.manage");
+    } catch {
+      // Fallback to role check for backward compatibility
+      if (!["ADMIN", "MODERATOR", "AGENT"].includes(user.role)) {
+        return {
+          success: false,
+          error: "You don't have permission to update this ticket",
+        };
+      }
+    }
 
     // Fetch current ticket data to compare changes
     const currentTicket = await prisma.ticket.findUnique({
@@ -1038,10 +1090,17 @@ export async function updateTicket(
 export async function deleteTicket(id: string): Promise<ActionResult> {
   try {
     const user = await requireAuth();
+    
+    // Check permission (admins always pass)
+    try {
+      await requireAnyPermission("tickets.delete", "admin.tickets.manage");
+    } catch {
+      // Fallback to role check for backward compatibility - continue with existing logic
+    }
 
     const ticket = await prisma.ticket.findUnique({
       where: { id },
-      select: { createdById: true, assignedToId: true },
+      select: { createdById: true, assignedToId: true, projectId: true },
     });
 
     if (!ticket) {
@@ -1051,18 +1110,42 @@ export async function deleteTicket(id: string): Promise<ActionResult> {
       };
     }
 
-    // Creator, assigned agent, admin, or moderator can delete
-    const canDelete = 
-      ticket.createdById === user.id ||
-      user.role === "ADMIN" ||
-      user.role === "MODERATOR" ||
-      (user.role === "AGENT" && ticket.assignedToId === user.id);
-    
-    if (!canDelete) {
-      return {
-        success: false,
-        error: "You don't have permission to delete this ticket",
-      };
+    // For users with role USER, they can only delete if they are the project owner
+    if (user.role === "USER") {
+      if (!ticket.projectId) {
+        return {
+          success: false,
+          error: "You don't have permission to delete this ticket",
+        };
+      }
+
+      // Check if user is the owner of the project
+      const project = await prisma.project.findUnique({
+        where: { id: ticket.projectId },
+        select: { createdById: true },
+      });
+
+      if (!project || project.createdById !== user.id) {
+        return {
+          success: false,
+          error: "You don't have permission to delete this ticket. Only project owners can delete tickets.",
+        };
+      }
+      // If USER is project owner, allow deletion (skip to deletion)
+    } else {
+      // For other roles: Creator, assigned agent, admin, or moderator can delete
+      const canDelete = 
+        ticket.createdById === user.id ||
+        user.role === "ADMIN" ||
+        user.role === "MODERATOR" ||
+        (user.role === "AGENT" && ticket.assignedToId === user.id);
+      
+      if (!canDelete) {
+        return {
+          success: false,
+          error: "You don't have permission to delete this ticket",
+        };
+      }
     }
 
     await prisma.ticket.delete({
@@ -1472,6 +1555,7 @@ export async function bulkDeleteTickets(
         id: true,
         createdById: true,
         assignedToId: true,
+        projectId: true,
       },
     });
 
@@ -1482,21 +1566,61 @@ export async function bulkDeleteTickets(
       };
     }
 
-    // Verify user has permission to delete all selected tickets
-    // Creator, assigned agent (for assigned tickets), admin, or moderator can delete
-    const canDeleteAll = tickets.every(
-      (ticket) =>
-        ticket.createdById === user.id ||
-        user.role === "ADMIN" ||
-        user.role === "MODERATOR" ||
-        (user.role === "AGENT" && ticket.assignedToId === user.id)
-    );
+    // For users with role USER, they can only delete if they are the project owner
+    if (user.role === "USER") {
+      // Get all unique project IDs from tickets
+      const projectIds = tickets
+        .map((t) => t.projectId)
+        .filter((id): id is string => id !== null);
 
-    if (!canDeleteAll) {
-      return {
-        success: false,
-        error: "You don't have permission to delete all selected tickets",
-      };
+      if (projectIds.length === 0) {
+        return {
+          success: false,
+          error: "You don't have permission to delete these tickets",
+        };
+      }
+
+      // Check if user is the owner of all projects
+      const projects = await prisma.project.findMany({
+        where: { id: { in: projectIds } },
+        select: { id: true, createdById: true },
+      });
+
+      const userOwnedProjectIds = new Set(
+        projects.filter((p) => p.createdById === user.id).map((p) => p.id)
+      );
+
+      // Verify user can delete all tickets
+      const canDeleteAll = tickets.every((ticket) => {
+        if (!ticket.projectId) {
+          return false; // USER cannot delete tickets without a project
+        }
+        return userOwnedProjectIds.has(ticket.projectId);
+      });
+
+      if (!canDeleteAll) {
+        return {
+          success: false,
+          error: "You don't have permission to delete all selected tickets. Only project owners can delete tickets.",
+        };
+      }
+    } else {
+      // Verify user has permission to delete all selected tickets
+      // Creator, assigned agent (for assigned tickets), admin, or moderator can delete
+      const canDeleteAll = tickets.every(
+        (ticket) =>
+          ticket.createdById === user.id ||
+          user.role === "ADMIN" ||
+          user.role === "MODERATOR" ||
+          (user.role === "AGENT" && ticket.assignedToId === user.id)
+      );
+
+      if (!canDeleteAll) {
+        return {
+          success: false,
+          error: "You don't have permission to delete all selected tickets",
+        };
+      }
     }
 
     const result = await prisma.ticket.deleteMany({

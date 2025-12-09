@@ -1,9 +1,10 @@
 import { getCurrentUser } from "@/lib/utils/auth-server";
+import { hasPermission } from "@/lib/utils/permissions";
 import { formatUserName } from "@/lib/utils/users";
 import { formatDateTime } from "@/lib/utils/date";
 import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
-import { isModuleEnabled } from "@/server/actions/modules";
+import { canUserViewModule, isModuleEnabled } from "@/server/actions/modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { getTicket } from "@/server/actions/tickets";
 import Link from "next/link";
@@ -35,15 +36,15 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
     redirect(ROUTES.LOGIN);
   }
 
-  // Check if tickets module is enabled
-  const ticketsEnabled = await isModuleEnabled(MODULE_KEYS.TICKETS);
+  // Check if user can view tickets module (module enabled AND user has permission)
+  const canViewTickets = await canUserViewModule(user.id, MODULE_KEYS.TICKETS);
 
-  if (!ticketsEnabled) {
+  if (!canViewTickets) {
     return (
       <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8 text-center">
-        <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">Tickets Module Disabled</h2>
+        <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">Access Denied</h2>
         <p className="text-neutral-600 dark:text-neutral-400 mb-4">
-          The tickets module is not currently enabled. Please contact an administrator.
+          You don't have permission to access the Tickets module. Please contact an administrator.
         </p>
         <Link href={ROUTES.DASHBOARD}>
           <Button variant="primary">Back to Dashboard</Button>
@@ -96,10 +97,21 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
   const groups = isAgent ? await getGroups() : [];
   const projects = isAgent ? await getUserProjectsForAssignment() : [];
 
-  // Check if time tracking module is enabled and get timers
+  // Check if time tracking module is enabled and user has permission to view ticket time entries
   const timeTrackingEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
-  const timeEntries = timeTrackingEnabled ? await getTimeEntriesForTicket(ticket.id) : [];
-  const availableTimeEntries = timeTrackingEnabled ? await getAvailableTimeEntriesForAssignment() : [];
+  const canViewTimeEntries = timeTrackingEnabled && (
+    user.role === "ADMIN" || 
+    await hasPermission(user.id, "tickets.time_entries.view") ||
+    await hasPermission(user.id, "time_tracking.view") ||
+    await hasPermission(user.id, "time_tracking.view_all")
+  );
+  const canCreateTimeEntries = timeTrackingEnabled && (
+    user.role === "ADMIN" ||
+    await hasPermission(user.id, "tickets.time_entries.create") ||
+    await hasPermission(user.id, "time_tracking.create")
+  );
+  const timeEntries = canViewTimeEntries ? await getTimeEntriesForTicket(ticket.id) : [];
+  const availableTimeEntries = canViewTimeEntries ? await getAvailableTimeEntriesForAssignment() : [];
   
   // Filter stopped timers for the Timers tab
   const stoppedTimeEntries = timeTrackingEnabled 
@@ -497,8 +509,8 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
             </div>
           </div>
 
-          {/* Time Tracking Section - Only visible to agents, admins, and moderators */}
-          {timeTrackingEnabled && isAgent && (
+          {/* Time Tracking Section - Only visible if user has permission */}
+          {canViewTimeEntries && (
             <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
               <TicketTimerSection
                 ticketId={ticket.id}
@@ -521,6 +533,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                   createdAt: entry.createdAt,
                 }))}
                 userTimezone={user.timezone ?? "UTC"}
+                canCreate={canCreateTimeEntries}
               />
             </div>
           )}

@@ -21,6 +21,7 @@ enum UserStatus {
   PENDING
   ACTIVE
   SUSPENDED
+  BANNED
   DELETED
 }
 
@@ -56,6 +57,10 @@ model User {
   scheduledForDeletionAt DateTime? // When account was flagged for deletion
   originalEmail          String? // Original email before deletion (for reactivation)
 
+  // Account ban
+  bannedAt  DateTime? // When account was banned
+  banReason String? // Reason for the ban
+
   // Relations
   sessions           Session[]
   createdTickets     Ticket[]          @relation("TicketCreator")
@@ -71,6 +76,7 @@ model User {
   assignedIssues     ProjectIssue[]    @relation("IssueAssignee")
   reportedIssues     ProjectIssue[]    @relation("IssueReporter")
   projectNotes       ProjectNote[]     @relation("NoteAuthor")
+  unbanRequests      UnbanRequest[]
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -168,6 +174,43 @@ enum ProjectPriority {
   URGENT
 }
 
+// Permission model - defines all available permissions
+model Permission {
+  id          String  @id @default(cuid())
+  key         String  @unique // e.g., "tickets.create", "projects.view"
+  name        String // Display name
+  description String? // Description of what this permission allows
+  category    String // e.g., "tickets", "projects", "admin", "time_tracking"
+  module      String? // Optional: link to module (tickets, projects, timetracking)
+
+  // Relations
+  groupPermissions GroupPermission[]
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([key])
+  @@index([category])
+  @@index([module])
+  @@map("permissions")
+}
+
+// GroupPermission model - links Groups to Permissions
+model GroupPermission {
+  id           String     @id @default(cuid())
+  groupId      String
+  permissionId String
+  group        Group      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([groupId, permissionId])
+  @@index([groupId])
+  @@index([permissionId])
+  @@map("group_permissions")
+}
+
 // Agent Groups - only for agents
 model Group {
   id          String  @id @default(cuid())
@@ -178,6 +221,7 @@ model Group {
   members            GroupMembership[]
   tickets            Ticket[]
   projectMemberships ProjectGroup[]
+  permissions        GroupPermission[] // Group permissions
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -230,10 +274,11 @@ model Ticket {
   project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   // Relations
-  comments    TicketComment[]
-  activities  TicketActivity[]
-  timeEntries TimeEntry[]
-  tasks       Task[]           @relation("TaskTicket")
+  comments     TicketComment[]
+  activities   TicketActivity[]
+  timeEntries  TimeEntry[]
+  tasks        Task[]           @relation("TaskTicket")
+  unbanRequest UnbanRequest?
 
   // Timestamps
   createdAt  DateTime  @default(now())
@@ -698,4 +743,25 @@ model BudgetCategory {
 
   @@index([projectId])
   @@map("budget_categories")
+}
+
+// Unban Request model for banned users to request account unban
+model UnbanRequest {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reason     String // User's reason for requesting unban
+  status     String    @default("PENDING") // PENDING, APPROVED, REJECTED
+  reviewedBy String? // Admin who reviewed the request
+  reviewedAt DateTime?
+  adminNotes String? // Admin's notes on the request
+  ticketId   String?   @unique // Linked ticket ID
+  ticket     Ticket?   @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("unban_requests")
 }

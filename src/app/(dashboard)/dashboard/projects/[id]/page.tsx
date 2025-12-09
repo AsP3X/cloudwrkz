@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/utils/auth-server";
 import { getProject, getProjectTickets, getProjectTimeAllocation } from "@/server/actions/projects";
 import { getProjectAnalytics } from "@/server/actions/project-analytics";
-import { isModuleEnabled } from "@/server/actions/modules";
+import { canUserViewModule } from "@/server/actions/modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { ProjectDetailPage } from "@/components/features/projects/ProjectDetailPage";
 import { ProjectOwnerPage } from "@/components/features/projects/ProjectOwnerPage";
@@ -18,10 +18,10 @@ export default async function UserProjectDetailPage({
     redirect("/login");
   }
 
-  // Check if projects module is enabled
-  const projectsEnabled = await isModuleEnabled(MODULE_KEYS.PROJECTS);
+  // Check if user can view projects module (module enabled AND user has permission)
+  const canViewProjects = await canUserViewModule(user.id, MODULE_KEYS.PROJECTS);
   
-  if (!projectsEnabled) {
+  if (!canViewProjects) {
     redirect("/dashboard/projects");
   }
 

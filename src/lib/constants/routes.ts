@@ -7,6 +7,7 @@ export const ROUTES = {
   LOGIN: "/login",
   REGISTER: "/register",
   DASHBOARD: "/dashboard",
+  BANNED: "/banned",
   TERMS: "/terms",
   PRIVACY: "/privacy",
   ABOUT: "/about",

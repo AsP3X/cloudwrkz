@@ -8,9 +8,10 @@ import { Badge } from "@/components/ui/Badge";
 import { Dialog } from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { updateUserAdmin, deleteUserAdmin } from "@/server/actions/admin/users";
+import { updateUserAdmin, deleteUserAdmin, unbanUserAdmin, getUserEffectivePermissions } from "@/server/actions/admin/users";
 import type { getUserByIdAdmin } from "@/server/actions/admin/users";
 import { formatDateTimeFull } from "@/lib/utils/date";
+import { UserUnbanDialog } from "./UserUnbanDialog";
 
 type User = NonNullable<Awaited<ReturnType<typeof getUserByIdAdmin>>>;
 
@@ -23,6 +24,7 @@ export function UserDetailPage({ user: initialUser }: UserDetailPageProps) {
   const [user, setUser] = useState(initialUser);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [unbanDialogOpen, setUnbanDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: user.email,
@@ -33,6 +35,8 @@ export function UserDetailPage({ user: initialUser }: UserDetailPageProps) {
   });
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
+  const [effectivePermissions, setEffectivePermissions] = useState<string[]>([]);
+  const [loadingPermissions, setLoadingPermissions] = useState(false);
 
   React.useEffect(() => {
     if (editDialogOpen) {
@@ -47,6 +51,21 @@ export function UserDetailPage({ user: initialUser }: UserDetailPageProps) {
       setFieldErrors({});
     }
   }, [editDialogOpen, user]);
+
+  React.useEffect(() => {
+    async function loadPermissions() {
+      try {
+        setLoadingPermissions(true);
+        const perms = await getUserEffectivePermissions(user.id);
+        setEffectivePermissions(perms);
+      } catch (err) {
+        console.error("Failed to load permissions:", err);
+      } finally {
+        setLoadingPermissions(false);
+      }
+    }
+    loadPermissions();
+  }, [user.id]);
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,6 +107,19 @@ export function UserDetailPage({ user: initialUser }: UserDetailPageProps) {
     } else {
       setError(result.error);
     }
+  };
+
+  const handleUnban = async (reason: string) => {
+    setIsLoading(true);
+    setError(null);
+    const result = await unbanUserAdmin(user.id, { reason });
+    setIsLoading(false);
+    if (result.success) {
+      router.refresh();
+    } else {
+      setError(result.error);
+    }
+    return result;
   };
 
   const getStatusBadgeVariant = (status: string) => {
@@ -140,6 +172,11 @@ export function UserDetailPage({ user: initialUser }: UserDetailPageProps) {
           <p className="text-neutral-600 dark:text-neutral-400 mt-1">{user.email}</p>
         </div>
         <div className="flex gap-2">
+          {user.status === "BANNED" && (
+            <Button variant="primary" onClick={() => setUnbanDialogOpen(true)}>
+              Unban User
+            </Button>
+          )}
           <Button variant="outline" onClick={() => setEditDialogOpen(true)}>
             Edit User
           </Button>
@@ -203,6 +240,83 @@ export function UserDetailPage({ user: initialUser }: UserDetailPageProps) {
           )}
         </div>
       </div>
+
+      {/* Group Memberships */}
+      {user.groupMemberships && user.groupMemberships.length > 0 && (
+        <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
+          <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">Group Memberships</h2>
+          <div className="space-y-3">
+            {user.groupMemberships.map((membership) => (
+              <div
+                key={membership.id}
+                className="flex items-center justify-between p-3 border border-neutral-200 dark:border-neutral-800 rounded-lg"
+              >
+                <div>
+                  <Link
+                    href={`/dashboard/admin/groups/${membership.group.id}`}
+                    className="font-medium text-primary-600 dark:text-primary-400 hover:underline"
+                  >
+                    {membership.group.name}
+                  </Link>
+                  {membership.group.description && (
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                      {membership.group.description}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Effective Permissions */}
+      <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
+        <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">Effective Permissions</h2>
+        {loadingPermissions ? (
+          <p className="text-neutral-600 dark:text-neutral-400">Loading permissions...</p>
+        ) : effectivePermissions.length > 0 ? (
+          <div className="space-y-2">
+            <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-3">
+              This user has {effectivePermissions.length} permission{effectivePermissions.length !== 1 ? "s" : ""} (from role + groups):
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {effectivePermissions.map((perm) => (
+                <Badge key={perm} variant="default" size="sm">
+                  {perm}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="text-neutral-600 dark:text-neutral-400">No permissions assigned.</p>
+        )}
+      </div>
+
+      {/* Ban Information */}
+      {user.status === "BANNED" && (user as any).bannedAt && (
+        <div className="bg-error-50 dark:bg-error-950 border-2 border-error-200 dark:border-error-800 rounded-xl shadow-soft-lg p-6">
+          <h2 className="text-xl font-semibold text-error-900 dark:text-error-100 mb-4">Ban Information</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {(user as any).bannedAt && (
+              <div>
+                <p className="text-sm font-medium text-error-700 dark:text-error-300">Banned On</p>
+                <p className="text-base text-error-900 dark:text-error-100 mt-1">
+                  {formatDateTimeFull((user as any).bannedAt)}
+                </p>
+              </div>
+            )}
+            {(user as any).banReason && (
+              <div className="md:col-span-2">
+                <p className="text-sm font-medium text-error-700 dark:text-error-300">Ban Reason</p>
+                <p className="text-base text-error-900 dark:text-error-100 mt-1 whitespace-pre-wrap">
+                  {(user as any).banReason}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Edit Dialog */}
       <Dialog
@@ -306,6 +420,15 @@ export function UserDetailPage({ user: initialUser }: UserDetailPageProps) {
           </div>
         </div>
       </Dialog>
+
+      {/* Unban Dialog */}
+      <UserUnbanDialog
+        open={unbanDialogOpen}
+        onOpenChange={setUnbanDialogOpen}
+        user={user}
+        onConfirm={handleUnban}
+        isLoading={isLoading}
+      />
     </div>
   );
 }

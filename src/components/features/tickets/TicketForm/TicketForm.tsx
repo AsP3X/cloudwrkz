@@ -96,8 +96,6 @@ export const TicketForm = ({ isAgent = false, users = [], agents = [], groups = 
     },
   });
 
-  const createTimer = watch("createTimer"); // used for UI-only logic
-
   const onSubmit = async (data: CreateTicketInput) => {
     setServerError(null);
 
@@ -152,10 +150,10 @@ export const TicketForm = ({ isAgent = false, users = [], agents = [], groups = 
     >
       {/* Server Error Message */}
       {serverError && (
-        <div className="rounded-lg bg-error-50 border-2 border-error-200 p-4">
+        <div className="rounded-lg bg-error-50 dark:bg-error-950/50 border-2 border-error-200 dark:border-error-800 p-4">
           <div className="flex items-start gap-3">
             <svg
-              className="w-5 h-5 text-error-600 mt-0.5 flex-shrink-0"
+              className="w-5 h-5 text-error-600 dark:text-error-400 mt-0.5 flex-shrink-0"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -167,7 +165,7 @@ export const TicketForm = ({ isAgent = false, users = [], agents = [], groups = 
                 d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
               />
             </svg>
-            <p className="text-sm font-medium text-error-800">{serverError}</p>
+            <p className="text-sm font-medium text-error-800 dark:text-error-200 break-words">{serverError}</p>
           </div>
         </div>
       )}
@@ -270,34 +268,14 @@ export const TicketForm = ({ isAgent = false, users = [], agents = [], groups = 
         </div>
       )}
 
-      {/* Timer Creation Option */}
-      <div className="flex items-start gap-3 p-4 rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
-        <input
-          type="checkbox"
-          id="createTimer"
-          {...register("createTimer")}
-          className="mt-1 w-4 h-4 text-primary-600 bg-white border-neutral-300 rounded focus:ring-primary-500 focus:ring-2 dark:bg-neutral-700 dark:border-neutral-600 dark:focus:ring-primary-400"
-        />
-        <div className="flex-1">
-          <label
-            htmlFor="createTimer"
-            className="text-sm font-medium text-neutral-900 dark:text-neutral-100 cursor-pointer"
-          >
-            Create timer for this ticket
-          </label>
-          <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
-            Automatically create a time tracking timer linked to this ticket. The timer name will be the ticket number and title.
-          </p>
-        </div>
-      </div>
-
       {/* Submit Buttons */}
-      <div className="flex items-center justify-end gap-4 pt-4 border-t border-neutral-200">
+      <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-3 sm:gap-4 pt-4">
         <Button
           type="button"
           variant="outline"
           onClick={() => router.back()}
           disabled={isSubmitting}
+          className="w-full sm:w-auto"
         >
           Cancel
         </Button>
@@ -307,6 +285,7 @@ export const TicketForm = ({ isAgent = false, users = [], agents = [], groups = 
           size="lg"
           loading={isSubmitting}
           disabled={isSubmitting}
+          className="w-full sm:w-auto"
         >
           {isSubmitting ? "Creating Ticket..." : "Create Ticket"}
         </Button>

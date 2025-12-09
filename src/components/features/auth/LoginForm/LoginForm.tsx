@@ -45,6 +45,11 @@ export const LoginForm = ({ initialError }: LoginFormProps) => {
         router.push(ROUTES.DASHBOARD);
         router.refresh();
       } else {
+        // Check if user is banned and redirect to banned page
+        if (result.error === "BANNED") {
+          router.push(ROUTES.BANNED);
+          return;
+        }
         setServerError(result.error || "Invalid email or password. Please try again.");
       }
     } catch (error) {

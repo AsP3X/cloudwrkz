@@ -20,6 +20,9 @@ type PreferencesFormProps = {
 export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
   const [error, setError] = React.useState<string | null>(null);
   const [success, setSuccess] = React.useState<string | null>(null);
+  const [mounted, setMounted] = React.useState(false);
+  
+  // Get theme - will throw if ThemeProvider is not available, but it should be in root layout
   const { theme, setTheme } = useTheme();
   const { preference: timerWidgetPreference, setPreference: setTimerWidgetPreference } = useTimerWidgetPreference();
 
@@ -43,6 +46,11 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
     },
   });
 
+  // Mark as mounted after initial render
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
   // Reset form when initialValues change (e.g., after successful save and page revalidation)
   React.useEffect(() => {
     if (initialValues) {
@@ -60,21 +68,25 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
 
   // Sync form value with theme from context when theme changes externally
   React.useEffect(() => {
-    setValue("theme", theme);
-  }, [theme, setValue]);
+    if (mounted && theme) {
+      setValue("theme", theme);
+    }
+  }, [theme, setValue, mounted]);
 
   // Sync form value with timer widget preference when it changes externally
   React.useEffect(() => {
-    setValue("timerWidgetMobileMode", timerWidgetPreference);
-  }, [timerWidgetPreference, setValue]);
+    if (mounted) {
+      setValue("timerWidgetMobileMode", timerWidgetPreference);
+    }
+  }, [timerWidgetPreference, setValue, mounted]);
 
   // Watch theme changes and apply immediately
   const watchedTheme = watch("theme");
   React.useEffect(() => {
-    if (watchedTheme && watchedTheme !== theme) {
+    if (mounted && watchedTheme && watchedTheme !== theme && setTheme) {
       setTheme(watchedTheme as "light" | "dark" | "system");
     }
-  }, [watchedTheme, theme, setTheme]);
+  }, [watchedTheme, theme, setTheme, mounted]);
 
   // Watch timer widget preference changes and apply immediately
   const watchedTimerWidgetMode = watch("timerWidgetMobileMode");
@@ -90,7 +102,7 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
 
     try {
       // Apply theme immediately via context
-      if (data.theme && data.theme !== theme) {
+      if (data.theme && data.theme !== theme && setTheme) {
         setTheme(data.theme as "light" | "dark" | "system");
       }
 

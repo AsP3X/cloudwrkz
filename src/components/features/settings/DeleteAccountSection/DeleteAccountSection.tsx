@@ -14,10 +14,10 @@ export const DeleteAccountSection = () => {
   return (
     <>
       <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border-2 border-error-200 dark:border-error-800 p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 bg-error-100 dark:bg-error-900 rounded-lg flex items-center justify-center">
+              <div className="w-10 h-10 bg-error-100 dark:bg-error-900 rounded-lg flex items-center justify-center flex-shrink-0">
                 <svg
                   className="w-5 h-5 text-error-600 dark:text-error-400"
                   fill="none"
@@ -32,7 +32,7 @@ export const DeleteAccountSection = () => {
                   />
                 </svg>
               </div>
-              <div>
+              <div className="min-w-0">
                 <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
                   Delete Account
                 </h3>
@@ -56,6 +56,7 @@ export const DeleteAccountSection = () => {
             type="button"
             variant="danger"
             onClick={() => setDialogOpen(true)}
+            className="w-full sm:w-auto flex-shrink-0"
           >
             Delete Account
           </Button>

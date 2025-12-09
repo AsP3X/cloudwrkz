@@ -1,7 +1,7 @@
 import { getCurrentUser } from "@/lib/utils/auth-server";
 import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
-import { isModuleEnabled } from "@/server/actions/modules";
+import { canUserViewModule } from "@/server/actions/modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { getTickets } from "@/server/actions/tickets";
 import { getAllUsers } from "@/server/actions/users";
@@ -37,15 +37,15 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
     redirect(ROUTES.LOGIN);
   }
 
-  // Check if tickets module is enabled
-  const ticketsEnabled = await isModuleEnabled(MODULE_KEYS.TICKETS);
+  // Check if user can view tickets module (module enabled AND user has permission)
+  const canViewTickets = await canUserViewModule(user.id, MODULE_KEYS.TICKETS);
   
-  if (!ticketsEnabled) {
+  if (!canViewTickets) {
     return (
       <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8 text-center">
-        <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">Tickets Module Disabled</h2>
+        <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">Access Denied</h2>
         <p className="text-neutral-600 dark:text-neutral-400">
-          The tickets module is not currently enabled. Please contact an administrator.
+          You don't have permission to access the Tickets module. Please contact an administrator.
         </p>
       </div>
     );
@@ -143,7 +143,7 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
               <TicketViewControls />
               <TicketFilterButton users={users} groups={groups} projects={projects} isAgent={user.role === "AGENT"} />
               <Link href="/dashboard/tickets/new">
-                <Button variant="primary">Create Ticket</Button>
+                <Button variant="primary">Create</Button>
               </Link>
             </div>
           </div>
@@ -174,7 +174,7 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
               <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">No tickets yet</h3>
               <p className="text-neutral-600 dark:text-neutral-400 mb-4">Get started by creating your first ticket</p>
               <Link href="/dashboard/tickets/new">
-                <Button variant="primary">Create Ticket</Button>
+                <Button variant="primary">Create</Button>
               </Link>
             </div>
           ) : (

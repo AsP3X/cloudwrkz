@@ -97,7 +97,7 @@ export function StartTimerDialog({ open, onOpenChange }: StartTimerDialogProps) 
         <Input
           label="Name"
           placeholder="Enter timer name (optional)"
-          helperText="Leave empty to generate a random name"
+          helperText="Leave empty to auto-generate a timer number (e.g., TMR-000001)"
           {...register("name")}
           error={errors.name?.message}
         />

@@ -22,7 +22,7 @@ interface Comment {
     name?: string | null;
     email: string;
     role?: string | null;
-    status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
+    status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED" | "BANNED";
   } | null;
 }
 
@@ -40,12 +40,12 @@ interface TicketCommentsAndActivityProps {
     createdBy: {
       name?: string | null;
       email: string;
-      status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
+      status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED" | "BANNED";
     } | null;
     assignedTo?: {
       name?: string | null;
       email: string;
-      status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
+      status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED" | "BANNED";
     } | null;
     comments: Comment[];
     activities: Array<{

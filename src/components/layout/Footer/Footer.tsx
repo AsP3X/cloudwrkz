@@ -1,10 +1,17 @@
-import React from "react";
+"use client";
+
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 
 export const Footer = () => {
-  const currentYear = new Date().getFullYear();
+  // Use state to ensure year is only set on client to avoid hydration mismatches
+  const [currentYear, setCurrentYear] = useState<number | null>(null);
+
+  useEffect(() => {
+    setCurrentYear(new Date().getFullYear());
+  }, []);
 
   const footerLinks = {
     Product: [
@@ -108,7 +115,7 @@ export const Footer = () => {
         {/* Bottom */}
         <div className="border-t border-neutral-800 dark:border-neutral-900 pt-8 flex flex-col sm:flex-row justify-between items-center">
           <p className="text-neutral-400 dark:text-neutral-500 text-sm">
-            © {currentYear} {APP_CONFIG.name}. All rights reserved.
+            © {currentYear ?? new Date().getFullYear()} {APP_CONFIG.name}. All rights reserved.
           </p>
           <p className="text-neutral-400 dark:text-neutral-500 text-sm mt-4 sm:mt-0">
             Built with ❤️ using Next.js 15
