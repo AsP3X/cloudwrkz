@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
@@ -64,6 +64,17 @@ export function TicketManagementPage({ initialData }: TicketManagementPageProps)
     search: searchParams.get("search") || undefined,
     page: initialData.page,
   });
+
+  // Sync filters when searchParams change (e.g., after router.refresh())
+  useEffect(() => {
+    setFilters({
+      status: searchParams.get("status") || undefined,
+      priority: searchParams.get("priority") || undefined,
+      type: searchParams.get("type") || undefined,
+      search: searchParams.get("search") || undefined,
+      page: initialData.page,
+    });
+  }, [searchParams, initialData.page]);
 
   const updateFilters = (newFilters: Partial<TicketFilters>) => {
     const updated = { ...filters, ...newFilters, page: 1 };
@@ -242,92 +253,164 @@ export function TicketManagementPage({ initialData }: TicketManagementPageProps)
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Input
-            label="Search"
-            placeholder="Search tickets..."
-            value={filters.search || ""}
-            onChange={(e) => updateFilters({ search: e.target.value })}
-          />
-          <Select
-            label="Status"
-            options={TICKET_STATUS_OPTIONS}
-            value={filters.status || ""}
-            onChange={(e) => updateFilters({ status: e.target.value || undefined })}
-          />
-          <Select
-            label="Priority"
-            options={TICKET_PRIORITY_OPTIONS}
-            value={filters.priority || ""}
-            onChange={(e) => updateFilters({ priority: e.target.value || undefined })}
-          />
-          <Select
-            label="Type"
-            options={TICKET_TYPE_OPTIONS}
-            value={filters.type || ""}
-            onChange={(e) => updateFilters({ type: e.target.value || undefined })}
-          />
-        </div>
-      </div>
-
-      {/* Tickets Table */}
+      {/* Tickets List */}
       <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-neutral-50 dark:bg-neutral-900">
-              <tr>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-neutral-700 dark:text-neutral-300">Ticket</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-neutral-700 dark:text-neutral-300">Type</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-neutral-700 dark:text-neutral-300">Status</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-neutral-700 dark:text-neutral-300">Priority</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-neutral-700 dark:text-neutral-300">Created By</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-neutral-700 dark:text-neutral-300">Assigned To</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-neutral-700 dark:text-neutral-300">Comments</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-neutral-700 dark:text-neutral-300">Created</th>
-                <th className="px-4 py-3 text-right text-sm font-semibold text-neutral-700 dark:text-neutral-300">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-              {initialData.tickets.length === 0 ? (
+        {/* Menu Bar */}
+        <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Input
+              label="Search"
+              placeholder="Search tickets..."
+              value={filters.search || ""}
+              onChange={(e) => updateFilters({ search: e.target.value })}
+            />
+            <Select
+              label="Status"
+              options={TICKET_STATUS_OPTIONS}
+              value={filters.status || ""}
+              onChange={(e) => updateFilters({ status: e.target.value || undefined })}
+            />
+            <Select
+              label="Priority"
+              options={TICKET_PRIORITY_OPTIONS}
+              value={filters.priority || ""}
+              onChange={(e) => updateFilters({ priority: e.target.value || undefined })}
+            />
+            <Select
+              label="Type"
+              options={TICKET_TYPE_OPTIONS}
+              value={filters.type || ""}
+              onChange={(e) => updateFilters({ type: e.target.value || undefined })}
+            />
+          </div>
+        </div>
+
+        {/* Tickets Content */}
+        {initialData.tickets.length === 0 ? (
+          <div className="p-12 text-center">
+            {(filters.search || filters.status || filters.priority || filters.type) ? (
+              <>
+                <svg
+                  className="w-16 h-16 text-neutral-400 dark:text-neutral-600 mx-auto mb-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+                <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
+                  No tickets found
+                </h3>
+                <p className="text-neutral-600 dark:text-neutral-400 mb-4">
+                  No tickets match your search criteria.
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    updateFilters({ search: undefined, status: undefined, priority: undefined, type: undefined });
+                  }}
+                >
+                  Clear Filters
+                </Button>
+              </>
+            ) : (
+              <>
+                <svg
+                  className="w-16 h-16 text-neutral-400 dark:text-neutral-600 mx-auto mb-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
+                  No tickets yet
+                </h3>
+                <p className="text-neutral-600 dark:text-neutral-400 mb-4">
+                  Tickets will appear here once they are created.
+                </p>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-neutral-50 dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800">
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-sm text-neutral-500 dark:text-neutral-400">
-                    No tickets found
-                  </td>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                    Ticket
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                    Type
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                    Priority
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                    Created By
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                    Assigned To
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                    Comments
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                    Created
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
-              ) : (
-                initialData.tickets.map((ticket) => (
-                  <tr key={ticket.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800">
-                    <td className="px-4 py-3">
+              </thead>
+              <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
+                {initialData.tickets.map((ticket) => (
+                  <tr
+                    key={ticket.id}
+                    className="hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+                  >
+                    <td className="px-6 py-4">
                       <div className="flex flex-col">
                         <Link
                           href={`/dashboard/tickets/${ticket.id}`}
-                          className="text-sm font-medium text-primary-600 dark:text-primary-400 hover:underline"
+                          className="text-sm font-semibold text-primary-600 dark:text-primary-400 hover:underline"
                         >
                           {ticket.ticketNumber}
                         </Link>
-                        <span className="text-xs text-neutral-600 dark:text-neutral-400 line-clamp-1">
+                        <span className="text-xs text-neutral-600 dark:text-neutral-400 line-clamp-1 mt-1">
                           {ticket.title}
                         </span>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-6 py-4 whitespace-nowrap">
                       <Badge variant={getTypeBadgeVariant(ticket.type)} size="sm">
                         {ticket.type}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-6 py-4 whitespace-nowrap">
                       <Badge variant={getStatusBadgeVariant(ticket.status)} size="sm">
                         {ticket.status.replace("_", " ")}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-6 py-4 whitespace-nowrap">
                       <Badge variant={getPriorityBadgeVariant(ticket.priority)} size="sm">
                         {ticket.priority}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-6 py-4">
                       <div className="flex flex-col">
                         <span className="text-sm text-neutral-900 dark:text-neutral-100">
                           {ticket.createdBy?.name || ticket.createdByName || "Unknown"}
@@ -339,7 +422,7 @@ export function TicketManagementPage({ initialData }: TicketManagementPageProps)
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-6 py-4">
                       {ticket.assignedTo ? (
                         <div className="flex flex-col">
                           <span className="text-sm text-neutral-900 dark:text-neutral-100">
@@ -357,13 +440,17 @@ export function TicketManagementPage({ initialData }: TicketManagementPageProps)
                         <span className="text-sm text-neutral-500 dark:text-neutral-400">Unassigned</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-sm text-neutral-600 dark:text-neutral-400">
-                      {ticket._count.comments}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm text-neutral-600 dark:text-neutral-400">
+                        {ticket._count.comments}
+                      </span>
                     </td>
-                    <td className="px-4 py-3 text-sm text-neutral-600 dark:text-neutral-400">
-                      {formatDate(ticket.createdAt)}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-sm text-neutral-600 dark:text-neutral-400">
+                        {formatDate(ticket.createdAt)}
+                      </span>
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-6 py-4 whitespace-nowrap text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Button
                           variant="outline"
@@ -389,15 +476,15 @@ export function TicketManagementPage({ initialData }: TicketManagementPageProps)
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* Pagination */}
         {initialData.totalPages > 1 && (
-          <div className="px-4 py-3 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
+          <div className="px-6 py-4 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
             <div className="text-sm text-neutral-600 dark:text-neutral-400">
               Page {initialData.page} of {initialData.totalPages}
             </div>
@@ -436,19 +523,28 @@ export function TicketManagementPage({ initialData }: TicketManagementPageProps)
         open={deleteDialogOpen}
         onOpenChange={setDeleteDialogOpen}
         title="Delete Ticket"
-        description={`Are you sure you want to delete ticket ${selectedTicket?.ticketNumber}? This action cannot be undone.`}
+        description={`Are you sure you want to delete ticket ${selectedTicket?.ticketNumber}?`}
       >
-        <div className="flex justify-end gap-2 mt-4">
-          <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
-            Cancel
-          </Button>
-          <Button
-            variant="danger"
-            onClick={() => selectedTicket && handleDeleteTicket(selectedTicket.id)}
-            disabled={isLoading}
-          >
-            {isLoading ? "Deleting..." : "Delete Ticket"}
-          </Button>
+        <div className="p-6">
+          <div className="p-4 bg-error-50 dark:bg-error-950 border border-error-200 dark:border-error-800 rounded-lg mb-4">
+            <p className="text-sm text-error-700 dark:text-error-300">
+              This will permanently delete the ticket. This action cannot be undone.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-neutral-200 dark:border-neutral-800">
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={isLoading}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => selectedTicket && handleDeleteTicket(selectedTicket.id)}
+              disabled={isLoading}
+              loading={isLoading}
+            >
+              Delete Ticket
+            </Button>
+          </div>
         </div>
       </Dialog>
 
@@ -459,23 +555,24 @@ export function TicketManagementPage({ initialData }: TicketManagementPageProps)
         title="Update Ticket Status"
         description={`Update the status for ticket ${selectedTicket?.ticketNumber}`}
       >
-        <div className="mt-4 space-y-4">
+        <div className="p-6 space-y-4">
           <Select
             label="Status"
             options={TICKET_STATUS_OPTIONS.filter((opt) => opt.value !== "" && opt.value !== "UNRESOLVED")}
             value={selectedStatus}
             onChange={(e) => setSelectedStatus(e.target.value)}
           />
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setStatusDialogOpen(false)}>
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-neutral-200 dark:border-neutral-800">
+            <Button variant="outline" onClick={() => setStatusDialogOpen(false)} disabled={isLoading}>
               Cancel
             </Button>
             <Button
               variant="primary"
               onClick={() => selectedTicket && selectedStatus && handleUpdateStatus(selectedTicket.id, selectedStatus)}
               disabled={isLoading || !selectedStatus}
+              loading={isLoading}
             >
-              {isLoading ? "Updating..." : "Update Status"}
+              Update Status
             </Button>
           </div>
         </div>
