@@ -343,10 +343,10 @@ export const FilterDialog = ({
       title={config.title}
       description={config.description}
     >
-      <div className="px-4 py-4 md:px-6 md:py-6 space-y-4 md:space-y-6">
+      <div className="px-4 py-4 md:px-6 md:py-6 space-y-4 md:space-y-6 min-w-0">
         {/* Saved Presets */}
         {enablePresets && savedPresets.length > 0 && (
-          <div className="border-b border-neutral-200 dark:border-neutral-700 pb-3 md:pb-4">
+          <div className="border-b border-neutral-200 dark:border-neutral-700 pb-3 md:pb-4 min-w-0">
             <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
               Saved Filter Presets
             </label>
@@ -354,7 +354,7 @@ export const FilterDialog = ({
               {selectedPreset && (
                 <button
                   onClick={clearPreset}
-                  className="px-3 py-1.5 text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 bg-neutral-50 dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-lg border border-neutral-200 dark:border-neutral-700 transition-colors"
+                  className="px-3 py-1.5 text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 bg-neutral-50 dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-lg border border-neutral-200 dark:border-neutral-700 transition-colors whitespace-nowrap"
                 >
                   Clear Preset
                 </button>
@@ -362,7 +362,7 @@ export const FilterDialog = ({
               {savedPresets.map((preset) => (
                 <div
                   key={preset.id}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg min-w-0 max-w-full ${
                     selectedPreset === preset.id
                       ? "bg-primary-100 dark:bg-primary-900 border border-primary-300 dark:border-primary-700"
                       : "bg-neutral-100 dark:bg-neutral-800"
@@ -370,11 +370,12 @@ export const FilterDialog = ({
                 >
                   <button
                     onClick={() => loadPreset(preset.id)}
-                    className={`text-sm font-medium ${
+                    className={`text-sm font-medium truncate min-w-0 ${
                       selectedPreset === preset.id
                         ? "text-primary-700 dark:text-primary-300"
                         : "text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400"
                     }`}
+                    title={preset.name}
                   >
                     {preset.name}
                   </button>
@@ -405,24 +406,26 @@ export const FilterDialog = ({
 
         {/* Select Fields (Quick Filters) */}
         {selectFields.length > 0 && (
-          <div className={getGridClass(selectGridCols) + " gap-3 md:gap-4"}>
+          <div className={getGridClass(selectGridCols) + " gap-3 md:gap-4 min-w-0"}>
             {selectFields.map((field) => (
-              <Select
-                key={`${field.key}-${filters[field.key]}`}
-                label={field.label}
-                options={field.options || []}
-                defaultValue={filters[field.key] || ""}
-                onChange={(e) => updateFilters({ [field.key]: e.target.value })}
-              />
+              <div key={field.key} className="min-w-0">
+                <Select
+                  key={`${field.key}-${filters[field.key]}`}
+                  label={field.label}
+                  options={field.options || []}
+                  defaultValue={filters[field.key] || ""}
+                  onChange={(e) => updateFilters({ [field.key]: e.target.value })}
+                />
+              </div>
             ))}
           </div>
         )}
 
         {/* Text Fields */}
         {textFields.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 min-w-0">
             {textFields.map((field) => (
-              <div key={field.key}>
+              <div key={field.key} className="min-w-0">
                 <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
                   {field.label}
                 </label>
@@ -443,11 +446,11 @@ export const FilterDialog = ({
 
         {/* Date Filters */}
         {enableDateFilters && dateFields.length > 0 && (
-          <div className="space-y-3 md:space-y-4">
+          <div className="space-y-3 md:space-y-4 min-w-0">
             <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Date Filters</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 min-w-0">
               {dateFields.map((field) => (
-                <div key={field.key}>
+                <div key={field.key} className="min-w-0">
                   <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
                     {field.label}
                   </label>
@@ -469,28 +472,30 @@ export const FilterDialog = ({
 
         {/* Save Preset */}
         {enablePresets && (
-          <div className="border-t border-neutral-200 dark:border-neutral-700 pt-3 md:pt-4">
+          <div className="border-t border-neutral-200 dark:border-neutral-700 pt-3 md:pt-4 min-w-0">
             <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
               Save Current Filters as Preset
             </label>
-            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-              <Input
-                type="text"
-                placeholder="Enter preset name..."
-                value={presetName}
-                onChange={(e) => setPresetName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    savePreset();
-                  }
-                }}
-                className="flex-1 w-full sm:w-auto"
-              />
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center min-w-0">
+              <div className="flex-1 min-w-0 w-full sm:w-auto">
+                <Input
+                  type="text"
+                  placeholder="Enter preset name..."
+                  value={presetName}
+                  onChange={(e) => setPresetName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      savePreset();
+                    }
+                  }}
+                  className="w-full"
+                />
+              </div>
               <Button
                 variant="outline"
                 onClick={savePreset}
                 disabled={!presetName.trim()}
-                className="px-6 w-full sm:w-auto"
+                className="px-6 w-full sm:w-auto flex-shrink-0"
               >
                 Save
               </Button>
@@ -499,24 +504,24 @@ export const FilterDialog = ({
         )}
 
         {/* Actions */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-3 md:pt-4 border-t border-neutral-200 dark:border-neutral-700">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-3 md:pt-4 border-t border-neutral-200 dark:border-neutral-700 min-w-0">
+          <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
             {hasActiveFilters && (
-              <span className="px-2 py-1 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full text-xs font-medium">
+              <span className="px-2 py-1 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full text-xs font-medium whitespace-nowrap">
                 Filters Active
               </span>
             )}
           </div>
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 min-w-0 flex-1 sm:flex-initial">
             {hasActiveFilters && (
-              <Button variant="outline" onClick={clearFilters} className="w-full sm:w-auto">
+              <Button variant="outline" onClick={clearFilters} className="w-full sm:w-auto flex-shrink-0">
                 Clear All
               </Button>
             )}
-            <Button variant="outline" onClick={() => onOpenChange(false)} className="w-full sm:w-auto">
+            <Button variant="outline" onClick={() => onOpenChange(false)} className="w-full sm:w-auto flex-shrink-0">
               Cancel
             </Button>
-            <Button variant="primary" onClick={applyFilters} className="w-full sm:w-auto">
+            <Button variant="primary" onClick={applyFilters} className="w-full sm:w-auto flex-shrink-0">
               Apply Filters
             </Button>
           </div>
