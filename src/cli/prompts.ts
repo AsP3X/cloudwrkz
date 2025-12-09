@@ -10,6 +10,7 @@ import chalk from "chalk";
 import ora, { type Ora } from "ora";
 import boxen from "boxen";
 import Table from "cli-table3";
+import { APP_CONFIG } from "../lib/constants/config";
 
 /**
  * Clear the console
@@ -35,7 +36,7 @@ export function header(title: string, subtitle?: string): void {
       padding: 1,
       borderColor: "cyan",
       borderStyle: "round",
-      title: chalk.bold.cyan("CloudWrkz CLI"),
+      title: chalk.bold.cyan(`${APP_CONFIG.name} CLI`),
       titleAlignment: "center",
     })
   );

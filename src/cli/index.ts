@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 /**
- * CloudWrkz Enterprise CLI Tool
+ * Enterprise CLI Tool
  *
- * Professional command-line interface for managing CloudWrkz platform
+ * Professional command-line interface for managing the platform
  *
  * Usage:
  *   pnpm cli                          Interactive mode
@@ -30,6 +30,7 @@ import {
   paginatedCheckbox,
 } from "./prompts";
 import { prisma } from "../lib/db/prisma";
+import { APP_CONFIG } from "../lib/constants/config";
 import chalk from "chalk";
 
 const args = process.argv.slice(2);
@@ -64,7 +65,7 @@ if (args.length === 0) {
 async function runInteractiveMode() {
   while (true) {
     clear();
-    header("CloudWrkz Management Console", "Enterprise CLI Tool v1.0");
+    header(`${APP_CONFIG.name} Management Console`, "Enterprise CLI Tool v1.0");
 
     const choice = await menu("Select a category:", [
       {
@@ -114,7 +115,7 @@ async function runInteractiveMode() {
         break;
       case "q":
         clear();
-        notice("Thank you for using CloudWrkz CLI. Goodbye! 👋", "info");
+        notice(`Thank you for using ${APP_CONFIG.name} CLI. Goodbye! 👋`, "info");
         await prisma.$disconnect();
         process.exit(0);
         break;
@@ -825,7 +826,7 @@ Run 'pnpm cli help' for more information.
 }
 
 function showHelp() {
-  header("CloudWrkz CLI Help", "Command-line interface documentation");
+  header(`${APP_CONFIG.name} CLI Help`, "Command-line interface documentation");
 
   console.log(chalk.bold("Available command categories:\n"));
   console.log(chalk.cyan("  user      "), "User management (create, delete, list, show, update-status, update-role, update-password, verify, cookie-accept, cookie-revoke, cookie-status)");
