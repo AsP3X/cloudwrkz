@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -9,8 +9,15 @@ import { Dialog } from "@/components/ui/Dialog";
 import { deleteSessionAdmin, deleteUserSessionsAdmin, deleteExpiredSessionsAdmin, type SessionFilters } from "@/server/actions/admin/sessions";
 import type { getAllSessionsAdmin } from "@/server/actions/admin/sessions";
 import { formatDateTimeFull } from "@/lib/utils/date";
+import { cn } from "@/lib/utils/cn";
 
 type Session = Awaited<ReturnType<typeof getAllSessionsAdmin>>["sessions"][0];
+
+type GroupedSessions = {
+  userId: string;
+  user: Session["user"];
+  sessions: Session[];
+};
 
 interface SessionManagementPageProps {
   initialData: Awaited<ReturnType<typeof getAllSessionsAdmin>>;
@@ -142,6 +149,158 @@ export function SessionManagementPage({ initialData }: SessionManagementPageProp
     }
   };
 
+  // Group sessions by user
+  const groupedSessions = useMemo(() => {
+    const groups = new Map<string, GroupedSessions>();
+    
+    initialData.sessions.forEach((session) => {
+      if (!groups.has(session.userId)) {
+        groups.set(session.userId, {
+          userId: session.userId,
+          user: session.user,
+          sessions: [],
+        });
+      }
+      groups.get(session.userId)!.sessions.push(session);
+    });
+
+    return Array.from(groups.values());
+  }, [initialData.sessions]);
+
+  // Collapsible section component for user groups
+  const UserSessionGroup = ({ group }: { group: GroupedSessions }) => {
+    const [isExpanded, setIsExpanded] = useState(true);
+
+    const UserIcon = () => (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+        />
+      </svg>
+    );
+
+    return (
+      <div className="space-y-1 border border-neutral-200 dark:border-neutral-800 rounded-lg overflow-hidden">
+        {/* Header with toggle */}
+        <button
+          type="button"
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-neutral-50 dark:bg-neutral-900 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900"
+        >
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <span className="text-neutral-500 dark:text-neutral-400 flex-shrink-0">
+              <UserIcon />
+            </span>
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <div className="flex flex-col min-w-0 flex-1">
+                <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate">
+                  {group.user.name || group.user.email}
+                </span>
+                <span className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
+                  {group.user.email}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <Badge variant={getRoleBadgeVariant(group.user.role)} size="sm">
+                  {group.user.role}
+                </Badge>
+                <Badge variant={getStatusBadgeVariant(group.user.status)} size="sm">
+                  {group.user.status}
+                </Badge>
+                <Badge variant="default" size="sm">
+                  {group.sessions.length} session{group.sessions.length !== 1 ? "s" : ""}
+                </Badge>
+              </div>
+            </div>
+          </div>
+          <svg
+            className={cn(
+              "w-4 h-4 text-neutral-500 dark:text-neutral-400 transition-transform duration-200 flex-shrink-0",
+              isExpanded ? "transform rotate-180" : ""
+            )}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M19 9l-7 7-7-7"
+            />
+          </svg>
+        </button>
+
+        {/* Content */}
+        <div
+          className={cn(
+            "grid transition-all duration-300 ease-in-out",
+            isExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+          )}
+        >
+          <div className="overflow-hidden">
+            <div className="bg-white dark:bg-neutral-900">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-neutral-50 dark:bg-neutral-900">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300">Session Created</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300">Expires In</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300">Last Updated</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-neutral-700 dark:text-neutral-300">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
+                    {group.sessions.map((session) => (
+                      <tr key={session.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800">
+                        <td className="px-4 py-3 text-sm text-neutral-600 dark:text-neutral-400">
+                          {formatDateTimeFull(session.createdAt)}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-neutral-600 dark:text-neutral-400">
+                          {formatTimeRemaining(session.expiresAt)}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-neutral-600 dark:text-neutral-400">
+                          {formatDateTimeFull(session.updatedAt)}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedSession(session);
+                                setDeleteDialogOpen(true);
+                              }}
+                            >
+                              Revoke
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedUserId(session.userId);
+                                setDeleteAllUserDialogOpen(true);
+                              }}
+                            >
+                              Revoke All
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* Error Message */}
@@ -236,124 +395,56 @@ export function SessionManagementPage({ initialData }: SessionManagementPageProp
         </div>
       </div>
 
-      {/* Sessions Table */}
-      <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-neutral-50 dark:bg-neutral-900">
-              <tr>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-neutral-700 dark:text-neutral-300">User</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-neutral-700 dark:text-neutral-300">Role</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-neutral-700 dark:text-neutral-300">Status</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-neutral-700 dark:text-neutral-300">Session Created</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-neutral-700 dark:text-neutral-300">Expires In</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-neutral-700 dark:text-neutral-300">Last Updated</th>
-                <th className="px-4 py-3 text-right text-sm font-semibold text-neutral-700 dark:text-neutral-300">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-              {initialData.sessions.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-neutral-500 dark:text-neutral-400">
-                    No active sessions found
-                  </td>
-                </tr>
-              ) : (
-                initialData.sessions.map((session) => (
-                  <tr key={session.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800">
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                          {session.user.name || session.user.email}
-                        </span>
-                        <span className="text-xs text-neutral-500 dark:text-neutral-400">{session.user.email}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant={getRoleBadgeVariant(session.user.role)} size="sm">
-                        {session.user.role}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant={getStatusBadgeVariant(session.user.status)} size="sm">
-                        {session.user.status}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-neutral-600 dark:text-neutral-400">
-                      {formatDateTimeFull(session.createdAt)}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-neutral-600 dark:text-neutral-400">
-                      {formatTimeRemaining(session.expiresAt)}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-neutral-600 dark:text-neutral-400">
-                      {formatDateTimeFull(session.updatedAt)}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedSession(session);
-                            setDeleteDialogOpen(true);
-                          }}
-                        >
-                          Revoke
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedUserId(session.userId);
-                            setDeleteAllUserDialogOpen(true);
-                          }}
-                        >
-                          Revoke All User Sessions
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination */}
-        {initialData.totalPages > 1 && (
-          <div className="px-4 py-3 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
-            <div className="text-sm text-neutral-600 dark:text-neutral-400">
-              Page {initialData.page} of {initialData.totalPages}
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={initialData.page === 1}
-                onClick={() => {
-                  const params = new URLSearchParams(searchParams.toString());
-                  params.set("page", String(initialData.page - 1));
-                  router.push(`/dashboard/admin/sessions?${params.toString()}`);
-                }}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={initialData.page === initialData.totalPages}
-                onClick={() => {
-                  const params = new URLSearchParams(searchParams.toString());
-                  params.set("page", String(initialData.page + 1));
-                  router.push(`/dashboard/admin/sessions?${params.toString()}`);
-                }}
-              >
-                Next
-              </Button>
-            </div>
+      {/* Sessions Grouped by User */}
+      <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 overflow-hidden p-6">
+        {groupedSessions.length === 0 ? (
+          <div className="px-4 py-8 text-center text-sm text-neutral-500 dark:text-neutral-400">
+            No active sessions found
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {groupedSessions.map((group) => (
+              <UserSessionGroup key={group.userId} group={group} />
+            ))}
           </div>
         )}
+
       </div>
+
+      {/* Pagination */}
+      {initialData.totalPages > 1 && (
+        <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 px-6 py-4 flex items-center justify-between">
+          <div className="text-sm text-neutral-600 dark:text-neutral-400">
+            Page {initialData.page} of {initialData.totalPages}
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={initialData.page === 1}
+              onClick={() => {
+                const params = new URLSearchParams(searchParams.toString());
+                params.set("page", String(initialData.page - 1));
+                router.push(`/dashboard/admin/sessions?${params.toString()}`);
+              }}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={initialData.page === initialData.totalPages}
+              onClick={() => {
+                const params = new URLSearchParams(searchParams.toString());
+                params.set("page", String(initialData.page + 1));
+                router.push(`/dashboard/admin/sessions?${params.toString()}`);
+              }}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Delete Session Dialog */}
       <Dialog
