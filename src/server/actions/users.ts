@@ -199,3 +199,37 @@ export async function getUserEffectivePermissions(userId: string) {
   
   return Array.from(permissions);
 }
+
+/**
+ * Flag account for deletion
+ * Sets the user's status to DELETED, which marks the account for deletion
+ */
+export async function flagAccountForDeletion(): Promise<ActionResult> {
+  try {
+    const user = await requireAuth();
+
+    // Update user status to DELETED
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        status: "DELETED",
+      },
+    });
+
+    // Revalidate relevant paths
+    revalidatePath("/dashboard/settings");
+    revalidatePath("/dashboard/profile");
+    revalidatePath("/dashboard");
+
+    return {
+      success: true,
+      message: "Account flagged for deletion successfully",
+    };
+  } catch (error: any) {
+    console.error("Flag account for deletion error:", error);
+    return {
+      success: false,
+      error: error.message || "Failed to delete account. Please try again.",
+    };
+  }
+}
