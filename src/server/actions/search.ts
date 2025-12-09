@@ -3,12 +3,13 @@
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth } from "@/lib/utils/auth-server";
 import { formatUserName } from "@/lib/utils/users";
-import { isModuleEnabled } from "./modules";
+import { canUserViewModule } from "./modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { fuzzySearch, rankAndLimit } from "@/lib/utils/fuzzy-search";
+import { getUserPermissions } from "@/lib/utils/permissions";
 
 export type SearchResult = {
-  type: "ticket" | "module" | "user" | "comment";
+  type: "ticket" | "module" | "user" | "comment" | "timeentry" | "project";
   id: string;
   title: string;
   description?: string;
@@ -39,7 +40,7 @@ export type SearchFilters = {
 
 /**
  * Global search across all enabled modules
- * Currently supports tickets and users, extensible for future modules
+ * Supports tickets, users, time entries, and projects
  */
 export async function globalSearch(query: string, limit: number = 10): Promise<SearchResponse> {
   const user = await requireAuth();
@@ -52,34 +53,44 @@ export async function globalSearch(query: string, limit: number = 10): Promise<S
   const results: SearchResult[] = [];
   let totalCount = 0;
 
-  // Distribute limit between users and tickets (roughly 40% users, 60% tickets)
-  const userLimit = Math.max(1, Math.floor(limit * 0.4));
-  const ticketLimit = limit - userLimit;
+  // Distribute limit across different result types
+  // 30% users, 40% tickets, 15% time entries, 15% projects
+  const userLimit = Math.max(1, Math.floor(limit * 0.3));
+  const ticketLimit = Math.max(1, Math.floor(limit * 0.4));
+  const timeEntryLimit = Math.max(1, Math.floor(limit * 0.15));
+  const projectLimit = Math.max(1, Math.floor(limit * 0.15));
 
-  // Search users if user is agent/admin/moderator
-  if (user.role === "AGENT" || user.role === "ADMIN" || user.role === "MODERATOR") {
-    const userResults = await searchUsers(searchTerm, user);
-    totalCount += userResults.length;
-    // Limit user results to allocated portion
-    results.push(...userResults.slice(0, userLimit));
-  }
+  // Get user permissions
+  const userPermissions = await getUserPermissions(user.id);
 
-  // Search tickets if module is enabled
-  const ticketsEnabled = await isModuleEnabled(MODULE_KEYS.TICKETS);
-  if (ticketsEnabled) {
-    const ticketResults = await searchTickets(searchTerm, user, ticketLimit);
+  // Search users - all authenticated users can search, but regular users can only find themselves
+  const userResults = await searchUsers(searchTerm, user, userPermissions);
+  totalCount += userResults.length;
+  results.push(...userResults.slice(0, userLimit));
+
+  // Search tickets if user can view tickets module
+  const canViewTickets = await canUserViewModule(user.id, MODULE_KEYS.TICKETS);
+  if (canViewTickets) {
+    const ticketResults = await searchTickets(searchTerm, user, ticketLimit, userPermissions);
     totalCount += ticketResults.length;
     results.push(...ticketResults);
   }
 
-  // Future: Add search for other modules here
-  // Example:
-  // const accountingEnabled = await isModuleEnabled(MODULE_KEYS.ACCOUNTING);
-  // if (accountingEnabled) {
-  //   const accountingResults = await searchAccounting(searchTerm, user, limit);
-  //   totalCount += accountingResults.length;
-  //   results.push(...accountingResults);
-  // }
+  // Search time entries if user can view time tracking module
+  const canViewTimeTracking = await canUserViewModule(user.id, MODULE_KEYS.TIMETRACKING);
+  if (canViewTimeTracking) {
+    const timeEntryResults = await searchTimeEntries(searchTerm, user, timeEntryLimit, userPermissions);
+    totalCount += timeEntryResults.length;
+    results.push(...timeEntryResults);
+  }
+
+  // Search projects if user can view projects module
+  const canViewProjects = await canUserViewModule(user.id, MODULE_KEYS.PROJECTS);
+  if (canViewProjects) {
+    const projectResults = await searchProjects(searchTerm, user, projectLimit, userPermissions);
+    totalCount += projectResults.length;
+    results.push(...projectResults);
+  }
 
   return {
     results: results.slice(0, limit),
@@ -96,18 +107,35 @@ export async function advancedSearch(filters: SearchFilters): Promise<SearchResp
   const searchTerm = filters.query?.trim() || "";
   const results: SearchResult[] = [];
 
-  // Search users if query is provided (only for agents/admins/moderators)
-  // Users can be searched even when only filters are applied, as long as there's a query
-  if (searchTerm && (user.role === "AGENT" || user.role === "ADMIN" || user.role === "MODERATOR")) {
-    const userResults = await searchUsers(searchTerm, user);
+  // Get user permissions
+  const userPermissions = await getUserPermissions(user.id);
+
+  // Search users if query is provided - all authenticated users can search
+  // Regular users can only find themselves, agents/admins can find all users
+  if (searchTerm) {
+    const userResults = await searchUsers(searchTerm, user, userPermissions);
     results.push(...userResults);
   }
 
-  // Search tickets if module is enabled
-  const ticketsEnabled = await isModuleEnabled(MODULE_KEYS.TICKETS);
-  if (ticketsEnabled) {
-    const ticketResults = await searchTicketsWithFilters(searchTerm, user, filters);
+  // Search tickets if user can view tickets module
+  const canViewTickets = await canUserViewModule(user.id, MODULE_KEYS.TICKETS);
+  if (canViewTickets) {
+    const ticketResults = await searchTicketsWithFilters(searchTerm, user, filters, userPermissions);
     results.push(...ticketResults);
+  }
+
+  // Search time entries if user can view time tracking module
+  const canViewTimeTracking = await canUserViewModule(user.id, MODULE_KEYS.TIMETRACKING);
+  if (canViewTimeTracking) {
+    const timeEntryResults = await searchTimeEntries(searchTerm, user, filters.limit || 100, userPermissions);
+    results.push(...timeEntryResults);
+  }
+
+  // Search projects if user can view projects module
+  const canViewProjects = await canUserViewModule(user.id, MODULE_KEYS.PROJECTS);
+  if (canViewProjects) {
+    const projectResults = await searchProjects(searchTerm, user, filters.limit || 100, userPermissions);
+    results.push(...projectResults);
   }
 
   return {
@@ -121,21 +149,29 @@ export async function advancedSearch(filters: SearchFilters): Promise<SearchResp
  */
 async function searchUsers(
   searchTerm: string,
-  user: Awaited<ReturnType<typeof requireAuth>>
+  user: Awaited<ReturnType<typeof requireAuth>>,
+  userPermissions: Set<string>
 ): Promise<SearchResult[]> {
-  // Only agents and admins can search for users
-  if (user.role !== "AGENT" && user.role !== "ADMIN" && user.role !== "MODERATOR") {
-    return [];
+  // Check if user can view all users (admins/agents/moderators) or only themselves
+  const canViewAllUsers = user.role === "AGENT" || user.role === "ADMIN" || user.role === "MODERATOR";
+
+  // Build where clause based on permissions
+  const where: any = {
+    status: {
+      in: ["ACTIVE", "PENDING"],
+    },
+  };
+
+  // Regular users can only search for themselves
+  if (!canViewAllUsers) {
+    where.id = user.id;
   }
 
-  // Fetch more candidates for fuzzy search (100 users)
-  // Use a broader query to get candidates for fuzzy matching
+  // Fetch more candidates for fuzzy search (100 users for admins/agents, 1 for regular users)
+  const candidateLimit = canViewAllUsers ? 100 : 1;
+  
   const allUsers = await prisma.user.findMany({
-    where: {
-      status: {
-        in: ["ACTIVE", "PENDING"],
-      },
-    },
+    where,
     select: {
       id: true,
       email: true,
@@ -150,7 +186,7 @@ async function searchUsers(
         },
       },
     },
-    take: 100, // Fetch more candidates for fuzzy search
+    take: candidateLimit,
   });
 
   // Apply fuzzy search on name and email fields
@@ -171,22 +207,29 @@ async function searchUsers(
   // Rank and limit results (top 20)
   const rankedUsers = rankAndLimit(fuzzyResults, 20);
 
-  return rankedUsers.map((u) => ({
-    type: "user" as const,
-    id: u.id,
-    title: formatUserName(u),
-    description: u.email !== formatUserName(u) ? u.email : undefined,
-    url: `/dashboard/users/${u.id}`, // Link to user detail page
-    metadata: {
-      email: u.email,
-      name: u.name,
-      role: u.role,
-      status: u.status,
-      createdTicketsCount: u._count.createdTickets,
-      assignedTicketsCount: u._count.assignedTickets,
-      createdAt: u.createdAt,
-    },
-  }));
+  return rankedUsers.map((u) => {
+    // Regular users should link to their profile page, others to user detail page
+    const url = !canViewAllUsers && u.id === user.id 
+      ? "/dashboard/profile" 
+      : `/dashboard/users/${u.id}`;
+    
+    return {
+      type: "user" as const,
+      id: u.id,
+      title: formatUserName(u),
+      description: u.email !== formatUserName(u) ? u.email : undefined,
+      url,
+      metadata: {
+        email: u.email,
+        name: u.name,
+        role: u.role,
+        status: u.status,
+        createdTicketsCount: u._count.createdTickets,
+        assignedTicketsCount: u._count.assignedTickets,
+        createdAt: u.createdAt,
+      },
+    };
+  });
 }
 
 /**
@@ -195,7 +238,8 @@ async function searchUsers(
 async function searchTicketsWithFilters(
   searchTerm: string,
   user: Awaited<ReturnType<typeof requireAuth>>,
-  filters: SearchFilters
+  filters: SearchFilters,
+  userPermissions: Set<string>
 ): Promise<SearchResult[]> {
   const where: any = {};
 
@@ -243,27 +287,41 @@ async function searchTicketsWithFilters(
     }
   }
 
-  // For agents, apply group membership filter
-  if (user.role === "AGENT") {
-    const memberships = await prisma.groupMembership.findMany({
-      where: { userId: user.id },
-      select: { groupId: true },
-    });
-    const agentGroupIds = memberships.map((m) => m.groupId);
+  // Apply permission-based filtering
+  const canViewAllTickets = userPermissions.has("tickets.view_all") || userPermissions.has("admin.tickets.manage");
+  const canViewTickets = userPermissions.has("tickets.view") || canViewAllTickets;
 
-    const groupFilter = {
-      OR: [
-        { assignedToGroupId: null },
-        ...(agentGroupIds.length > 0 ? [{ assignedToGroupId: { in: agentGroupIds } }] : []),
-      ],
-    };
-
-    where.AND = where.AND || [];
-    where.AND.push(groupFilter);
-  } else if (user.role === "USER") {
-    // Regular users can only see tickets they created
-    where.createdById = user.id;
+  if (!canViewTickets) {
+    // User has no permission to view tickets
+    return [];
   }
+
+  if (!canViewAllTickets) {
+    // User can only view specific tickets
+    if (user.role === "AGENT") {
+      // Agents can see tickets assigned to them or their groups
+      const memberships = await prisma.groupMembership.findMany({
+        where: { userId: user.id },
+        select: { groupId: true },
+      });
+      const agentGroupIds = memberships.map((m) => m.groupId);
+
+      const groupFilter = {
+        OR: [
+          { assignedToId: user.id },
+          { assignedToGroupId: null },
+          ...(agentGroupIds.length > 0 ? [{ assignedToGroupId: { in: agentGroupIds } }] : []),
+        ],
+      };
+
+      where.AND = where.AND || [];
+      where.AND.push(groupFilter);
+    } else if (user.role === "USER") {
+      // Regular users can only see tickets they created
+      where.createdById = user.id;
+    }
+  }
+  // ADMIN/MODERATOR with view_all permission can see all tickets (no filter)
 
   // Determine sort order and limit
   const sortBy = filters.sortBy || "updatedAt";
@@ -609,36 +667,359 @@ async function searchTicketsWithFilters(
 }
 
 /**
+ * Search time entries by name, description, tags, and location with fuzzy matching
+ */
+async function searchTimeEntries(
+  searchTerm: string,
+  user: Awaited<ReturnType<typeof requireAuth>>,
+  limit: number,
+  userPermissions: Set<string>
+): Promise<SearchResult[]> {
+  const where: any = {};
+
+  // Check permissions
+  const canViewAllTimeEntries = userPermissions.has("time_tracking.view_all");
+  const canViewTimeEntries = userPermissions.has("time_tracking.view") || canViewAllTimeEntries;
+
+  if (!canViewTimeEntries) {
+    // User has no permission to view time entries
+    return [];
+  }
+
+  if (!canViewAllTimeEntries) {
+    // User can only see their own time entries
+    where.userId = user.id;
+  }
+  // Users with view_all permission can see all time entries (no filter)
+
+  // Fetch more candidates for fuzzy search (3x the limit, or at least 50)
+  const candidateLimit = Math.max(limit * 3, 50);
+
+  const timeEntries = await prisma.timeEntry.findMany({
+    where,
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      status: true,
+      tags: true,
+      location: true,
+      startedAt: true,
+      stoppedAt: true,
+      completedAt: true,
+      totalDuration: true,
+      createdAt: true,
+      updatedAt: true,
+      userId: true,
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      ticketId: true,
+      ticket: {
+        select: {
+          id: true,
+          ticketNumber: true,
+          title: true,
+        },
+      },
+      projectId: true,
+      project: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+        },
+      },
+    },
+    orderBy: {
+      updatedAt: "desc",
+    },
+    take: candidateLimit,
+  });
+
+  // If no search term, return all time entries
+  if (!searchTerm || searchTerm.trim().length === 0) {
+    return timeEntries.slice(0, limit).map((entry) => ({
+      type: "timeentry" as const,
+      id: entry.id,
+      title: entry.name,
+      description: entry.description || undefined,
+      url: `/dashboard/time-tracking/${entry.id}`,
+      metadata: {
+        status: entry.status,
+        tags: entry.tags,
+        location: entry.location,
+        totalDuration: entry.totalDuration,
+        startedAt: entry.startedAt,
+        stoppedAt: entry.stoppedAt,
+        completedAt: entry.completedAt,
+        user: formatUserName(entry.user),
+        ticketNumber: entry.ticket?.ticketNumber,
+        ticketTitle: entry.ticket?.title,
+        projectCode: entry.project?.code,
+        projectName: entry.project?.name,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
+      },
+    }));
+  }
+
+  // Prepare time entries for fuzzy search
+  const entriesForFuzzy = timeEntries.map((entry) => ({
+    ...entry,
+    searchableText: [
+      entry.name,
+      entry.description || "",
+      entry.location || "",
+      ...entry.tags,
+    ].join(" "),
+    tagsString: entry.tags.join(" "),
+  }));
+
+  // Apply fuzzy search on time entry fields
+  const fuzzyResults = fuzzySearch(
+    entriesForFuzzy,
+    searchTerm,
+    {
+      keys: [
+        { name: "name", weight: 0.5 },
+        { name: "description", weight: 0.3 },
+        { name: "location", weight: 0.1 },
+        { name: "tagsString", weight: 0.1 },
+      ],
+      threshold: 0.4,
+      minMatchCharLength: 2,
+    }
+  );
+
+  // Rank and limit results
+  const rankedEntries = rankAndLimit(fuzzyResults, limit);
+
+  return rankedEntries.map((entry) => ({
+    type: "timeentry" as const,
+    id: entry.id,
+    title: entry.name,
+    description: entry.description || undefined,
+    url: `/dashboard/time-tracking/${entry.id}`,
+    metadata: {
+      status: entry.status,
+      tags: entry.tags,
+      location: entry.location,
+      totalDuration: entry.totalDuration,
+      startedAt: entry.startedAt,
+      stoppedAt: entry.stoppedAt,
+      completedAt: entry.completedAt,
+      user: formatUserName(entry.user),
+      ticketNumber: entry.ticket?.ticketNumber,
+      ticketTitle: entry.ticket?.title,
+      projectCode: entry.project?.code,
+      projectName: entry.project?.name,
+      createdAt: entry.createdAt,
+      updatedAt: entry.updatedAt,
+    },
+  }));
+}
+
+/**
+ * Search projects by name, description, code, and client with fuzzy matching
+ */
+async function searchProjects(
+  searchTerm: string,
+  user: Awaited<ReturnType<typeof requireAuth>>,
+  limit: number,
+  userPermissions: Set<string>
+): Promise<SearchResult[]> {
+  let where: any = {};
+
+  // Check permissions
+  const canViewAllProjects = userPermissions.has("projects.view_all");
+  const canViewProjects = userPermissions.has("projects.view") || canViewAllProjects;
+
+  if (!canViewProjects) {
+    // User has no permission to view projects
+    return [];
+  }
+
+  if (!canViewAllProjects) {
+    // User can only see projects they're members of
+    const userProjects = await prisma.projectUser.findMany({
+      where: { userId: user.id },
+      select: { projectId: true },
+    });
+    const projectIds = userProjects.map((up) => up.projectId);
+    
+    if (projectIds.length === 0) {
+      return [];
+    }
+    
+    where.id = { in: projectIds };
+  }
+  // Users with view_all permission can see all projects (no filter)
+
+  // Fetch more candidates for fuzzy search (3x the limit, or at least 50)
+  const candidateLimit = Math.max(limit * 3, 50);
+
+  const projects = await prisma.project.findMany({
+    where,
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      description: true,
+      status: true,
+      priority: true,
+      startDate: true,
+      endDate: true,
+      client: true,
+      color: true,
+      icon: true,
+      createdAt: true,
+      updatedAt: true,
+      createdById: true,
+      createdBy: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      _count: {
+        select: {
+          tickets: true,
+          timeEntries: true,
+          members: true,
+        },
+      },
+    },
+    orderBy: {
+      updatedAt: "desc",
+    },
+    take: candidateLimit,
+  });
+
+  // If no search term, return all projects
+  if (!searchTerm || searchTerm.trim().length === 0) {
+    return projects.slice(0, limit).map((project) => ({
+      type: "project" as const,
+      id: project.id,
+      title: project.name,
+      description: project.description || undefined,
+      url: `/dashboard/projects/${project.id}`,
+      metadata: {
+        code: project.code,
+        status: project.status,
+        priority: project.priority,
+        client: project.client,
+        startDate: project.startDate,
+        endDate: project.endDate,
+        createdBy: formatUserName(project.createdBy),
+        ticketCount: project._count.tickets,
+        timeEntryCount: project._count.timeEntries,
+        memberCount: project._count.members,
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt,
+      },
+    }));
+  }
+
+  // Prepare projects for fuzzy search
+  const projectsForFuzzy = projects.map((project) => ({
+    ...project,
+    searchableText: [
+      project.name,
+      project.description || "",
+      project.code,
+      project.client || "",
+    ].join(" "),
+  }));
+
+  // Apply fuzzy search on project fields
+  const fuzzyResults = fuzzySearch(
+    projectsForFuzzy,
+    searchTerm,
+    {
+      keys: [
+        { name: "name", weight: 0.4 },
+        { name: "description", weight: 0.3 },
+        { name: "code", weight: 0.2 },
+        { name: "client", weight: 0.1 },
+      ],
+      threshold: 0.4,
+      minMatchCharLength: 2,
+    }
+  );
+
+  // Rank and limit results
+  const rankedProjects = rankAndLimit(fuzzyResults, limit);
+
+  return rankedProjects.map((project) => ({
+    type: "project" as const,
+    id: project.id,
+    title: project.name,
+    description: project.description || undefined,
+    url: `/dashboard/projects/${project.id}`,
+    metadata: {
+      code: project.code,
+      status: project.status,
+      priority: project.priority,
+      client: project.client,
+      startDate: project.startDate,
+      endDate: project.endDate,
+      createdBy: formatUserName(project.createdBy),
+      ticketCount: project._count.tickets,
+      timeEntryCount: project._count.timeEntries,
+      memberCount: project._count.members,
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt,
+    },
+  }));
+}
+
+/**
  * Search tickets by title, description, ticketNumber, tags, and comments with fuzzy matching
  */
 async function searchTickets(
   searchTerm: string,
   user: Awaited<ReturnType<typeof requireAuth>>,
-  limit: number
+  limit: number,
+  userPermissions: Set<string>
 ): Promise<SearchResult[]> {
   const where: any = {};
 
-  // For agents, apply group membership filter
-  if (user.role === "AGENT") {
-    // Get groups the agent is a member of
-    const memberships = await prisma.groupMembership.findMany({
-      where: { userId: user.id },
-      select: { groupId: true },
-    });
-    const agentGroupIds = memberships.map((m) => m.groupId);
+  // Apply permission-based filtering
+  const canViewAllTickets = userPermissions.has("tickets.view_all") || userPermissions.has("admin.tickets.manage");
+  const canViewTickets = userPermissions.has("tickets.view") || canViewAllTickets;
 
-    // Agents can only see tickets that:
-    // 1. Are not assigned to any group (assignedToGroupId is null), OR
-    // 2. Are assigned to a group the agent is a member of
-    where.OR = [
-      { assignedToGroupId: null },
-      ...(agentGroupIds.length > 0 ? [{ assignedToGroupId: { in: agentGroupIds } }] : []),
-    ];
-  } else if (user.role === "USER") {
-    // Regular users can only see tickets they created
-    where.createdById = user.id;
+  if (!canViewTickets) {
+    // User has no permission to view tickets
+    return [];
   }
-  // ADMIN and MODERATOR can see all tickets (no filter needed)
+
+  if (!canViewAllTickets) {
+    // User can only view specific tickets
+    if (user.role === "AGENT") {
+      // Agents can see tickets assigned to them or their groups
+      const memberships = await prisma.groupMembership.findMany({
+        where: { userId: user.id },
+        select: { groupId: true },
+      });
+      const agentGroupIds = memberships.map((m) => m.groupId);
+
+      where.OR = [
+        { assignedToId: user.id },
+        { assignedToGroupId: null },
+        ...(agentGroupIds.length > 0 ? [{ assignedToGroupId: { in: agentGroupIds } }] : []),
+      ];
+    } else if (user.role === "USER") {
+      // Regular users can only see tickets they created
+      where.createdById = user.id;
+    }
+  }
+  // ADMIN/MODERATOR with view_all permission can see all tickets (no filter)
 
   // Fetch more candidates for fuzzy search (3x the limit, or at least 100 to ensure we get enough comments)
   const candidateLimit = Math.max(limit * 3, 100);

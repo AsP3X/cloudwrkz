@@ -173,21 +173,53 @@ export async function loginUser(
       };
     }
 
-    // Check if account is active
-    if (user.status === "SUSPENDED") {
-      return {
-        success: false,
-        error: "Your account has been suspended. Please contact support.",
-      };
-    }
-
-    // Verify password
+    // Verify password first
     const isPasswordValid = await verifyPassword(password, user.password);
 
     if (!isPasswordValid) {
       return {
         success: false,
         error: "Invalid email or password",
+      };
+    }
+
+    // Check if account is banned - allow login but redirect to banned page
+    if (user.status === "BANNED") {
+      // Create session for banned users so they can access the banned page
+      const cookieStore = await cookies();
+      const sessionToken = generateToken();
+      const expiresAt = new Date();
+      expiresAt.setTime(expiresAt.getTime() + (rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000)); // 30 days or 1 day
+      
+      // Store session in database
+      await prisma.session.create({
+        data: {
+          token: sessionToken,
+          userId: user.id,
+          expiresAt,
+        },
+      });
+      
+      cookieStore.set("session", sessionToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: rememberMe ? 60 * 60 * 24 * 30 : 60 * 60 * 24, // 30 days or 1 day
+        path: "/",
+      });
+
+      // Return a special error code that will trigger redirect to banned page
+      return {
+        success: false,
+        error: "BANNED",
+      };
+    }
+
+    // Check if account is active
+    if (user.status === "SUSPENDED") {
+      return {
+        success: false,
+        error: "Your account has been suspended. Please contact support.",
       };
     }
 

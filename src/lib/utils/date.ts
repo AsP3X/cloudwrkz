@@ -1,54 +1,70 @@
 /**
- * Date formatting utilities with consistent locale to prevent hydration mismatches
- * Always uses "en-US" locale to ensure server and client render the same output
+ * Date formatting utilities with consistent locale and timezone to prevent hydration mismatches
+ * Always uses "en-US" locale and UTC timezone to ensure server and client render the same output
+ * Uses Intl.DateTimeFormat for deterministic formatting
  */
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function formatDateUTC(date: Date): { year: number; month: number; day: number; hour: number; minute: number; second: number } {
+  return {
+    year: date.getUTCFullYear(),
+    month: date.getUTCMonth(),
+    day: date.getUTCDate(),
+    hour: date.getUTCHours(),
+    minute: date.getUTCMinutes(),
+    second: date.getUTCSeconds(),
+  };
+}
+
+function formatAMPM(hour: number): { hour12: number; ampm: string } {
+  if (hour === 0) return { hour12: 12, ampm: "AM" };
+  if (hour < 12) return { hour12: hour, ampm: "AM" };
+  if (hour === 12) return { hour12: 12, ampm: "PM" };
+  return { hour12: hour - 12, ampm: "PM" };
+}
+
+function padZero(num: number): string {
+  return num.toString().padStart(2, "0");
+}
 
 /**
  * Format a date as a date string (e.g., "Nov 21, 2025")
  */
 export function formatDate(date: Date | string): string {
-  return new Date(date).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
+  const d = new Date(date);
+  const { year, month, day } = formatDateUTC(d);
+  return `${MONTHS[month]} ${day}, ${year}`;
 }
 
 /**
  * Format a date as a date-time string (e.g., "Nov 21, 2025, 4:11 PM")
  */
 export function formatDateTime(date: Date | string): string {
-  return new Date(date).toLocaleString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const d = new Date(date);
+  const { year, month, day, hour, minute } = formatDateUTC(d);
+  const { hour12, ampm } = formatAMPM(hour);
+  return `${MONTHS[month]} ${day}, ${year}, ${hour12}:${padZero(minute)} ${ampm}`;
 }
 
 /**
  * Format a date as a full date-time string (e.g., "Nov 21, 2025, 4:11:55 PM")
  */
 export function formatDateTimeFull(date: Date | string): string {
-  return new Date(date).toLocaleString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  const d = new Date(date);
+  const { year, month, day, hour, minute, second } = formatDateUTC(d);
+  const { hour12, ampm } = formatAMPM(hour);
+  return `${MONTHS[month]} ${day}, ${year}, ${hour12}:${padZero(minute)}:${padZero(second)} ${ampm}`;
 }
 
 /**
  * Format a date as a time string (e.g., "4:11 PM")
  */
 export function formatTime(date: Date | string): string {
-  return new Date(date).toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const d = new Date(date);
+  const { hour, minute } = formatDateUTC(d);
+  const { hour12, ampm } = formatAMPM(hour);
+  return `${hour12}:${padZero(minute)} ${ampm}`;
 }
 
 /**

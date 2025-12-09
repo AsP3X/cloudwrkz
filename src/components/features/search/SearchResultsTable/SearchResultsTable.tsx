@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { type SearchResult } from "@/server/actions/search";
 import { getTicketTypeLabel, type TicketType } from "@/lib/utils/tickets";
+import { formatDate, formatDateTime } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
 
 interface SearchResultsTableProps {
@@ -105,23 +106,6 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
       return <React.Fragment key={index}>{part}</React.Fragment>;
     });
   };
-  const formatDate = (date: Date | string) => {
-    return new Date(date).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  };
-
-  const formatDateTime = (date: Date | string) => {
-    return new Date(date).toLocaleString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
 
   const getStatusColor = (status: string) => {
     const statusColors: Record<string, string> = {
@@ -193,6 +177,40 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
             strokeLinejoin="round"
             strokeWidth={2}
             d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+          />
+        </svg>
+      );
+    }
+    if (type === "timeentry") {
+      return (
+        <svg
+          className="w-5 h-5 text-purple-600 dark:text-purple-400"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
+        </svg>
+      );
+    }
+    if (type === "project") {
+      return (
+        <svg
+          className="w-5 h-5 text-blue-600 dark:text-blue-400"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
           />
         </svg>
       );
@@ -301,6 +319,17 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                         <span className="text-sm text-neutral-500 dark:text-neutral-400">
                           {group.ticket.metadata.email}
                         </span>
+                      ) : group.ticket.type === "timeentry" ? (
+                        <span className="text-sm text-neutral-500 dark:text-neutral-400">
+                          {group.ticket.id.slice(0, 8)}...
+                        </span>
+                      ) : group.ticket.type === "project" && group.ticket.metadata?.code ? (
+                        <Link
+                          href={group.ticket.url}
+                          className="text-sm font-mono font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+                        >
+                          {group.ticket.metadata.code}
+                        </Link>
                       ) : (
                         <span className="text-sm text-neutral-500 dark:text-neutral-400">
                           {group.ticket.id.slice(0, 8)}...
@@ -324,6 +353,18 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                               {group.ticket.metadata.createdTicketsCount || 0} created, {group.ticket.metadata.assignedTicketsCount || 0} assigned
                             </div>
                           )}
+                          {group.ticket.type === "timeentry" && group.ticket.metadata && (
+                            <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                              {group.ticket.metadata.ticketNumber && `Ticket: ${group.ticket.metadata.ticketNumber} • `}
+                              {group.ticket.metadata.projectCode && `Project: ${group.ticket.metadata.projectCode} • `}
+                              {group.ticket.metadata.totalDuration && `${Math.floor((group.ticket.metadata.totalDuration as number) / 3600)}h ${Math.floor(((group.ticket.metadata.totalDuration as number) % 3600) / 60)}m`}
+                            </div>
+                          )}
+                          {group.ticket.type === "project" && group.ticket.metadata && (
+                            <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                              {group.ticket.metadata.ticketCount || 0} tickets • {group.ticket.metadata.timeEntryCount || 0} time entries • {group.ticket.metadata.memberCount || 0} members
+                            </div>
+                          )}
                           {isTicket && hasComments && (
                             <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
                               ({group.comments.length} comment{group.comments.length !== 1 ? "s" : ""})
@@ -344,6 +385,14 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                       ) : group.ticket.type === "user" && group.ticket.metadata?.role ? (
                         <span className="px-2 py-1 rounded-full text-xs font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 capitalize">
                           {group.ticket.metadata.role.toLowerCase()}
+                        </span>
+                      ) : group.ticket.type === "timeentry" && group.ticket.metadata?.status ? (
+                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 capitalize">
+                          {group.ticket.metadata.status.toLowerCase()}
+                        </span>
+                      ) : group.ticket.type === "project" && group.ticket.metadata?.status ? (
+                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 capitalize">
+                          {group.ticket.metadata.status.replace("_", " ").toLowerCase()}
                         </span>
                       ) : (
                         <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
@@ -367,6 +416,18 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                             : "bg-neutral-100 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-200"
                         }`}>
                           {group.ticket.metadata.status}
+                        </span>
+                      ) : group.ticket.type === "timeentry" && group.ticket.metadata?.totalDuration ? (
+                        <span className="text-xs text-neutral-600 dark:text-neutral-400">
+                          {Math.floor((group.ticket.metadata.totalDuration as number) / 3600)}h {Math.floor(((group.ticket.metadata.totalDuration as number) % 3600) / 60)}m
+                        </span>
+                      ) : group.ticket.type === "project" && group.ticket.metadata?.priority ? (
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(
+                            group.ticket.metadata.priority
+                          )}`}
+                        >
+                          {group.ticket.metadata.priority}
                         </span>
                       ) : (
                         <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
@@ -395,6 +456,14 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                             <span className="text-xs text-neutral-400 dark:text-neutral-500">Unassigned</span>
                           )}
                         </div>
+                      ) : group.ticket.type === "timeentry" && group.ticket.metadata?.user ? (
+                        <div className="text-sm text-neutral-700 dark:text-neutral-300">
+                          {group.ticket.metadata.user}
+                        </div>
+                      ) : group.ticket.type === "project" && group.ticket.metadata?.createdBy ? (
+                        <div className="text-sm text-neutral-700 dark:text-neutral-300">
+                          {group.ticket.metadata.createdBy}
+                        </div>
                       ) : (
                         <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
                       )}
@@ -405,6 +474,14 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                           {formatDate(group.ticket.metadata.createdAt)}
                         </div>
                       ) : group.ticket.type === "user" && group.ticket.metadata?.createdAt ? (
+                        <div className="text-sm text-neutral-600 dark:text-neutral-400">
+                          {formatDate(group.ticket.metadata.createdAt)}
+                        </div>
+                      ) : group.ticket.type === "timeentry" && group.ticket.metadata?.startedAt ? (
+                        <div className="text-sm text-neutral-600 dark:text-neutral-400">
+                          {formatDate(group.ticket.metadata.startedAt)}
+                        </div>
+                      ) : group.ticket.type === "project" && group.ticket.metadata?.createdAt ? (
                         <div className="text-sm text-neutral-600 dark:text-neutral-400">
                           {formatDate(group.ticket.metadata.createdAt)}
                         </div>

@@ -126,7 +126,7 @@ export const SearchFilters = ({ initialQuery = "", users = [], isAgent = false }
           <div className="flex-1">
             <Input
               type="text"
-              placeholder={isAgent ? "Search tickets, users..." : "Search tickets..."}
+              placeholder={isAgent ? "Search tickets, users, time entries, projects..." : "Search tickets, time entries, projects..."}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="w-full"

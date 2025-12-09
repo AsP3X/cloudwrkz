@@ -28,14 +28,14 @@ export const Tabs = ({ tabs, defaultTab, className }: TabsProps) => {
     <div className={cn("w-full", className)}>
       {/* Tab Navigation */}
       <div className="border-b border-neutral-200 dark:border-neutral-800">
-        <nav className="flex gap-6 -mb-px">
+        <nav className="flex gap-4 md:gap-6 -mb-px overflow-x-auto scrollbar-hide px-1">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                "px-4 py-3 text-sm font-medium border-b-2 transition-colors",
+                "px-3 md:px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex-shrink-0",
                 activeTab === tab.id
                   ? "border-primary-600 dark:border-primary-500 text-primary-600 dark:text-primary-400"
                   : "border-transparent text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 hover:border-neutral-300 dark:hover:border-neutral-700"

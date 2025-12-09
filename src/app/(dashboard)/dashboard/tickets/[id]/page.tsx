@@ -1,8 +1,10 @@
 import { getCurrentUser } from "@/lib/utils/auth-server";
+import { hasPermission } from "@/lib/utils/permissions";
 import { formatUserName } from "@/lib/utils/users";
+import { formatDateTime } from "@/lib/utils/date";
 import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
-import { isModuleEnabled } from "@/server/actions/modules";
+import { canUserViewModule, isModuleEnabled } from "@/server/actions/modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { getTicket } from "@/server/actions/tickets";
 import Link from "next/link";
@@ -16,6 +18,7 @@ import { notFound } from "next/navigation";
 import { getAgents } from "@/server/actions/users";
 import { getGroups } from "@/server/actions/groups";
 import { getTimeEntriesForTicket, getAvailableTimeEntriesForAssignment } from "@/server/actions/time-tracking";
+import { getUserProjectsForAssignment, getProject } from "@/server/actions/projects";
 
 interface TicketDetailPageProps {
   params: Promise<{ id: string }>;
@@ -33,15 +36,15 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
     redirect(ROUTES.LOGIN);
   }
 
-  // Check if tickets module is enabled
-  const ticketsEnabled = await isModuleEnabled(MODULE_KEYS.TICKETS);
+  // Check if user can view tickets module (module enabled AND user has permission)
+  const canViewTickets = await canUserViewModule(user.id, MODULE_KEYS.TICKETS);
 
-  if (!ticketsEnabled) {
+  if (!canViewTickets) {
     return (
       <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8 text-center">
-        <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">Tickets Module Disabled</h2>
+        <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">Access Denied</h2>
         <p className="text-neutral-600 dark:text-neutral-400 mb-4">
-          The tickets module is not currently enabled. Please contact an administrator.
+          You don't have permission to access the Tickets module. Please contact an administrator.
         </p>
         <Link href={ROUTES.DASHBOARD}>
           <Button variant="primary">Back to Dashboard</Button>
@@ -56,14 +59,33 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
     notFound();
   }
 
+  // Check if user is the owner or manager of the project this ticket belongs to
+  let isProjectOwnerOrManager = false;
+  if (ticket.projectId) {
+    const project = await getProject(ticket.projectId);
+    if (project) {
+      // Check if user is the project creator (owner)
+      if (project.createdById === user.id) {
+        isProjectOwnerOrManager = true;
+      } else {
+        // Check if user is a manager of the project
+        const membership = project.members.find((m) => m.user.id === user.id);
+        if (membership?.role === "MANAGER") {
+          isProjectOwnerOrManager = true;
+        }
+      }
+    }
+  }
+
   // Check if user has permission to view this ticket
-  // Creator, assigned agent, admin, or moderator can view
+  // Creator, assigned agent, admin, moderator, or project owner/manager can view
   const canView = 
     ticket.createdById === user.id ||
     user.role === "ADMIN" ||
     user.role === "MODERATOR" ||
     (user.role === "AGENT" && ticket.assignedToId === user.id) ||
-    user.role === "AGENT"; // Agents can view all tickets
+    user.role === "AGENT" || // Agents can view all tickets
+    isProjectOwnerOrManager; // Project owners and managers can view tickets for their projects
   
   if (!canView) {
     redirect(ROUTES.DASHBOARD);
@@ -73,11 +95,23 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
   const isAgent = user.role === "AGENT" || user.role === "ADMIN" || user.role === "MODERATOR";
   const agents = isAgent ? await getAgents() : [];
   const groups = isAgent ? await getGroups() : [];
+  const projects = isAgent ? await getUserProjectsForAssignment() : [];
 
-  // Check if time tracking module is enabled and get timers
+  // Check if time tracking module is enabled and user has permission to view ticket time entries
   const timeTrackingEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
-  const timeEntries = timeTrackingEnabled ? await getTimeEntriesForTicket(ticket.id) : [];
-  const availableTimeEntries = timeTrackingEnabled ? await getAvailableTimeEntriesForAssignment() : [];
+  const canViewTimeEntries = timeTrackingEnabled && (
+    user.role === "ADMIN" || 
+    await hasPermission(user.id, "tickets.time_entries.view") ||
+    await hasPermission(user.id, "time_tracking.view") ||
+    await hasPermission(user.id, "time_tracking.view_all")
+  );
+  const canCreateTimeEntries = timeTrackingEnabled && (
+    user.role === "ADMIN" ||
+    await hasPermission(user.id, "tickets.time_entries.create") ||
+    await hasPermission(user.id, "time_tracking.create")
+  );
+  const timeEntries = canViewTimeEntries ? await getTimeEntriesForTicket(ticket.id) : [];
+  const availableTimeEntries = canViewTimeEntries ? await getAvailableTimeEntriesForAssignment() : [];
   
   // Filter stopped timers for the Timers tab
   const stoppedTimeEntries = timeTrackingEnabled 
@@ -89,15 +123,6 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
     ? timeEntries.filter((entry) => entry.status === "RUNNING" || entry.status === "PAUSED")
     : [];
 
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -217,7 +242,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
           <div>
             <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">{ticket.title}</h1>
             <p className="text-neutral-600 dark:text-neutral-400">
-              Created {formatDate(ticket.createdAt)}
+              Created {formatDateTime(ticket.createdAt)}
             </p>
           </div>
         </div>
@@ -365,8 +390,10 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                   ticketId={ticket.id}
                   assignedToId={ticket.assignedToId}
                   assignedToGroupId={ticket.assignedToGroupId}
+                  projectId={ticket.projectId}
                   agents={agents}
                   groups={groups}
+                  projects={projects}
                 />
               ) : (
                 <>
@@ -415,6 +442,34 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                 </>
               )}
 
+              {/* Project - Only show if project is assigned */}
+              {ticket.project && (
+                <>
+                  {/* Divider */}
+                  <div className="border-t border-neutral-200 pt-4"></div>
+                  <div>
+                    <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
+                      Project
+                    </label>
+                    <Link
+                      href={`/dashboard/projects/${ticket.project.id}`}
+                      className="flex items-center gap-2 text-sm text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                    >
+                      {ticket.project.color && (
+                        <div
+                          className="w-3 h-3 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: ticket.project.color }}
+                        />
+                      )}
+                      <span className="font-medium">{ticket.project.name}</span>
+                      <span className="text-neutral-500 dark:text-neutral-500 font-mono text-xs">
+                        ({ticket.project.code})
+                      </span>
+                    </Link>
+                  </div>
+                </>
+              )}
+
               {/* Divider */}
               <div className="border-t border-neutral-200 pt-4"></div>
 
@@ -424,14 +479,14 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                   <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                     Created
                   </label>
-                  <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDate(ticket.createdAt)}</p>
+                  <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDateTime(ticket.createdAt)}</p>
                 </div>
                 {ticket.updatedAt && ticket.updatedAt.getTime() !== ticket.createdAt.getTime() && (
                   <div>
                     <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                       Last Updated
                     </label>
-                    <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDate(ticket.updatedAt)}</p>
+                    <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDateTime(ticket.updatedAt)}</p>
                   </div>
                 )}
                 {ticket.resolvedAt && (
@@ -439,7 +494,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                     <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                       Resolved
                     </label>
-                    <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDate(ticket.resolvedAt)}</p>
+                    <p className="text-sm text-neutral-900 dark:text-neutral-100">{ticket.resolvedAt ? formatDateTime(ticket.resolvedAt) : "—"}</p>
                   </div>
                 )}
                 {ticket.closedAt && (
@@ -447,15 +502,15 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                     <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                       Closed
                     </label>
-                    <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDate(ticket.closedAt)}</p>
+                    <p className="text-sm text-neutral-900 dark:text-neutral-100">{ticket.closedAt ? formatDateTime(ticket.closedAt) : "—"}</p>
                   </div>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Time Tracking Section */}
-          {timeTrackingEnabled && (
+          {/* Time Tracking Section - Only visible if user has permission */}
+          {canViewTimeEntries && (
             <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
               <TicketTimerSection
                 ticketId={ticket.id}
@@ -478,6 +533,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                   createdAt: entry.createdAt,
                 }))}
                 userTimezone={user.timezone ?? "UTC"}
+                canCreate={canCreateTimeEntries}
               />
             </div>
           )}

@@ -21,6 +21,7 @@ enum UserStatus {
   PENDING
   ACTIVE
   SUSPENDED
+  BANNED
   DELETED
 }
 
@@ -56,14 +57,26 @@ model User {
   scheduledForDeletionAt DateTime? // When account was flagged for deletion
   originalEmail          String? // Original email before deletion (for reactivation)
 
+  // Account ban
+  bannedAt  DateTime? // When account was banned
+  banReason String? // Reason for the ban
+
   // Relations
-  sessions         Session[]
-  createdTickets   Ticket[]          @relation("TicketCreator")
-  assignedTickets  Ticket[]          @relation("TicketAssignee")
-  ticketComments   TicketComment[]
-  ticketActivities TicketActivity[]  @relation("TicketActivityChanger")
-  groupMemberships GroupMembership[]
-  timeEntries      TimeEntry[]
+  sessions           Session[]
+  createdTickets     Ticket[]          @relation("TicketCreator")
+  assignedTickets    Ticket[]          @relation("TicketAssignee")
+  ticketComments     TicketComment[]
+  ticketActivities   TicketActivity[]  @relation("TicketActivityChanger")
+  groupMemberships   GroupMembership[]
+  timeEntries        TimeEntry[]
+  projectMemberships ProjectUser[]
+  createdProjects    Project[]         @relation("ProjectCreator")
+  assignedTasks      Task[]            @relation("TaskAssignee")
+  ownedRisks         ProjectRisk[]     @relation("RiskOwner")
+  assignedIssues     ProjectIssue[]    @relation("IssueAssignee")
+  reportedIssues     ProjectIssue[]    @relation("IssueReporter")
+  projectNotes       ProjectNote[]     @relation("NoteAuthor")
+  unbanRequests      UnbanRequest[]
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -143,6 +156,61 @@ enum TimeEntryStatus {
   COMPLETED
 }
 
+// Project Status
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+  ARCHIVED
+}
+
+// Project Priority
+enum ProjectPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// Permission model - defines all available permissions
+model Permission {
+  id          String  @id @default(cuid())
+  key         String  @unique // e.g., "tickets.create", "projects.view"
+  name        String // Display name
+  description String? // Description of what this permission allows
+  category    String // e.g., "tickets", "projects", "admin", "time_tracking"
+  module      String? // Optional: link to module (tickets, projects, timetracking)
+
+  // Relations
+  groupPermissions GroupPermission[]
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([key])
+  @@index([category])
+  @@index([module])
+  @@map("permissions")
+}
+
+// GroupPermission model - links Groups to Permissions
+model GroupPermission {
+  id           String     @id @default(cuid())
+  groupId      String
+  permissionId String
+  group        Group      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([groupId, permissionId])
+  @@index([groupId])
+  @@index([permissionId])
+  @@map("group_permissions")
+}
+
 // Agent Groups - only for agents
 model Group {
   id          String  @id @default(cuid())
@@ -150,8 +218,10 @@ model Group {
   description String?
 
   // Relations
-  members GroupMembership[]
-  tickets Ticket[]
+  members            GroupMembership[]
+  tickets            Ticket[]
+  projectMemberships ProjectGroup[]
+  permissions        GroupPermission[] // Group permissions
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -199,10 +269,16 @@ model Ticket {
   tags        String[] @default([])
   attachments String[] @default([])
 
+  // Project relation
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
   // Relations
-  comments    TicketComment[]
-  activities  TicketActivity[]
-  timeEntries TimeEntry[]
+  comments     TicketComment[]
+  activities   TicketActivity[]
+  timeEntries  TimeEntry[]
+  tasks        Task[]           @relation("TaskTicket")
+  unbanRequest UnbanRequest?
 
   // Timestamps
   createdAt  DateTime  @default(now())
@@ -213,6 +289,7 @@ model Ticket {
   @@index([createdById])
   @@index([assignedToId])
   @@index([assignedToGroupId])
+  @@index([projectId])
   @@index([status])
   @@index([priority])
   @@index([type])
@@ -233,6 +310,8 @@ enum TicketActivityType {
   UNASSIGNED_FROM_AGENT
   ASSIGNED_TO_GROUP
   UNASSIGNED_FROM_GROUP
+  ASSIGNED_TO_PROJECT
+  UNASSIGNED_FROM_PROJECT
   TAGS_CHANGED
   RESOLVED
   CLOSED
@@ -267,17 +346,17 @@ model TicketComment {
 
 // Ticket Activity Log - tracks all changes to tickets
 model TicketActivity {
-  id          String            @id @default(cuid())
-  ticketId    String
-  ticket      Ticket            @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  activityType TicketActivityType
-  changedById String?
-  changedBy   User?             @relation("TicketActivityChanger", fields: [changedById], references: [id], onDelete: SetNull)
+  id            String             @id @default(cuid())
+  ticketId      String
+  ticket        Ticket             @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  activityType  TicketActivityType
+  changedById   String?
+  changedBy     User?              @relation("TicketActivityChanger", fields: [changedById], references: [id], onDelete: SetNull)
   changedByName String? // Store anonymized name when changer is deleted
-  oldValue    String? // JSON string or plain string for old value
-  newValue    String? // JSON string or plain string for new value
-  metadata    Json? // Additional metadata (e.g., group name, agent name)
-  createdAt   DateTime          @default(now())
+  oldValue      String? // JSON string or plain string for old value
+  newValue      String? // JSON string or plain string for new value
+  metadata      Json? // Additional metadata (e.g., group name, agent name)
+  createdAt     DateTime           @default(now())
 
   @@index([ticketId])
   @@index([changedById])
@@ -304,10 +383,12 @@ model TimeEntry {
   lastResumedAt DateTime? // When timer was last resumed (for calculating running time)
 
   // Relations
-  userId   String
-  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  ticketId String? // Future: Link to ticket
-  ticket   Ticket? @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ticketId  String? // Link to ticket
+  ticket    Ticket?  @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  projectId String? // Direct link to project
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   // Tags and metadata
   tags     String[] @default([])
@@ -321,6 +402,366 @@ model TimeEntry {
   @@index([userId])
   @@index([status])
   @@index([ticketId])
+  @@index([projectId])
   @@index([createdAt])
   @@map("time_entries")
+}
+
+// Project model
+model Project {
+  id          String          @id @default(cuid())
+  code        String          @unique // Project code/identifier (e.g., PROJ-001)
+  name        String
+  description String?
+  status      ProjectStatus   @default(PLANNING)
+  priority    ProjectPriority @default(MEDIUM)
+
+  // Dates
+  startDate DateTime?
+  endDate   DateTime?
+
+  // Budget and client
+  budget Float?
+  client String? // Client/customer name
+
+  // Visual
+  color String? // Hex color code
+  icon  String? // Icon identifier
+
+  // Permissions (stored as JSON for flexibility)
+  permissions Json? // Project-specific permissions configuration
+
+  // Relations
+  createdById String?
+  createdBy   User?   @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  // Many-to-many relationships
+  members ProjectUser[]
+  groups  ProjectGroup[]
+
+  // One-to-many relationships
+  tickets          Ticket[]
+  timeEntries      TimeEntry[]
+  milestones       Milestone[]
+  tasks            Task[]
+  risks            ProjectRisk[]
+  issues           ProjectIssue[]
+  notes            ProjectNote[]
+  budgetCategories BudgetCategory[]
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([code])
+  @@index([status])
+  @@index([priority])
+  @@index([createdById])
+  @@index([createdAt])
+  @@map("projects")
+}
+
+// Project User Role
+enum ProjectUserRole {
+  MANAGER
+  MEMBER
+}
+
+// Many-to-many relationship between Users and Projects
+model ProjectUser {
+  id        String          @id @default(cuid())
+  userId    String
+  projectId String
+  role      ProjectUserRole @default(MEMBER)
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime        @default(now())
+
+  @@unique([userId, projectId])
+  @@index([userId])
+  @@index([projectId])
+  @@index([role])
+  @@map("project_users")
+}
+
+// Many-to-many relationship between Groups and Projects
+model ProjectGroup {
+  id        String   @id @default(cuid())
+  groupId   String
+  projectId String
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([groupId, projectId])
+  @@index([groupId])
+  @@index([projectId])
+  @@map("project_groups")
+}
+
+// Milestone Status
+enum MilestoneStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  BLOCKED
+  CANCELLED
+}
+
+// Project Milestone
+model Milestone {
+  id            String          @id @default(cuid())
+  projectId     String
+  project       Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?
+  status        MilestoneStatus @default(NOT_STARTED)
+  targetDate    DateTime?
+  completedDate DateTime?
+  order         Int             @default(0) // For ordering milestones
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  Task          Task[]
+
+  @@index([projectId])
+  @@index([status])
+  @@index([targetDate])
+  @@map("milestones")
+}
+
+// Task Status
+enum TaskStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  BLOCKED
+  COMPLETED
+  CANCELLED
+}
+
+// Task Priority
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// Project Task
+model Task {
+  id           String  @id @default(cuid())
+  projectId    String
+  project      Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parentTaskId String? // For hierarchical tasks
+  parentTask   Task?   @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
+  subtasks     Task[]  @relation("TaskHierarchy")
+
+  title       String
+  description String?
+  status      TaskStatus   @default(NOT_STARTED)
+  priority    TaskPriority @default(MEDIUM)
+
+  // Assignment
+  assignedToId String?
+  assignedTo   User?   @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  // Estimates and tracking
+  estimatedHours Float? // Estimated time in hours
+  actualHours    Float? // Actual time spent (calculated from time entries)
+
+  // Dates
+  startDate     DateTime?
+  dueDate       DateTime?
+  completedDate DateTime?
+
+  // Milestone relation
+  milestoneId String?
+  milestone   Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+
+  // Ticket relation (optional - task can be linked to a ticket)
+  ticketId String?
+  ticket   Ticket? @relation("TaskTicket", fields: [ticketId], references: [id], onDelete: SetNull)
+
+  // Dependencies
+  dependencies TaskDependency[] @relation("TaskDependency")
+  dependents   TaskDependency[] @relation("TaskDependent")
+
+  order     Int      @default(0) // For ordering tasks
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([parentTaskId])
+  @@index([assignedToId])
+  @@index([status])
+  @@index([priority])
+  @@index([milestoneId])
+  @@index([ticketId])
+  @@map("tasks")
+}
+
+// Task Dependency Type
+enum TaskDependencyType {
+  FINISH_TO_START // Task B can't start until Task A finishes
+  START_TO_START // Task B can't start until Task A starts
+  FINISH_TO_FINISH // Task B can't finish until Task A finishes
+  START_TO_FINISH // Task B can't finish until Task A starts
+}
+
+// Task Dependencies
+model TaskDependency {
+  id              String             @id @default(cuid())
+  taskId          String // The task that depends on another
+  task            Task               @relation("TaskDependency", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOnTaskId String // The task that this task depends on
+  dependsOnTask   Task               @relation("TaskDependent", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
+  type            TaskDependencyType @default(FINISH_TO_START)
+  createdAt       DateTime           @default(now())
+
+  @@unique([taskId, dependsOnTaskId])
+  @@index([taskId])
+  @@index([dependsOnTaskId])
+  @@map("task_dependencies")
+}
+
+// Risk Severity
+enum RiskSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// Risk Status
+enum RiskStatus {
+  IDENTIFIED
+  MONITORING
+  MITIGATED
+  RESOLVED
+  ACCEPTED
+}
+
+// Project Risk
+model ProjectRisk {
+  id             String       @id @default(cuid())
+  projectId      String
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title          String
+  description    String?
+  severity       RiskSeverity @default(MEDIUM)
+  status         RiskStatus   @default(IDENTIFIED)
+  probability    Float? // 0.0 to 1.0
+  impact         String? // Description of potential impact
+  mitigationPlan String? // How to mitigate this risk
+  ownerId        String? // User responsible for managing this risk
+  owner          User?        @relation("RiskOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  identifiedDate DateTime     @default(now())
+  resolvedDate   DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([projectId])
+  @@index([severity])
+  @@index([status])
+  @@index([ownerId])
+  @@map("project_risks")
+}
+
+// Issue Status
+enum IssueStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+// Issue Priority
+enum IssuePriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// Project Issue
+model ProjectIssue {
+  id           String        @id @default(cuid())
+  projectId    String
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title        String
+  description  String?
+  status       IssueStatus   @default(OPEN)
+  priority     IssuePriority @default(MEDIUM)
+  assignedToId String?
+  assignedTo   User?         @relation("IssueAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  reportedById String?
+  reportedBy   User?         @relation("IssueReporter", fields: [reportedById], references: [id], onDelete: SetNull)
+  impact       String? // Impact on timeline, budget, etc.
+  resolution   String? // How it was resolved
+  resolvedDate DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([projectId])
+  @@index([status])
+  @@index([priority])
+  @@index([assignedToId])
+  @@index([reportedById])
+  @@map("project_issues")
+}
+
+// Project Note
+model ProjectNote {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title     String?
+  content   String
+  authorId  String?
+  author    User?    @relation("NoteAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  isPinned  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([authorId])
+  @@index([isPinned])
+  @@index([createdAt])
+  @@map("project_notes")
+}
+
+// Budget Category
+model BudgetCategory {
+  id             String   @id @default(cuid())
+  projectId      String
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  budgetedAmount Float // Planned budget
+  spentAmount    Float    @default(0) // Actual spent (calculated from time entries or expenses)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([projectId])
+  @@map("budget_categories")
+}
+
+// Unban Request model for banned users to request account unban
+model UnbanRequest {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reason     String // User's reason for requesting unban
+  status     String    @default("PENDING") // PENDING, APPROVED, REJECTED
+  reviewedBy String? // Admin who reviewed the request
+  reviewedAt DateTime?
+  adminNotes String? // Admin's notes on the request
+  ticketId   String?   @unique // Linked ticket ID
+  ticket     Ticket?   @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("unban_requests")
 }

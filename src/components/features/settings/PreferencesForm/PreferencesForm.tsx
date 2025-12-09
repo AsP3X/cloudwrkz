@@ -11,6 +11,7 @@ import {
 } from "@/lib/validations/settings";
 import { updatePreferences } from "@/server/actions/preferences";
 import { useTheme } from "@/components/providers/ThemeProvider";
+import { useTimerWidgetPreference, getTimerWidgetPreference } from "@/lib/hooks/useTimerWidgetPreference";
 
 type PreferencesFormProps = {
   initialValues?: Partial<PreferencesInput>;
@@ -19,7 +20,11 @@ type PreferencesFormProps = {
 export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
   const [error, setError] = React.useState<string | null>(null);
   const [success, setSuccess] = React.useState<string | null>(null);
+  const [mounted, setMounted] = React.useState(false);
+  
+  // Get theme - will throw if ThemeProvider is not available, but it should be in root layout
   const { theme, setTheme } = useTheme();
+  const { preference: timerWidgetPreference, setPreference: setTimerWidgetPreference } = useTimerWidgetPreference();
 
   const {
     register,
@@ -37,8 +42,14 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
       pushNotifications: initialValues?.pushNotifications ?? false,
       marketingEmails: initialValues?.marketingEmails ?? false,
       timezone: initialValues?.timezone ?? "UTC",
+      timerWidgetMobileMode: initialValues?.timerWidgetMobileMode ?? getTimerWidgetPreference(),
     },
   });
+
+  // Mark as mounted after initial render
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Reset form when initialValues change (e.g., after successful save and page revalidation)
   React.useEffect(() => {
@@ -50,22 +61,40 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
         pushNotifications: initialValues.pushNotifications ?? false,
         marketingEmails: initialValues.marketingEmails ?? false,
         timezone: initialValues.timezone ?? "UTC",
+        timerWidgetMobileMode: initialValues.timerWidgetMobileMode ?? getTimerWidgetPreference(),
       });
     }
   }, [initialValues, reset, theme]);
 
   // Sync form value with theme from context when theme changes externally
   React.useEffect(() => {
-    setValue("theme", theme);
-  }, [theme, setValue]);
+    if (mounted && theme) {
+      setValue("theme", theme);
+    }
+  }, [theme, setValue, mounted]);
+
+  // Sync form value with timer widget preference when it changes externally
+  React.useEffect(() => {
+    if (mounted) {
+      setValue("timerWidgetMobileMode", timerWidgetPreference);
+    }
+  }, [timerWidgetPreference, setValue, mounted]);
 
   // Watch theme changes and apply immediately
   const watchedTheme = watch("theme");
   React.useEffect(() => {
-    if (watchedTheme && watchedTheme !== theme) {
+    if (mounted && watchedTheme && watchedTheme !== theme && setTheme) {
       setTheme(watchedTheme as "light" | "dark" | "system");
     }
-  }, [watchedTheme, theme, setTheme]);
+  }, [watchedTheme, theme, setTheme, mounted]);
+
+  // Watch timer widget preference changes and apply immediately
+  const watchedTimerWidgetMode = watch("timerWidgetMobileMode");
+  React.useEffect(() => {
+    if (watchedTimerWidgetMode && watchedTimerWidgetMode !== timerWidgetPreference) {
+      setTimerWidgetPreference(watchedTimerWidgetMode as "dialog" | "floating");
+    }
+  }, [watchedTimerWidgetMode, timerWidgetPreference, setTimerWidgetPreference]);
 
   const onSubmit = async (data: PreferencesInput) => {
     setError(null);
@@ -73,8 +102,13 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
 
     try {
       // Apply theme immediately via context
-      if (data.theme && data.theme !== theme) {
+      if (data.theme && data.theme !== theme && setTheme) {
         setTheme(data.theme as "light" | "dark" | "system");
+      }
+
+      // Apply timer widget preference immediately
+      if (data.timerWidgetMobileMode && data.timerWidgetMobileMode !== timerWidgetPreference) {
+        setTimerWidgetPreference(data.timerWidgetMobileMode as "dialog" | "floating");
       }
 
       // Save preferences to server
@@ -184,6 +218,18 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
           error={errors.timezone?.message}
           helperText="Choose your preferred time zone for displaying dates and times"
           {...register("timezone")}
+        />
+
+        {/* Timer Widget Mode */}
+        <Select
+          label="Timer Widget Display"
+          options={[
+            { value: "dialog", label: "Dialog" },
+            { value: "floating", label: "Floating Widget" },
+          ]}
+          error={errors.timerWidgetMobileMode?.message}
+          helperText="Choose how the timer widget appears when opened (applies to all devices)"
+          {...register("timerWidgetMobileMode")}
         />
       </div>
 

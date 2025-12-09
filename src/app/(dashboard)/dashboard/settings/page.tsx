@@ -78,7 +78,7 @@ export default async function SettingsPage() {
             />
           </svg>
         }
-        defaultExpanded={true}
+        defaultExpanded={false}
       >
         <AccountSettingsForm
           currentEmail={profile.email}
@@ -105,7 +105,7 @@ export default async function SettingsPage() {
             />
           </svg>
         }
-        defaultExpanded={true}
+        defaultExpanded={false}
       >
         <PreferencesForm initialValues={preferences} />
       </CollapsibleSection>
@@ -129,7 +129,7 @@ export default async function SettingsPage() {
             />
           </svg>
         }
-        defaultExpanded={true}
+        defaultExpanded={false}
       >
         <PrivacySecurityForm />
       </CollapsibleSection>

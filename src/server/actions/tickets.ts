@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db/prisma";
-import { requireAuth } from "@/lib/utils/auth-server";
+import { requireAuth, requireAnyPermission } from "@/lib/utils/auth-server";
 import { isModuleEnabled } from "./modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { revalidatePath } from "next/cache";
@@ -30,6 +30,7 @@ export type TicketInput = {
 export type TicketUpdateInput = Partial<TicketInput> & {
   status?: "OPEN" | "IN_PROGRESS" | "PENDING" | "RESOLVED" | "CLOSED" | "CANCELLED";
   assignedToGroupId?: string | null;
+  projectId?: string | null;
 };
 
 export type ActionResult<T = void> =
@@ -51,6 +52,9 @@ export async function createTicket(input: TicketInput): Promise<ActionResult<{ i
     }
 
     const user = await requireAuth();
+
+    // Check permission
+    await requireAnyPermission("tickets.create");
 
     // Validate input
     if (!input.title || input.title.trim().length === 0) {
@@ -264,6 +268,8 @@ export async function getTickets(filters?: {
   assignedToId?: string;
   assignedToGroupId?: string;
   createdById?: string;
+  projectId?: string;
+  projectIds?: string[]; // Array of project IDs for OR condition
   createdFrom?: string; // ISO date string
   createdTo?: string; // ISO date string
   updatedFrom?: string; // ISO date string
@@ -272,92 +278,161 @@ export async function getTickets(filters?: {
   sortOrder?: "asc" | "desc";
 }) {
   const user = await requireAuth();
+  
+  // Check permission
+  const { getUserPermissions } = await import("@/lib/utils/permissions");
+  const userPermissions = await getUserPermissions(user.id);
+  
+  const canViewAllTickets = userPermissions.has("tickets.view_all") || userPermissions.has("admin.tickets.manage");
+  const canViewTickets = userPermissions.has("tickets.view") || canViewAllTickets;
+
+  if (!canViewTickets) {
+    // User has no permission to view tickets
+    return [];
+  }
 
   const where: any = {};
+  const baseFilters: any = {};
 
-  // Build filter conditions first
+  // Build base filter conditions (status, priority, type, etc.)
   if (filters?.status) {
     // Handle special "UNRESOLVED" status filter
     if (filters.status === "UNRESOLVED") {
-      where.status = {
+      baseFilters.status = {
         in: ["OPEN", "IN_PROGRESS", "PENDING"],
       };
     } else {
-      where.status = filters.status;
+      baseFilters.status = filters.status;
     }
   }
   if (filters?.priority) {
-    where.priority = filters.priority;
+    baseFilters.priority = filters.priority;
   }
   if (filters?.type) {
-    where.type = filters.type;
+    baseFilters.type = filters.type;
   }
   if (filters?.assignedToId) {
-    where.assignedToId = filters.assignedToId;
+    baseFilters.assignedToId = filters.assignedToId;
   }
   if (filters?.assignedToGroupId) {
-    where.assignedToGroupId = filters.assignedToGroupId;
+    baseFilters.assignedToGroupId = filters.assignedToGroupId;
   }
-  if (filters?.createdById) {
-    where.createdById = filters.createdById;
-  }
-
+  
   // Date filtering for created date
   if (filters?.createdFrom || filters?.createdTo) {
-    where.createdAt = {};
+    baseFilters.createdAt = {};
     if (filters.createdFrom) {
-      where.createdAt.gte = new Date(filters.createdFrom);
+      baseFilters.createdAt.gte = new Date(filters.createdFrom);
     }
     if (filters.createdTo) {
       // Add one day to include the entire end date
       const endDate = new Date(filters.createdTo);
       endDate.setHours(23, 59, 59, 999);
-      where.createdAt.lte = endDate;
+      baseFilters.createdAt.lte = endDate;
     }
   }
 
   // Date filtering for updated date
   if (filters?.updatedFrom || filters?.updatedTo) {
-    where.updatedAt = {};
+    baseFilters.updatedAt = {};
     if (filters.updatedFrom) {
-      where.updatedAt.gte = new Date(filters.updatedFrom);
+      baseFilters.updatedAt.gte = new Date(filters.updatedFrom);
     }
     if (filters.updatedTo) {
       // Add one day to include the entire end date
       const endDate = new Date(filters.updatedTo);
       endDate.setHours(23, 59, 59, 999);
-      where.updatedAt.lte = endDate;
+      baseFilters.updatedAt.lte = endDate;
     }
   }
 
-  // For agents, apply group membership filter
-  if (user.role === "AGENT") {
-    // Get groups the agent is a member of
-    const memberships = await prisma.groupMembership.findMany({
-      where: { userId: user.id },
-      select: { groupId: true },
-    });
-    const agentGroupIds = memberships.map((m) => m.groupId);
-
-    // Agents can only see tickets that:
-    // 1. Are not assigned to any group (assignedToGroupId is null), OR
-    // 2. Are assigned to a group the agent is a member of
-    const groupFilter = {
+  // Handle projectId filter (single project) - this takes precedence
+  if (filters?.projectId) {
+    baseFilters.projectId = filters.projectId;
+  }
+  
+  // Support OR condition: tickets created by user OR tickets from their projects
+  // This is used for project owners/managers to see all tickets for their projects
+  if (filters?.projectIds && filters.projectIds.length > 0 && filters?.createdById && !filters?.projectId) {
+    // Create an OR condition: tickets created by user OR tickets from their projects
+    const orCondition = {
       OR: [
-        { assignedToGroupId: null },
-        ...(agentGroupIds.length > 0 ? [{ assignedToGroupId: { in: agentGroupIds } }] : []),
+        { createdById: filters.createdById },
+        { projectId: { in: filters.projectIds } },
       ],
     };
-
-    // Combine group filter with other filters using AND
-    const otherFilters = { ...where };
-    delete otherFilters.AND; // Remove AND if it exists
     
-    where.AND = [
-      groupFilter,
-      ...(Object.keys(otherFilters).length > 0 ? [otherFilters] : []),
-    ];
+    // Combine OR condition with base filters using AND
+    const andConditions: any[] = [orCondition];
+    if (Object.keys(baseFilters).length > 0) {
+      andConditions.push(baseFilters);
+    }
+    
+    if (andConditions.length > 1) {
+      where.AND = andConditions;
+    } else {
+      Object.assign(where, orCondition);
+    }
+  } else if (filters?.createdById && !filters?.projectId) {
+    // Just filter by createdById if no projectIds
+    baseFilters.createdById = filters.createdById;
+    Object.assign(where, baseFilters);
+  } else if (filters?.projectIds && filters.projectIds.length > 0 && !filters?.projectId) {
+    // Just filter by projectIds if no createdById
+    baseFilters.projectId = { in: filters.projectIds };
+    Object.assign(where, baseFilters);
+  } else {
+    // No special OR condition, just use base filters
+    Object.assign(where, baseFilters);
   }
+
+  // Apply permission-based filtering
+  if (!canViewAllTickets) {
+    // User can only view specific tickets
+    if (user.role === "AGENT") {
+      // Agents can see tickets assigned to them or their groups
+      const memberships = await prisma.groupMembership.findMany({
+        where: { userId: user.id },
+        select: { groupId: true },
+      });
+      const agentGroupIds = memberships.map((m) => m.groupId);
+
+      const groupFilter = {
+        OR: [
+          { assignedToId: user.id },
+          { assignedToGroupId: null },
+          ...(agentGroupIds.length > 0 ? [{ assignedToGroupId: { in: agentGroupIds } }] : []),
+        ],
+      };
+
+      // Combine group filter with other filters using AND
+      // If where already has AND conditions, merge them
+      if (where.AND) {
+        where.AND = [groupFilter, ...where.AND];
+      } else {
+        const otherFilters = { ...where };
+        delete otherFilters.AND; // Remove AND if it exists
+        
+        where.AND = [
+          groupFilter,
+          ...(Object.keys(otherFilters).length > 0 ? [otherFilters] : []),
+        ];
+      }
+    } else if (user.role === "USER") {
+      // Regular users can only see tickets they created
+      // This is already handled by the createdById filter if provided
+      // But we need to ensure it's set if not already in filters
+      if (!filters?.createdById && !filters?.projectIds) {
+        const userFilter = { createdById: user.id };
+        if (where.AND) {
+          where.AND.push(userFilter);
+        } else {
+          where.AND = [userFilter, ...(Object.keys(where).length > 0 ? [where] : [])];
+        }
+      }
+    }
+  }
+  // Users with view_all permission can see all tickets (no additional filter)
 
   // Determine sort order
   const sortBy = filters?.sortBy || "createdAt";
@@ -421,6 +496,16 @@ export async function getTickets(filters?: {
  */
 export async function getTicket(id: string) {
   const user = await requireAuth();
+  
+  // Check permission (admins always pass)
+  try {
+    await requireAnyPermission("tickets.view", "tickets.view_all", "admin.tickets.manage");
+  } catch {
+    // Fallback to role check for backward compatibility
+    if (!["ADMIN", "MODERATOR", "AGENT", "USER"].includes(user.role)) {
+      return null;
+    }
+  }
 
   const ticket = await prisma.ticket.findUnique({
     where: { id },
@@ -461,6 +546,15 @@ export async function getTicket(id: string) {
           id: true,
           name: true,
           description: true,
+        },
+      },
+      projectId: true,
+      project: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          color: true,
         },
       },
       comments: {
@@ -552,6 +646,19 @@ export async function updateTicket(
 ): Promise<ActionResult> {
   try {
     const user = await requireAuth();
+    
+    // Check permission (admins always pass)
+    try {
+      await requireAnyPermission("tickets.update", "admin.tickets.manage");
+    } catch {
+      // Fallback to role check for backward compatibility
+      if (!["ADMIN", "MODERATOR", "AGENT"].includes(user.role)) {
+        return {
+          success: false,
+          error: "You don't have permission to update this ticket",
+        };
+      }
+    }
 
     // Fetch current ticket data to compare changes
     const currentTicket = await prisma.ticket.findUnique({
@@ -560,6 +667,7 @@ export async function updateTicket(
         createdById: true,
         assignedToId: true,
         assignedToGroupId: true,
+        projectId: true,
         resolvedAt: true,
         closedAt: true,
         status: true,
@@ -828,6 +936,114 @@ export async function updateTicket(
       }
     }
 
+    // Track project assignment changes
+    if (input.projectId !== undefined) {
+      const newProjectId = input.projectId || null;
+      if (newProjectId !== currentTicket.projectId) {
+        // Validate project if provided and check user membership
+        if (newProjectId) {
+          const project = await prisma.project.findUnique({
+            where: { id: newProjectId },
+            select: { id: true, name: true },
+          });
+          if (!project) {
+            return {
+              success: false,
+              error: "Selected project not found",
+            };
+          }
+
+          // Check if user is a member of the project (for agents)
+          if (user.role === "AGENT" || user.role === "ADMIN" || user.role === "MODERATOR") {
+            const membership = await prisma.projectUser.findFirst({
+              where: {
+                projectId: newProjectId,
+                userId: user.id,
+              },
+            });
+            // Also check if user is creator or if user's groups are assigned
+            const isCreator = await prisma.project.findFirst({
+              where: {
+                id: newProjectId,
+                createdById: user.id,
+              },
+            });
+            const userGroups = await prisma.groupMembership.findMany({
+              where: { userId: user.id },
+              select: { groupId: true },
+            });
+            const groupIds = userGroups.map((g) => g.groupId);
+            const isInGroup = groupIds.length > 0 ? await prisma.projectGroup.findFirst({
+              where: {
+                projectId: newProjectId,
+                groupId: { in: groupIds },
+              },
+            }) : null;
+
+            if (!membership && !isCreator && !isInGroup) {
+              return {
+                success: false,
+                error: "You must be a member of the project to assign tickets to it",
+              };
+            }
+          }
+        }
+
+        updateData.projectId = newProjectId;
+        
+        if (newProjectId && !currentTicket.projectId) {
+          // Assigned to project
+          const project = await prisma.project.findUnique({
+            where: { id: newProjectId },
+            select: { name: true, code: true },
+          });
+          await logTicketActivity(
+            id,
+            "ASSIGNED_TO_PROJECT",
+            user.id,
+            userDisplayName,
+            null,
+            project ? `${project.name} (${project.code})` : newProjectId,
+            { projectId: newProjectId }
+          );
+        } else if (!newProjectId && currentTicket.projectId) {
+          // Unassigned from project
+          const oldProject = await prisma.project.findUnique({
+            where: { id: currentTicket.projectId },
+            select: { name: true, code: true },
+          });
+          await logTicketActivity(
+            id,
+            "UNASSIGNED_FROM_PROJECT",
+            user.id,
+            userDisplayName,
+            oldProject ? `${oldProject.name} (${oldProject.code})` : currentTicket.projectId,
+            null,
+            { projectId: currentTicket.projectId }
+          );
+        } else if (newProjectId && currentTicket.projectId) {
+          // Reassigned to different project
+          const oldProject = await prisma.project.findUnique({
+            where: { id: currentTicket.projectId },
+            select: { name: true, code: true },
+          });
+          const newProject = await prisma.project.findUnique({
+            where: { id: newProjectId },
+            select: { name: true, code: true },
+          });
+          await logTicketActivity(
+            id,
+            "ASSIGNED_TO_PROJECT",
+            user.id,
+            userDisplayName,
+            oldProject ? `${oldProject.name} (${oldProject.code})` : currentTicket.projectId,
+            newProject ? `${newProject.name} (${newProject.code})` : newProjectId,
+            { oldProjectId: currentTicket.projectId, projectId: newProjectId }
+          );
+        }
+      }
+    }
+
     // Track tags changes
     if (input.tags !== undefined) {
       const oldTags = JSON.stringify(currentTicket.tags.sort());
@@ -874,10 +1090,17 @@ export async function updateTicket(
 export async function deleteTicket(id: string): Promise<ActionResult> {
   try {
     const user = await requireAuth();
+    
+    // Check permission (admins always pass)
+    try {
+      await requireAnyPermission("tickets.delete", "admin.tickets.manage");
+    } catch {
+      // Fallback to role check for backward compatibility - continue with existing logic
+    }
 
     const ticket = await prisma.ticket.findUnique({
       where: { id },
-      select: { createdById: true, assignedToId: true },
+      select: { createdById: true, assignedToId: true, projectId: true },
     });
 
     if (!ticket) {
@@ -887,18 +1110,42 @@ export async function deleteTicket(id: string): Promise<ActionResult> {
       };
     }
 
-    // Creator, assigned agent, admin, or moderator can delete
-    const canDelete = 
-      ticket.createdById === user.id ||
-      user.role === "ADMIN" ||
-      user.role === "MODERATOR" ||
-      (user.role === "AGENT" && ticket.assignedToId === user.id);
-    
-    if (!canDelete) {
-      return {
-        success: false,
-        error: "You don't have permission to delete this ticket",
-      };
+    // For users with role USER, they can only delete if they are the project owner
+    if (user.role === "USER") {
+      if (!ticket.projectId) {
+        return {
+          success: false,
+          error: "You don't have permission to delete this ticket",
+        };
+      }
+
+      // Check if user is the owner of the project
+      const project = await prisma.project.findUnique({
+        where: { id: ticket.projectId },
+        select: { createdById: true },
+      });
+
+      if (!project || project.createdById !== user.id) {
+        return {
+          success: false,
+          error: "You don't have permission to delete this ticket. Only project owners can delete tickets.",
+        };
+      }
+      // If USER is project owner, allow deletion (skip to deletion)
+    } else {
+      // For other roles: Creator, assigned agent, admin, or moderator can delete
+      const canDelete = 
+        ticket.createdById === user.id ||
+        user.role === "ADMIN" ||
+        user.role === "MODERATOR" ||
+        (user.role === "AGENT" && ticket.assignedToId === user.id);
+      
+      if (!canDelete) {
+        return {
+          success: false,
+          error: "You don't have permission to delete this ticket",
+        };
+      }
     }
 
     await prisma.ticket.delete({
@@ -1308,6 +1555,7 @@ export async function bulkDeleteTickets(
         id: true,
         createdById: true,
         assignedToId: true,
+        projectId: true,
       },
     });
 
@@ -1318,21 +1566,61 @@ export async function bulkDeleteTickets(
       };
     }
 
-    // Verify user has permission to delete all selected tickets
-    // Creator, assigned agent (for assigned tickets), admin, or moderator can delete
-    const canDeleteAll = tickets.every(
-      (ticket) =>
-        ticket.createdById === user.id ||
-        user.role === "ADMIN" ||
-        user.role === "MODERATOR" ||
-        (user.role === "AGENT" && ticket.assignedToId === user.id)
-    );
+    // For users with role USER, they can only delete if they are the project owner
+    if (user.role === "USER") {
+      // Get all unique project IDs from tickets
+      const projectIds = tickets
+        .map((t) => t.projectId)
+        .filter((id): id is string => id !== null);
 
-    if (!canDeleteAll) {
-      return {
-        success: false,
-        error: "You don't have permission to delete all selected tickets",
-      };
+      if (projectIds.length === 0) {
+        return {
+          success: false,
+          error: "You don't have permission to delete these tickets",
+        };
+      }
+
+      // Check if user is the owner of all projects
+      const projects = await prisma.project.findMany({
+        where: { id: { in: projectIds } },
+        select: { id: true, createdById: true },
+      });
+
+      const userOwnedProjectIds = new Set(
+        projects.filter((p) => p.createdById === user.id).map((p) => p.id)
+      );
+
+      // Verify user can delete all tickets
+      const canDeleteAll = tickets.every((ticket) => {
+        if (!ticket.projectId) {
+          return false; // USER cannot delete tickets without a project
+        }
+        return userOwnedProjectIds.has(ticket.projectId);
+      });
+
+      if (!canDeleteAll) {
+        return {
+          success: false,
+          error: "You don't have permission to delete all selected tickets. Only project owners can delete tickets.",
+        };
+      }
+    } else {
+      // Verify user has permission to delete all selected tickets
+      // Creator, assigned agent (for assigned tickets), admin, or moderator can delete
+      const canDeleteAll = tickets.every(
+        (ticket) =>
+          ticket.createdById === user.id ||
+          user.role === "ADMIN" ||
+          user.role === "MODERATOR" ||
+          (user.role === "AGENT" && ticket.assignedToId === user.id)
+      );
+
+      if (!canDeleteAll) {
+        return {
+          success: false,
+          error: "You don't have permission to delete all selected tickets",
+        };
+      }
     }
 
     const result = await prisma.ticket.deleteMany({

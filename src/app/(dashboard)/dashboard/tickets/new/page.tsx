@@ -42,23 +42,40 @@ export default async function NewTicketPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100">
-              {user.role === "AGENT" ? "Create Ticket" : "Create New Ticket"}
-            </h1>
-            <p className="text-neutral-600 dark:text-neutral-400 mt-1">
-              {user.role === "AGENT" 
-                ? "Create a ticket for yourself or on behalf of another user"
-                : "Submit a support request, report a bug, or request a new feature"}
-            </p>
+      <div className="space-y-4">
+        <div className="flex items-center gap-3 flex-wrap">
+          <Link href="/dashboard/tickets" className="flex-shrink-0">
+            <Button variant="outline" size="sm">
+              <svg
+                className="w-4 h-4 mr-2"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                />
+              </svg>
+              Back to Tickets
+            </Button>
+          </Link>
+          <div className="flex-shrink-0">
+            <TipsTooltip />
           </div>
-          <TipsTooltip />
         </div>
-        <Link href="/dashboard/tickets">
-          <Button variant="outline">Back to Tickets</Button>
-        </Link>
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-neutral-100">
+            {user.role === "AGENT" ? "Create Ticket" : "Create New Ticket"}
+          </h1>
+          <p className="text-sm sm:text-base text-neutral-600 dark:text-neutral-400 mt-1">
+            {user.role === "AGENT" 
+              ? "Create a ticket for yourself or on behalf of another user"
+              : "Submit a support request, report a bug, or request a new feature"}
+          </p>
+        </div>
       </div>
 
       {/* Form Card */}

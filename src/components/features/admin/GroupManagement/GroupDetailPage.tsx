@@ -8,10 +8,11 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
-import { updateGroup, addAgentToGroup, removeAgentFromGroup } from "@/server/actions/groups";
-import { getAgents } from "@/server/actions/users";
-import type { getGroup } from "@/server/actions/groups";
+import { Tabs } from "@/components/ui/Tabs";
+import { updateGroup, addUserToGroup, removeUserFromGroup, getGroup } from "@/server/actions/groups";
+import { getAllUsers } from "@/server/actions/users";
 import { formatDate } from "@/lib/utils/date";
+import { GroupPermissionsManager } from "./GroupPermissionsManager";
 
 type Group = NonNullable<Awaited<ReturnType<typeof getGroup>>>;
 
@@ -23,16 +24,22 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
   const router = useRouter();
   const [group, setGroup] = useState(initialGroup);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [addAgentDialogOpen, setAddAgentDialogOpen] = useState(false);
-  const [agents, setAgents] = useState<Awaited<ReturnType<typeof getAgents>>>([]);
+  const [addMemberDialogOpen, setAddMemberDialogOpen] = useState(false);
+  const [users, setUsers] = useState<Awaited<ReturnType<typeof getAllUsers>>>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({ name: group.name, description: group.description || "" });
-  const [selectedAgentId, setSelectedAgentId] = useState("");
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   React.useEffect(() => {
-    getAgents().then(setAgents);
+    getAllUsers().then(setUsers);
   }, []);
+
+  // Sync group state when initialGroup changes (e.g., after router.refresh())
+  React.useEffect(() => {
+    setGroup(initialGroup);
+  }, [initialGroup.id, initialGroup.permissions?.length, initialGroup._count?.permissions]);
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,33 +55,55 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
     }
   };
 
-  const handleAddAgent = async () => {
-    if (!selectedAgentId) return;
+  const handleAddMember = async () => {
+    if (!selectedUserId) return;
     setError(null);
     setIsLoading(true);
-    const result = await addAgentToGroup(group.id, selectedAgentId);
+    const result = await addUserToGroup(group.id, selectedUserId);
     setIsLoading(false);
     if (result.success) {
-      setSelectedAgentId("");
-      setAddAgentDialogOpen(false);
+      setSelectedUserId("");
+      setSearchQuery("");
+      setAddMemberDialogOpen(false);
+      // Reload the group data to update the UI immediately
+      const updatedGroup = await getGroup(group.id);
+      if (updatedGroup) {
+        setGroup(updatedGroup);
+      }
+      // Also trigger router refresh for server component updates
       router.refresh();
     } else {
       setError(result.error);
     }
   };
 
-  const handleRemoveAgent = async (agentId: string) => {
+  const handleRemoveMember = async (userId: string) => {
     setIsLoading(true);
-    const result = await removeAgentFromGroup(group.id, agentId);
+    const result = await removeUserFromGroup(group.id, userId);
     setIsLoading(false);
     if (result.success) {
+      // Reload the group data to update the UI immediately
+      const updatedGroup = await getGroup(group.id);
+      if (updatedGroup) {
+        setGroup(updatedGroup);
+      }
+      // Also trigger router refresh for server component updates
       router.refresh();
     }
   };
 
-  const availableAgents = agents.filter(
-    (agent) => !group.members.some((m) => m.userId === agent.id)
+  // Filter available users (not already members) and by search query
+  const availableUsers = users.filter(
+    (user) => !group.members.some((m) => m.userId === user.id)
   );
+
+  const filteredUsers = availableUsers.filter((user) => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    const name = user.name?.toLowerCase() || "";
+    const email = user.email.toLowerCase();
+    return name.includes(query) || email.includes(query);
+  });
 
   return (
     <div className="space-y-6">
@@ -93,14 +122,14 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
           <Button variant="outline" onClick={() => setEditDialogOpen(true)}>
             Edit Group
           </Button>
-          <Button variant="primary" onClick={() => setAddAgentDialogOpen(true)}>
-            Add Agent
+          <Button variant="primary" onClick={() => setAddMemberDialogOpen(true)}>
+            Add Member
           </Button>
         </div>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
           <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Members</p>
           <p className="text-3xl font-bold text-neutral-900 dark:text-neutral-100 mt-2">{group._count.members}</p>
@@ -110,6 +139,10 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
           <p className="text-3xl font-bold text-neutral-900 dark:text-neutral-100 mt-2">{group._count.tickets}</p>
         </div>
         <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
+          <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Permissions</p>
+          <p className="text-3xl font-bold text-neutral-900 dark:text-neutral-100 mt-2">{group._count.permissions || 0}</p>
+        </div>
+        <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
           <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Created</p>
           <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-2">
             {formatDate(group.createdAt)}
@@ -117,39 +150,204 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
         </div>
       </div>
 
-      {/* Members List */}
+      {/* Tabs */}
       <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
-        <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">Members</h2>
-        {group.members.length === 0 ? (
-          <p className="text-neutral-600 dark:text-neutral-400">No members in this group.</p>
-        ) : (
-          <div className="space-y-3">
-            {group.members.map((membership) => (
-              <div
-                key={membership.id}
-                className="flex items-center justify-between p-3 border border-neutral-200 dark:border-neutral-800 rounded-lg"
-              >
+        <Tabs
+          tabs={[
+            {
+              id: "overview",
+              label: "Overview",
+              content: (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Group Information</h3>
+                    <div className="space-y-2">
+                      <div>
+                        <span className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Name:</span>
+                        <span className="ml-2 text-neutral-900 dark:text-neutral-100">{group.name}</span>
+                      </div>
+                      {group.description && (
+                        <div>
+                          <span className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Description:</span>
+                          <p className="mt-1 text-neutral-900 dark:text-neutral-100">{group.description}</p>
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Created:</span>
+                        <span className="ml-2 text-neutral-900 dark:text-neutral-100">{formatDate(group.createdAt)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Activated Permissions */}
+                  <div>
+                    <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-4">
+                      Activated Permissions ({group.permissions?.length || group._count?.permissions || 0})
+                    </h3>
+                    {(!group.permissions || group.permissions.length === 0) && (group._count?.permissions || 0) === 0 ? (
+                      <p className="text-neutral-600 dark:text-neutral-400">
+                        No permissions assigned to this group. Go to the Permissions tab to assign permissions.
+                      </p>
+                    ) : (
+                      <div className="space-y-4">
+                        {/* Group permissions by category */}
+                        {(() => {
+                          // Ensure we have permissions array
+                          const permissionsArray = group.permissions || [];
+                          
+                          if (permissionsArray.length === 0 && (group._count?.permissions || 0) > 0) {
+                            // Permissions count exists but array is empty - might need refresh
+                            return (
+                              <div className="p-4 bg-warning-50 dark:bg-warning-950 border border-warning-200 dark:border-warning-800 rounded-lg">
+                                <p className="text-sm text-warning-800 dark:text-warning-200">
+                                  Permissions data may be out of sync. Please refresh the page or check the Permissions tab.
+                                </p>
+                                <p className="text-xs text-warning-600 dark:text-warning-400 mt-1">
+                                  Expected {group._count?.permissions || 0} permissions but found {permissionsArray.length} in data.
+                                </p>
+                              </div>
+                            );
+                          }
+
+                          const permissionsByCategory: Record<string, typeof group.permissions> = {};
+                          permissionsArray.forEach((gp) => {
+                            if (!gp || !gp.permission) {
+                              return;
+                            }
+                            const category = gp.permission.category;
+                            if (!permissionsByCategory[category]) {
+                              permissionsByCategory[category] = [];
+                            }
+                            permissionsByCategory[category].push(gp);
+                          });
+
+                          const sortedCategories = Object.entries(permissionsByCategory).sort(([a], [b]) =>
+                            a.localeCompare(b)
+                          );
+
+                          if (sortedCategories.length === 0) {
+                            return (
+                              <p className="text-neutral-600 dark:text-neutral-400">
+                                No permissions found in the data. Please check the Permissions tab.
+                              </p>
+                            );
+                          }
+
+                          return sortedCategories.map(([category, permissions]) => (
+                            <div
+                              key={category}
+                              className="border border-neutral-200 dark:border-neutral-800 rounded-lg overflow-hidden"
+                            >
+                              <div className="bg-neutral-50 dark:bg-neutral-900 px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
+                                <h4 className="font-semibold text-neutral-900 dark:text-neutral-100 capitalize">
+                                  {category.replace(/_/g, " ")} ({permissions.length})
+                                </h4>
+                              </div>
+                              <div className="p-4 bg-white dark:bg-neutral-800">
+                                <div className="space-y-2">
+                                  {permissions.map((gp) => {
+                                    if (!gp || !gp.permission) {
+                                      return null;
+                                    }
+                                    return (
+                                      <div
+                                        key={gp.permission.id}
+                                        className="flex items-start gap-3 p-2 rounded hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
+                                      >
+                                        <div className="flex-1">
+                                          <div className="font-medium text-neutral-900 dark:text-neutral-100">
+                                            {gp.permission.name}
+                                          </div>
+                                          {gp.permission.description && (
+                                            <div className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                                              {gp.permission.description}
+                                            </div>
+                                          )}
+                                          <div className="text-xs text-neutral-500 dark:text-neutral-500 mt-1 font-mono">
+                                            {gp.permission.key}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+                          ));
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ),
+            },
+            {
+              id: "members",
+              label: "Members",
+              content: (
                 <div>
-                  <p className="font-medium text-neutral-900 dark:text-neutral-100">
-                    {membership.user.name || membership.user.email}
+                  <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-4">Group Members</h3>
+                  {group.members.length === 0 ? (
+                    <p className="text-neutral-600 dark:text-neutral-400">No members in this group.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {group.members.map((membership) => (
+                        <div
+                          key={membership.id}
+                          className="flex items-center justify-between p-3 border border-neutral-200 dark:border-neutral-800 rounded-lg"
+                        >
+                          <div>
+                            <p className="font-medium text-neutral-900 dark:text-neutral-100">
+                              {membership.user.name || membership.user.email}
+                            </p>
+                            <p className="text-sm text-neutral-600 dark:text-neutral-400">{membership.user.email}</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <Badge variant="info" size="sm">{membership.user.role}</Badge>
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              onClick={() => handleRemoveMember(membership.userId)}
+                              disabled={isLoading}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ),
+            },
+            {
+              id: "permissions",
+              label: "Permissions",
+              content: (
+                <div>
+                  <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-4">Group Permissions</h3>
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
+                    Manage what this group can access. Permissions are additive - users get permissions from their role plus all groups they belong to.
                   </p>
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400">{membership.user.email}</p>
+                  <GroupPermissionsManager
+                    groupId={group.id}
+                    initialPermissionIds={group.permissions?.map((p) => p.permission.id) || []}
+                    onSave={async () => {
+                      // Reload the group data to update the overview immediately
+                      const updatedGroup = await getGroup(group.id);
+                      if (updatedGroup) {
+                        setGroup(updatedGroup);
+                      }
+                      // Also trigger router refresh for server component updates
+                      router.refresh();
+                    }}
+                  />
                 </div>
-                <div className="flex items-center gap-3">
-                  <Badge variant="info" size="sm">{membership.user.role}</Badge>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    onClick={() => handleRemoveAgent(membership.userId)}
-                    disabled={isLoading}
-                  >
-                    Remove
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ),
+            },
+          ]}
+          defaultTab="overview"
+        />
       </div>
 
       {/* Edit Dialog */}
@@ -190,12 +388,12 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
         </form>
       </Dialog>
 
-      {/* Add Agent Dialog */}
+      {/* Add Member Dialog */}
       <Dialog
-        open={addAgentDialogOpen}
-        onOpenChange={setAddAgentDialogOpen}
-        title="Add Agent to Group"
-        description={`Add an agent to ${group.name}`}
+        open={addMemberDialogOpen}
+        onOpenChange={setAddMemberDialogOpen}
+        title="Add Member to Group"
+        description={`Add a user to ${group.name}`}
       >
         <div className="p-6 space-y-4">
           {error && (
@@ -204,33 +402,97 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
             </div>
           )}
 
-          {availableAgents.length === 0 ? (
+          {availableUsers.length === 0 ? (
             <p className="text-neutral-600 dark:text-neutral-400">
-              All available agents are already members of this group.
+              All available users are already members of this group.
             </p>
           ) : (
-            <Select
-              label="Select Agent"
-              options={availableAgents.map((agent) => ({
-                value: agent.id,
-                label: `${agent.name || agent.email} (${agent.role})`,
-              }))}
-              value={selectedAgentId}
-              onChange={(e) => setSelectedAgentId(e.target.value)}
-            />
+            <>
+              <Input
+                label="Search Users"
+                placeholder="Search by name or email..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setSelectedUserId(""); // Clear selection when searching
+                }}
+              />
+
+              <div className="max-h-[300px] overflow-y-auto border border-neutral-200 dark:border-neutral-800 rounded-lg">
+                {filteredUsers.length === 0 ? (
+                  <div className="p-4 text-center text-neutral-600 dark:text-neutral-400">
+                    No users found matching your search.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-neutral-200 dark:divide-neutral-800">
+                    {filteredUsers.map((user) => {
+                      const isSelected = selectedUserId === user.id;
+                      return (
+                        <button
+                          key={user.id}
+                          type="button"
+                          onClick={() => setSelectedUserId(user.id)}
+                          className={`w-full p-3 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors ${
+                            isSelected ? "bg-primary-50 dark:bg-primary-900/50 border-l-4 border-primary-600" : ""
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="font-medium text-neutral-900 dark:text-neutral-100">
+                                {user.name || user.email}
+                              </div>
+                              {user.name && (
+                                <div className="text-sm text-neutral-600 dark:text-neutral-400">{user.email}</div>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="info" size="sm">{user.role}</Badge>
+                              {isSelected && (
+                                <svg
+                                  className="w-5 h-5 text-primary-600 dark:text-primary-400"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M5 13l4 4L19 7"
+                                  />
+                                </svg>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </>
           )}
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-neutral-200 dark:border-neutral-800">
-            <Button variant="outline" onClick={() => setAddAgentDialogOpen(false)} disabled={isLoading}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setAddMemberDialogOpen(false);
+                setSearchQuery("");
+                setSelectedUserId("");
+                setError(null);
+              }}
+              disabled={isLoading}
+            >
               Cancel
             </Button>
             <Button
               variant="primary"
-              onClick={handleAddAgent}
-              disabled={!selectedAgentId || isLoading}
+              onClick={handleAddMember}
+              disabled={!selectedUserId || isLoading}
               loading={isLoading}
             >
-              Add Agent
+              Add Member
             </Button>
           </div>
         </div>

@@ -69,6 +69,8 @@ Commands:
   cookie-revoke <email|number>         Revoke cookie consent for a user
   cookie-status <email|number>         Check cookie consent status for a user
   verify <email|number>                Verify user email and optionally activate account
+  ban <email|number> <reason>          Ban a user account
+  unban <email|number> <reason>        Unban a user account
 
 User Selection:
   You can select users by email or by number. Use 'list' command first to see user numbers.
@@ -113,8 +115,16 @@ Examples:
   # Reactivate deleted user (by original email or number)
   pnpm cli user reactivate user@example.com
   pnpm cli user reactivate 1  # Reactivate first deleted user from list
+  
+  # Ban user (by email or number)
+  pnpm cli user ban user@example.com "Violation of terms of service"
+  pnpm cli user ban 1 "Spam activity"  # Ban first user from list
+  
+  # Unban user (by email or number)
+  pnpm cli user unban user@example.com "Appeal approved"
+  pnpm cli user unban 1 "Mistake corrected"  # Unban first banned user from list
 
-Status Options: PENDING, ACTIVE, SUSPENDED, DELETED
+Status Options: PENDING, ACTIVE, SUSPENDED, DELETED, BANNED
 Role Options: USER, ADMIN, MODERATOR, AGENT
 `);
   process.exit(0);
@@ -162,6 +172,12 @@ if (shouldExecute && command) {
           break;
         case "reactivate":
           await handleReactivate();
+          break;
+        case "ban":
+          await handleBan();
+          break;
+        case "unban":
+          await handleUnban();
           break;
         default:
           console.error(`Unknown command: ${command}`);
@@ -530,6 +546,282 @@ async function handleReactivate() {
   console.log(`   Email verified: ${reactivatedUser.emailVerified ? "Yes" : "No"}`);
   if (!reactivatedUser.emailVerified) {
     console.log(`   Note: User will need to verify their email before full access is granted.`);
+  }
+}
+
+async function handleBan() {
+  if (commandArgs.length < 3) {
+    console.error("Usage: ban <email|number> <reason>");
+    console.error("\nTip: Use 'list' command first to see user numbers");
+    process.exit(1);
+  }
+
+  const selection = commandArgs[1];
+  const reason = commandArgs.slice(2).join(" "); // Join all remaining args as reason
+  let userId: string;
+  let userEmail: string;
+  let userName: string | null;
+
+  if (!reason.trim()) {
+    console.error("Ban reason is required");
+    process.exit(1);
+  }
+
+  // Check if selection is a number (for selecting from list)
+  const userIndex = parseInt(selection) - 1;
+  
+  if (!isNaN(userIndex) && userIndex >= 0) {
+    // Selection is a number - fetch users and select by index
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        role: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (userIndex >= users.length) {
+      console.error(`Invalid user number: ${selection}. Only ${users.length} user(s) found.`);
+      console.error("\nRun 'pnpm cli user list' to see available users.");
+      process.exit(1);
+    }
+
+    const selectedUser = users[userIndex];
+    userId = selectedUser.id;
+    userEmail = selectedUser.email;
+    userName = selectedUser.name;
+
+    if (selectedUser.status === "BANNED") {
+      console.error(`User ${userEmail} is already banned`);
+      process.exit(1);
+    }
+
+    console.log(`Selected user: ${userEmail}${userName ? ` (${userName})` : ""} - Current status: ${selectedUser.status}`);
+  } else {
+    // Selection is an email
+    const user = await prisma.user.findUnique({
+      where: { email: selection },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        role: true,
+      },
+    });
+
+    if (!user) {
+      console.error(`User with email ${selection} not found`);
+      process.exit(1);
+    }
+
+    if (user.status === "BANNED") {
+      console.error(`User ${user.email} is already banned`);
+      process.exit(1);
+    }
+
+    userId = user.id;
+    userEmail = user.email;
+    userName = user.name;
+  }
+
+  // Delete all sessions to force logout
+  await prisma.session.deleteMany({
+    where: { userId },
+  });
+
+  // Update user status to BANNED and set ban details
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      status: "BANNED",
+      bannedAt: new Date(),
+      banReason: reason.trim(),
+    },
+  });
+
+  console.log(`✅ User ${userEmail}${userName ? ` (${userName})` : ""} has been banned.`);
+  console.log(`   Reason: ${reason.trim()}`);
+  console.log(`   All active sessions have been terminated.`);
+}
+
+async function handleUnban() {
+  if (commandArgs.length < 3) {
+    console.error("Usage: unban <email|number> <reason>");
+    console.error("\nTip: Use 'list --status=BANNED' command first to see banned users");
+    process.exit(1);
+  }
+
+  const selection = commandArgs[1];
+  const reason = commandArgs.slice(2).join(" "); // Join all remaining args as reason
+  let userId: string;
+  let userEmail: string;
+  let userName: string | null;
+
+  if (!reason.trim()) {
+    console.error("Unban reason is required");
+    process.exit(1);
+  }
+
+  // Check if selection is a number (for selecting from list)
+  const userIndex = parseInt(selection) - 1;
+  
+  if (!isNaN(userIndex) && userIndex >= 0) {
+    // Selection is a number - fetch banned users and select by index
+    const users = await prisma.user.findMany({
+      where: { status: "BANNED" },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        role: true,
+        bannedAt: true,
+        banReason: true,
+      },
+      orderBy: { bannedAt: "desc" },
+    });
+
+    if (userIndex >= users.length) {
+      console.error(`Invalid user number: ${selection}. Only ${users.length} banned user(s) found.`);
+      console.error("\nRun 'pnpm cli user list --status=BANNED' to see banned users.");
+      process.exit(1);
+    }
+
+    const selectedUser = users[userIndex];
+    userId = selectedUser.id;
+    userEmail = selectedUser.email;
+    userName = selectedUser.name;
+
+    console.log(`Selected user: ${userEmail}${userName ? ` (${userName})` : ""} - Status: ${selectedUser.status}`);
+    if (selectedUser.banReason) {
+      console.log(`   Original ban reason: ${selectedUser.banReason}`);
+    }
+  } else {
+    // Selection is an email
+    const user = await prisma.user.findUnique({
+      where: { email: selection },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        role: true,
+        bannedAt: true,
+        banReason: true,
+      },
+    });
+
+    if (!user) {
+      console.error(`User with email ${selection} not found`);
+      process.exit(1);
+    }
+
+    if (user.status !== "BANNED") {
+      console.error(`User ${user.email} is not currently banned (status: ${user.status})`);
+      process.exit(1);
+    }
+
+    userId = user.id;
+    userEmail = user.email;
+    userName = user.name;
+  }
+
+  // Import utilities for unban handling
+  const { isModuleEnabled } = await import("../server/actions/modules");
+  const { MODULE_KEYS } = await import("../lib/constants/modules");
+  const { logTicketActivity } = await import("../server/utils/ticket-activity-logger");
+
+  // Find pending unban requests for this user
+  const pendingRequests = await prisma.unbanRequest.findMany({
+    where: {
+      userId,
+      status: "PENDING",
+    },
+    include: {
+      ticket: {
+        select: {
+          id: true,
+          status: true,
+        },
+      },
+    },
+  });
+
+  // Update user status to ACTIVE and clear ban fields
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      status: "ACTIVE",
+      emailVerified: true,
+      bannedAt: null,
+      banReason: null,
+    },
+  });
+
+  // Handle unbanning: update unban requests and tickets
+  const ticketsEnabled = await isModuleEnabled(MODULE_KEYS.TICKETS);
+  const now = new Date();
+  const reasonText = reason.trim();
+
+  // Update all pending unban requests to APPROVED
+  for (const request of pendingRequests) {
+    await prisma.unbanRequest.update({
+      where: { id: request.id },
+      data: {
+        status: "APPROVED",
+        reviewedBy: null, // CLI doesn't have an admin user context
+        reviewedAt: now,
+        adminNotes: reasonText,
+      },
+    });
+
+    // If there's an associated ticket and tickets module is enabled, mark it as resolved
+    if (request.ticketId && request.ticket && ticketsEnabled) {
+      // Update ticket status to RESOLVED
+      await prisma.ticket.update({
+        where: { id: request.ticketId },
+        data: {
+          status: "RESOLVED",
+          resolvedAt: now,
+        },
+      });
+
+      // Add a comment to the ticket explaining the unban
+      await prisma.ticketComment.create({
+        data: {
+          ticketId: request.ticketId,
+          userId: null, // CLI doesn't have a user context
+          authorName: "System (CLI)",
+          content: `User has been unbanned via CLI.\n\nReason: ${reasonText}`,
+          isAgentOnly: false,
+        },
+      });
+
+      // Log ticket resolution activity
+      try {
+        await logTicketActivity(
+          request.ticketId,
+          "RESOLVED",
+          userId, // Use the unbanned user's ID as a fallback
+          "System (CLI)",
+          request.ticket.status,
+          "RESOLVED"
+        );
+      } catch (err) {
+        // Log error but don't fail the unban operation
+        console.error("Error logging ticket activity:", err);
+      }
+    }
+  }
+
+  console.log(`✅ User ${userEmail}${userName ? ` (${userName})` : ""} has been unbanned.`);
+  console.log(`   Reason: ${reasonText}`);
+  if (pendingRequests.length > 0) {
+    console.log(`   ${pendingRequests.length} pending unban request(s) have been approved.`);
   }
 }
 
@@ -2167,6 +2459,484 @@ export async function handleReactivateInteractive() {
     }
   } catch (error) {
     console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleBanInteractive() {
+  try {
+    await handleListWithFilters({});
+    separator();
+
+    const user = await selectUserInteractively();
+    if (!user) return;
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: user.email },
+      select: { id: true, email: true, name: true, status: true },
+    });
+
+    if (!currentUser) {
+      error(`User with email ${user.email} not found`);
+      return;
+    }
+
+    if (currentUser.status === "BANNED") {
+      warning(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} is already banned`);
+      return;
+    }
+
+    header("Ban User", `Ban ${currentUser.email}`);
+    sectionHeader("Current Status");
+    displayKeyValue("Status", formatStatus(currentUser.status));
+    separator();
+
+    warning("⚠️  WARNING: This will ban the user account and prevent them from logging in.");
+    info("They will be redirected to a ban page where they can request to be unbanned.");
+
+    const reason = await prompt("Ban reason (required):", {
+      required: true,
+      validate: (input) => {
+        if (!input.trim()) {
+          return "Ban reason is required";
+        }
+        return true;
+      },
+    });
+
+    const confirmed = await confirm(
+      `Are you sure you want to ban ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""}?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Ban cancelled");
+      return;
+    }
+
+    const spinner = createSpinner("Banning user...");
+    spinner.start();
+
+    // Delete all sessions to force logout
+    await prisma.session.deleteMany({
+      where: { userId: currentUser.id },
+    });
+
+    // Update user status to BANNED and set ban details
+    await prisma.user.update({
+      where: { id: currentUser.id },
+      data: {
+        status: "BANNED",
+        bannedAt: new Date(),
+        banReason: reason.trim(),
+      },
+    });
+
+    spinner.succeed("User banned successfully");
+    success(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} has been banned.`);
+    info(`Reason: ${reason.trim()}`);
+    info("All active sessions have been terminated.");
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleUnbanInteractive() {
+  try {
+    await handleListWithFilters({ status: "BANNED" });
+    separator();
+
+    const user = await selectUserInteractively();
+    if (!user) return;
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: user.email },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        bannedAt: true,
+        banReason: true,
+      },
+    });
+
+    if (!currentUser) {
+      error(`User with email ${user.email} not found`);
+      return;
+    }
+
+    if (currentUser.status !== "BANNED") {
+      warning(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} is not currently banned (status: ${formatStatus(currentUser.status)})`);
+      return;
+    }
+
+    header("Unban User", `Unban ${currentUser.email}`);
+    sectionHeader("Ban Information");
+    displayKeyValue("Status", formatStatus(currentUser.status));
+    if (currentUser.bannedAt) {
+      displayKeyValue("Banned On", currentUser.bannedAt.toLocaleString());
+    }
+    if (currentUser.banReason) {
+      displayKeyValue("Ban Reason", currentUser.banReason);
+    }
+    separator();
+
+    info("This will restore the user's access to the platform.");
+    info("Any pending unban requests will be automatically approved and associated tickets will be marked as resolved.");
+
+    const reason = await prompt("Unban reason (required):", {
+      required: true,
+      validate: (input) => {
+        if (!input.trim()) {
+          return "Unban reason is required";
+        }
+        return true;
+      },
+    });
+
+    const confirmed = await confirm(
+      `Are you sure you want to unban ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""}?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Unban cancelled");
+      return;
+    }
+
+    const spinner = createSpinner("Unbanning user...");
+    spinner.start();
+
+    // Import utilities for unban handling
+    const { isModuleEnabled } = await import("../server/actions/modules");
+    const { MODULE_KEYS } = await import("../lib/constants/modules");
+    const { logTicketActivity } = await import("../server/utils/ticket-activity-logger");
+
+    // Find pending unban requests for this user
+    const pendingRequests = await prisma.unbanRequest.findMany({
+      where: {
+        userId: currentUser.id,
+        status: "PENDING",
+      },
+      include: {
+        ticket: {
+          select: {
+            id: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    // Update user status to ACTIVE and clear ban fields
+    await prisma.user.update({
+      where: { id: currentUser.id },
+      data: {
+        status: "ACTIVE",
+        emailVerified: true,
+        bannedAt: null,
+        banReason: null,
+      },
+    });
+
+    // Handle unbanning: update unban requests and tickets
+    const ticketsEnabled = await isModuleEnabled(MODULE_KEYS.TICKETS);
+    const now = new Date();
+    const reasonText = reason.trim();
+
+    // Update all pending unban requests to APPROVED
+    for (const request of pendingRequests) {
+      await prisma.unbanRequest.update({
+        where: { id: request.id },
+        data: {
+          status: "APPROVED",
+          reviewedBy: null, // CLI doesn't have an admin user context
+          reviewedAt: now,
+          adminNotes: reasonText,
+        },
+      });
+
+      // If there's an associated ticket and tickets module is enabled, mark it as resolved
+      if (request.ticketId && request.ticket && ticketsEnabled) {
+        // Update ticket status to RESOLVED
+        await prisma.ticket.update({
+          where: { id: request.ticketId },
+          data: {
+            status: "RESOLVED",
+            resolvedAt: now,
+          },
+        });
+
+        // Add a comment to the ticket explaining the unban
+        await prisma.ticketComment.create({
+          data: {
+            ticketId: request.ticketId,
+            userId: null, // CLI doesn't have a user context
+            authorName: "System (CLI)",
+            content: `User has been unbanned via CLI.\n\nReason: ${reasonText}`,
+            isAgentOnly: false,
+          },
+        });
+
+        // Log ticket resolution activity
+        try {
+          await logTicketActivity(
+            request.ticketId,
+            "RESOLVED",
+            currentUser.id, // Use the unbanned user's ID as a fallback
+            "System (CLI)",
+            request.ticket.status,
+            "RESOLVED"
+          );
+        } catch (err) {
+          // Log error but don't fail the unban operation
+          console.error("Error logging ticket activity:", err);
+        }
+      }
+    }
+
+    spinner.succeed("User unbanned successfully");
+    success(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} has been unbanned.`);
+    info(`Reason: ${reasonText}`);
+    if (pendingRequests.length > 0) {
+      info(`${pendingRequests.length} pending unban request(s) have been approved.`);
+    }
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleBanInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
+  try {
+    header("Ban User", `Ban ${user.email}`);
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: user.email },
+      select: { id: true, email: true, name: true, status: true },
+    });
+
+    if (!currentUser) {
+      error(`User with email ${user.email} not found`);
+      return;
+    }
+
+    if (currentUser.status === "BANNED") {
+      warning(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} is already banned`);
+      return;
+    }
+
+    sectionHeader("Current Status");
+    displayKeyValue("Status", formatStatus(currentUser.status));
+    separator();
+
+    warning("⚠️  WARNING: This will ban the user account and prevent them from logging in.");
+    info("They will be redirected to a ban page where they can request to be unbanned.");
+
+    const reason = await prompt("Ban reason (required):", {
+      required: true,
+      validate: (input) => {
+        if (!input.trim()) {
+          return "Ban reason is required";
+        }
+        return true;
+      },
+    });
+
+    const confirmed = await confirm(
+      `Are you sure you want to ban ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""}?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Ban cancelled");
+      return;
+    }
+
+    const spinner = createSpinner("Banning user...");
+    spinner.start();
+
+    // Delete all sessions to force logout
+    await prisma.session.deleteMany({
+      where: { userId: currentUser.id },
+    });
+
+    // Update user status to BANNED and set ban details
+    await prisma.user.update({
+      where: { id: currentUser.id },
+      data: {
+        status: "BANNED",
+        bannedAt: new Date(),
+        banReason: reason.trim(),
+      },
+    });
+
+    spinner.succeed("User banned successfully");
+    success(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} has been banned.`);
+    info(`Reason: ${reason.trim()}`);
+    info("All active sessions have been terminated.");
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleUnbanInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
+  try {
+    header("Unban User", `Unban ${user.email}`);
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: user.email },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        bannedAt: true,
+        banReason: true,
+      },
+    });
+
+    if (!currentUser) {
+      error(`User with email ${user.email} not found`);
+      return;
+    }
+
+    if (currentUser.status !== "BANNED") {
+      warning(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} is not currently banned (status: ${formatStatus(currentUser.status)})`);
+      return;
+    }
+
+    sectionHeader("Ban Information");
+    displayKeyValue("Status", formatStatus(currentUser.status));
+    if (currentUser.bannedAt) {
+      displayKeyValue("Banned On", currentUser.bannedAt.toLocaleString());
+    }
+    if (currentUser.banReason) {
+      displayKeyValue("Ban Reason", currentUser.banReason);
+    }
+    separator();
+
+    info("This will restore the user's access to the platform.");
+    info("Any pending unban requests will be automatically approved and associated tickets will be marked as resolved.");
+
+    const reason = await prompt("Unban reason (required):", {
+      required: true,
+      validate: (input) => {
+        if (!input.trim()) {
+          return "Unban reason is required";
+        }
+        return true;
+      },
+    });
+
+    const confirmed = await confirm(
+      `Are you sure you want to unban ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""}?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Unban cancelled");
+      return;
+    }
+
+    const spinner = createSpinner("Unbanning user...");
+    spinner.start();
+
+    // Import utilities for unban handling
+    const { isModuleEnabled } = await import("../server/actions/modules");
+    const { MODULE_KEYS } = await import("../lib/constants/modules");
+    const { logTicketActivity } = await import("../server/utils/ticket-activity-logger");
+
+    // Find pending unban requests for this user
+    const pendingRequests = await prisma.unbanRequest.findMany({
+      where: {
+        userId: currentUser.id,
+        status: "PENDING",
+      },
+      include: {
+        ticket: {
+          select: {
+            id: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    // Update user status to ACTIVE and clear ban fields
+    await prisma.user.update({
+      where: { id: currentUser.id },
+      data: {
+        status: "ACTIVE",
+        emailVerified: true,
+        bannedAt: null,
+        banReason: null,
+      },
+    });
+
+    // Handle unbanning: update unban requests and tickets
+    const ticketsEnabled = await isModuleEnabled(MODULE_KEYS.TICKETS);
+    const now = new Date();
+    const reasonText = reason.trim();
+
+    // Update all pending unban requests to APPROVED
+    for (const request of pendingRequests) {
+      await prisma.unbanRequest.update({
+        where: { id: request.id },
+        data: {
+          status: "APPROVED",
+          reviewedBy: null, // CLI doesn't have an admin user context
+          reviewedAt: now,
+          adminNotes: reasonText,
+        },
+      });
+
+      // If there's an associated ticket and tickets module is enabled, mark it as resolved
+      if (request.ticketId && request.ticket && ticketsEnabled) {
+        // Update ticket status to RESOLVED
+        await prisma.ticket.update({
+          where: { id: request.ticketId },
+          data: {
+            status: "RESOLVED",
+            resolvedAt: now,
+          },
+        });
+
+        // Add a comment to the ticket explaining the unban
+        await prisma.ticketComment.create({
+          data: {
+            ticketId: request.ticketId,
+            userId: null, // CLI doesn't have a user context
+            authorName: "System (CLI)",
+            content: `User has been unbanned via CLI.\n\nReason: ${reasonText}`,
+            isAgentOnly: false,
+          },
+        });
+
+        // Log ticket resolution activity
+        try {
+          await logTicketActivity(
+            request.ticketId,
+            "RESOLVED",
+            currentUser.id, // Use the unbanned user's ID as a fallback
+            "System (CLI)",
+            request.ticket.status,
+            "RESOLVED"
+          );
+        } catch (err) {
+          // Log error but don't fail the unban operation
+          console.error("Error logging ticket activity:", err);
+        }
+      }
+    }
+
+    spinner.succeed("User unbanned successfully");
+    success(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} has been unbanned.`);
+    info(`Reason: ${reasonText}`);
+    if (pendingRequests.length > 0) {
+      info(`${pendingRequests.length} pending unban request(s) have been approved.`);
+    }
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
   }
 }
 

@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils/cn";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
+import { useSidebar } from "../SidebarContext";
 
 // Navigation will be dynamically generated based on enabled modules
 const baseNavigation = [
@@ -55,6 +56,21 @@ const baseNavigation = [
     moduleKey: "timetracking",
   },
   {
+    name: "Projects",
+    href: "/dashboard/projects",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+        />
+      </svg>
+    ),
+    moduleKey: "projects",
+  },
+  {
     name: "Settings",
     href: "/dashboard/settings",
     icon: (
@@ -84,7 +100,7 @@ interface DashboardSidebarProps {
 
 export const DashboardSidebar = ({ enabledModuleKeys, userRole }: DashboardSidebarProps) => {
   const pathname = usePathname();
-  const [isMobileOpen, setIsMobileOpen] = React.useState(false);
+  const { isMobileOpen, setIsMobileOpen } = useSidebar();
 
   // Filter navigation based on enabled modules
   const enabledModulesSet = new Set(enabledModuleKeys);
@@ -94,35 +110,6 @@ export const DashboardSidebar = ({ enabledModuleKeys, userRole }: DashboardSideb
 
   return (
     <>
-      {/* Mobile menu button */}
-      <button
-        onClick={() => setIsMobileOpen(!isMobileOpen)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-white dark:bg-neutral-900 shadow-lg border border-neutral-200 dark:border-neutral-800"
-      >
-        <svg
-          className="w-6 h-6 text-neutral-700 dark:text-neutral-300"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          {isMobileOpen ? (
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M6 18L18 6M6 6l12 12"
-            />
-          ) : (
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 6h16M4 12h16M4 18h16"
-            />
-          )}
-        </svg>
-      </button>
-
       {/* Sidebar */}
       <aside
         className={cn(
@@ -131,6 +118,29 @@ export const DashboardSidebar = ({ enabledModuleKeys, userRole }: DashboardSideb
           isMobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
+        {/* Mobile close button - sticky on right side outside sidebar */}
+        {isMobileOpen && (
+          <button
+            onClick={() => setIsMobileOpen(false)}
+            className="lg:hidden fixed top-4 z-50 p-2 rounded-lg bg-white dark:bg-neutral-900 shadow-lg border border-neutral-200 dark:border-neutral-800"
+            aria-label="Close sidebar"
+            style={{ left: 'calc(16rem + 1rem)' }}
+          >
+            <svg
+              className="w-6 h-6 text-neutral-700 dark:text-neutral-300"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+        )}
         <div className="flex flex-col h-full">
           {/* Logo */}
           <div className="flex items-center h-16 px-6 border-b border-neutral-200 dark:border-neutral-800">

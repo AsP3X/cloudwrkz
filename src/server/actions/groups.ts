@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth, requireRole, requireAnyRole } from "@/lib/utils/auth-server";
+import { clearPermissionCache } from "@/lib/utils/permissions";
 
 export type GroupInput = {
   name: string;
@@ -26,6 +27,7 @@ export async function getGroups() {
           select: {
             members: true,
             tickets: true,
+            permissions: true,
           },
         },
       },
@@ -48,6 +50,7 @@ export async function getGroups() {
               select: {
                 members: true,
                 tickets: true,
+                permissions: true,
               },
             },
           },
@@ -82,10 +85,16 @@ export async function getGroup(id: string) {
           },
         },
       },
+      permissions: {
+        include: {
+          permission: true,
+        },
+      },
       _count: {
         select: {
           members: true,
           tickets: true,
+          permissions: true,
         },
       },
     },
@@ -214,24 +223,42 @@ export async function deleteGroup(id: string): Promise<ActionResult> {
 
 /**
  * Add an agent to a group (only admins and moderators)
+ * @deprecated Use addUserToGroup instead
  */
 export async function addAgentToGroup(
   groupId: string,
   agentId: string
 ): Promise<ActionResult> {
+  return addUserToGroup(groupId, agentId);
+}
+
+/**
+ * Add a user to a group (only admins and moderators)
+ */
+export async function addUserToGroup(
+  groupId: string,
+  userId: string
+): Promise<ActionResult> {
   try {
     await requireAnyRole("ADMIN", "MODERATOR");
 
-    // Verify the user is an agent
-    const agent = await prisma.user.findUnique({
-      where: { id: agentId },
-      select: { role: true },
+    // Verify the user exists and is active
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true, status: true },
     });
 
-    if (!agent || (agent.role !== "AGENT" && agent.role !== "ADMIN" && agent.role !== "MODERATOR")) {
+    if (!user) {
       return {
         success: false,
-        error: "User must be an agent, admin, or moderator",
+        error: "User not found",
+      };
+    }
+
+    if (user.status !== "ACTIVE") {
+      return {
+        success: false,
+        error: "Cannot add inactive users to groups",
       };
     }
 
@@ -239,7 +266,7 @@ export async function addAgentToGroup(
     const existing = await prisma.groupMembership.findUnique({
       where: {
         userId_groupId: {
-          userId: agentId,
+          userId: userId,
           groupId,
         },
       },
@@ -248,36 +275,50 @@ export async function addAgentToGroup(
     if (existing) {
       return {
         success: false,
-        error: "Agent is already a member of this group",
+        error: "User is already a member of this group",
       };
     }
 
     await prisma.groupMembership.create({
       data: {
-        userId: agentId,
+        userId: userId,
         groupId,
       },
     });
 
+    // Clear permission cache for the user
+    clearPermissionCache(userId);
+
     return {
       success: true,
-      message: "Agent added to group successfully",
+      message: "User added to group successfully",
     };
   } catch (error: any) {
-    console.error("Add agent to group error:", error);
+    console.error("Add user to group error:", error);
     return {
       success: false,
-      error: error.message || "Failed to add agent to group",
+      error: error.message || "Failed to add user to group",
     };
   }
 }
 
 /**
  * Remove an agent from a group (only admins and moderators)
+ * @deprecated Use removeUserFromGroup instead
  */
 export async function removeAgentFromGroup(
   groupId: string,
   agentId: string
+): Promise<ActionResult> {
+  return removeUserFromGroup(groupId, agentId);
+}
+
+/**
+ * Remove a user from a group (only admins and moderators)
+ */
+export async function removeUserFromGroup(
+  groupId: string,
+  userId: string
 ): Promise<ActionResult> {
   try {
     await requireAnyRole("ADMIN", "MODERATOR");
@@ -285,21 +326,24 @@ export async function removeAgentFromGroup(
     await prisma.groupMembership.delete({
       where: {
         userId_groupId: {
-          userId: agentId,
+          userId: userId,
           groupId,
         },
       },
     });
 
+    // Clear permission cache for the user
+    clearPermissionCache(userId);
+
     return {
       success: true,
-      message: "Agent removed from group successfully",
+      message: "User removed from group successfully",
     };
   } catch (error: any) {
-    console.error("Remove agent from group error:", error);
+    console.error("Remove user from group error:", error);
     return {
       success: false,
-      error: error.message || "Failed to remove agent from group",
+      error: error.message || "Failed to remove user from group",
     };
   }
 }
@@ -326,4 +370,166 @@ export async function getAgentGroups(agentId: string) {
   });
 
   return memberships.map((m) => m.group);
+}
+
+/**
+ * Add permission to group
+ */
+export async function addPermissionToGroup(
+  groupId: string,
+  permissionId: string
+): Promise<ActionResult> {
+  try {
+    await requireAnyRole("ADMIN", "MODERATOR");
+
+    // Check if already exists
+    const existing = await prisma.groupPermission.findUnique({
+      where: {
+        groupId_permissionId: {
+          groupId,
+          permissionId,
+        },
+      },
+    });
+
+    if (existing) {
+      return {
+        success: false,
+        error: "Permission is already assigned to this group",
+      };
+    }
+
+    await prisma.groupPermission.create({
+      data: {
+        groupId,
+        permissionId,
+      },
+    });
+
+    // Clear permission cache for all members of this group
+    const members = await prisma.groupMembership.findMany({
+      where: { groupId },
+      select: { userId: true },
+    });
+    members.forEach((m) => clearPermissionCache(m.userId));
+
+    return {
+      success: true,
+      message: "Permission added to group successfully",
+    };
+  } catch (error: any) {
+    console.error("Add permission to group error:", error);
+    return {
+      success: false,
+      error: error.message || "Failed to add permission to group",
+    };
+  }
+}
+
+/**
+ * Remove permission from group
+ */
+export async function removePermissionFromGroup(
+  groupId: string,
+  permissionId: string
+): Promise<ActionResult> {
+  try {
+    await requireAnyRole("ADMIN", "MODERATOR");
+
+    await prisma.groupPermission.delete({
+      where: {
+        groupId_permissionId: {
+          groupId,
+          permissionId,
+        },
+      },
+    });
+
+    // Clear permission cache for all members of this group
+    const members = await prisma.groupMembership.findMany({
+      where: { groupId },
+      select: { userId: true },
+    });
+    members.forEach((m) => clearPermissionCache(m.userId));
+
+    return {
+      success: true,
+      message: "Permission removed from group successfully",
+    };
+  } catch (error: any) {
+    console.error("Remove permission from group error:", error);
+    return {
+      success: false,
+      error: error.message || "Failed to remove permission from group",
+    };
+  }
+}
+
+/**
+ * Bulk update group permissions
+ */
+export async function updateGroupPermissions(
+  groupId: string,
+  permissionIds: string[]
+): Promise<ActionResult> {
+  try {
+    await requireAnyRole("ADMIN", "MODERATOR");
+
+    // Get current permissions
+    const currentPermissions = await prisma.groupPermission.findMany({
+      where: { groupId },
+      select: { permissionId: true },
+    });
+
+    const currentIds = new Set(currentPermissions.map((p) => p.permissionId));
+    const newIds = new Set(permissionIds);
+
+    // Find permissions to add and remove
+    const toAdd = permissionIds.filter((id) => !currentIds.has(id));
+    const toRemove = currentPermissions
+      .filter((p) => !newIds.has(p.permissionId))
+      .map((p) => p.permissionId);
+
+    // Perform updates in transaction
+    await prisma.$transaction(async (tx) => {
+      // Remove permissions
+      if (toRemove.length > 0) {
+        await tx.groupPermission.deleteMany({
+          where: {
+            groupId,
+            permissionId: { in: toRemove },
+          },
+        });
+      }
+
+      // Add permissions
+      if (toAdd.length > 0) {
+        await tx.groupPermission.createMany({
+          data: toAdd.map((permissionId) => ({
+            groupId,
+            permissionId,
+          })),
+          skipDuplicates: true,
+        });
+      }
+    });
+
+    // Clear permission cache for all members of this group
+    const members = await prisma.groupMembership.findMany({
+      where: { groupId },
+      select: { userId: true },
+    });
+    members.forEach((m) => clearPermissionCache(m.userId));
+
+    return {
+      success: true,
+      message: "Group permissions updated successfully",
+    };
+  } catch (error: any) {
+    console.error("Update group permissions error:", error);
+    return {
+      success: false,
+      error: error.message || "Failed to update group permissions",
+    };
+  }
 }

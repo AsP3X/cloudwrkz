@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getTicketTypeLabel, type TicketType } from "@/lib/utils/tickets";
 import { formatUserName } from "@/lib/utils/users";
+import { formatDate, formatDateTime } from "@/lib/utils/date";
 import { type TicketViewMode } from "../TicketViewToggle";
 import { TicketBulkActionsToolbar } from "../TicketBulkActionsToolbar";
 import { bulkUpdateTickets, bulkDeleteTickets } from "@/server/actions/tickets";
@@ -27,13 +28,13 @@ type Ticket = {
     id: string;
     name: string | null;
     email: string;
-    status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
+    status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED" | "BANNED";
   } | null;
   assignedTo: {
     id: string;
     name: string | null;
     email: string;
-    status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED";
+    status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "DELETED" | "BANNED";
   } | null;
   assignedToGroup: {
     id: string;
@@ -86,23 +87,6 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false);
   const selectAllRef = React.useRef<HTMLInputElement>(null);
 
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  };
-
-  const formatDateTime = (date: Date) => {
-    return new Date(date).toLocaleString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
 
   // Determine which columns to show based on view mode
   const showType = viewMode === "normal" || viewMode === "detailed";

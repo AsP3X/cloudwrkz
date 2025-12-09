@@ -6,6 +6,7 @@ import { logout } from "@/server/actions/logout";
 import { ROUTES } from "@/lib/constants/routes";
 import type { CurrentUser } from "@/lib/utils/auth-server";
 import { GlobalSearch } from "@/components/features/search/GlobalSearch";
+import { useSidebar } from "../SidebarContext";
 
 interface DashboardHeaderProps {
   user: CurrentUser;
@@ -15,6 +16,7 @@ export const DashboardHeader = ({ user }: DashboardHeaderProps) => {
   const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
+  const { isMobileOpen, setIsMobileOpen } = useSidebar();
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -37,11 +39,34 @@ export const DashboardHeader = ({ user }: DashboardHeaderProps) => {
     <header className="sticky top-0 z-30 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm border-b border-neutral-200/50 dark:border-neutral-800/50 shadow-sm">
       <div className="px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between gap-4">
-          {/* Left side - can add breadcrumbs or page title here */}
-          <div className="flex-1"></div>
+          {/* Left side - Mobile sidebar toggle button when closed, can add breadcrumbs or page title here on desktop */}
+          <div className="flex items-center gap-2 lg:flex-none">
+            {/* Mobile: Show toggle button when sidebar is closed */}
+            {!isMobileOpen && (
+              <button
+                onClick={() => setIsMobileOpen(true)}
+                className="lg:hidden p-2 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+                aria-label="Open sidebar"
+              >
+                <svg
+                  className="w-6 h-6 text-neutral-700 dark:text-neutral-300"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 6h16M4 12h16M4 18h16"
+                  />
+                </svg>
+              </button>
+            )}
+          </div>
 
           {/* Right side - Search and User menu */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1 sm:gap-4 flex-1 lg:flex-initial justify-end min-w-0">
             <GlobalSearch />
             
             {/* User menu */}

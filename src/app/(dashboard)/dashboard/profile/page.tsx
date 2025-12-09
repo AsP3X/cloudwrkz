@@ -1,4 +1,5 @@
 import { getCurrentUser } from "@/lib/utils/auth-server";
+import { formatDateTime } from "@/lib/utils/date";
 import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
 import { getCurrentUserProfile } from "@/server/actions/users";
@@ -18,15 +19,6 @@ export default async function ProfilePage() {
     redirect(ROUTES.DASHBOARD);
   }
 
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
 
   const getRoleBadge = (role: string) => {
     switch (role) {
@@ -241,7 +233,7 @@ export default async function ProfilePage() {
                     Member Since
                   </label>
                   <p className="text-sm text-neutral-900 dark:text-neutral-100">
-                    {formatDate(profile.createdAt)}
+                    {formatDateTime(profile.createdAt)}
                   </p>
                 </div>
                 {profile.lastLoginAt && (
@@ -250,7 +242,7 @@ export default async function ProfilePage() {
                       Last Login
                     </label>
                     <p className="text-sm text-neutral-900 dark:text-neutral-100">
-                      {formatDate(profile.lastLoginAt)}
+                      {profile.lastLoginAt ? formatDateTime(profile.lastLoginAt) : "Never"}
                     </p>
                   </div>
                 )}

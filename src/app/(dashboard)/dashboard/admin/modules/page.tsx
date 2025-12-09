@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/utils/auth-server";
 import { requireRole } from "@/lib/utils/auth-server";
-import { getAllModules, setModuleEnabled } from "@/server/actions/modules";
+import { getAllModules, initializeModules } from "@/server/actions/modules";
 import { ModuleManagementPage } from "@/components/features/admin/ModuleManagement/ModuleManagementPage";
 
 export default async function AdminModulesPage() {
@@ -13,6 +13,9 @@ export default async function AdminModulesPage() {
 
   await requireRole("ADMIN");
 
+  // Initialize modules (this will also clean up unused modules)
+  await initializeModules();
+  
   const modules = await getAllModules();
 
   return <ModuleManagementPage initialModules={modules} />;

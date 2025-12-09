@@ -1,5 +1,6 @@
 import { getCurrentUser } from "@/lib/utils/auth-server";
 import { formatUserName, formatUserInitial } from "@/lib/utils/users";
+import { formatDate, formatDateTime } from "@/lib/utils/date";
 import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
 import { isModuleEnabled } from "@/server/actions/modules";
@@ -36,9 +37,14 @@ export default async function UserDetailPage({ params, searchParams }: UserDetai
   const { id } = await params;
   const urlParams = await searchParams;
 
-  // Only agents, admins, and moderators can view user details
-  if (!currentUser || (currentUser.role !== "AGENT" && currentUser.role !== "ADMIN" && currentUser.role !== "MODERATOR")) {
+  // Users can view their own profile, agents/admins/moderators can view any user
+  if (!currentUser) {
     redirect(ROUTES.LOGIN);
+  }
+  
+  // Regular users can only view their own profile
+  if (currentUser.role === "USER" && currentUser.id !== id) {
+    redirect(ROUTES.DASHBOARD);
   }
 
   // Validate user ID
@@ -105,15 +111,6 @@ export default async function UserDetailPage({ params, searchParams }: UserDetai
   // Get groups for filter dropdown
   const groups = await getGroups();
 
-  const formatDate = (date: Date | string) => {
-    return new Date(date).toLocaleString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
 
   const getRoleBadge = (role: string) => {
     switch (role) {

@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 /**
- * CloudWrkz Enterprise CLI Tool
+ * Enterprise CLI Tool
  *
- * Professional command-line interface for managing CloudWrkz platform
+ * Professional command-line interface for managing the platform
  *
  * Usage:
  *   pnpm cli                          Interactive mode
@@ -30,6 +30,7 @@ import {
   paginatedCheckbox,
 } from "./prompts";
 import { prisma } from "../lib/db/prisma";
+import { APP_CONFIG } from "../lib/constants/config";
 import chalk from "chalk";
 
 const args = process.argv.slice(2);
@@ -64,7 +65,7 @@ if (args.length === 0) {
 async function runInteractiveMode() {
   while (true) {
     clear();
-    header("CloudWrkz Management Console", "Enterprise CLI Tool v1.0");
+    header(`${APP_CONFIG.name} Management Console`, "Enterprise CLI Tool v1.0");
 
     const choice = await menu("Select a category:", [
       {
@@ -114,7 +115,7 @@ async function runInteractiveMode() {
         break;
       case "q":
         clear();
-        notice("Thank you for using CloudWrkz CLI. Goodbye! 👋", "info");
+        notice(`Thank you for using ${APP_CONFIG.name} CLI. Goodbye! 👋`, "info");
         await prisma.$disconnect();
         process.exit(0);
         break;
@@ -341,6 +342,22 @@ async function runUserActionsInteractive(selectedUsers: { id: string; email: str
         },
       ];
 
+      if (refreshed && refreshed.status !== "BANNED") {
+        actions.push({
+          key: "ban",
+          label: "🚫 Ban User",
+          description: "Ban user account and prevent login",
+        });
+      }
+
+      if (refreshed && refreshed.status === "BANNED") {
+        actions.push({
+          key: "unban",
+          label: "✅ Unban User",
+          description: "Unban user account and restore access",
+        });
+      }
+
       if (refreshed && refreshed.status === "DELETED") {
         actions.push({
           key: "r",
@@ -397,6 +414,18 @@ async function runUserActionsInteractive(selectedUsers: { id: string; email: str
           break;
         case "cc":
           await runCookieConsentInteractiveWithUser(selectedUser);
+          break;
+        case "ban":
+          clear();
+          await userCli.handleBanInteractiveWithUser(selectedUser);
+          await refreshUser();
+          await waitForEnter();
+          break;
+        case "unban":
+          clear();
+          await userCli.handleUnbanInteractiveWithUser(selectedUser);
+          await refreshUser();
+          await waitForEnter();
           break;
         case "r":
           clear();
@@ -780,6 +809,8 @@ Commands:
   cookie-revoke <email|number>         Revoke cookie consent for a user
   cookie-status <email|number>         Check cookie consent status for a user
   verify <email|number>                Verify user email and optionally activate account
+  ban <email|number> <reason>          Ban a user account
+  unban <email|number> <reason>        Unban a user account
 
 Run 'pnpm cli user <command>' to execute a command.
 Run 'pnpm cli help' for more information.
@@ -825,10 +856,10 @@ Run 'pnpm cli help' for more information.
 }
 
 function showHelp() {
-  header("CloudWrkz CLI Help", "Command-line interface documentation");
+  header(`${APP_CONFIG.name} CLI Help`, "Command-line interface documentation");
 
   console.log(chalk.bold("Available command categories:\n"));
-  console.log(chalk.cyan("  user      "), "User management (create, delete, list, show, update-status, update-role, update-password, verify, cookie-accept, cookie-revoke, cookie-status)");
+  console.log(chalk.cyan("  user      "), "User management (create, delete, list, show, update-status, update-role, update-password, verify, cookie-accept, cookie-revoke, cookie-status, ban, unban)");
   console.log(chalk.cyan("  group     "), "Group management (create, delete, list, show, update, add-agent, remove-agent, list-agents)");
   console.log(chalk.cyan("  module    "), "Module management (future)");
 
@@ -849,6 +880,9 @@ function showHelp() {
   console.log(chalk.gray("  # Update status (by email or number)"));
   console.log("  pnpm cli user update-status user@example.com ACTIVE");
   console.log("  pnpm cli user update-status 1 ACTIVE  # Select first user from list\n");
+  console.log(chalk.gray("  # Ban/unban user examples"));
+  console.log("  pnpm cli user ban user@example.com \"Violation of terms of service\"");
+  console.log("  pnpm cli user unban user@example.com \"Appeal approved\"\n");
   console.log(chalk.gray("  # Group management examples"));
   console.log("  pnpm cli group create \"Support Team\" \"Primary support team\"");
   console.log("  pnpm cli group list");

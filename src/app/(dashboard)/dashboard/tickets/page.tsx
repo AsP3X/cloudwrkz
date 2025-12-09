@@ -1,11 +1,12 @@
 import { getCurrentUser } from "@/lib/utils/auth-server";
 import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
-import { isModuleEnabled } from "@/server/actions/modules";
+import { canUserViewModule } from "@/server/actions/modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { getTickets } from "@/server/actions/tickets";
 import { getAllUsers } from "@/server/actions/users";
 import { getGroups } from "@/server/actions/groups";
+import { getUserProjectsForAssignment, getProjects } from "@/server/actions/projects";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { TicketFilterButton } from "@/components/features/tickets/TicketFilterButton";
@@ -19,6 +20,7 @@ interface TicketsPageProps {
     status?: string;
     createdBy?: string;
     assignedToGroup?: string;
+    projectId?: string;
     createdFrom?: string;
     createdTo?: string;
     updatedFrom?: string;
@@ -35,15 +37,15 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
     redirect(ROUTES.LOGIN);
   }
 
-  // Check if tickets module is enabled
-  const ticketsEnabled = await isModuleEnabled(MODULE_KEYS.TICKETS);
+  // Check if user can view tickets module (module enabled AND user has permission)
+  const canViewTickets = await canUserViewModule(user.id, MODULE_KEYS.TICKETS);
   
-  if (!ticketsEnabled) {
+  if (!canViewTickets) {
     return (
       <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8 text-center">
-        <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">Tickets Module Disabled</h2>
+        <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">Access Denied</h2>
         <p className="text-neutral-600 dark:text-neutral-400">
-          The tickets module is not currently enabled. Please contact an administrator.
+          You don't have permission to access the Tickets module. Please contact an administrator.
         </p>
       </div>
     );
@@ -68,6 +70,9 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
   if (params.assignedToGroup) {
     filters.assignedToGroupId = params.assignedToGroup;
   }
+  if (params.projectId) {
+    filters.projectId = params.projectId;
+  }
   if (params.createdFrom) {
     filters.createdFrom = params.createdFrom;
   }
@@ -81,14 +86,37 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
     filters.updatedTo = params.updatedTo;
   }
 
-  // For regular users, always filter by their own tickets
+  // For regular users, show tickets they created OR tickets from projects they own/manage
   if (user.role !== "AGENT") {
-    filters.createdById = user.id;
+    // Get all projects the user has access to
+    const userProjects = await getProjects();
+    
+    // Filter projects where user is owner or manager
+    const ownedOrManagedProjects = userProjects.filter((project) => {
+      if (project.createdById === user.id) return true; // Owner
+      const membership = project.members.find((m) => m.user.id === user.id);
+      return membership?.role === "MANAGER"; // Manager
+    });
+    
+    const projectIds = ownedOrManagedProjects.map((p) => p.id);
+    
+    // If user has projects they own/manage, include tickets from those projects
+    // Otherwise, just show tickets they created
+    if (projectIds.length > 0) {
+      // We'll need to modify getTickets to support OR conditions
+      // For now, we'll fetch tickets they created and tickets from their projects separately
+      // and combine them, or we can pass projectIds to getTickets
+      filters.createdById = user.id;
+      filters.projectIds = projectIds; // We'll need to add this to getTickets
+    } else {
+      filters.createdById = user.id;
+    }
   }
 
-  // Get users and groups for filter dropdown (only for agents)
+  // Get users, groups, and projects for filter dropdown (only for agents)
   const users = user.role === "AGENT" ? await getAllUsers() : [];
   const groups = user.role === "AGENT" ? await getGroups() : [];
+  const projects = user.role === "AGENT" ? await getUserProjectsForAssignment() : [];
 
   // Get tickets with filters
   const tickets = await getTickets(filters);
@@ -97,7 +125,7 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
     <TicketViewProvider>
       <div className="space-y-6">
           {/* Auto-load filter preset for agents */}
-          <TicketFilterLoader isAgent={user.role === "AGENT"} />
+          <TicketFilterLoader users={users} groups={groups} projects={projects} isAgent={user.role === "AGENT"} />
           
           {/* Header */}
           <div className="flex items-center justify-between flex-wrap gap-4">
@@ -113,9 +141,9 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
             </div>
             <div className="flex items-center gap-3">
               <TicketViewControls />
-              <TicketFilterButton users={users} groups={groups} isAgent={user.role === "AGENT"} />
+              <TicketFilterButton users={users} groups={groups} projects={projects} isAgent={user.role === "AGENT"} />
               <Link href="/dashboard/tickets/new">
-                <Button variant="primary">Create Ticket</Button>
+                <Button variant="primary">Create</Button>
               </Link>
             </div>
           </div>
@@ -146,7 +174,7 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
               <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">No tickets yet</h3>
               <p className="text-neutral-600 dark:text-neutral-400 mb-4">Get started by creating your first ticket</p>
               <Link href="/dashboard/tickets/new">
-                <Button variant="primary">Create Ticket</Button>
+                <Button variant="primary">Create</Button>
               </Link>
             </div>
           ) : (

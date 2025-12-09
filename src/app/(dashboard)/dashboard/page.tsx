@@ -2,16 +2,20 @@ import { getCurrentUser } from "@/lib/utils/auth-server";
 import { formatUserName } from "@/lib/utils/users";
 import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
-import { isModuleEnabled } from "@/server/actions/modules";
+import { canUserViewModule } from "@/server/actions/modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { getTickets } from "@/server/actions/tickets";
 import Link from "next/link";
 import { getTicketTypeLabel, type TicketType } from "@/lib/utils/tickets";
 import type { CurrentUser } from "@/lib/utils/auth-server";
+import { getUserPermissions } from "@/lib/utils/permissions";
 
 async function AgentDashboard({ user }: { user: CurrentUser }) {
-  // Check if tickets module is enabled
-  const ticketsEnabled = await isModuleEnabled(MODULE_KEYS.TICKETS);
+  // Check if user can view tickets module
+  const canViewTickets = await canUserViewModule(user.id, MODULE_KEYS.TICKETS);
+  const userPermissions = await getUserPermissions(user.id);
+  const canCreateTickets = userPermissions.has("tickets.create");
+  const canViewAllTickets = userPermissions.has("tickets.view_all") || userPermissions.has("tickets.view");
   
   // Get all tickets and assigned tickets
   let allTickets: Awaited<ReturnType<typeof getTickets>> = [];
@@ -20,8 +24,8 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
   let unresolvedAssigned: Awaited<ReturnType<typeof getTickets>> = [];
   let unresolvedUnassigned: Awaited<ReturnType<typeof getTickets>> = [];
   
-  if (ticketsEnabled) {
-    allTickets = await getTickets();
+  if (canViewTickets) {
+    allTickets = canViewAllTickets ? await getTickets() : [];
     assignedTickets = await getTickets({ assignedToId: user.id });
     
     // Filter for unresolved tickets only (OPEN, IN_PROGRESS, PENDING)
@@ -91,7 +95,7 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
       </div>
 
       {/* Stats Grid */}
-      {ticketsEnabled && ticketStats && (
+      {canViewTickets && ticketStats && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           {/* Assigned Tickets */}
           <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6 hover:shadow-soft-md transition-all duration-200 hover:scale-[1.02] relative overflow-hidden group">
@@ -225,7 +229,7 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
         <div className="relative z-10">
           <h2 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-neutral-900 to-neutral-700 dark:from-neutral-100 dark:to-neutral-300 bg-clip-text text-transparent mb-6">Quick Actions</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {ticketsEnabled && (
+            {canViewTickets && canViewAllTickets && (
               <>
                 <Link
                   href="/dashboard/tickets?filter=assigned"
@@ -242,37 +246,58 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
                     <p className="text-sm text-neutral-600 dark:text-neutral-400">View tickets assigned to you</p>
                   </div>
                 </Link>
-                <Link
-                  href="/dashboard/tickets?filter=unassigned"
-                  className="group p-5 border-2 border-neutral-200/50 rounded-xl hover:border-warning-300 hover:bg-gradient-to-br hover:from-warning-50 hover:to-warning-50/50 transition-all duration-200 text-left hover:shadow-md relative overflow-hidden"
-                >
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-warning-100 dark:bg-warning-900/0 group-hover:bg-warning-100 dark:bg-warning-900/20 rounded-full blur-2xl -mr-12 -mt-12 transition-all" />
-                  <div className="relative z-10">
-                    <div className="w-10 h-10 bg-warning-100 dark:bg-warning-900 rounded-lg flex items-center justify-center mb-3 group-hover:bg-warning-200 dark:group-hover:bg-warning-800 transition-colors">
-                      <svg className="w-5 h-5 text-warning-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </div>
-                    <h3 className="font-semibold text-neutral-900 dark:text-neutral-100 mb-1 group-hover:text-warning-700 dark:group-hover:text-warning-300 transition-colors">Unassigned Tickets</h3>
-                    <p className="text-sm text-neutral-600 dark:text-neutral-400">Browse available tickets</p>
-                  </div>
-                </Link>
-                <Link
-                  href="/dashboard/tickets"
-                  className="group p-5 border-2 border-neutral-200/50 rounded-xl hover:border-secondary-300 dark:hover:border-secondary-700 hover:bg-gradient-to-br hover:from-secondary-50 dark:hover:from-secondary-900 hover:to-secondary-50/50 dark:hover:to-secondary-900/50 transition-all duration-200 text-left hover:shadow-md relative overflow-hidden"
-                >
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-secondary-100 dark:bg-secondary-900/0 group-hover:bg-secondary-100 dark:bg-secondary-900/20 rounded-full blur-2xl -mr-12 -mt-12 transition-all" />
-                  <div className="relative z-10">
-                    <div className="w-10 h-10 bg-secondary-100 dark:bg-secondary-900 rounded-lg flex items-center justify-center mb-3 group-hover:bg-secondary-200 dark:group-hover:bg-secondary-800 transition-colors">
-                      <svg className="w-5 h-5 text-secondary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                    </div>
-                    <h3 className="font-semibold text-neutral-900 dark:text-neutral-100 mb-1 group-hover:text-secondary-700 dark:group-hover:text-secondary-300 transition-colors">All Tickets</h3>
-                    <p className="text-sm text-neutral-600 dark:text-neutral-400">View all system tickets</p>
-                  </div>
-                </Link>
+                {canViewAllTickets && (
+                  <>
+                    <Link
+                      href="/dashboard/tickets?filter=unassigned"
+                      className="group p-5 border-2 border-neutral-200/50 rounded-xl hover:border-warning-300 dark:hover:border-warning-700 hover:bg-gradient-to-br hover:from-warning-50 dark:hover:from-warning-900 hover:to-warning-50/50 dark:hover:to-warning-900/50 transition-all duration-200 text-left hover:shadow-md relative overflow-hidden"
+                    >
+                      <div className="absolute top-0 right-0 w-24 h-24 bg-warning-100 dark:bg-warning-900/0 group-hover:bg-warning-100 dark:bg-warning-900/20 rounded-full blur-2xl -mr-12 -mt-12 transition-all" />
+                      <div className="relative z-10">
+                        <div className="w-10 h-10 bg-warning-100 dark:bg-warning-900 rounded-lg flex items-center justify-center mb-3 group-hover:bg-warning-200 dark:group-hover:bg-warning-800 transition-colors">
+                          <svg className="w-5 h-5 text-warning-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
+                        <h3 className="font-semibold text-neutral-900 dark:text-neutral-100 mb-1 group-hover:text-warning-700 dark:group-hover:text-warning-200 transition-colors">Unassigned Tickets</h3>
+                        <p className="text-sm text-neutral-600 dark:text-neutral-400">Browse available tickets</p>
+                      </div>
+                    </Link>
+                    <Link
+                      href="/dashboard/tickets"
+                      className="group p-5 border-2 border-neutral-200/50 rounded-xl hover:border-secondary-300 dark:hover:border-secondary-700 hover:bg-gradient-to-br hover:from-secondary-50 dark:hover:from-secondary-900 hover:to-secondary-50/50 dark:hover:to-secondary-900/50 transition-all duration-200 text-left hover:shadow-md relative overflow-hidden"
+                    >
+                      <div className="absolute top-0 right-0 w-24 h-24 bg-secondary-100 dark:bg-secondary-900/0 group-hover:bg-secondary-100 dark:bg-secondary-900/20 rounded-full blur-2xl -mr-12 -mt-12 transition-all" />
+                      <div className="relative z-10">
+                        <div className="w-10 h-10 bg-secondary-100 dark:bg-secondary-900 rounded-lg flex items-center justify-center mb-3 group-hover:bg-secondary-200 dark:group-hover:bg-secondary-800 transition-colors">
+                          <svg className="w-5 h-5 text-secondary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        </div>
+                        <h3 className="font-semibold text-neutral-900 dark:text-neutral-100 mb-1 group-hover:text-secondary-700 dark:group-hover:text-secondary-300 transition-colors">All Tickets</h3>
+                        <p className="text-sm text-neutral-600 dark:text-neutral-400">View all system tickets</p>
+                      </div>
+                    </Link>
+                  </>
+                )}
               </>
+            )}
+            {canViewTickets && canCreateTickets && (
+              <Link
+                href="/dashboard/tickets/new"
+                className="group p-5 border-2 border-neutral-200/50 rounded-xl hover:border-primary-300 hover:bg-gradient-to-br hover:from-primary-50 dark:hover:from-primary-900 hover:to-primary-50/50 dark:hover:to-primary-900/50 transition-all duration-200 text-left hover:shadow-md relative overflow-hidden"
+              >
+                <div className="absolute top-0 right-0 w-24 h-24 bg-primary-100 dark:bg-primary-900/0 group-hover:bg-primary-100 dark:bg-primary-900/20 rounded-full blur-2xl -mr-12 -mt-12 transition-all" />
+                <div className="relative z-10">
+                  <div className="w-10 h-10 bg-primary-100 dark:bg-primary-900 rounded-lg flex items-center justify-center mb-3 group-hover:bg-primary-200 dark:group-hover:bg-primary-800 transition-colors">
+                    <svg className="w-5 h-5 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                  </div>
+                  <h3 className="font-semibold text-neutral-900 dark:text-neutral-100 mb-1 group-hover:text-primary-700 dark:group-hover:text-primary-300 dark:text-primary-300 transition-colors">Create Ticket</h3>
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400">Submit a new support ticket</p>
+                </div>
+              </Link>
             )}
             <Link
               href="/dashboard/profile"
@@ -291,7 +316,7 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
             </Link>
             <Link
               href="/dashboard/settings"
-              className="group p-5 border-2 border-neutral-200/50 rounded-xl hover:border-neutral-300 dark:hover:border-neutral-700 hover:bg-gradient-to-br hover:from-neutral-50 hover:to-neutral-50/50 transition-all duration-200 text-left hover:shadow-md relative overflow-hidden"
+              className="group p-5 border-2 border-neutral-200/50 rounded-xl hover:border-neutral-300 dark:hover:border-neutral-700 hover:bg-gradient-to-br hover:from-neutral-50 dark:hover:from-neutral-800 hover:to-neutral-50/50 dark:hover:to-neutral-800/50 transition-all duration-200 text-left hover:shadow-md relative overflow-hidden"
             >
               <div className="absolute top-0 right-0 w-24 h-24 bg-neutral-100 dark:bg-neutral-800/0 group-hover:bg-neutral-100 dark:bg-neutral-800/20 rounded-full blur-2xl -mr-12 -mt-12 transition-all" />
               <div className="relative z-10">
@@ -301,7 +326,7 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
                 </div>
-                <h3 className="font-semibold text-neutral-900 dark:text-neutral-100 mb-1 group-hover:text-neutral-700 dark:group-hover:text-neutral-300 transition-colors">Settings</h3>
+                <h3 className="font-semibold text-neutral-900 dark:text-neutral-100 mb-1 group-hover:text-neutral-700 dark:group-hover:text-neutral-200 transition-colors">Settings</h3>
                 <p className="text-sm text-neutral-600 dark:text-neutral-400">Update your preferences</p>
               </div>
             </Link>
@@ -310,7 +335,7 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
       </div>
 
       {/* Assigned Tickets */}
-      {ticketsEnabled && ticketStats && ticketStats.assigned > 0 && (
+      {canViewTickets && ticketStats && ticketStats.assigned > 0 && (
         <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6 sm:p-8 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-primary-100 dark:bg-primary-900/10 rounded-full blur-3xl -mr-32 -mt-32" />
           <div className="relative z-10">
@@ -379,7 +404,7 @@ async function AgentDashboard({ user }: { user: CurrentUser }) {
       )}
 
       {/* Unassigned Tickets */}
-      {ticketsEnabled && ticketStats && ticketStats.unassigned > 0 && (
+      {canViewTickets && canViewAllTickets && ticketStats && ticketStats.unassigned > 0 && (
         <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6 sm:p-8 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-warning-100 dark:bg-warning-900/10 rounded-full blur-3xl -mr-32 -mt-32" />
           <div className="relative z-10">
@@ -464,13 +489,16 @@ export default async function DashboardPage() {
     return <AgentDashboard user={user} />;
   }
 
-  // Check if tickets module is enabled
-  const ticketsEnabled = await isModuleEnabled(MODULE_KEYS.TICKETS);
+  // Check if user can view tickets module and has permissions
+  const canViewTickets = await canUserViewModule(user.id, MODULE_KEYS.TICKETS);
+  const userPermissions = await getUserPermissions(user.id);
+  const canCreateTickets = userPermissions.has("tickets.create");
+  const canViewOwnTickets = userPermissions.has("tickets.view");
   
-  // Get ticket stats if module is enabled
+  // Get ticket stats if user can view tickets
   let ticketStats = null;
   let recentTickets: Awaited<ReturnType<typeof getTickets>> = [];
-  if (ticketsEnabled) {
+  if (canViewTickets && canViewOwnTickets) {
     const tickets = await getTickets({ createdById: user.id });
     const openTickets = tickets.filter((t: typeof tickets[0]) => t.status === "OPEN").length;
     const inProgressTickets = tickets.filter((t: typeof tickets[0]) => t.status === "IN_PROGRESS").length;
@@ -522,8 +550,8 @@ export default async function DashboardPage() {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-        {/* Tickets Stat Card - Only show if module is enabled */}
-        {ticketsEnabled && ticketStats && (
+        {/* Tickets Stat Card - Only show if user can view tickets */}
+        {canViewTickets && canViewOwnTickets && ticketStats && (
           <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6 hover:shadow-soft-md transition-all duration-200 hover:scale-[1.02] relative overflow-hidden group">
             <div className="absolute top-0 right-0 w-32 h-32 bg-primary-100 dark:bg-primary-900/20 rounded-full blur-2xl -mr-16 -mt-16 group-hover:bg-primary-200 dark:group-hover:bg-primary-800/30 transition-colors" />
             <div className="relative z-10">
@@ -622,7 +650,7 @@ export default async function DashboardPage() {
         <div className="relative z-10">
           <h2 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-neutral-900 to-neutral-700 dark:from-neutral-100 dark:to-neutral-300 bg-clip-text text-transparent mb-6">Quick Actions</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {ticketsEnabled && (
+            {canViewTickets && canCreateTickets && (
               <Link
                 href="/dashboard/tickets/new"
                 className="group p-5 border-2 border-neutral-200/50 rounded-xl hover:border-primary-300 hover:bg-gradient-to-br hover:from-primary-50 dark:hover:from-primary-900 hover:to-primary-50/50 dark:hover:to-primary-900/50 transition-all duration-200 text-left hover:shadow-md relative overflow-hidden"
@@ -636,6 +664,23 @@ export default async function DashboardPage() {
                   </div>
                   <h3 className="font-semibold text-neutral-900 dark:text-neutral-100 mb-1 group-hover:text-primary-700 dark:group-hover:text-primary-300 dark:text-primary-300 transition-colors">Create Ticket</h3>
                   <p className="text-sm text-neutral-600 dark:text-neutral-400">Submit a new support ticket</p>
+                </div>
+              </Link>
+            )}
+            {canViewTickets && canViewOwnTickets && (
+              <Link
+                href="/dashboard/tickets"
+                className="group p-5 border-2 border-neutral-200/50 rounded-xl hover:border-primary-300 hover:bg-gradient-to-br hover:from-primary-50 dark:hover:from-primary-900 hover:to-primary-50/50 dark:hover:to-primary-900/50 transition-all duration-200 text-left hover:shadow-md relative overflow-hidden"
+              >
+                <div className="absolute top-0 right-0 w-24 h-24 bg-primary-100 dark:bg-primary-900/0 group-hover:bg-primary-100 dark:bg-primary-900/20 rounded-full blur-2xl -mr-12 -mt-12 transition-all" />
+                <div className="relative z-10">
+                  <div className="w-10 h-10 bg-primary-100 dark:bg-primary-900 rounded-lg flex items-center justify-center mb-3 group-hover:bg-primary-200 dark:group-hover:bg-primary-800 transition-colors">
+                    <svg className="w-5 h-5 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <h3 className="font-semibold text-neutral-900 dark:text-neutral-100 mb-1 group-hover:text-primary-700 dark:group-hover:text-primary-300 dark:text-primary-300 transition-colors">My Tickets</h3>
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400">View your tickets</p>
                 </div>
               </Link>
             )}
@@ -656,7 +701,7 @@ export default async function DashboardPage() {
             </Link>
             <Link
               href="/dashboard/settings"
-              className="group p-5 border-2 border-neutral-200/50 rounded-xl hover:border-neutral-300 dark:hover:border-neutral-700 hover:bg-gradient-to-br hover:from-neutral-50 hover:to-neutral-50/50 transition-all duration-200 text-left hover:shadow-md relative overflow-hidden"
+              className="group p-5 border-2 border-neutral-200/50 rounded-xl hover:border-neutral-300 dark:hover:border-neutral-700 hover:bg-gradient-to-br hover:from-neutral-50 dark:hover:from-neutral-800 hover:to-neutral-50/50 dark:hover:to-neutral-800/50 transition-all duration-200 text-left hover:shadow-md relative overflow-hidden"
             >
               <div className="absolute top-0 right-0 w-24 h-24 bg-neutral-100 dark:bg-neutral-800/0 group-hover:bg-neutral-100 dark:bg-neutral-800/20 rounded-full blur-2xl -mr-12 -mt-12 transition-all" />
               <div className="relative z-10">
@@ -666,7 +711,7 @@ export default async function DashboardPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
                 </div>
-                <h3 className="font-semibold text-neutral-900 dark:text-neutral-100 mb-1 group-hover:text-neutral-700 dark:group-hover:text-neutral-300 transition-colors">Settings</h3>
+                <h3 className="font-semibold text-neutral-900 dark:text-neutral-100 mb-1 group-hover:text-neutral-700 dark:group-hover:text-neutral-200 transition-colors">Settings</h3>
                 <p className="text-sm text-neutral-600 dark:text-neutral-400">Update your preferences</p>
               </div>
             </Link>
@@ -674,8 +719,8 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Recent Tickets - Only show if module is enabled */}
-      {ticketsEnabled && ticketStats && ticketStats.total > 0 && (
+      {/* Recent Tickets - Only show if user can view tickets */}
+      {canViewTickets && canViewOwnTickets && ticketStats && ticketStats.total > 0 && (
         <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6 sm:p-8 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-primary-100 dark:bg-primary-900/10 rounded-full blur-3xl -mr-32 -mt-32" />
           <div className="relative z-10">

@@ -164,11 +164,21 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
 /**
  * Hook to access theme context
+ * Returns default values if ThemeProvider is not available (for SSR safety)
  */
 export function useTheme() {
   const context = useContext(ThemeContext);
   if (context === undefined) {
-    throw new Error("useTheme must be used within a ThemeProvider");
+    // Return default values instead of throwing to handle SSR edge cases
+    // This should not happen in normal usage as ThemeProvider is in root layout
+    console.warn("useTheme called outside ThemeProvider, using default values");
+    return {
+      theme: "system" as Theme,
+      effectiveTheme: "light" as "light" | "dark",
+      setTheme: () => {
+        console.warn("setTheme called but ThemeProvider is not available");
+      },
+    };
   }
   return context;
 }

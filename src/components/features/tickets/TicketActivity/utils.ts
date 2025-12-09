@@ -1,9 +1,3 @@
-export const formatDate = (date: Date) => {
-  return new Date(date).toLocaleString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-};
+import { formatDateTime } from "@/lib/utils/date";
+
+export const formatDate = formatDateTime;

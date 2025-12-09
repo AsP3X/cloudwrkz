@@ -11,7 +11,9 @@ import { Dialog } from "@/components/ui/Dialog";
 import { UserCreateDialog } from "./UserCreateDialog";
 import { UserEditDialog } from "./UserEditDialog";
 import { UserDeleteDialog } from "./UserDeleteDialog";
-import { createUserAdmin, updateUserAdmin, deleteUserAdmin, bulkUpdateUserStatusAdmin, type UserFilters } from "@/server/actions/admin/users";
+import { UserBanDialog } from "./UserBanDialog";
+import { UserUnbanDialog } from "./UserUnbanDialog";
+import { createUserAdmin, updateUserAdmin, deleteUserAdmin, bulkUpdateUserStatusAdmin, banUserAdmin, unbanUserAdmin, type UserFilters } from "@/server/actions/admin/users";
 import type { getAllUsersAdmin } from "@/server/actions/admin/users";
 import { formatDate } from "@/lib/utils/date";
 
@@ -28,6 +30,8 @@ export function UserManagementPage({ initialData }: UserManagementPageProps) {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [banDialogOpen, setBanDialogOpen] = useState(false);
+  const [unbanDialogOpen, setUnbanDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -83,7 +87,31 @@ export function UserManagementPage({ initialData }: UserManagementPageProps) {
     return result;
   };
 
-  const handleBulkStatusUpdate = async (status: "ACTIVE" | "PENDING" | "SUSPENDED" | "DELETED") => {
+  const handleBan = async (userId: string, reason: string) => {
+    setIsLoading(true);
+    const result = await banUserAdmin(userId, { reason });
+    setIsLoading(false);
+    if (result.success) {
+      setBanDialogOpen(false);
+      setSelectedUser(null);
+      router.refresh();
+    }
+    return result;
+  };
+
+  const handleUnban = async (userId: string, reason: string) => {
+    setIsLoading(true);
+    const result = await unbanUserAdmin(userId, { reason });
+    setIsLoading(false);
+    if (result.success) {
+      setUnbanDialogOpen(false);
+      setSelectedUser(null);
+      router.refresh();
+    }
+    return result;
+  };
+
+  const handleBulkStatusUpdate = async (status: "ACTIVE" | "PENDING" | "SUSPENDED" | "BANNED" | "DELETED") => {
     if (selectedUsers.size === 0) return;
     setIsLoading(true);
     const result = await bulkUpdateUserStatusAdmin(Array.from(selectedUsers), status);
@@ -119,6 +147,8 @@ export function UserManagementPage({ initialData }: UserManagementPageProps) {
       case "PENDING":
         return "warning";
       case "SUSPENDED":
+        return "error";
+      case "BANNED":
         return "error";
       case "DELETED":
         return "default";
@@ -172,6 +202,7 @@ export function UserManagementPage({ initialData }: UserManagementPageProps) {
               { value: "ACTIVE", label: "Active" },
               { value: "PENDING", label: "Pending" },
               { value: "SUSPENDED", label: "Suspended" },
+              { value: "BANNED", label: "Banned" },
               { value: "DELETED", label: "Deleted" },
             ]}
             value={filters.status || ""}
@@ -206,6 +237,7 @@ export function UserManagementPage({ initialData }: UserManagementPageProps) {
                   { value: "", label: "Select action..." },
                   { value: "ACTIVE", label: "Activate" },
                   { value: "SUSPENDED", label: "Suspend" },
+                  { value: "BANNED", label: "Ban" },
                   { value: "DELETED", label: "Delete" },
                 ]}
                 value=""
@@ -289,6 +321,29 @@ export function UserManagementPage({ initialData }: UserManagementPageProps) {
                       >
                         Edit
                       </Button>
+                      {user.status === "BANNED" ? (
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedUser(user);
+                            setUnbanDialogOpen(true);
+                          }}
+                        >
+                          Unban
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedUser(user);
+                            setBanDialogOpen(true);
+                          }}
+                        >
+                          Ban
+                        </Button>
+                      )}
                       <Button
                         variant="danger"
                         size="sm"
@@ -357,6 +412,20 @@ export function UserManagementPage({ initialData }: UserManagementPageProps) {
             onOpenChange={setEditDialogOpen}
             user={selectedUser}
             onSubmit={(data) => handleEdit(selectedUser.id, data)}
+            isLoading={isLoading}
+          />
+          <UserBanDialog
+            open={banDialogOpen}
+            onOpenChange={setBanDialogOpen}
+            user={selectedUser}
+            onConfirm={(reason) => handleBan(selectedUser.id, reason)}
+            isLoading={isLoading}
+          />
+          <UserUnbanDialog
+            open={unbanDialogOpen}
+            onOpenChange={setUnbanDialogOpen}
+            user={selectedUser}
+            onConfirm={(reason) => handleUnban(selectedUser.id, reason)}
             isLoading={isLoading}
           />
           <UserDeleteDialog

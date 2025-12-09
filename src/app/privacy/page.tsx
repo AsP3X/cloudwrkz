@@ -35,7 +35,7 @@ export default function PrivacyPage() {
                 Privacy Policy
               </h1>
               <p className="text-neutral-600 dark:text-neutral-400">
-                Last updated: {new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
+                Last updated: December 5, 2025
               </p>
               <p className="text-sm text-neutral-500 dark:text-neutral-500 mt-2">
                 Compliant with GDPR (EU) and BDSG (Germany)

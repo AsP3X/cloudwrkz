@@ -1,11 +1,11 @@
 "use server";
 
 import { prisma } from "@/lib/db/prisma";
-import { requireAuth } from "@/lib/utils/auth-server";
+import { requireAuth, requireAnyPermission } from "@/lib/utils/auth-server";
 import { isModuleEnabled } from "./modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { revalidatePath } from "next/cache";
-import { generateRandomTimerName, calculateElapsedTime } from "@/lib/utils/time-tracking";
+import { generateRandomTimerName, calculateElapsedTime, generateTimerNumber, parseTimerNumber } from "@/lib/utils/time-tracking";
 import { timeTrackingEvents } from "@/lib/utils/event-emitter";
 import { type TimeEntryStatus } from "@prisma/client";
 import { logTicketActivity } from "../utils/ticket-activity-logger";
@@ -82,8 +82,63 @@ export async function createTimeEntry(
 
     const user = await requireAuth();
 
+    // Check permission if creating from a ticket
+    if (input.ticketId) {
+      try {
+        await requireAnyPermission("tickets.time_entries.create", "time_tracking.create");
+      } catch {
+        // Fallback to role check for backward compatibility
+        if (!["ADMIN", "MODERATOR", "AGENT"].includes(user.role)) {
+          return {
+            success: false,
+            error: "You don't have permission to create time entries for tickets",
+          };
+        }
+      }
+    } else {
+      // For non-ticket time entries, check general time tracking permission
+      try {
+        await requireAnyPermission("time_tracking.create");
+      } catch {
+        // Fallback to role check for backward compatibility
+        if (!["ADMIN", "MODERATOR", "AGENT", "USER"].includes(user.role)) {
+          return {
+            success: false,
+            error: "You don't have permission to create time entries",
+          };
+        }
+      }
+    }
+
     // Generate name if not provided
-    const name = input.name?.trim() || generateRandomTimerName();
+    let name = input.name?.trim();
+    if (!name) {
+      // Find the highest sequence number for TMR- prefix
+      const existingTimers = await prisma.timeEntry.findMany({
+        where: {
+          name: {
+            startsWith: "TMR-",
+          },
+        },
+        select: {
+          name: true,
+        },
+        orderBy: {
+          name: "desc",
+        },
+        take: 1,
+      });
+
+      let nextSequence = 1;
+      if (existingTimers.length > 0) {
+        const parsed = parseTimerNumber(existingTimers[0].name);
+        if (parsed) {
+          nextSequence = parsed.sequence + 1;
+        }
+      }
+
+      name = generateTimerNumber(nextSequence);
+    }
 
     // Validate ticketId if provided
     if (input.ticketId) {
@@ -169,7 +224,35 @@ export async function createTimeEntryWithDuration(
 
     const user = await requireAuth();
 
-    const name = input.name?.trim() || generateRandomTimerName();
+    // Generate name if not provided
+    let name = input.name?.trim();
+    if (!name) {
+      // Find the highest sequence number for TMR- prefix
+      const existingTimers = await prisma.timeEntry.findMany({
+        where: {
+          name: {
+            startsWith: "TMR-",
+          },
+        },
+        select: {
+          name: true,
+        },
+        orderBy: {
+          name: "desc",
+        },
+        take: 1,
+      });
+
+      let nextSequence = 1;
+      if (existingTimers.length > 0) {
+        const parsed = parseTimerNumber(existingTimers[0].name);
+        if (parsed) {
+          nextSequence = parsed.sequence + 1;
+        }
+      }
+
+      name = generateTimerNumber(nextSequence);
+    }
 
     if (input.ticketId) {
       const ticket = await prisma.ticket.findUnique({
@@ -1167,6 +1250,16 @@ export async function getTimeEntriesForTicket(ticketId: string) {
     }
 
     const user = await requireAuth();
+
+    // Check permission to view ticket time entries
+    try {
+      await requireAnyPermission("tickets.time_entries.view", "time_tracking.view", "time_tracking.view_all");
+    } catch {
+      // Fallback to role check for backward compatibility
+      if (!["ADMIN", "MODERATOR", "AGENT", "USER"].includes(user.role)) {
+        return [];
+      }
+    }
 
     const entries = await prisma.timeEntry.findMany({
       where: {

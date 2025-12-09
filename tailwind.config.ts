@@ -127,6 +127,12 @@ const config: Config = {
         "fade-out": "fadeOut 0.2s ease-in-out",
         "slide-in": "slideIn 0.3s ease-out",
         "slide-out": "slideOut 0.3s ease-in",
+        "pulse-delay-700": "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) 0.7s infinite",
+        "pulse-delay-1000": "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) 1s infinite",
+      },
+      transitionDelay: {
+        "700": "700ms",
+        "1000": "1000ms",
       },
       keyframes: {
         fadeIn: {
