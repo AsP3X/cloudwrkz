@@ -497,8 +497,8 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
             </div>
           </div>
 
-          {/* Time Tracking Section */}
-          {timeTrackingEnabled && (
+          {/* Time Tracking Section - Only visible to agents, admins, and moderators */}
+          {timeTrackingEnabled && isAgent && (
             <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
               <TicketTimerSection
                 ticketId={ticket.id}

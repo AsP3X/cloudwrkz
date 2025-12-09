@@ -288,6 +288,9 @@ export const TicketCommentsAndActivity = ({
     </div>
   );
 
+  // Only show timers tab for agents, admins, and moderators
+  const isAgent = userRole === "AGENT" || userRole === "ADMIN" || userRole === "MODERATOR";
+
   const tabs = [
     {
       id: "comments",
@@ -299,11 +302,16 @@ export const TicketCommentsAndActivity = ({
       label: "Activity",
       content: activityTabContent,
     },
-    {
-      id: "timers",
-      label: `Timers (${stoppedTimeEntries.length})`,
-      content: timersTabContent,
-    },
+    // Only include timers tab for agents, admins, and moderators
+    ...(isAgent
+      ? [
+          {
+            id: "timers",
+            label: `Timers (${stoppedTimeEntries.length})`,
+            content: timersTabContent,
+          },
+        ]
+      : []),
   ];
 
   return <Tabs tabs={tabs} defaultTab="comments" />;
