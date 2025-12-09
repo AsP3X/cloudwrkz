@@ -48,13 +48,13 @@ export const TimeEntryBulkActionsToolbar = ({
   };
 
   return (
-    <div className="bg-primary-50 dark:bg-primary-900/20 border-b border-primary-200 dark:border-primary-800 px-6 py-3 flex items-center justify-between gap-4">
-      <div className="flex items-center gap-4">
+    <div className="bg-primary-50 dark:bg-primary-900/20 border-b border-primary-200 dark:border-primary-800 px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
         <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
           {selectedCount} entr{selectedCount !== 1 ? "ies" : "y"} selected
         </span>
-        <div className="h-6 w-px bg-neutral-300 dark:bg-neutral-600" />
-        <div className="flex items-center gap-2">
+        <div className="hidden sm:block h-6 w-px bg-neutral-300 dark:bg-neutral-600" />
+        <div className="flex flex-wrap items-center gap-2">
           {/* Status Change Dropdown */}
           <div className="relative" ref={statusMenuRef}>
             <Button
@@ -147,7 +147,7 @@ export const TimeEntryBulkActionsToolbar = ({
         variant="ghost"
         size="sm"
         onClick={onClearSelection}
-        className="text-sm"
+        className="text-sm w-full sm:w-auto"
       >
         Clear Selection
       </Button>

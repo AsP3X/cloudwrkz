@@ -6,6 +6,8 @@ import { TimeEntryList } from "../TimeEntryList";
 import { StartTimerDialog } from "../StartTimerDialog";
 import { AddTimeEntryDialog } from "../AddTimeEntryDialog";
 import { TimeTrackingFilterButton } from "../TimeTrackingFilterButton";
+import { TimeEntryViewToggle } from "../TimeEntryViewToggle";
+import { TimeEntryViewProvider, useTimeEntryView } from "../TimeEntryViewContext";
 import { getActiveTimeEntries } from "@/server/actions/time-tracking";
 import { useTimeTrackingEvents } from "@/lib/hooks/useTimeTrackingEvents";
 import { type TimeEntryStatus } from "@prisma/client";
@@ -44,9 +46,9 @@ function TotalTimeDisplay({ entries }: { entries: TimeEntry[] }) {
   const staticHours = Math.floor(staticTotal / 3600);
 
   return (
-    <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
-      <div className="text-sm text-neutral-600 dark:text-neutral-400">Total Time</div>
-      <div className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-1" suppressHydrationWarning>
+    <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-4 sm:p-6">
+      <div className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400">Total Time</div>
+      <div className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-1" suppressHydrationWarning>
         {mounted ? totalHours : staticHours}h
       </div>
     </div>
@@ -81,7 +83,8 @@ interface TimeTrackingPageProps {
   userTimezone: string;
 }
 
-export function TimeTrackingPage({ initialEntries, initialTotal, initialPage, userTimezone }: TimeTrackingPageProps) {
+function TimeTrackingPageContent({ initialEntries, initialTotal, initialPage, userTimezone }: TimeTrackingPageProps) {
+  const { viewMode, setViewMode } = useTimeEntryView();
   const [showStartDialog, setShowStartDialog] = React.useState(false);
   const [showAddDialog, setShowAddDialog] = React.useState(false);
   const [activeEntries, setActiveEntries] = React.useState<TimeEntry[]>(
@@ -119,22 +122,23 @@ export function TimeTrackingPage({ initialEntries, initialTotal, initialPage, us
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100">Time Tracking</h1>
-          <p className="text-neutral-600 dark:text-neutral-400 mt-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-neutral-100">Time Tracking</h1>
+          <p className="text-sm sm:text-base text-neutral-600 dark:text-neutral-400 mt-1">
             Track and manage your time entries
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
+          <TimeEntryViewToggle currentView={viewMode} onViewChange={setViewMode} />
           <TimeTrackingFilterButton />
-          <Button variant="outline" onClick={() => setShowAddDialog(true)}>
+          <Button variant="outline" onClick={() => setShowAddDialog(true)} className="w-full sm:w-auto">
             <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
             Add Entry
           </Button>
-          <Button onClick={() => setShowStartDialog(true)}>
+          <Button onClick={() => setShowStartDialog(true)} className="w-full sm:w-auto">
             <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -145,14 +149,14 @@ export function TimeTrackingPage({ initialEntries, initialTotal, initialPage, us
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
-          <div className="text-sm text-neutral-600 dark:text-neutral-400">Total Entries</div>
-          <div className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-1">{initialTotal}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-4 sm:p-6">
+          <div className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400">Total Entries</div>
+          <div className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-1">{initialTotal}</div>
         </div>
-        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
-          <div className="text-sm text-neutral-600 dark:text-neutral-400">Active Timers</div>
-          <div className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-1">
+        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-4 sm:p-6">
+          <div className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400">Active Timers</div>
+          <div className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-1">
             {initialEntries.filter((e) => e.status === "RUNNING" || e.status === "PAUSED").length}
           </div>
         </div>
@@ -167,5 +171,13 @@ export function TimeTrackingPage({ initialEntries, initialTotal, initialPage, us
       <AddTimeEntryDialog open={showAddDialog} onOpenChange={setShowAddDialog} />
 
     </div>
+  );
+}
+
+export function TimeTrackingPage(props: TimeTrackingPageProps) {
+  return (
+    <TimeEntryViewProvider>
+      <TimeTrackingPageContent {...props} />
+    </TimeEntryViewProvider>
   );
 }

@@ -104,28 +104,23 @@ export function FloatingTimerWidget({ activeEntries }: FloatingTimerWidgetProps)
     <div
       id="floating-timer-widget"
       className={cn(
-        "transition-all duration-300",
-        isExpanded ? "w-80" : "w-auto"
+        "fixed bottom-4 right-4 sm:bottom-6 sm:right-6 transition-all duration-300 z-[99999]",
+        isExpanded ? "w-[calc(100vw-32px)] sm:w-80" : "w-auto"
       )}
       style={{
-        position: "fixed",
-        bottom: "24px",
-        right: "24px",
-        zIndex: 99999,
         pointerEvents: "auto",
         margin: 0,
         padding: 0,
-        left: "auto",
-        top: "auto",
       } as React.CSSProperties}
     >
       {!isExpanded ? (
-        // Collapsed state - show badge with count
+        // Collapsed state - show squircle badge with icon only
         <button
           onClick={() => setIsExpanded(true)}
-          className="flex items-center gap-2 px-4 py-3 bg-primary-600 dark:bg-primary-500 text-white rounded-lg shadow-lg hover:bg-primary-700 dark:hover:bg-primary-600 transition-colors"
+          className="flex items-center justify-center w-16 h-16 sm:w-18 sm:h-18 bg-primary-600 dark:bg-primary-500 text-white rounded-2xl shadow-lg hover:bg-primary-700 dark:hover:bg-primary-600 transition-colors"
+          aria-label={`Active Timers (${activeEntries.length})`}
         >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="w-6 h-6 sm:w-7 sm:h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -133,11 +128,10 @@ export function FloatingTimerWidget({ activeEntries }: FloatingTimerWidgetProps)
               d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
             />
           </svg>
-          <span className="font-medium">Active Timers ({activeEntries.length})</span>
         </button>
       ) : (
         // Expanded state - show list of timers
-        <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+        <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl border border-neutral-200 dark:border-neutral-800 overflow-hidden w-full">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-primary-50 dark:bg-primary-900/20 border-b border-primary-200 dark:border-primary-800">
             <div className="flex items-center gap-2">

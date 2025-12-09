@@ -8,6 +8,7 @@ import { DurationDisplay } from "../DurationDisplay";
 import { TimeEntryBulkActionsToolbar } from "../TimeEntryBulkActionsToolbar";
 import { TimeEntryBulkDeleteDialog } from "../TimeEntryBulkDeleteDialog";
 import { TimeEntryBulkTagDialog } from "../TimeEntryBulkTagDialog";
+import { useTimeEntryView } from "../TimeEntryViewContext";
 import { getStatusColor, getStatusLabel, canPause, canResume, canStop } from "@/lib/utils/time-tracking";
 import { formatDateTimeInTimezone } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
@@ -43,6 +44,7 @@ interface TimeEntryListProps {
 
 export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListProps) {
   const router = useRouter();
+  const { viewMode } = useTimeEntryView();
   const [processing, setProcessing] = React.useState<Set<string>>(new Set());
   const [selectedEntries, setSelectedEntries] = React.useState<Set<string>>(new Set());
   const [isProcessing, setIsProcessing] = React.useState(false);
@@ -168,9 +170,9 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
   // Early return after all hooks
   if (entries.length === 0) {
     return (
-      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-12 text-center">
+      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8 sm:p-12 text-center">
         <svg
-          className="w-16 h-16 mx-auto text-neutral-400 dark:text-neutral-600 mb-4"
+          className="w-12 h-12 sm:w-16 sm:h-16 mx-auto text-neutral-400 dark:text-neutral-600 mb-4"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -182,8 +184,8 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
             d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
           />
         </svg>
-        <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">No time entries</h3>
-        <p className="text-neutral-600 dark:text-neutral-400">Get started by creating your first time entry.</p>
+        <h3 className="text-base sm:text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">No time entries</h3>
+        <p className="text-sm sm:text-base text-neutral-600 dark:text-neutral-400">Get started by creating your first time entry.</p>
       </div>
     );
   }
@@ -302,7 +304,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
             onClearSelection={handleClearSelection}
           />
           {error && (
-            <div className="px-6 py-3 bg-error-50 dark:bg-error-950 border-b border-error-200 dark:border-error-800">
+            <div className="px-4 sm:px-6 py-3 bg-error-50 dark:bg-error-950 border-b border-error-200 dark:border-error-800">
               <div className="flex items-center gap-2">
                 <svg
                   className="w-5 h-5 text-error-600 dark:text-error-400 flex-shrink-0"
@@ -317,17 +319,172 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
                     d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                   />
                 </svg>
-                <p className="text-sm font-medium text-error-800 dark:text-error-200">{error}</p>
+                <p className="text-sm font-medium text-error-800 dark:text-error-200 break-words">{error}</p>
               </div>
             </div>
           )}
         </>
       )}
+      {/* Card View */}
+      {viewMode === "card" && (
+      <div className="divide-y divide-neutral-200 dark:divide-neutral-700">
+        {entries.map((entry) => {
+          const isProcessingEntry = processing.has(entry.id);
+          const isSelected = mounted && selectedEntries.has(entry.id);
+          
+          const cardClassName = cn(
+            "p-4 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors",
+            isSelected && "bg-primary-50/50 dark:bg-primary-900/10"
+          );
+
+          return (
+            <div key={entry.id} className={cardClassName}>
+              <div className="flex items-start gap-3 mb-3">
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    handleSelectEntry(entry.id, e.target.checked);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-4 h-4 mt-1 text-primary-600 bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 cursor-pointer flex-shrink-0"
+                  aria-label={`Select ${entry.name}`}
+                />
+                <div className="flex-1 min-w-0">
+                  <Link 
+                    href={`/dashboard/time-tracking/${entry.id}`}
+                    className="block font-semibold text-base text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400 mb-1"
+                  >
+                    {entry.name}
+                  </Link>
+                  {entry.description && (
+                    <div className="text-sm text-neutral-600 dark:text-neutral-400 mb-2 line-clamp-2">
+                      {entry.description}
+                    </div>
+                  )}
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <Badge className={getStatusColor(entry.status)}>{getStatusLabel(entry.status)}</Badge>
+                    <DurationDisplay entry={entry} className="font-mono text-sm text-neutral-700 dark:text-neutral-300" />
+                  </div>
+                </div>
+              </div>
+              
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
+                  <span className="font-medium min-w-[80px]">Started:</span>
+                  <span className="text-neutral-900 dark:text-neutral-100">{formatDate(entry.startedAt)}</span>
+                </div>
+                <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
+                  <span className="font-medium min-w-[80px]">Timezone:</span>
+                  <span className="font-mono text-xs text-neutral-900 dark:text-neutral-100">{userTimezone}</span>
+                </div>
+                {entry.location && (
+                  <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
+                    <span className="font-medium min-w-[80px]">Location:</span>
+                    <div className="flex items-center gap-1 text-neutral-900 dark:text-neutral-100">
+                      <svg className="w-4 h-4 text-neutral-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      <span className="truncate">{entry.location}</span>
+                    </div>
+                  </div>
+                )}
+                {entry.tags.length > 0 && (
+                  <div className="flex items-start gap-2">
+                    <span className="font-medium min-w-[80px] text-neutral-600 dark:text-neutral-400 pt-1">Tags:</span>
+                    <div className="flex flex-wrap gap-1 flex-1">
+                      {entry.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="px-2 py-1 text-xs rounded-full bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 mt-3 pt-3 border-t border-neutral-200 dark:border-neutral-700" onClick={(e) => e.stopPropagation()}>
+                {canPause(entry.status) && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handlePause(entry.id);
+                    }}
+                    disabled={isProcessingEntry || isProcessing}
+                    className="flex-1 px-3 py-2 text-sm font-medium bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300 rounded hover:bg-yellow-200 dark:hover:bg-yellow-800 disabled:opacity-50 transition-colors"
+                  >
+                    Pause
+                  </button>
+                )}
+                {canResume(entry.status) && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleResume(entry.id);
+                    }}
+                    disabled={isProcessingEntry || isProcessing}
+                    className="flex-1 px-3 py-2 text-sm font-medium bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded hover:bg-green-200 dark:hover:bg-green-800 disabled:opacity-50 transition-colors"
+                  >
+                    Resume
+                  </button>
+                )}
+                {canStop(entry.status) && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleStop(entry.id);
+                    }}
+                    disabled={isProcessingEntry || isProcessing}
+                    className="flex-1 px-3 py-2 text-sm font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 disabled:opacity-50 transition-colors"
+                  >
+                    Stop
+                  </button>
+                )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingEntry(entry);
+                  }}
+                  disabled={isProcessingEntry || isProcessing}
+                  className="px-3 py-2 text-neutral-600 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 disabled:opacity-50"
+                  title="Edit"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete(entry.id);
+                  }}
+                  disabled={isProcessingEntry || isProcessing}
+                  className="px-3 py-2 text-error-600 dark:text-error-400 hover:text-error-700 dark:hover:text-error-300 disabled:opacity-50"
+                  title="Delete"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      )}
+
+      {/* Table View */}
+      {viewMode === "table" && (
       <div className="overflow-x-auto">
-        <table className="w-full">
+        <table className="w-full min-w-[800px]">
           <thead className="bg-neutral-50 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider w-12">
+              <th className="px-3 sm:px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider w-12">
                 <input
                   type="checkbox"
                   ref={selectAllRef}
@@ -337,28 +494,28 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
                   aria-label="Select all entries"
                 />
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+              <th className="px-3 sm:px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                 Name
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+              <th className="px-3 sm:px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                 Status
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+              <th className="px-3 sm:px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                 Duration
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+              <th className="px-3 sm:px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                 Started
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+              <th className="px-3 sm:px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden lg:table-cell">
                 Timezone
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+              <th className="px-3 sm:px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden md:table-cell">
                 Location
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+              <th className="px-3 sm:px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                 Tags
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+              <th className="px-3 sm:px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                 Actions
               </th>
             </tr>
@@ -366,11 +523,8 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
           <tbody className="divide-y divide-neutral-200 dark:divide-neutral-700">
             {entries.map((entry) => {
               const isProcessingEntry = processing.has(entry.id);
-              // Only check selection state after mount to avoid hydration mismatch
               const isSelected = mounted && selectedEntries.has(entry.id);
               
-              // Base classes that should always be present (same on server and client)
-              // Using cn to ensure proper class merging
               const rowClassName = cn(
                 "hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors",
                 isSelected && "bg-primary-50/50 dark:bg-primary-900/10"
@@ -381,7 +535,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
                   key={entry.id}
                   className={rowClassName}
                 >
-                  <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-3 sm:px-6 py-4" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
                       checked={isSelected}
@@ -393,48 +547,48 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
                       aria-label={`Select ${entry.name}`}
                     />
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-3 sm:px-6 py-4">
                     <Link 
                       href={`/dashboard/time-tracking/${entry.id}`}
-                      className="font-medium text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400"
+                      className="font-medium text-sm sm:text-base text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400"
                     >
                       {entry.name}
                     </Link>
                     {entry.description && (
-                      <div className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                      <div className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 mt-1 line-clamp-1">
                         {entry.description}
                       </div>
                     )}
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-3 sm:px-6 py-4">
                     <Badge className={getStatusColor(entry.status)}>{getStatusLabel(entry.status)}</Badge>
                   </td>
-                  <td className="px-6 py-4">
-                    <DurationDisplay entry={entry} className="font-mono text-sm" />
+                  <td className="px-3 sm:px-6 py-4">
+                    <DurationDisplay entry={entry} className="font-mono text-xs sm:text-sm" />
                   </td>
-                  <td className="px-6 py-4 text-sm text-neutral-600 dark:text-neutral-400">
+                  <td className="px-3 sm:px-6 py-4 text-xs sm:text-sm text-neutral-600 dark:text-neutral-400">
                     {formatDate(entry.startedAt)}
                   </td>
-                  <td className="px-6 py-4 text-sm text-neutral-600 dark:text-neutral-400">
+                  <td className="px-3 sm:px-6 py-4 text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 hidden lg:table-cell">
                     <span className="font-mono text-xs">{userTimezone}</span>
                   </td>
-                  <td className="px-6 py-4 text-sm text-neutral-600 dark:text-neutral-400">
+                  <td className="px-3 sm:px-6 py-4 text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 hidden md:table-cell">
                     {entry.location ? (
                       <div className="flex items-center gap-1">
                         <svg className="w-4 h-4 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
-                        <span>{entry.location}</span>
+                        <span className="truncate max-w-[120px]">{entry.location}</span>
                       </div>
                     ) : (
                       <span className="text-xs text-neutral-400">—</span>
                     )}
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-3 sm:px-6 py-4">
                     {entry.tags.length > 0 ? (
                       <div className="flex flex-wrap gap-1">
-                        {entry.tags.map((tag) => (
+                        {entry.tags.slice(0, 2).map((tag) => (
                           <span
                             key={tag}
                             className="px-2 py-1 text-xs rounded-full bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300"
@@ -442,12 +596,17 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
                             {tag}
                           </span>
                         ))}
+                        {entry.tags.length > 2 && (
+                          <span className="px-2 py-1 text-xs rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400">
+                            +{entry.tags.length - 2}
+                          </span>
+                        )}
                       </div>
                     ) : (
                       <span className="text-xs text-neutral-400">—</span>
                     )}
                   </td>
-                  <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-3 sm:px-6 py-4" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-2">
                       {canPause(entry.status) && (
                         <button
@@ -530,6 +689,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
           </tbody>
         </table>
       </div>
+      )}
       {showDeleteDialog && (
         <TimeEntryBulkDeleteDialog
           open={showDeleteDialog}

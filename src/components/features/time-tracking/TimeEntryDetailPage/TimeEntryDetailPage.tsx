@@ -169,10 +169,10 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
           <Link href="/dashboard/time-tracking">
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" className="w-full sm:w-auto">
               <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
@@ -180,13 +180,13 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
             </Button>
           </Link>
           <div>
-            <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">{entry.name}</h1>
-            <p className="text-neutral-600 dark:text-neutral-400">
+            <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">{entry.name}</h1>
+            <p className="text-sm sm:text-base text-neutral-600 dark:text-neutral-400">
               Created {formatDate(entry.createdAt)}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {!isEditing && (
             <>
               <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
@@ -254,7 +254,7 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
 
       {error && (
         <div className="bg-error-50 dark:bg-error-900/20 border border-error-200 dark:border-error-800 rounded-lg p-4">
-          <p className="text-error-700 dark:text-error-300 text-sm">{error}</p>
+          <p className="text-error-700 dark:text-error-300 text-sm break-words">{error}</p>
         </div>
       )}
 
@@ -262,8 +262,8 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
           {/* Details Card */}
-          <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
-            <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">Details</h2>
+          <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-4 sm:p-6">
+            <h2 className="text-lg sm:text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">Details</h2>
             {isEditing ? (
               <TimeEntryEditForm
                 entry={entry}
@@ -351,8 +351,8 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
         {/* Sidebar */}
         <div className="space-y-6">
           {/* Timeline Card */}
-          <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
-            <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">Timeline</h2>
+          <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-4 sm:p-6">
+            <h2 className="text-lg sm:text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">Timeline</h2>
             <div className="space-y-4">
               <div>
                 <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">Timezone</label>
@@ -394,8 +394,8 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
           </div>
 
           {/* User Info Card */}
-          <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
-            <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">User</h2>
+          <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-4 sm:p-6">
+            <h2 className="text-lg sm:text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">User</h2>
             <div>
               <p className="text-sm text-neutral-900 dark:text-neutral-100">{entry.user.name || entry.user.email}</p>
               {entry.user.name && (
