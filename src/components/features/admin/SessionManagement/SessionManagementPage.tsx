@@ -40,12 +40,42 @@ export function SessionManagementPage({ initialData }: SessionManagementPageProp
     page: initialData.page,
   });
 
+  const [localSearch, setLocalSearch] = useState("");
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
+    // Initialize with all user IDs expanded
+    const userIds = new Set<string>();
+    initialData.sessions.forEach((session) => {
+      userIds.add(session.userId);
+    });
+    return userIds;
+  });
+
   const updateFilters = (newFilters: Partial<SessionFilters>) => {
     const updated = { ...filters, ...newFilters, page: 1 };
     setFilters(updated);
     const params = new URLSearchParams();
     if (updated.search) params.set("search", updated.search);
     router.push(`/dashboard/admin/sessions?${params.toString()}`);
+  };
+
+  const toggleGroup = (userId: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) {
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
+      return next;
+    });
+  };
+
+  const expandAllGroups = () => {
+    setExpandedGroups(new Set(groupedSessions.map((g) => g.userId)));
+  };
+
+  const collapseAllGroups = () => {
+    setExpandedGroups(new Set());
   };
 
   const handleDeleteSession = async (sessionId: string) => {
@@ -167,9 +197,34 @@ export function SessionManagementPage({ initialData }: SessionManagementPageProp
     return Array.from(groups.values());
   }, [initialData.sessions]);
 
+  // Filter groups based on local search
+  const filteredGroups = useMemo(() => {
+    if (!localSearch.trim()) {
+      return groupedSessions;
+    }
+
+    const searchLower = localSearch.toLowerCase();
+    return groupedSessions.filter((group) => {
+      const name = group.user.name?.toLowerCase() || "";
+      const email = group.user.email.toLowerCase();
+      return name.includes(searchLower) || email.includes(searchLower);
+    });
+  }, [groupedSessions, localSearch]);
+
+  // Check if all filtered groups are expanded
+  const allFilteredExpanded = filteredGroups.length > 0 && 
+    filteredGroups.every((g) => expandedGroups.has(g.userId));
+  
+  // Check if all filtered groups are collapsed
+  const allFilteredCollapsed = filteredGroups.length > 0 && 
+    filteredGroups.every((g) => !expandedGroups.has(g.userId));
+
   // Collapsible section component for user groups
   const UserSessionGroup = ({ group }: { group: GroupedSessions }) => {
-    const [isExpanded, setIsExpanded] = useState(true);
+    const isExpanded = expandedGroups.has(group.userId);
+    const handleToggle = () => {
+      toggleGroup(group.userId);
+    };
 
     const UserIcon = () => (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -186,11 +241,11 @@ export function SessionManagementPage({ initialData }: SessionManagementPageProp
       <div className="space-y-1 border border-neutral-200 dark:border-neutral-800 rounded-lg overflow-hidden">
         {/* Header with toggle */}
         <div className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-neutral-50 dark:bg-neutral-900 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
-          <button
-            type="button"
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="flex items-center gap-3 flex-1 min-w-0 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900 rounded"
-          >
+            <button
+              type="button"
+              onClick={handleToggle}
+              className="flex items-center gap-3 flex-1 min-w-0 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900 rounded text-left"
+            >
             <span className="text-neutral-500 dark:text-neutral-400 flex-shrink-0">
               <UserIcon />
             </span>
@@ -230,8 +285,8 @@ export function SessionManagementPage({ initialData }: SessionManagementPageProp
             </Button>
             <button
               type="button"
-              onClick={() => setIsExpanded(!isExpanded)}
-              className="focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900 rounded"
+              onClick={handleToggle}
+              className="focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900 rounded p-1"
             >
               <svg
                 className={cn(
@@ -390,32 +445,60 @@ export function SessionManagementPage({ initialData }: SessionManagementPageProp
         </Button>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Input
-            label="Search"
-            placeholder="Search by email or name..."
-            value={filters.search || ""}
-            onChange={(e) => updateFilters({ search: e.target.value })}
-          />
-        </div>
-      </div>
-
       {/* Sessions Grouped by User */}
-      <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 overflow-hidden p-6">
-        {groupedSessions.length === 0 ? (
-          <div className="px-4 py-8 text-center text-sm text-neutral-500 dark:text-neutral-400">
-            No active sessions found
+      <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 overflow-hidden">
+        {/* Menu Bar */}
+        <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex-1 w-full sm:max-w-md">
+              <Input
+                label="Search"
+                placeholder="Search by user name or email..."
+                value={localSearch}
+                onChange={(e) => setLocalSearch(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={expandAllGroups}
+                disabled={allFilteredExpanded || filteredGroups.length === 0}
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+                Expand All
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={collapseAllGroups}
+                disabled={allFilteredCollapsed || filteredGroups.length === 0}
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                </svg>
+                Collapse All
+              </Button>
+            </div>
           </div>
-        ) : (
-          <div className="space-y-3">
-            {groupedSessions.map((group) => (
-              <UserSessionGroup key={group.userId} group={group} />
-            ))}
-          </div>
-        )}
+        </div>
 
+        {/* Session Groups Content */}
+        <div className="p-6">
+          {filteredGroups.length === 0 ? (
+            <div className="px-4 py-8 text-center text-sm text-neutral-500 dark:text-neutral-400">
+              {localSearch.trim() ? "No groups match your search" : "No active sessions found"}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredGroups.map((group) => (
+                <UserSessionGroup key={group.userId} group={group} />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Pagination */}
