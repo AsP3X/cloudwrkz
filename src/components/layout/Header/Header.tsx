@@ -207,21 +207,19 @@ export const Header = () => {
                 )}
                 style={{
                   pointerEvents: mobileMenuOpen ? 'auto' : 'none',
-                  backgroundColor: mobileMenuOpen ? (isDark ? '#171717' : '#ffffff') : 'transparent',
+                  backgroundColor: isDark ? '#171717' : '#ffffff',
                   zIndex: 999999,
                 }}
                 aria-hidden={!mobileMenuOpen}
               >
-                {/* Background layer - always solid when menu is open */}
-                {mobileMenuOpen && (
-                  <div
-                    className="absolute inset-0"
-                    style={{
-                      backgroundColor: isDark ? '#171717' : '#ffffff',
-                      zIndex: 0,
-                    }}
-                  />
-                )}
+                {/* Background layer - always solid and visible during animation */}
+                <div
+                  className="absolute inset-0 transition-none"
+                  style={{
+                    backgroundColor: isDark ? '#171717' : '#ffffff',
+                    zIndex: 0,
+                  }}
+                />
                 {/* Content */}
                 <div className="relative h-full overflow-y-auto z-10">
                   <div className="container mx-auto px-4 py-6 space-y-4 min-h-full w-full">
