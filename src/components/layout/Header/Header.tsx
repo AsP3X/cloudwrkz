@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils/cn";
@@ -10,6 +11,24 @@ import { ROUTES } from "@/lib/constants/routes";
 export const Header = () => {
   const [scrolled, setScrolled] = React.useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  const [mounted, setMounted] = React.useState(false);
+  const [isDark, setIsDark] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+    // Check for dark mode
+    const checkDarkMode = () => {
+      setIsDark(document.documentElement.classList.contains('dark'));
+    };
+    checkDarkMode();
+    // Watch for dark mode changes
+    const observer = new MutationObserver(checkDarkMode);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+    return () => observer.disconnect();
+  }, []);
 
   React.useEffect(() => {
     const handleScroll = () => {
@@ -49,14 +68,14 @@ export const Header = () => {
   return (
     <header
       className={cn(
-        "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
+        "fixed top-0 left-0 right-0 z-[100] transition-all duration-300",
         scrolled
           ? "bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md shadow-soft"
           : "bg-transparent"
       )}
     >
-      <nav className="container mx-auto px-4 sm:px-6 lg:px-8" aria-label="Main navigation">
-        <div className="flex h-16 items-center justify-between">
+      <nav className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-[101]" aria-label="Main navigation">
+        <div className="flex h-16 items-center justify-between relative">
           <Link
             href={ROUTES.HOME}
             className="text-2xl font-bold bg-gradient-to-r from-primary-600 to-secondary-600 dark:from-primary-400 dark:to-secondary-400 bg-clip-text text-transparent"
@@ -109,11 +128,19 @@ export const Header = () => {
           {/* Mobile Menu Button */}
           <button
             type="button"
-            className="md:hidden p-2 rounded-md text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500"
+            className="md:hidden relative z-[102] p-2 rounded-md text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500"
+            style={{ touchAction: 'manipulation' }}
             aria-label="Toggle mobile menu"
             aria-expanded={mobileMenuOpen}
             aria-controls="mobile-menu"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setMobileMenuOpen(!mobileMenuOpen);
+            }}
+            onTouchStart={(e) => {
+              e.stopPropagation();
+            }}
           >
             {mobileMenuOpen ? (
               <svg
@@ -148,68 +175,125 @@ export const Header = () => {
             )}
           </button>
         </div>
-
-        {/* Mobile Menu */}
-        <div
-          id="mobile-menu"
-          className={cn(
-            "md:hidden fixed inset-x-0 top-16 bottom-0 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-800 transition-transform duration-300 ease-in-out overflow-y-auto",
-            mobileMenuOpen ? "translate-x-0" : "translate-x-full"
-          )}
-          aria-hidden={!mobileMenuOpen}
-        >
-          <div className="container mx-auto px-4 py-6 space-y-4">
-            <a
-              href="#features"
-              className="block py-3 px-4 text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md transition-colors"
-              onClick={handleNavClick}
-              aria-label="View features section"
-            >
-              Features
-            </a>
-            <Link
-              href={ROUTES.ABOUT}
-              className="block py-3 px-4 text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md transition-colors"
-              onClick={handleNavClick}
-              aria-label="Learn more about us"
-            >
-              About
-            </Link>
-            <Link
-              href={ROUTES.CONTACT}
-              className="block py-3 px-4 text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md transition-colors"
-              onClick={handleNavClick}
-              aria-label="Contact us"
-            >
-              Contact
-            </Link>
-            <div className="pt-4 border-t border-neutral-200 dark:border-neutral-800 space-y-3">
-              <Button
-                variant="ghost"
-                size="md"
-                className="w-full justify-center"
-                asChild
-                href={ROUTES.LOGIN}
-                onClick={handleNavClick}
-                aria-label="Sign in to your account"
-              >
-                Sign In
-              </Button>
-              <Button
-                variant="primary"
-                size="md"
-                className="w-full justify-center"
-                asChild
-                href={ROUTES.REGISTER}
-                onClick={handleNavClick}
-                aria-label="Get started with a free account"
-              >
-                Get Started
-              </Button>
-            </div>
-          </div>
-        </div>
       </nav>
+
+      {/* Mobile Menu Backdrop and Menu - Rendered via Portal */}
+      {mounted && (
+        <>
+          {createPortal(
+            <>
+              {/* Mobile Menu Backdrop */}
+              <div
+                className={cn(
+                  "md:hidden fixed left-0 right-0 top-16 bottom-0 bg-black/50 transition-opacity duration-300",
+                  mobileMenuOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+                )}
+                style={{ 
+                  visibility: mobileMenuOpen ? 'visible' : 'hidden',
+                  zIndex: 999998,
+                }}
+                onClick={() => setMobileMenuOpen(false)}
+                aria-hidden={!mobileMenuOpen}
+              />
+
+              {/* Mobile Menu */}
+              <div
+                id="mobile-menu"
+                className={cn(
+                  "md:hidden fixed left-0 right-0 top-16 bottom-0 border-t-2 border-neutral-300 dark:border-neutral-700 shadow-2xl transition-transform duration-300 ease-in-out overflow-hidden",
+                  mobileMenuOpen 
+                    ? "translate-x-0" 
+                    : "translate-x-full"
+                )}
+                style={{
+                  pointerEvents: mobileMenuOpen ? 'auto' : 'none',
+                  backgroundColor: mobileMenuOpen ? (isDark ? '#171717' : '#ffffff') : 'transparent',
+                  zIndex: 999999,
+                }}
+                aria-hidden={!mobileMenuOpen}
+              >
+                {/* Background layer - always solid when menu is open */}
+                {mobileMenuOpen && (
+                  <div
+                    className="absolute inset-0"
+                    style={{
+                      backgroundColor: isDark ? '#171717' : '#ffffff',
+                      zIndex: 0,
+                    }}
+                  />
+                )}
+                {/* Content */}
+                <div className="relative h-full overflow-y-auto z-10">
+                  <div className="container mx-auto px-4 py-6 space-y-4 min-h-full w-full">
+                <a
+                  href="#features"
+                  className="block py-3 px-4 text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md transition-colors"
+                  onClick={handleNavClick}
+                  aria-label="View features section"
+                >
+                  Features
+                </a>
+                <Link
+                  href={ROUTES.ABOUT}
+                  className="block py-3 px-4 text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md transition-colors"
+                  onClick={handleNavClick}
+                  aria-label="Learn more about us"
+                >
+                  About
+                </Link>
+                <Link
+                  href={ROUTES.CONTACT}
+                  className="block py-3 px-4 text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md transition-colors"
+                  onClick={handleNavClick}
+                  aria-label="Contact us"
+                >
+                  Contact
+                </Link>
+                <div className="pt-4 border-t border-neutral-200 dark:border-neutral-800 space-y-3">
+                  <Button
+                    variant="ghost"
+                    size="md"
+                    className="w-full justify-center"
+                    asChild
+                    href={ROUTES.LOGIN}
+                    onClick={handleNavClick}
+                    aria-label="Sign in to your account"
+                  >
+                    Sign In
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="md"
+                    className="w-full justify-center"
+                    asChild
+                    href={ROUTES.REGISTER}
+                    onClick={handleNavClick}
+                    aria-label="Get started with a free account"
+                  >
+                    Get Started
+                  </Button>
+                  </div>
+                  </div>
+                </div>
+              </div>
+            </>,
+            document.body
+          )}
+          {/* Inline styles to ensure background is always applied */}
+          {mobileMenuOpen && (
+            <style dangerouslySetInnerHTML={{
+              __html: `
+                #mobile-menu {
+                  background-color: ${isDark ? '#171717' : '#ffffff'} !important;
+                }
+                #mobile-menu > div:first-child {
+                  background-color: ${isDark ? '#171717' : '#ffffff'} !important;
+                }
+              `
+            }} />
+          )}
+        </>
+      )}
     </header>
   );
 };
