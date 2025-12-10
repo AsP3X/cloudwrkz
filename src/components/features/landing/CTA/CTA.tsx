@@ -32,7 +32,7 @@ export const CTA = () => {
               <Button
                 size="lg"
                 variant="secondary"
-                className="bg-white text-primary-600 dark:bg-white dark:text-white hover:bg-neutral-100 dark:hover:bg-neutral-100"
+                className="bg-white text-primary-600 dark:bg-white dark:text-primary-600 hover:bg-neutral-100 dark:hover:bg-neutral-100"
                 asChild
                 href={ROUTES.REGISTER}
                 aria-label="Start your free trial - no credit card required"
