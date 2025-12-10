@@ -22,6 +22,24 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
   const [success, setSuccess] = React.useState<string | null>(null);
   const [mounted, setMounted] = React.useState(false);
   
+  // Track if we're syncing from context to prevent feedback loop
+  const isSyncingFromContext = React.useRef(false);
+  
+  // Initialize theme from localStorage directly on mount to prevent flash
+  // This ensures the form has the correct theme value immediately
+  const [initialTheme] = React.useState<"light" | "dark" | "system">(() => {
+    if (typeof window === "undefined") return "system";
+    try {
+      const stored = localStorage.getItem("theme");
+      if (stored && ["light", "dark", "system"].includes(stored)) {
+        return stored as "light" | "dark" | "system";
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+    return "system";
+  });
+  
   // Get theme - will throw if ThemeProvider is not available, but it should be in root layout
   const { theme, setTheme } = useTheme();
   const { preference: timerWidgetPreference, setPreference: setTimerWidgetPreference } = useTimerWidgetPreference();
@@ -33,11 +51,12 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
     watch,
     setValue,
     reset,
+    getValues,
   } = useForm<PreferencesInput>({
     resolver: zodResolver(preferencesSchema),
     defaultValues: {
       language: initialValues?.language ?? "en",
-      theme: initialValues?.theme ?? theme,
+      theme: initialTheme, // Use theme from localStorage directly to prevent flash
       emailNotifications: initialValues?.emailNotifications ?? true,
       pushNotifications: initialValues?.pushNotifications ?? false,
       marketingEmails: initialValues?.marketingEmails ?? false,
@@ -52,11 +71,23 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
   }, []);
 
   // Reset form when initialValues change (e.g., after successful save and page revalidation)
+  // Note: theme is excluded because it's stored in localStorage on client side, not on server
   React.useEffect(() => {
-    if (initialValues) {
+    if (initialValues && mounted) {
+      // Get current theme from localStorage to avoid flash
+      let currentTheme: "light" | "dark" | "system" = "system";
+      try {
+        const stored = localStorage.getItem("theme");
+        if (stored && ["light", "dark", "system"].includes(stored)) {
+          currentTheme = stored as "light" | "dark" | "system";
+        }
+      } catch {
+        // Ignore localStorage errors
+      }
+      
       reset({
         language: initialValues.language ?? "en",
-        theme: initialValues.theme ?? theme,
+        theme: currentTheme, // Always use theme from localStorage, not from server
         emailNotifications: initialValues.emailNotifications ?? true,
         pushNotifications: initialValues.pushNotifications ?? false,
         marketingEmails: initialValues.marketingEmails ?? false,
@@ -64,14 +95,24 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
         timerWidgetMobileMode: initialValues.timerWidgetMobileMode ?? getTimerWidgetPreference(),
       });
     }
-  }, [initialValues, reset, theme]);
+  }, [initialValues, reset, mounted]);
 
   // Sync form value with theme from context when theme changes externally
+  // Only update if the form value is different to prevent unnecessary re-renders
+  // This handles cases where theme changes outside the form (e.g., from another component)
   React.useEffect(() => {
     if (mounted && theme) {
-      setValue("theme", theme);
+      const currentFormTheme = getValues("theme");
+      if (currentFormTheme !== theme) {
+        isSyncingFromContext.current = true;
+        setValue("theme", theme, { shouldDirty: false });
+        // Reset the flag after a microtask to allow the watch effect to see it
+        requestAnimationFrame(() => {
+          isSyncingFromContext.current = false;
+        });
+      }
     }
-  }, [theme, setValue, mounted]);
+  }, [theme, setValue, mounted, getValues]);
 
   // Sync form value with timer widget preference when it changes externally
   React.useEffect(() => {
@@ -81,9 +122,10 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
   }, [timerWidgetPreference, setValue, mounted]);
 
   // Watch theme changes and apply immediately
+  // Skip if we're syncing from context to prevent feedback loop
   const watchedTheme = watch("theme");
   React.useEffect(() => {
-    if (mounted && watchedTheme && watchedTheme !== theme && setTheme) {
+    if (mounted && watchedTheme && watchedTheme !== theme && setTheme && !isSyncingFromContext.current) {
       setTheme(watchedTheme as "light" | "dark" | "system");
     }
   }, [watchedTheme, theme, setTheme, mounted]);
