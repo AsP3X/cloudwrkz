@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db/prisma";
-import { hasPermission, hasAnyPermission, type PermissionKey } from "./permissions";
+import { hasPermission, hasAnyPermission, type PermissionKey, type DynamicPermissionKey } from "./permissions";
 
 export type CurrentUser = {
   id: string;
@@ -193,8 +193,9 @@ export async function getBannedUserInfo(): Promise<{
 /**
  * Require a specific permission - throws error if user doesn't have it
  * Admins always pass permission checks
+ * Supports both static permissions and dynamic ticket permissions
  */
-export async function requirePermission(permissionKey: PermissionKey): Promise<CurrentUser> {
+export async function requirePermission(permissionKey: DynamicPermissionKey): Promise<CurrentUser> {
   const user = await requireAuth();
   
   // Admins always have all permissions
@@ -214,8 +215,9 @@ export async function requirePermission(permissionKey: PermissionKey): Promise<C
 /**
  * Require any of the specified permissions - throws error if user doesn't have any
  * Admins always pass permission checks
+ * Supports both static permissions and dynamic ticket permissions
  */
-export async function requireAnyPermission(...permissionKeys: PermissionKey[]): Promise<CurrentUser> {
+export async function requireAnyPermission(...permissionKeys: DynamicPermissionKey[]): Promise<CurrentUser> {
   const user = await requireAuth();
   
   // Admins always have all permissions

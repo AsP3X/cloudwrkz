@@ -11,9 +11,89 @@ import type { CurrentUser } from "./auth-server";
 export type { PermissionKey };
 
 /**
- * Get all permissions for a user (from role + groups)
+ * Dynamic permission key type - includes both static PermissionKey and dynamic permissions
  */
-export async function getUserPermissions(userId: string): Promise<Set<PermissionKey>> {
+export type DynamicPermissionKey = PermissionKey | string;
+
+/**
+ * Ticket permission actions that can be used for dynamic ticket permissions
+ */
+export const TICKET_PERMISSION_ACTIONS = [
+  "view",
+  "comment",
+  "create",
+  "update",
+  "delete",
+  "assign",
+  "time_entries.view",
+  "time_entries.create",
+] as const;
+
+export type TicketPermissionAction = (typeof TICKET_PERMISSION_ACTIONS)[number];
+
+/**
+ * Generate a dynamic ticket permission key
+ * @param ticketId - The ticket's unique database ID (e.g., "clx123abc456")
+ * @param ticketPrefix - The ticket type prefix (e.g., "inc", "src", "bug")
+ * @param action - The permission action (e.g., "view", "comment", "create")
+ * @returns The permission key (e.g., "tickets.inc-clx123abc456.view")
+ */
+export function generateTicketPermissionKey(
+  ticketId: string,
+  ticketPrefix: string,
+  action: TicketPermissionAction
+): string {
+  // Normalize prefix to lowercase
+  const normalizedPrefix = ticketPrefix.toLowerCase();
+  return `tickets.${normalizedPrefix}-${ticketId}.${action}`;
+}
+
+/**
+ * Parse a dynamic ticket permission key
+ * @param permissionKey - The permission key (e.g., "tickets.inc-clx123abc456.view")
+ * @returns Object with ticketId, prefix, and action, or null if invalid
+ */
+export function parseTicketPermissionKey(
+  permissionKey: string
+): { ticketId: string; prefix: string; action: TicketPermissionAction } | null {
+  const match = permissionKey.match(/^tickets\.([^-]+)-([^.]+)\.(.+)$/);
+  if (!match) {
+    return null;
+  }
+
+  const [, prefix, ticketId, action] = match;
+  if (!TICKET_PERMISSION_ACTIONS.includes(action as TicketPermissionAction)) {
+    return null;
+  }
+
+  return {
+    ticketId,
+    prefix,
+    action: action as TicketPermissionAction,
+  };
+}
+
+/**
+ * Check if a permission key is a dynamic ticket permission
+ */
+export function isDynamicTicketPermission(permissionKey: string): boolean {
+  return parseTicketPermissionKey(permissionKey) !== null;
+}
+
+/**
+ * Validate a ticket ID format (cuid)
+ */
+export function isValidTicketId(ticketId: string): boolean {
+  // CUIDs typically start with 'c' and are 25 characters long
+  // But we'll accept any non-empty string that doesn't contain dots or dashes in the middle
+  return /^[a-z0-9]+$/.test(ticketId) && ticketId.length > 0;
+}
+
+/**
+ * Get all permissions for a user (from role + groups)
+ * Includes both static permissions and dynamic ticket permissions
+ */
+export async function getUserPermissions(userId: string): Promise<Set<string>> {
   // Get user with role
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -24,15 +104,16 @@ export async function getUserPermissions(userId: string): Promise<Set<Permission
     return new Set();
   }
 
-  // Admins always have all permissions
+  // Admins always have all permissions (including dynamic ones)
+  // For admins, we return all static permissions - dynamic permissions are checked separately
   if (user.role === "ADMIN") {
     return new Set(ROLE_PERMISSIONS.ADMIN);
   }
 
   // Get role-based permissions
-  const rolePermissions = new Set<PermissionKey>(ROLE_PERMISSIONS[user.role] || []);
+  const rolePermissions = new Set<string>(ROLE_PERMISSIONS[user.role] || []);
 
-  // Get group-based permissions
+  // Get group-based permissions (includes both static and dynamic)
   const memberships = await prisma.groupMembership.findMany({
     where: { userId },
     include: {
@@ -48,10 +129,11 @@ export async function getUserPermissions(userId: string): Promise<Set<Permission
     },
   });
 
-  const groupPermissions = new Set<PermissionKey>();
+  const groupPermissions = new Set<string>();
   for (const membership of memberships) {
     for (const groupPermission of membership.group.permissions) {
-      groupPermissions.add(groupPermission.permission.key as PermissionKey);
+      // Include all permissions (both static PermissionKey and dynamic ticket permissions)
+      groupPermissions.add(groupPermission.permission.key);
     }
   }
 
@@ -61,10 +143,11 @@ export async function getUserPermissions(userId: string): Promise<Set<Permission
 
 /**
  * Check if user has a specific permission
+ * Supports both static permissions and dynamic ticket permissions
  */
 export async function hasPermission(
   userId: string,
-  permissionKey: PermissionKey
+  permissionKey: DynamicPermissionKey
 ): Promise<boolean> {
   const permissions = await getUserPermissions(userId);
   return permissions.has(permissionKey);
@@ -72,10 +155,11 @@ export async function hasPermission(
 
 /**
  * Check if user has any of the specified permissions
+ * Supports both static permissions and dynamic ticket permissions
  */
 export async function hasAnyPermission(
   userId: string,
-  permissionKeys: PermissionKey[]
+  permissionKeys: DynamicPermissionKey[]
 ): Promise<boolean> {
   const permissions = await getUserPermissions(userId);
   return permissionKeys.some((key) => permissions.has(key));
@@ -83,10 +167,11 @@ export async function hasAnyPermission(
 
 /**
  * Check if user has all of the specified permissions
+ * Supports both static permissions and dynamic ticket permissions
  */
 export async function hasAllPermissions(
   userId: string,
-  permissionKeys: PermissionKey[]
+  permissionKeys: DynamicPermissionKey[]
 ): Promise<boolean> {
   const permissions = await getUserPermissions(userId);
   return permissionKeys.every((key) => permissions.has(key));
@@ -96,10 +181,10 @@ export async function hasAllPermissions(
  * Get cached user permissions (for use in request context)
  * This should be called once per request and cached
  */
-const permissionCache = new Map<string, { permissions: Set<PermissionKey>; timestamp: number }>();
+const permissionCache = new Map<string, { permissions: Set<string>; timestamp: number }>();
 const CACHE_TTL = 60000; // 1 minute
 
-export async function getCachedUserPermissions(userId: string): Promise<Set<PermissionKey>> {
+export async function getCachedUserPermissions(userId: string): Promise<Set<string>> {
   const cached = permissionCache.get(userId);
   const now = Date.now();
 
@@ -121,4 +206,65 @@ export function clearPermissionCache(userId?: string): void {
   } else {
     permissionCache.clear();
   }
+}
+
+/**
+ * Check if user has permission for a specific ticket
+ * Checks both general ticket permissions and dynamic ticket-specific permissions
+ */
+export async function hasTicketPermission(
+  userId: string,
+  ticketId: string,
+  ticketPrefix: string,
+  action: TicketPermissionAction
+): Promise<boolean> {
+  const permissions = await getUserPermissions(userId);
+  
+  // Check for dynamic ticket-specific permission
+  const dynamicKey = generateTicketPermissionKey(ticketId, ticketPrefix, action);
+  if (permissions.has(dynamicKey)) {
+    return true;
+  }
+  
+  // Check for general ticket permissions
+  // For view action, check tickets.view or tickets.view_all
+  if (action === "view") {
+    return permissions.has("tickets.view") || permissions.has("tickets.view_all") || permissions.has("admin.tickets.manage");
+  }
+  
+  // For comment action, check tickets.comment
+  if (action === "comment") {
+    return permissions.has("tickets.comment");
+  }
+  
+  // For create action, check tickets.create
+  if (action === "create") {
+    return permissions.has("tickets.create");
+  }
+  
+  // For update action, check tickets.update
+  if (action === "update") {
+    return permissions.has("tickets.update");
+  }
+  
+  // For delete action, check tickets.delete
+  if (action === "delete") {
+    return permissions.has("tickets.delete");
+  }
+  
+  // For assign action, check tickets.assign
+  if (action === "assign") {
+    return permissions.has("tickets.assign");
+  }
+  
+  // For time_entries actions
+  if (action === "time_entries.view") {
+    return permissions.has("tickets.time_entries.view");
+  }
+  
+  if (action === "time_entries.create") {
+    return permissions.has("tickets.time_entries.create");
+  }
+  
+  return false;
 }

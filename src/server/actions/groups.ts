@@ -2,7 +2,14 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth, requireRole, requireAnyRole } from "@/lib/utils/auth-server";
-import { clearPermissionCache } from "@/lib/utils/permissions";
+import {
+  clearPermissionCache,
+  generateTicketPermissionKey,
+  parseTicketPermissionKey,
+  isValidTicketId,
+  type TicketPermissionAction,
+  TICKET_PERMISSION_ACTIONS,
+} from "@/lib/utils/permissions";
 
 export type GroupInput = {
   name: string;
@@ -373,7 +380,50 @@ export async function getAgentGroups(agentId: string) {
 }
 
 /**
- * Add permission to group
+ * Create or get a dynamic ticket permission
+ * This creates the permission in the database if it doesn't exist
+ */
+async function createOrGetDynamicPermission(
+  permissionKey: string,
+  ticketId: string,
+  ticketPrefix: string,
+  ticketNumber: string,
+  action: TicketPermissionAction
+) {
+  // Check if permission already exists
+  let permission = await prisma.permission.findUnique({
+    where: { key: permissionKey },
+  });
+
+  if (!permission) {
+    // Create the dynamic permission
+    const actionNames: Record<TicketPermissionAction, string> = {
+      view: "View",
+      comment: "Comment",
+      create: "Create",
+      update: "Update",
+      delete: "Delete",
+      assign: "Assign",
+      "time_entries.view": "View Time Entries",
+      "time_entries.create": "Create Time Entries",
+    };
+
+    permission = await prisma.permission.create({
+      data: {
+        key: permissionKey,
+        name: `Ticket ${ticketNumber} - ${actionNames[action]}`,
+        description: `Permission to ${actionNames[action].toLowerCase()} ticket ${ticketNumber}`,
+        category: "tickets",
+        module: "tickets",
+      },
+    });
+  }
+
+  return permission;
+}
+
+/**
+ * Add permission to group (supports both static and dynamic permissions)
  */
 export async function addPermissionToGroup(
   groupId: string,
@@ -427,6 +477,86 @@ export async function addPermissionToGroup(
 }
 
 /**
+ * Add a dynamic ticket permission to a group
+ * Creates the permission if it doesn't exist
+ */
+export async function addDynamicTicketPermissionToGroup(
+  groupId: string,
+  ticketId: string,
+  ticketPrefix: string,
+  ticketNumber: string,
+  action: TicketPermissionAction
+): Promise<ActionResult<{ permissionId: string }>> {
+  try {
+    await requireAnyRole("ADMIN", "MODERATOR");
+
+    // Validate ticket ID format
+    if (!isValidTicketId(ticketId)) {
+      return {
+        success: false,
+        error: "Invalid ticket ID format",
+      };
+    }
+
+    // Generate permission key using ticket ID and prefix
+    const permissionKey = generateTicketPermissionKey(ticketId, ticketPrefix, action);
+
+    // Create or get the permission
+    const permission = await createOrGetDynamicPermission(
+      permissionKey,
+      ticketId,
+      ticketPrefix,
+      ticketNumber,
+      action
+    );
+
+    // Check if already assigned to group
+    const existing = await prisma.groupPermission.findUnique({
+      where: {
+        groupId_permissionId: {
+          groupId,
+          permissionId: permission.id,
+        },
+      },
+    });
+
+    if (existing) {
+      return {
+        success: false,
+        error: "Permission is already assigned to this group",
+      };
+    }
+
+    // Add to group
+    await prisma.groupPermission.create({
+      data: {
+        groupId,
+        permissionId: permission.id,
+      },
+    });
+
+    // Clear permission cache for all members of this group
+    const members = await prisma.groupMembership.findMany({
+      where: { groupId },
+      select: { userId: true },
+    });
+    members.forEach((m) => clearPermissionCache(m.userId));
+
+    return {
+      success: true,
+      data: { permissionId: permission.id },
+      message: "Dynamic ticket permission added to group successfully",
+    };
+  } catch (error: any) {
+    console.error("Add dynamic ticket permission to group error:", error);
+    return {
+      success: false,
+      error: error.message || "Failed to add dynamic ticket permission to group",
+    };
+  }
+}
+
+/**
  * Remove permission from group
  */
 export async function removePermissionFromGroup(
@@ -467,6 +597,7 @@ export async function removePermissionFromGroup(
 
 /**
  * Bulk update group permissions
+ * Supports both static permissions (by ID) and dynamic permissions (by key)
  */
 export async function updateGroupPermissions(
   groupId: string,

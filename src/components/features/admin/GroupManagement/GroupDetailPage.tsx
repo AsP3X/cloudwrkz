@@ -214,16 +214,20 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
                             if (!gp || !gp.permission) {
                               return;
                             }
-                            const category = gp.permission.category;
+                            // Use category from permission, default to "other" if missing
+                            const category = gp.permission.category || "other";
                             if (!permissionsByCategory[category]) {
                               permissionsByCategory[category] = [];
                             }
                             permissionsByCategory[category].push(gp);
                           });
 
-                          const sortedCategories = Object.entries(permissionsByCategory).sort(([a], [b]) =>
-                            a.localeCompare(b)
-                          );
+                          // Sort categories alphabetically, but put "tickets" first if it exists
+                          const sortedCategories = Object.entries(permissionsByCategory).sort(([a], [b]) => {
+                            if (a === "tickets" && b !== "tickets") return -1;
+                            if (a !== "tickets" && b === "tickets") return 1;
+                            return a.localeCompare(b);
+                          });
 
                           if (sortedCategories.length === 0) {
                             return (
@@ -245,31 +249,53 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
                               </div>
                               <div className="p-4 bg-white dark:bg-neutral-800">
                                 <div className="space-y-2">
-                                  {permissions.map((gp) => {
-                                    if (!gp || !gp.permission) {
-                                      return null;
-                                    }
-                                    return (
-                                      <div
-                                        key={gp.permission.id}
-                                        className="flex items-start gap-3 p-2 rounded hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
-                                      >
-                                        <div className="flex-1">
-                                          <div className="font-medium text-neutral-900 dark:text-neutral-100">
-                                            {gp.permission.name}
-                                          </div>
-                                          {gp.permission.description && (
-                                            <div className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
-                                              {gp.permission.description}
+                                  {permissions
+                                    .filter((gp) => gp && gp.permission) // Filter out any null/undefined entries
+                                    .sort((a, b) => {
+                                      // Sort by key alphabetically, but put dynamic permissions (tickets.NUMBER.action) after static ones
+                                      const aKey = a.permission.key;
+                                      const bKey = b.permission.key;
+                                      const aIsDynamic = aKey.startsWith("tickets.") && aKey.split(".").length === 3;
+                                      const bIsDynamic = bKey.startsWith("tickets.") && bKey.split(".").length === 3;
+                                      
+                                      if (aIsDynamic && !bIsDynamic) return 1;
+                                      if (!aIsDynamic && bIsDynamic) return -1;
+                                      return aKey.localeCompare(bKey);
+                                    })
+                                    .map((gp) => {
+                                      if (!gp || !gp.permission) {
+                                        return null;
+                                      }
+                                      // Check if this is a dynamic ticket permission
+                                      const isDynamic = gp.permission.key.startsWith("tickets.") && 
+                                                        gp.permission.key.split(".").length === 3;
+                                      
+                                      return (
+                                        <div
+                                          key={gp.permission.id}
+                                          className="flex items-start gap-3 p-2 rounded hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
+                                        >
+                                          <div className="flex-1">
+                                            <div className="flex items-center gap-2">
+                                              <div className="font-medium text-neutral-900 dark:text-neutral-100">
+                                                {gp.permission.name}
+                                              </div>
+                                              {isDynamic && (
+                                                <Badge variant="info" size="sm">Dynamic</Badge>
+                                              )}
                                             </div>
-                                          )}
-                                          <div className="text-xs text-neutral-500 dark:text-neutral-500 mt-1 font-mono">
-                                            {gp.permission.key}
+                                            {gp.permission.description && (
+                                              <div className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                                                {gp.permission.description}
+                                              </div>
+                                            )}
+                                            <div className="text-xs text-neutral-500 dark:text-neutral-500 mt-1 font-mono">
+                                              {gp.permission.key}
+                                            </div>
                                           </div>
                                         </div>
-                                      </div>
-                                    );
-                                  })}
+                                      );
+                                    })}
                                 </div>
                               </div>
                             </div>

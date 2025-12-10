@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/utils/auth-server";
 import { PERMISSIONS } from "@/lib/constants/permissions";
+import { parseTicketPermissionKey, isDynamicTicketPermission } from "@/lib/utils/permissions";
 
 /**
  * Get all available permissions
@@ -64,6 +65,34 @@ export async function getGroupPermissions(groupId: string) {
   });
 
   return groupPermissions.map((gp) => gp.permission);
+}
+
+/**
+ * Get dynamic ticket permissions for a specific group
+ */
+export async function getGroupDynamicTicketPermissions(groupId: string) {
+  await requireRole("ADMIN");
+
+  const groupPermissions = await prisma.groupPermission.findMany({
+    where: { groupId },
+    include: {
+      permission: true,
+    },
+  });
+
+  // Filter for dynamic ticket permissions
+  return groupPermissions
+    .map((gp) => gp.permission)
+    .filter((p) => isDynamicTicketPermission(p.key))
+    .map((p) => {
+      const parsed = parseTicketPermissionKey(p.key);
+      return {
+        ...p,
+        ticketId: parsed?.ticketId || null,
+        prefix: parsed?.prefix || null,
+        action: parsed?.action || null,
+      };
+    });
 }
 
 /**

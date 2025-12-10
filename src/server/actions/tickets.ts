@@ -14,6 +14,7 @@ import {
 import { createTimeEntry } from "./time-tracking";
 import { formatUserName } from "@/lib/utils/users";
 import { logTicketActivity } from "../utils/ticket-activity-logger";
+import { hasTicketPermission } from "@/lib/utils/permissions";
 
 export type TicketInput = {
   title: string;
@@ -616,21 +617,41 @@ export async function getTicket(id: string) {
     return null;
   }
 
-  // Check group access for agents
-  if (user.role === "AGENT" && ticket.assignedToGroupId) {
-    // Check if agent is a member of the ticket's group
-    const membership = await prisma.groupMembership.findUnique({
-      where: {
-        userId_groupId: {
-          userId: user.id,
-          groupId: ticket.assignedToGroupId,
-        },
-      },
-    });
+  // Check dynamic ticket permission or general permissions
+  // Admins always have access
+  if (user.role !== "ADMIN") {
+    // Get ticket type prefix
+    const { getTicketTypePrefix } = await import("@/lib/utils/tickets");
+    const ticketPrefix = getTicketTypePrefix(ticket.type);
+    
+    const hasDynamicPermission = await hasTicketPermission(
+      user.id,
+      ticket.id,
+      ticketPrefix,
+      "view"
+    );
+    
+    if (!hasDynamicPermission) {
+      // Check group access for agents
+      if (user.role === "AGENT" && ticket.assignedToGroupId) {
+        // Check if agent is a member of the ticket's group
+        const membership = await prisma.groupMembership.findUnique({
+          where: {
+            userId_groupId: {
+              userId: user.id,
+              groupId: ticket.assignedToGroupId,
+            },
+          },
+        });
 
-    if (!membership) {
-      // Agent is not in the group, deny access
-      return null;
+        if (!membership) {
+          // Agent is not in the group, deny access
+          return null;
+        }
+      } else {
+        // No dynamic permission and no group access, deny
+        return null;
+      }
     }
   }
 
@@ -664,6 +685,7 @@ export async function updateTicket(
     const currentTicket = await prisma.ticket.findUnique({
       where: { id },
       select: {
+        id: true,
         createdById: true,
         assignedToId: true,
         assignedToGroupId: true,
@@ -676,6 +698,7 @@ export async function updateTicket(
         title: true,
         description: true,
         tags: true,
+        ticketNumber: true,
       },
     });
 
@@ -686,13 +709,24 @@ export async function updateTicket(
       };
     }
 
-    // Creator, assigned agent, admin, or moderator can update
-    // Agents can update any ticket (to allow self-assignment and ticket management)
-    const canUpdate = 
-      currentTicket.createdById === user.id ||
-      user.role === "ADMIN" ||
-      user.role === "MODERATOR" ||
-      user.role === "AGENT"; // Agents can update all tickets
+    // Check dynamic ticket permission or general permissions
+    // Admins always have access
+    let canUpdate = user.role === "ADMIN";
+    
+    if (!canUpdate) {
+      // Get ticket type prefix
+      const ticketPrefix = getTicketTypePrefix(currentTicket.type);
+      // Check dynamic ticket permission
+      canUpdate = await hasTicketPermission(user.id, currentTicket.id, ticketPrefix, "update");
+      
+      // Fallback to general permission or role-based access
+      if (!canUpdate) {
+        canUpdate = 
+          currentTicket.createdById === user.id ||
+          user.role === "MODERATOR" ||
+          user.role === "AGENT"; // Agents can update all tickets (if they have general permission)
+      }
+    }
     
     if (!canUpdate) {
       return {
@@ -1100,7 +1134,14 @@ export async function deleteTicket(id: string): Promise<ActionResult> {
 
     const ticket = await prisma.ticket.findUnique({
       where: { id },
-      select: { createdById: true, assignedToId: true, projectId: true },
+      select: { 
+        id: true,
+        createdById: true, 
+        assignedToId: true, 
+        projectId: true,
+        ticketNumber: true,
+        type: true,
+      },
     });
 
     if (!ticket) {
@@ -1110,42 +1151,56 @@ export async function deleteTicket(id: string): Promise<ActionResult> {
       };
     }
 
-    // For users with role USER, they can only delete if they are the project owner
-    if (user.role === "USER") {
-      if (!ticket.projectId) {
-        return {
-          success: false,
-          error: "You don't have permission to delete this ticket",
-        };
-      }
-
-      // Check if user is the owner of the project
-      const project = await prisma.project.findUnique({
-        where: { id: ticket.projectId },
-        select: { createdById: true },
-      });
-
-      if (!project || project.createdById !== user.id) {
-        return {
-          success: false,
-          error: "You don't have permission to delete this ticket. Only project owners can delete tickets.",
-        };
-      }
-      // If USER is project owner, allow deletion (skip to deletion)
-    } else {
-      // For other roles: Creator, assigned agent, admin, or moderator can delete
-      const canDelete = 
-        ticket.createdById === user.id ||
-        user.role === "ADMIN" ||
-        user.role === "MODERATOR" ||
-        (user.role === "AGENT" && ticket.assignedToId === user.id);
+    // Check dynamic ticket permission or general permissions
+    // Admins always have access
+    let canDelete = user.role === "ADMIN";
+    
+    if (!canDelete) {
+      // Get ticket type prefix
+      const ticketPrefix = getTicketTypePrefix(ticket.type);
+      // Check dynamic ticket permission
+      canDelete = await hasTicketPermission(user.id, ticket.id, ticketPrefix, "delete");
       
+      // Fallback to role-based access
       if (!canDelete) {
-        return {
-          success: false,
-          error: "You don't have permission to delete this ticket",
-        };
+        // For users with role USER, they can only delete if they are the project owner
+        if (user.role === "USER") {
+          if (!ticket.projectId) {
+            return {
+              success: false,
+              error: "You don't have permission to delete this ticket",
+            };
+          }
+
+          // Check if user is the owner of the project
+          const project = await prisma.project.findUnique({
+            where: { id: ticket.projectId },
+            select: { createdById: true },
+          });
+
+          if (!project || project.createdById !== user.id) {
+            return {
+              success: false,
+              error: "You don't have permission to delete this ticket. Only project owners can delete tickets.",
+            };
+          }
+          // If USER is project owner, allow deletion
+          canDelete = true;
+        } else {
+          // For other roles: Creator, assigned agent, admin, or moderator can delete
+          canDelete = 
+            ticket.createdById === user.id ||
+            user.role === "MODERATOR" ||
+            (user.role === "AGENT" && ticket.assignedToId === user.id);
+        }
       }
+    }
+    
+    if (!canDelete) {
+      return {
+        success: false,
+        error: "You don't have permission to delete this ticket",
+      };
     }
 
     await prisma.ticket.delete({
@@ -1194,10 +1249,10 @@ export async function addTicketComment(
       };
     }
 
-    // Verify ticket exists
+    // Verify ticket exists and check permission
     const ticket = await prisma.ticket.findUnique({
       where: { id: ticketId },
-      select: { id: true },
+      select: { id: true, ticketNumber: true },
     });
 
     if (!ticket) {
@@ -1205,6 +1260,48 @@ export async function addTicketComment(
         success: false,
         error: "Ticket not found",
       };
+    }
+
+    // Check dynamic ticket permission or general permissions
+    // Admins always have access
+    if (user.role !== "ADMIN") {
+      // Get ticket type to determine prefix
+      const fullTicket = await prisma.ticket.findUnique({
+        where: { id: ticketId },
+        select: { id: true, type: true },
+      });
+      
+      if (fullTicket) {
+        const ticketPrefix = getTicketTypePrefix(fullTicket.type);
+        const hasPermission = await hasTicketPermission(
+          user.id,
+          fullTicket.id,
+          ticketPrefix,
+          "comment"
+        );
+        
+        if (!hasPermission) {
+          // Fallback to general permission check
+          try {
+            await requireAnyPermission("tickets.comment");
+          } catch {
+            return {
+              success: false,
+              error: "You don't have permission to comment on this ticket",
+            };
+          }
+        }
+      } else {
+        // Ticket not found, fallback to general permission check
+        try {
+          await requireAnyPermission("tickets.comment");
+        } catch {
+          return {
+            success: false,
+            error: "You don't have permission to comment on this ticket",
+          };
+        }
+      }
     }
 
     const comment = await prisma.ticketComment.create({
