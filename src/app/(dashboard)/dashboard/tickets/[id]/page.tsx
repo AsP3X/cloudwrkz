@@ -219,10 +219,10 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
           <Link href="/dashboard/tickets">
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" className="w-full sm:w-auto">
               <svg
                 className="w-4 h-4 mr-2"
                 fill="none"
@@ -240,32 +240,34 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
             </Button>
           </Link>
           <div>
-            <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">{ticket.title}</h1>
-            <p className="text-neutral-600 dark:text-neutral-400">
+            <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">{ticket.title}</h1>
+            <p className="text-sm sm:text-base text-neutral-600 dark:text-neutral-400">
               Created {formatDateTime(ticket.createdAt)}
             </p>
           </div>
         </div>
         {/* Edit Button for Agents, Admins, and Moderators */}
         {(user.role === "AGENT" || user.role === "ADMIN" || user.role === "MODERATOR") && (
-          <Link href={`/dashboard/tickets/${ticket.id}/edit`}>
-            <Button variant="primary" size="sm">
-              <svg
-                className="w-4 h-4 mr-2"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                />
-              </svg>
-              Edit Ticket
-            </Button>
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link href={`/dashboard/tickets/${ticket.id}/edit`}>
+              <Button variant="primary" size="sm" className="w-full sm:w-auto">
+                <svg
+                  className="w-4 h-4 mr-2"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                  />
+                </svg>
+                Edit Ticket
+              </Button>
+            </Link>
+          </div>
         )}
       </div>
 
