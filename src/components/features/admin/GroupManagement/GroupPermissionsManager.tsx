@@ -210,7 +210,8 @@ export function GroupPermissionsManager({
           const errorMessages = addFailures
             .map((f) => {
               if (f.status === "rejected") return f.reason?.message || "Unknown error";
-              return f.value.error || "Unknown error";
+              if (f.status === "fulfilled" && !f.value.success) return f.value.error || "Unknown error";
+              return "Unknown error";
             })
             .join(", ");
           setError(`Failed to add some dynamic permissions: ${errorMessages}`);
