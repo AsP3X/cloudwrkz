@@ -3,6 +3,7 @@ import dynamic from "next/dynamic";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { Hero } from "@/components/features/landing/Hero";
+import { SkipToContent } from "@/components/ui/SkipToContent";
 import { getCurrentUser } from "@/lib/utils/auth-server";
 import { redirect } from "next/navigation";
 import { APP_CONFIG } from "@/lib/constants/config";
@@ -43,12 +44,7 @@ export default async function Home() {
 
   return (
     <>
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:bg-primary-600 focus:text-white focus:rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
-      >
-        Skip to main content
-      </a>
+      <SkipToContent />
       <Header />
       <main id="main-content">
         <Hero />
