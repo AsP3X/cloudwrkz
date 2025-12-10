@@ -35,53 +35,49 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     return themeValue;
   }, [getSystemTheme]);
 
-  // Initialize theme from localStorage and check what's actually in the DOM
-  // This ensures we sync with the blocking script
-  const [theme, setThemeState] = useState<Theme>(() => {
-    if (typeof window === "undefined") return "system";
-    try {
-      const storedTheme = localStorage.getItem("theme") as Theme | null;
-      return storedTheme && ["light", "dark", "system"].includes(storedTheme)
-        ? storedTheme
-        : "system";
-    } catch {
-      return "system";
-    }
-  });
+  // Initialize theme with safe default (no localStorage access during SSR)
+  // The blocking script in layout.tsx already sets the dark class based on localStorage
+  const [theme, setThemeState] = useState<Theme>("system");
 
-  // Initialize effectiveTheme based on what's actually in the DOM (set by blocking script)
+  // Initialize effectiveTheme by checking DOM (set by blocking script)
+  // This is safe because the blocking script runs before React hydrates
   const [effectiveTheme, setEffectiveTheme] = useState<"light" | "dark">(() => {
     if (typeof window === "undefined") return "light";
     // Check if dark class is already on the document (from blocking script)
-    const hasDarkClass = document.documentElement.classList.contains("dark");
-    if (hasDarkClass) return "dark";
-    // Otherwise, resolve the initial theme
-    const storedTheme = localStorage.getItem("theme") as Theme | null;
-    const initialTheme = storedTheme && ["light", "dark", "system"].includes(storedTheme)
-      ? storedTheme
-      : "system";
-    // Resolve inline to avoid closure issues
-    if (initialTheme === "system") {
-      if (typeof window !== "undefined" && window.matchMedia) {
-        try {
-          return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-        } catch {
-          return "light";
-        }
-      }
+    // This is safe because blocking script runs synchronously before React
+    try {
+      return document.documentElement.classList.contains("dark") ? "dark" : "light";
+    } catch {
       return "light";
     }
-    return initialTheme;
   });
 
   const [mounted, setMounted] = useState(false);
 
-  // Mark as mounted after initial render
+  // Load theme from localStorage after mount to prevent hydration mismatch
   useEffect(() => {
-    // Mark as mounted once on client; safe state sync
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // Mark as mounted
     setMounted(true);
-  }, []);
+
+    // Load theme from localStorage now that we're on the client
+    try {
+      const storedTheme = localStorage.getItem("theme") as Theme | null;
+      if (storedTheme && ["light", "dark", "system"].includes(storedTheme)) {
+        setThemeState(storedTheme);
+        // Update effectiveTheme based on stored theme
+        const resolved = storedTheme === "system" ? getSystemTheme() : storedTheme;
+        setEffectiveTheme(resolved);
+      } else {
+        // No stored theme, use system preference
+        const resolved = getSystemTheme();
+        setEffectiveTheme(resolved);
+      }
+    } catch {
+      // localStorage not available, use system preference
+      const resolved = getSystemTheme();
+      setEffectiveTheme(resolved);
+    }
+  }, [getSystemTheme]);
 
   // Determine effective theme (resolves "system" to light or dark)
   useEffect(() => {

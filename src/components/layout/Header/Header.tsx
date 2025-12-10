@@ -12,7 +12,15 @@ export const Header = () => {
   const [scrolled, setScrolled] = React.useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [mounted, setMounted] = React.useState(false);
-  const [isDark, setIsDark] = React.useState(false);
+  const [isDark, setIsDark] = React.useState(() => {
+    if (typeof window === "undefined") return false;
+    // Check DOM (set by blocking script) - safe because script runs before React
+    try {
+      return document.documentElement.classList.contains("dark");
+    } catch {
+      return false;
+    }
+  });
 
   React.useEffect(() => {
     setMounted(true);

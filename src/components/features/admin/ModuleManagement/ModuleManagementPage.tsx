@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { setModuleEnabled } from "@/server/actions/modules";
 import type { getAllModules } from "@/server/actions/modules";
+import { cn } from "@/lib/utils/cn";
 
 type Module = Awaited<ReturnType<typeof getAllModules>>[0];
 
@@ -32,11 +33,13 @@ export function ModuleManagementPage({ initialModules }: ModuleManagementPagePro
   const [loadingModules, setLoadingModules] = useState<Set<string>>(new Set());
   // Start with "card" to match server render, then update from localStorage after mount
   const [viewMode, setViewMode] = useState<ViewMode>("card");
+  const [mounted, setMounted] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<FilterStatus>("all");
 
   // Load view mode from localStorage after mount to prevent hydration mismatch
   useEffect(() => {
+    setMounted(true);
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored === "card" || stored === "list") {
@@ -171,6 +174,7 @@ export function ModuleManagementPage({ initialModules }: ModuleManagementPagePro
       </div>
 
       {/* Modules Display */}
+      <div className={cn("transition-opacity duration-200", mounted ? "opacity-100" : "opacity-0")}>
       {viewMode === "card" ? (
         /* Card View */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -295,6 +299,7 @@ export function ModuleManagementPage({ initialModules }: ModuleManagementPagePro
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

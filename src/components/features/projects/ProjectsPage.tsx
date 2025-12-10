@@ -29,7 +29,8 @@ interface ProjectsPageProps {
 const VIEW_MODE_STORAGE_KEY = "projects-page-view-mode";
 
 export function ProjectsPage({ initialProjects, searchParams = {} }: ProjectsPageProps) {
-  const [viewMode, setViewMode] = useState<ProjectViewMode>("grid");
+  const [viewMode, setViewMode] = useState<ProjectViewMode>("grid"); // Safe default
+  const [mounted, setMounted] = useState(false);
 
   // Filter and sort projects based on search params
   const filteredProjects = useMemo(() => {
@@ -100,6 +101,7 @@ export function ProjectsPage({ initialProjects, searchParams = {} }: ProjectsPag
   }, [initialProjects, searchParams]);
 
   useEffect(() => {
+    setMounted(true);
     // Load view mode from localStorage
     try {
       const stored = localStorage.getItem(VIEW_MODE_STORAGE_KEY);
@@ -224,6 +226,7 @@ export function ProjectsPage({ initialProjects, searchParams = {} }: ProjectsPag
       </div>
 
       {/* Projects List */}
+      <div className={cn("transition-opacity duration-200", mounted ? "opacity-100" : "opacity-0")}>
       {filteredProjects.length === 0 ? (
         <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-12 text-center">
           <svg
@@ -422,6 +425,7 @@ export function ProjectsPage({ initialProjects, searchParams = {} }: ProjectsPag
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }

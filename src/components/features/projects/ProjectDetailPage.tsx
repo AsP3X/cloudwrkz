@@ -36,12 +36,14 @@ const TICKET_STATUSES = [
 export function ProjectDetailPage({ project, initialTickets = [], initialTimeAllocation = [] }: ProjectDetailPageProps) {
   const router = useRouter();
   const [viewMode, setViewMode] = useState<ProjectViewMode>("list");
+  const [mounted, setMounted] = useState(false);
   const [tickets, setTickets] = useState<Ticket[]>(initialTickets);
   const [timeAllocation, setTimeAllocation] = useState<TimeAllocation[]>(initialTimeAllocation);
   const [draggedTicket, setDraggedTicket] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     // Load view mode from localStorage (only allow list)
     try {
       const stored = localStorage.getItem(VIEW_MODE_STORAGE_KEY);
@@ -223,6 +225,7 @@ export function ProjectDetailPage({ project, initialTickets = [], initialTimeAll
         </div>
 
         {/* View Content */}
+        <div className={cn("transition-opacity duration-200", mounted ? "opacity-100" : "opacity-0")}>
         {viewMode === "card" && (
           <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-12 text-center">
             <svg
@@ -559,6 +562,7 @@ export function ProjectDetailPage({ project, initialTickets = [], initialTimeAll
             </div>
           </div>
         )}
+        </div>
       </div>
     );
   }

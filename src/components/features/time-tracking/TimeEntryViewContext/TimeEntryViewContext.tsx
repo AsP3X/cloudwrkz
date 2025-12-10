@@ -11,7 +11,21 @@ interface TimeEntryViewContextType {
 const TimeEntryViewContext = React.createContext<TimeEntryViewContextType | undefined>(undefined);
 
 export const TimeEntryViewProvider = ({ children }: { children: React.ReactNode }) => {
-  const [viewMode, setViewModeState] = React.useState<TimeEntryViewMode>(() => getInitialViewMode());
+  // Initialize with safe default to prevent hydration mismatch
+  // Load from localStorage after mount
+  const [viewMode, setViewModeState] = React.useState<TimeEntryViewMode>("table");
+  const [mounted, setMounted] = React.useState(false);
+
+  // Load view mode from localStorage after mount
+  React.useEffect(() => {
+    setMounted(true);
+    try {
+      const stored = getInitialViewMode();
+      setViewModeState(stored);
+    } catch {
+      // Ignore errors, use default
+    }
+  }, []);
 
   const setViewMode = React.useCallback((view: TimeEntryViewMode) => {
     setViewModeState(view);

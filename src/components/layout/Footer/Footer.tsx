@@ -4,12 +4,15 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
+import { cn } from "@/lib/utils/cn";
 
 export const Footer = () => {
   // Use state to ensure year is only set on client to avoid hydration mismatches
   const [currentYear, setCurrentYear] = useState<number | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     setCurrentYear(new Date().getFullYear());
   }, []);
 
@@ -114,7 +117,7 @@ export const Footer = () => {
 
         {/* Bottom */}
         <div className="border-t border-neutral-800 dark:border-neutral-900 pt-8 flex flex-col sm:flex-row justify-between items-center">
-          <p className="text-neutral-400 dark:text-neutral-500 text-sm">
+          <p className={cn("text-neutral-400 dark:text-neutral-500 text-sm transition-opacity duration-300", mounted ? "opacity-100" : "opacity-0")}>
             © {currentYear ?? new Date().getFullYear()} {APP_CONFIG.name}. All rights reserved.
           </p>
           <p className="text-neutral-400 dark:text-neutral-500 text-sm mt-4 sm:mt-0">

@@ -11,7 +11,21 @@ interface TicketViewContextType {
 const TicketViewContext = React.createContext<TicketViewContextType | undefined>(undefined);
 
 export const TicketViewProvider = ({ children }: { children: React.ReactNode }) => {
-  const [viewMode, setViewModeState] = React.useState<TicketViewMode>(() => getInitialViewMode());
+  // Initialize with safe default to prevent hydration mismatch
+  // Load from localStorage after mount
+  const [viewMode, setViewModeState] = React.useState<TicketViewMode>("normal");
+  const [mounted, setMounted] = React.useState(false);
+
+  // Load view mode from localStorage after mount
+  React.useEffect(() => {
+    setMounted(true);
+    try {
+      const stored = getInitialViewMode();
+      setViewModeState(stored);
+    } catch {
+      // Ignore errors, use default
+    }
+  }, []);
 
   const setViewMode = React.useCallback((view: TicketViewMode) => {
     setViewModeState(view);
