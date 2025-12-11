@@ -53,9 +53,9 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
           heading: {
             levels: [1, 2, 3],
           },
-          blockquote: true,
-          bulletList: true,
-          orderedList: true,
+          blockquote: {},
+          bulletList: {},
+          orderedList: {},
         }),
         TextAlign.configure({
           types: ["heading", "paragraph"],

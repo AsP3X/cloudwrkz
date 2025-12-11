@@ -344,7 +344,7 @@ async function handleStart() {
     });
 
     spinner.succeed("Time entry started");
-    console.log(`\n✅ Time entry started for project ${entry.project.code}.`);
+    console.log(`\n✅ Time entry started for project ${entry.project?.code || "unknown"}.`);
     console.log(`   Entry ID: ${entry.id}`);
   } catch (err) {
     spinner.fail("Failed to start time entry");
@@ -581,7 +581,7 @@ async function handleCreate() {
     });
 
     spinner.succeed("Time entry created");
-    console.log(`\n✅ Time entry created for project ${entry.project.code}.`);
+    console.log(`\n✅ Time entry created for project ${entry.project?.code || "unknown"}.`);
     console.log(`   Duration: ${formatDuration(entry.totalDuration)}`);
   } catch (err) {
     spinner.fail("Failed to create time entry");

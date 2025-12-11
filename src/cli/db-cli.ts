@@ -237,11 +237,17 @@ async function handleValidate() {
       },
     });
 
-    const orphanedSessions = await prisma.session.count({
-      where: {
-        user: null,
-      },
-    });
+    // Check for orphaned sessions (sessions with userId that doesn't exist in users table)
+    // Since Session.user is a required relation with cascade delete, this shouldn't happen,
+    // but we check using a raw query to be safe
+    const orphanedSessionsResult = await prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*) as count
+      FROM sessions s
+      WHERE NOT EXISTS (
+        SELECT 1 FROM users u WHERE u.id = s."userId"
+      )
+    `;
+    const orphanedSessions = Number(orphanedSessionsResult[0]?.count || 0);
 
     spinner.succeed("Validation completed");
 

@@ -373,7 +373,7 @@ async function handleRevokeUser() {
   }
 }
 
-async function handleRevokeAll() {
+export async function handleRevokeAll() {
   const confirmed = await confirm(
     "⚠️  WARNING: This will revoke ALL sessions for ALL users. Continue?",
     false
@@ -461,7 +461,9 @@ async function handleStats() {
       }),
       prisma.session.groupBy({
         by: ["userId"],
-        _count: true,
+        _count: {
+          userId: true,
+        },
         orderBy: { _count: { userId: "desc" } },
         take: 10,
       }),

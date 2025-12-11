@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth } from "@/lib/utils/auth-server";
+import { Prisma } from "@prisma/client";
 
 export type ActionResult<T = void> =
   | { success: true; data?: T; message?: string }
@@ -125,7 +126,7 @@ export async function saveFilterPreferences(
     await prisma.user.update({
       where: { id: user.id },
       data: {
-        filterPreferences: updatedPreferences,
+        filterPreferences: updatedPreferences as Prisma.InputJsonValue,
       },
     });
 
@@ -189,7 +190,7 @@ export async function saveFilterPreset(
     await prisma.user.update({
       where: { id: user.id },
       data: {
-        filterPreferences: updatedPreferences,
+        filterPreferences: updatedPreferences as Prisma.InputJsonValue,
       },
     });
 
@@ -246,7 +247,7 @@ export async function deleteFilterPreset(
     await prisma.user.update({
       where: { id: user.id },
       data: {
-        filterPreferences: updatedPreferences,
+        filterPreferences: updatedPreferences as Prisma.InputJsonValue,
       },
     });
 
@@ -296,7 +297,7 @@ export async function setLastUsedPreset(
     await prisma.user.update({
       where: { id: user.id },
       data: {
-        filterPreferences: updatedPreferences,
+        filterPreferences: updatedPreferences as Prisma.InputJsonValue,
       },
     });
 
@@ -333,7 +334,9 @@ export async function clearFilterPreferences(moduleName: string): Promise<Action
     await prisma.user.update({
       where: { id: user.id },
       data: {
-        filterPreferences: Object.keys(updatedPreferences).length > 0 ? updatedPreferences : null,
+        filterPreferences: Object.keys(updatedPreferences).length > 0 
+          ? (updatedPreferences as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
       },
     });
 

@@ -14,6 +14,7 @@
  */
 
 import { prisma } from "../lib/db/prisma";
+import { Prisma } from "@prisma/client";
 import {
   prompt,
   select,
@@ -123,7 +124,7 @@ async function handleList() {
   try {
     const modules = await prisma.module.findMany({
       where: {
-        config: { not: null },
+        config: { not: Prisma.JsonNull },
       },
       select: {
         key: true,
@@ -297,7 +298,7 @@ async function handleUnset() {
       // Clear entire config
       await prisma.module.update({
         where: { key: moduleKey },
-        data: { config: null },
+        data: { config: Prisma.JsonNull },
       });
       spinner.succeed("Configuration removed");
       console.log(`\n✅ Configuration for module "${moduleKey}" has been removed.`);
