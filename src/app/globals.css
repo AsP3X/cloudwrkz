@@ -193,6 +193,62 @@
     box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.2) !important;
   }
 
+  /* List styling for rich text editor and display */
+  .prose ul,
+  .prose ol,
+  .ProseMirror ul,
+  .ProseMirror ol {
+    list-style-position: outside !important;
+    padding-left: 1.5rem !important;
+    margin-top: 0.5rem !important;
+    margin-bottom: 0.5rem !important;
+  }
+
+  .prose ul {
+    list-style-type: disc !important;
+  }
+
+  .prose ol {
+    list-style-type: decimal !important;
+  }
+
+  .ProseMirror ul {
+    list-style-type: disc !important;
+  }
+
+  .ProseMirror ol {
+    list-style-type: decimal !important;
+  }
+
+  .prose li,
+  .ProseMirror li {
+    margin-top: 0.25rem !important;
+    margin-bottom: 0.25rem !important;
+    padding-left: 0.25rem !important;
+    color: rgb(55 65 81) !important; /* neutral-700 */
+  }
+
+  .dark .prose li,
+  .dark .ProseMirror li {
+    color: rgb(209 213 219) !important; /* neutral-300 */
+  }
+
+  /* Ensure list markers are visible */
+  .prose ul li::marker,
+  .prose ol li::marker,
+  .ProseMirror ul li::marker,
+  .ProseMirror ol li::marker {
+    color: rgb(55 65 81) !important; /* neutral-700 */
+    font-weight: 500 !important;
+  }
+
+  .dark .prose ul li::marker,
+  .dark .prose ol li::marker,
+  .dark .ProseMirror ul li::marker,
+  .dark .ProseMirror ol li::marker {
+    color: rgb(209 213 219) !important; /* neutral-300 */
+  }
+
 }
 
 /* Fix calendar picker icon visibility in dark mode - outside layer for higher specificity */

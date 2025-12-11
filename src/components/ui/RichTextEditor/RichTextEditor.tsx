@@ -55,6 +55,8 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
             levels: [1, 2, 3],
           },
           blockquote: true,
+          bulletList: true,
+          orderedList: true,
         }),
         TextAlign.configure({
           types: ["heading", "paragraph"],
@@ -124,6 +126,10 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
             "prose-blockquote:rounded-r",
             "prose-blockquote:border-primary-500",
             "prose-a:text-primary-600 dark:prose-a:text-primary-400",
+            "prose-ul:list-disc prose-ul:pl-6 prose-ul:my-4",
+            "prose-ol:list-decimal prose-ol:pl-6 prose-ol:my-4",
+            "prose-li:text-neutral-700 dark:prose-li:text-neutral-300",
+            "prose-li:my-1",
             "min-h-[100px] p-4"
           ),
           "data-placeholder": placeholder,

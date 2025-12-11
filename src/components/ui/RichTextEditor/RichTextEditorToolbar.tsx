@@ -131,9 +131,9 @@ export const RichTextEditorToolbar = ({
           // This prevents the browser from moving focus away from the editor
           e.preventDefault();
           // Execute the click handler immediately to apply formatting
-          // This ensures the selection is still available
-          setTimeout(() => {
-            if (preservedSelectionRef.current && editor) {
+          // Use requestAnimationFrame to ensure editor state is ready
+          requestAnimationFrame(() => {
+            if (preservedSelectionRef.current && editor && !editor.isDestroyed) {
               const { from, to } = preservedSelectionRef.current;
               // Restore selection before applying formatting
               editor.commands.setTextSelection({ from, to });
@@ -142,7 +142,7 @@ export const RichTextEditorToolbar = ({
               // Clear the preserved selection
               preservedSelectionRef.current = null;
             }
-          }, 0);
+          });
         } else {
           preservedSelectionRef.current = null;
         }
@@ -150,17 +150,12 @@ export const RichTextEditorToolbar = ({
     };
 
     const handleClick = () => {
-      // Restore selection if it was preserved and apply formatting
-      if (editor && preservedSelectionRef.current) {
-        const { from, to } = preservedSelectionRef.current;
-        // Restore selection before applying formatting
-        editor.commands.setTextSelection({ from, to });
-        // Clear the preserved selection
-        preservedSelectionRef.current = null;
+      // Only handle click if selection wasn't already handled in mousedown
+      // This prevents double execution when mousedown already handled it
+      if (!preservedSelectionRef.current) {
+        // Apply the formatting
+        onClick();
       }
-      
-      // Apply the formatting
-      onClick();
       
       // Refocus editor after clicking button on mobile to keep toolbar visible
       if (isMobile && editor) {
@@ -389,24 +384,68 @@ export const RichTextEditorToolbar = ({
           isMobile ? "gap-0.5 pr-2 mr-1" : "gap-1 pr-2 mr-2"
         )}
       >
-        <ToolbarButton
-          onClick={() => editor.chain().focus().toggleBulletList().run()}
-          isActive={isBulletListActive}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            // Clear preserved selection to avoid interference
+            preservedSelectionRef.current = null;
+            // Focus editor and toggle bullet list
+            if (editor && !editor.isDestroyed) {
+              editor.chain().focus().toggleBulletList().run();
+            }
+          }}
+          onMouseDown={(e) => {
+            // Stop propagation to prevent ToolbarButton's mousedown handler from interfering
+            e.stopPropagation();
+          }}
+          disabled={!editor}
           title="Bullet List"
+          className={cn(
+            "rounded transition-colors flex-shrink-0",
+            isMobile ? "p-3 min-w-[44px] min-h-[44px] flex items-center justify-center" : "p-2",
+            "hover:bg-neutral-100 dark:hover:bg-neutral-700",
+            "disabled:opacity-50 disabled:cursor-not-allowed",
+            "active:bg-neutral-200 dark:active:bg-neutral-600",
+            isBulletListActive && "bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300"
+          )}
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
           </svg>
-        </ToolbarButton>
-        <ToolbarButton
-          onClick={() => editor.chain().focus().toggleOrderedList().run()}
-          isActive={isOrderedListActive}
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            // Clear preserved selection to avoid interference
+            preservedSelectionRef.current = null;
+            // Focus editor and toggle ordered list
+            if (editor && !editor.isDestroyed) {
+              editor.chain().focus().toggleOrderedList().run();
+            }
+          }}
+          onMouseDown={(e) => {
+            // Stop propagation to prevent ToolbarButton's mousedown handler from interfering
+            e.stopPropagation();
+          }}
+          disabled={!editor}
           title="Numbered List"
+          className={cn(
+            "rounded transition-colors flex-shrink-0",
+            isMobile ? "p-3 min-w-[44px] min-h-[44px] flex items-center justify-center" : "p-2",
+            "hover:bg-neutral-100 dark:hover:bg-neutral-700",
+            "disabled:opacity-50 disabled:cursor-not-allowed",
+            "active:bg-neutral-200 dark:active:bg-neutral-600",
+            isOrderedListActive && "bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300"
+          )}
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
           </svg>
-        </ToolbarButton>
+        </button>
       </div>
 
       {/* Block Elements */}
