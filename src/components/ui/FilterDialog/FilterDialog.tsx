@@ -193,6 +193,8 @@ export const FilterDialog = ({
     loadPresets();
 
     // Listen for localStorage changes (e.g., from other tabs) - reload from backend
+    if (typeof window === "undefined") return;
+
     const handleStorageChange = () => {
       loadPresets();
     };
@@ -200,7 +202,9 @@ export const FilterDialog = ({
     window.addEventListener("storage", handleStorageChange);
 
     return () => {
-      window.removeEventListener("storage", handleStorageChange);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("storage", handleStorageChange);
+      }
     };
   }, [storageKey, lastUsedKey, enablePresets, config.moduleName]);
 

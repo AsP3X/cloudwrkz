@@ -12,30 +12,28 @@ export const Header = () => {
   const [scrolled, setScrolled] = React.useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [mounted, setMounted] = React.useState(false);
-  const [isDark, setIsDark] = React.useState(() => {
-    if (typeof window === "undefined") return false;
-    // Check DOM (set by blocking script) - safe because script runs before React
-    try {
-      return document.documentElement.classList.contains("dark");
-    } catch {
-      return false;
-    }
-  });
+  // Initialize with safe default to avoid hydration mismatch
+  // Will be updated after mount when we can safely access DOM
+  const [isDark, setIsDark] = React.useState(false);
 
   React.useEffect(() => {
     setMounted(true);
-    // Check for dark mode
+    // Check for dark mode - only after mount to avoid hydration issues
     const checkDarkMode = () => {
-      setIsDark(document.documentElement.classList.contains('dark'));
+      if (typeof window !== "undefined" && typeof document !== "undefined") {
+        setIsDark(document.documentElement.classList.contains('dark'));
+      }
     };
     checkDarkMode();
     // Watch for dark mode changes
-    const observer = new MutationObserver(checkDarkMode);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class'],
-    });
-    return () => observer.disconnect();
+    if (typeof window !== "undefined" && typeof document !== "undefined") {
+      const observer = new MutationObserver(checkDarkMode);
+      observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class'],
+      });
+      return () => observer.disconnect();
+    }
   }, []);
 
   React.useEffect(() => {

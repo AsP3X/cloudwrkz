@@ -37,6 +37,8 @@ export const TicketCommentForm = ({ ticketId, userRole }: TicketCommentFormProps
 
   // Close dropdown when clicking outside
   React.useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsDropdownOpen(false);
@@ -48,7 +50,9 @@ export const TicketCommentForm = ({ ticketId, userRole }: TicketCommentFormProps
     }
 
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
+      if (typeof document !== "undefined") {
+        document.removeEventListener("mousedown", handleClickOutside);
+      }
     };
   }, [isDropdownOpen]);
 

@@ -38,8 +38,14 @@ export const TimeEntryBulkActionsToolbar = ({
       }
     };
 
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () => {
+      if (typeof document !== "undefined") {
+        document.removeEventListener("mousedown", handleClickOutside);
+      }
+    };
   }, []);
 
   const handleStatusSelect = (status: TimeEntryStatus) => {

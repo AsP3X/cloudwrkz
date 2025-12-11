@@ -6,10 +6,13 @@ export const SkipToContent = () => {
   const linkRef = useRef<HTMLAnchorElement>(null);
 
   useEffect(() => {
+    // Only run on client side
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+
     // Blur the skip link if it gets focused on mount (e.g., from navigation)
     // This prevents it from showing when navigating between pages
     const blurIfFocused = () => {
-      if (linkRef.current && document.activeElement === linkRef.current) {
+      if (linkRef.current && typeof document !== "undefined" && document.activeElement === linkRef.current) {
         // Only blur if focus wasn't from keyboard navigation
         // Check if body was the previous active element (indicates programmatic focus)
         linkRef.current.blur();

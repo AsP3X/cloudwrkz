@@ -52,7 +52,7 @@ export const FloatingTooltip: React.FC<FloatingTooltipProps> = ({
 
     // Use requestAnimationFrame to ensure DOM is updated before calculating position
     const calculatePosition = () => {
-      if (!triggerRef.current || !tooltipRef.current) return;
+      if (!triggerRef.current || !tooltipRef.current || typeof window === "undefined") return;
 
       const triggerRect = triggerRef.current.getBoundingClientRect();
       const tooltipRect = tooltipRef.current.getBoundingClientRect();
@@ -145,25 +145,31 @@ export const FloatingTooltip: React.FC<FloatingTooltipProps> = ({
     };
 
     // Use setTimeout to avoid immediate closure on the click that opened it
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+
     const timeoutId = setTimeout(() => {
-      document.addEventListener("mousedown", handleClickOutside);
-      document.addEventListener("keydown", handleEscape);
+      if (typeof document !== "undefined") {
+        document.addEventListener("mousedown", handleClickOutside);
+        document.addEventListener("keydown", handleEscape);
+      }
     }, 0);
 
     return () => {
       clearTimeout(timeoutId);
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleEscape);
+      if (typeof document !== "undefined") {
+        document.removeEventListener("mousedown", handleClickOutside);
+        document.removeEventListener("keydown", handleEscape);
+      }
     };
   }, [isOpen]);
 
   // Handle scroll and resize
   React.useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || typeof window === "undefined") return;
 
     const handleScrollOrResize = () => {
       // Recalculate position on scroll/resize
-      if (triggerRef.current && tooltipRef.current) {
+      if (triggerRef.current && tooltipRef.current && typeof window !== "undefined") {
         const triggerRect = triggerRef.current.getBoundingClientRect();
         const tooltipRect = tooltipRef.current.getBoundingClientRect();
         const scrollY = window.scrollY;
@@ -229,8 +235,10 @@ export const FloatingTooltip: React.FC<FloatingTooltipProps> = ({
     window.addEventListener("resize", handleScrollOrResize);
 
     return () => {
-      window.removeEventListener("scroll", handleScrollOrResize, true);
-      window.removeEventListener("resize", handleScrollOrResize);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("scroll", handleScrollOrResize, true);
+        window.removeEventListener("resize", handleScrollOrResize);
+      }
     };
   }, [isOpen, position]);
 

@@ -80,8 +80,14 @@ export const RichTextEditorToolbar = ({
       }
     };
 
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () => {
+      if (typeof document !== "undefined") {
+        document.removeEventListener("mousedown", handleClickOutside);
+      }
+    };
   }, []);
 
   // Get current formatting states - re-evaluated when selection changes
