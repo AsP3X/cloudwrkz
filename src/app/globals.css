@@ -165,14 +165,18 @@
   span[data-type="inline-quote"],
   .ProseMirror span[data-type="inline-quote"],
   .ProseMirror span.inline-quote {
-    border-left: 3px solid rgb(59 130 246) !important; /* primary-500 */
-    padding-left: 0.5rem !important;
-    padding-right: 0.5rem !important;
-    background-color: rgb(245 245 244) !important; /* neutral-100 */
-    color: rgb(55 65 81) !important; /* neutral-700 */
+    border-left: 4px solid rgb(37 99 235) !important; /* primary-600 - darker blue for more visibility */
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+    padding-top: 0.25rem !important;
+    padding-bottom: 0.25rem !important;
+    background-color: rgb(219 234 254) !important; /* blue-100 - lighter blue background for better contrast */
+    color: rgb(30 58 138) !important; /* blue-900 - darker blue text for readability */
     font-style: italic !important;
-    border-radius: 0.25rem !important;
+    font-weight: 500 !important;
+    border-radius: 0.375rem !important;
     display: inline !important;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
   }
 
   .dark .prose mark[data-color="#inline-quote"],
@@ -183,9 +187,10 @@
   .dark span[data-type="inline-quote"],
   .dark .ProseMirror span[data-type="inline-quote"],
   .dark .ProseMirror span.inline-quote {
-    background-color: rgba(31, 41, 55, 0.5) !important; /* neutral-800/50 */
-    color: rgb(209 213 219) !important; /* neutral-300 */
-    border-left-color: rgb(59 130 246) !important; /* primary-500 */
+    background-color: rgba(30, 58, 138, 0.3) !important; /* blue-900 with opacity */
+    color: rgb(191 219 254) !important; /* blue-200 - lighter blue text for dark mode */
+    border-left-color: rgb(96 165 250) !important; /* blue-400 - brighter blue border for dark mode */
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.2) !important;
   }
 
 }

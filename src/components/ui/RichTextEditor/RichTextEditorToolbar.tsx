@@ -47,8 +47,26 @@ export const RichTextEditorToolbar = ({
 
   const [textColorOpen, setTextColorOpen] = React.useState(false);
   const [highlightColorOpen, setHighlightColorOpen] = React.useState(false);
+  const [selectionUpdate, setSelectionUpdate] = React.useState(0);
   const textColorRef = React.useRef<HTMLDivElement>(null);
   const highlightColorRef = React.useRef<HTMLDivElement>(null);
+
+  // Listen to selection changes to update active states
+  React.useEffect(() => {
+    if (!editor) return;
+
+    const updateSelection = () => {
+      setSelectionUpdate((prev) => prev + 1);
+    };
+
+    editor.on("selectionUpdate", updateSelection);
+    editor.on("transaction", updateSelection);
+
+    return () => {
+      editor.off("selectionUpdate", updateSelection);
+      editor.off("transaction", updateSelection);
+    };
+  }, [editor]);
 
   // Close dropdowns when clicking outside
   React.useEffect(() => {
@@ -65,11 +83,28 @@ export const RichTextEditorToolbar = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Get current text color
-  const currentTextColor = editor.getAttributes("textStyle").color || null;
+  // Get current formatting states - re-evaluated when selection changes
+  // Check if textStyle is actually active on the current selection
+  const isTextStyleActive = selectionUpdate >= 0 && editor.isActive("textStyle");
+  const textStyleAttrs = editor.getAttributes("textStyle");
+  const currentTextColor = isTextStyleActive && textStyleAttrs.color && textStyleAttrs.color !== "#inline-quote" ? textStyleAttrs.color : null;
 
-  // Get current highlight color
-  const currentHighlightColor = editor.getAttributes("highlight").color || null;
+  // Check if highlight is actually active on the current selection
+  const isHighlightActive = selectionUpdate >= 0 && editor.isActive("highlight");
+  const highlightAttrs = editor.getAttributes("highlight");
+  const currentHighlightColor = isHighlightActive && highlightAttrs.color && highlightAttrs.color !== "#inline-quote" ? highlightAttrs.color : null;
+  
+  // Check if inline quote is active (highlight with inline-quote color)
+  const isInlineQuoteActive = isHighlightActive && highlightAttrs.color === "#inline-quote";
+  
+  // Check other formatting states
+  const isBoldActive = selectionUpdate >= 0 && editor.isActive("bold");
+  const isItalicActive = selectionUpdate >= 0 && editor.isActive("italic");
+  const isBlockquoteActive = selectionUpdate >= 0 && editor.isActive("blockquote");
+  const isCodeBlockActive = selectionUpdate >= 0 && editor.isActive("codeBlock");
+  const isLinkActive = selectionUpdate >= 0 && editor.isActive("link");
+  const isBulletListActive = selectionUpdate >= 0 && editor.isActive("bulletList");
+  const isOrderedListActive = selectionUpdate >= 0 && editor.isActive("orderedList");
 
   const ToolbarButton = ({
     onClick,
@@ -133,7 +168,7 @@ export const RichTextEditorToolbar = ({
       >
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleBold().run()}
-          isActive={editor.isActive("bold")}
+          isActive={isBoldActive}
           title="Bold (Ctrl+B)"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -143,7 +178,7 @@ export const RichTextEditorToolbar = ({
         </ToolbarButton>
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleItalic().run()}
-          isActive={editor.isActive("italic")}
+          isActive={isItalicActive}
           title="Italic (Ctrl+I)"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -229,7 +264,7 @@ export const RichTextEditorToolbar = ({
       >
         <ToolbarButton
           onClick={() => setHighlightColorOpen(!highlightColorOpen)}
-          isActive={!!currentHighlightColor}
+          isActive={!!currentHighlightColor && !isInlineQuoteActive}
           title="Highlight Color"
         >
           <div className="relative">
@@ -295,7 +330,7 @@ export const RichTextEditorToolbar = ({
       >
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleBulletList().run()}
-          isActive={editor.isActive("bulletList")}
+          isActive={isBulletListActive}
           title="Bullet List"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -304,7 +339,7 @@ export const RichTextEditorToolbar = ({
         </ToolbarButton>
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleOrderedList().run()}
-          isActive={editor.isActive("orderedList")}
+          isActive={isOrderedListActive}
           title="Numbered List"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -326,9 +361,9 @@ export const RichTextEditorToolbar = ({
             const hasSelection = from !== to;
             
             // Check if already in blockquote or inline quote (highlight with special color)
-            if (editor.isActive("blockquote")) {
+            if (isBlockquoteActive) {
               editor.chain().focus().toggleBlockquote().run();
-            } else if (editor.isActive("highlight", { color: "#inline-quote" })) {
+            } else if (isInlineQuoteActive) {
               editor.chain().focus().unsetHighlight().run();
             } else if (hasSelection) {
               // If text is selected, determine if it should be inline or block
@@ -392,7 +427,7 @@ export const RichTextEditorToolbar = ({
               editor.chain().focus().toggleBlockquote().run();
             }
           }}
-          isActive={editor.isActive("blockquote") || editor.isActive("highlight", { color: "#inline-quote" })}
+          isActive={isBlockquoteActive || isInlineQuoteActive}
           title="Quote"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -401,7 +436,7 @@ export const RichTextEditorToolbar = ({
         </ToolbarButton>
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-          isActive={editor.isActive("codeBlock")}
+          isActive={isCodeBlockActive}
           title="Code Block"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -424,7 +459,7 @@ export const RichTextEditorToolbar = ({
               editor.chain().focus().setLink({ href: url }).run();
             }
           })}
-          isActive={editor.isActive("link")}
+          isActive={isLinkActive}
           title="Add Link"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
