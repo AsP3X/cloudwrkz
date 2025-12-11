@@ -10,12 +10,64 @@ interface RichTextEditorToolbarProps {
   onLinkAdd?: () => void;
 }
 
+// Predefined color palettes
+const TEXT_COLORS = [
+  { name: "Default", value: null },
+  { name: "Black", value: "#000000" },
+  { name: "Gray", value: "#6B7280" },
+  { name: "Red", value: "#EF4444" },
+  { name: "Orange", value: "#F97316" },
+  { name: "Yellow", value: "#EAB308" },
+  { name: "Green", value: "#22C55E" },
+  { name: "Blue", value: "#3B82F6" },
+  { name: "Indigo", value: "#6366F1" },
+  { name: "Purple", value: "#A855F7" },
+  { name: "Pink", value: "#EC4899" },
+];
+
+const HIGHLIGHT_COLORS = [
+  { name: "None", value: null },
+  { name: "Yellow", value: "#FEF08A" },
+  { name: "Green", value: "#BBF7D0" },
+  { name: "Blue", value: "#BFDBFE" },
+  { name: "Pink", value: "#FCE7F3" },
+  { name: "Orange", value: "#FED7AA" },
+  { name: "Purple", value: "#E9D5FF" },
+  { name: "Red", value: "#FECACA" },
+];
+
 export const RichTextEditorToolbar = ({
   editor,
   onImageUpload,
   onLinkAdd,
 }: RichTextEditorToolbarProps) => {
   if (!editor) return null;
+
+  const [textColorOpen, setTextColorOpen] = React.useState(false);
+  const [highlightColorOpen, setHighlightColorOpen] = React.useState(false);
+  const textColorRef = React.useRef<HTMLDivElement>(null);
+  const highlightColorRef = React.useRef<HTMLDivElement>(null);
+
+  // Close dropdowns when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (textColorRef.current && !textColorRef.current.contains(event.target as Node)) {
+        setTextColorOpen(false);
+      }
+      if (highlightColorRef.current && !highlightColorRef.current.contains(event.target as Node)) {
+        setHighlightColorOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Get current text color
+  const currentTextColor = editor.getAttributes("textStyle").color || null;
+
+  // Get current highlight color
+  const currentHighlightColor = editor.getAttributes("highlight").color || null;
 
   const ToolbarButton = ({
     onClick,
@@ -68,6 +120,118 @@ export const RichTextEditorToolbar = ({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
           </svg>
         </ToolbarButton>
+      </div>
+
+      {/* Text Color */}
+      <div className="relative border-r border-neutral-300 dark:border-neutral-600 pr-2 mr-2" ref={textColorRef}>
+        <ToolbarButton
+          onClick={() => setTextColorOpen(!textColorOpen)}
+          isActive={!!currentTextColor}
+          title="Text Color"
+        >
+          <div className="relative">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+            </svg>
+            {currentTextColor && (
+              <div
+                className="absolute bottom-0 right-0 w-2 h-2 rounded-full border border-white dark:border-neutral-800"
+                style={{ backgroundColor: currentTextColor }}
+              />
+            )}
+          </div>
+        </ToolbarButton>
+        {textColorOpen && (
+          <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg p-2 min-w-[180px]">
+            <div className="grid grid-cols-4 gap-2">
+              {TEXT_COLORS.map((color) => (
+                <button
+                  key={color.name}
+                  type="button"
+                  onClick={() => {
+                    if (color.value) {
+                      editor.chain().focus().setColor(color.value).run();
+                    } else {
+                      editor.chain().focus().unsetColor().run();
+                    }
+                    setTextColorOpen(false);
+                  }}
+                  className={cn(
+                    "w-8 h-8 rounded border-2 transition-all hover:scale-110",
+                    color.value === null
+                      ? "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 flex items-center justify-center"
+                      : "border-transparent",
+                    currentTextColor === color.value && "ring-2 ring-primary-500 ring-offset-1"
+                  )}
+                  style={color.value ? { backgroundColor: color.value } : undefined}
+                  title={color.name}
+                >
+                  {color.value === null && (
+                    <svg className="w-4 h-4 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Highlight Color */}
+      <div className="relative border-r border-neutral-300 dark:border-neutral-600 pr-2 mr-2" ref={highlightColorRef}>
+        <ToolbarButton
+          onClick={() => setHighlightColorOpen(!highlightColorOpen)}
+          isActive={!!currentHighlightColor}
+          title="Highlight Color"
+        >
+          <div className="relative">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+            </svg>
+            {currentHighlightColor && (
+              <div
+                className="absolute bottom-0 right-0 w-2 h-2 rounded-full border border-white dark:border-neutral-800"
+                style={{ backgroundColor: currentHighlightColor }}
+              />
+            )}
+          </div>
+        </ToolbarButton>
+        {highlightColorOpen && (
+          <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg p-2 min-w-[180px]">
+            <div className="grid grid-cols-4 gap-2">
+              {HIGHLIGHT_COLORS.map((color) => (
+                <button
+                  key={color.name}
+                  type="button"
+                  onClick={() => {
+                    if (color.value) {
+                      editor.chain().focus().toggleHighlight({ color: color.value }).run();
+                    } else {
+                      editor.chain().focus().unsetHighlight().run();
+                    }
+                    setHighlightColorOpen(false);
+                  }}
+                  className={cn(
+                    "w-8 h-8 rounded border-2 transition-all hover:scale-110",
+                    color.value === null
+                      ? "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 flex items-center justify-center"
+                      : "border-transparent",
+                    currentHighlightColor === color.value && "ring-2 ring-primary-500 ring-offset-1"
+                  )}
+                  style={color.value ? { backgroundColor: color.value } : undefined}
+                  title={color.name}
+                >
+                  {color.value === null && (
+                    <svg className="w-4 h-4 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Headings */}

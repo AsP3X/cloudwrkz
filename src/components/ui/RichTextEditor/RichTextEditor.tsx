@@ -70,7 +70,9 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
         Blockquote,
         CodeBlock,
         Code,
-        Highlight,
+        Highlight.configure({
+          multicolor: true,
+        }),
         Color,
         TextStyle,
         Placeholder.configure({
