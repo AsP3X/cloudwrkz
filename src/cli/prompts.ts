@@ -138,6 +138,7 @@ export async function promptPassword(
 
 /**
  * Prompt user to select from a list of options
+ * Uses list with loop: false to prevent infinite scrolling
  */
 export async function select(
   question: string,
@@ -151,6 +152,7 @@ export async function select(
       message: chalk.cyan(question),
       choices: displayNames || options,
       pageSize: 10,
+      loop: false, // Disable looping - cursor stops at top and bottom
     },
   ]);
   return options[displayNames ? displayNames.indexOf(choice) : options.indexOf(choice)];
@@ -177,6 +179,7 @@ export async function confirm(
 /**
  * Display a menu and return the selected option key
  * Enhanced with better visual design and keyboard navigation
+ * Uses list with loop: false to prevent infinite scrolling
  */
 export async function menu(
   title: string,
@@ -210,6 +213,7 @@ export async function menu(
       message: chalk.bold.cyan(title),
       choices,
       pageSize: 15,
+      loop: false, // Disable looping - cursor stops at top and bottom
     },
   ]);
 
@@ -218,6 +222,7 @@ export async function menu(
 
 /**
  * Create a searchable select prompt
+ * Uses list with loop: false to prevent infinite scrolling
  */
 export async function searchSelect(
   question: string,
@@ -236,6 +241,7 @@ export async function searchSelect(
       message: chalk.cyan(question),
       choices,
       pageSize: 10,
+      loop: false, // Disable looping - cursor stops at top and bottom
     },
   ]);
 
@@ -311,6 +317,7 @@ export function createTable(headers: string[], options?: { colWidths?: number[] 
 
 /**
  * Display paginated list with search
+ * Uses list with loop: false to prevent infinite scrolling
  */
 export async function paginatedSelect<T>(
   question: string,
@@ -343,6 +350,7 @@ export async function paginatedSelect<T>(
       message: chalk.cyan(question),
       choices,
       pageSize: Math.min(pageSize, items.length),
+      loop: false, // Disable looping - cursor stops at top and bottom
     },
   ]);
 

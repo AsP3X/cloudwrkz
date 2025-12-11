@@ -81,8 +81,47 @@ async function runInteractiveMode() {
       {
         key: "m",
         label: "📦 Module Management",
-        description: "Configure and manage system modules (coming soon)",
-        disabled: true,
+        description: "Configure and manage system modules",
+      },
+      {
+        key: "s",
+        label: "🔐 Session Management",
+        description: "Manage user sessions and authentication",
+      },
+      {
+        key: "p",
+        label: "📁 Project Management",
+        description: "Manage projects and project members",
+      },
+      {
+        key: "t",
+        label: "📋 Task Management",
+        description: "Manage tasks and task assignments",
+      },
+      {
+        key: "tk",
+        label: "🎫 Ticket Management",
+        description: "Manage support tickets",
+      },
+      {
+        key: "tm",
+        label: "⏱️  Time Tracking",
+        description: "Manage time entries and tracking",
+      },
+      {
+        key: "perm",
+        label: "🔑 Permission Management",
+        description: "Manage permissions and access control",
+      },
+      {
+        key: "stats",
+        label: "📊 Statistics & Analytics",
+        description: "View system statistics and reports",
+      },
+      {
+        key: "db",
+        label: "🗄️  Database Maintenance",
+        description: "Database operations and maintenance",
       },
       {
         key: "h",
@@ -104,9 +143,31 @@ async function runInteractiveMode() {
         await runGroupInteractive();
         break;
       case "m":
-        clear();
-        notice("Module management is coming soon! Stay tuned for updates.", "info");
-        await waitForEnter();
+        await runModuleInteractive();
+        break;
+      case "s":
+        await runSessionInteractive();
+        break;
+      case "p":
+        await runProjectInteractive();
+        break;
+      case "t":
+        await runTaskInteractive();
+        break;
+      case "tk":
+        await runTicketInteractive();
+        break;
+      case "tm":
+        await runTimeInteractive();
+        break;
+      case "perm":
+        await runPermissionInteractive();
+        break;
+      case "stats":
+        await runStatsInteractive();
+        break;
+      case "db":
+        await runDbInteractive();
         break;
       case "h":
         clear();
@@ -785,6 +846,358 @@ async function runGroupInteractive() {
   }
 }
 
+async function runModuleInteractive() {
+  const moduleCli = await import("./module-cli");
+
+  while (true) {
+    clear();
+    header("Module Management", "Configure and manage system modules");
+
+    const choice = await menu("Select an action:", [
+      {
+        key: "l",
+        label: "📋 List Modules",
+        description: "View all modules and their status",
+      },
+      {
+        key: "e",
+        label: "✅ Enable Module",
+        description: "Enable a system module",
+      },
+      {
+        key: "d",
+        label: "❌ Disable Module",
+        description: "Disable a system module",
+      },
+      {
+        key: "s",
+        label: "🔍 Show Module Details",
+        description: "View detailed module information",
+      },
+      {
+        key: "c",
+        label: "⚙️  Configure Module",
+        description: "Update module configuration",
+      },
+      {
+        key: "st",
+        label: "📊 Module Status",
+        description: "View overall module status",
+      },
+      {
+        key: "sync",
+        label: "🔄 Sync Modules",
+        description: "Sync modules from code definitions",
+      },
+      {
+        key: "b",
+        label: "⬅️  Back to Main Menu",
+        description: "Return to main menu",
+      },
+    ]);
+
+    switch (choice) {
+      case "l":
+        clear();
+        await moduleCli.handleListInteractive();
+        await waitForEnter();
+        break;
+      case "e":
+        clear();
+        await moduleCli.handleEnableInteractive();
+        await waitForEnter();
+        break;
+      case "d":
+        clear();
+        await moduleCli.handleDisableInteractive();
+        await waitForEnter();
+        break;
+      case "s":
+        clear();
+        await moduleCli.handleShowInteractive();
+        await waitForEnter();
+        break;
+      case "c":
+        clear();
+        await moduleCli.handleConfigInteractive();
+        await waitForEnter();
+        break;
+      case "st":
+        clear();
+        await moduleCli.handleStatusInteractive();
+        await waitForEnter();
+        break;
+      case "sync":
+        clear();
+        await moduleCli.handleSyncInteractive();
+        await waitForEnter();
+        break;
+      case "b":
+        return;
+    }
+  }
+}
+
+async function runSessionInteractive() {
+  const sessionCli = await import("./session-cli");
+
+  while (true) {
+    clear();
+    header("Session Management", "Manage user sessions and authentication");
+
+    const choice = await menu("Select an action:", [
+      {
+        key: "l",
+        label: "📋 List Sessions",
+        description: "View all sessions with filters",
+      },
+      {
+        key: "s",
+        label: "🔍 Show Session Details",
+        description: "View detailed session information",
+      },
+      {
+        key: "r",
+        label: "🚫 Revoke Session",
+        description: "Revoke a specific session",
+      },
+      {
+        key: "ru",
+        label: "🚫 Revoke User Sessions",
+        description: "Revoke all sessions for a user",
+      },
+      {
+        key: "ra",
+        label: "🚫 Revoke All Sessions",
+        description: "Revoke all sessions (with confirmation)",
+      },
+      {
+        key: "c",
+        label: "🧹 Cleanup Expired",
+        description: "Remove expired sessions",
+      },
+      {
+        key: "st",
+        label: "📊 Session Statistics",
+        description: "View session statistics",
+      },
+      {
+        key: "b",
+        label: "⬅️  Back to Main Menu",
+        description: "Return to main menu",
+      },
+    ]);
+
+    switch (choice) {
+      case "l":
+        clear();
+        await sessionCli.handleListInteractive();
+        await waitForEnter();
+        break;
+      case "s":
+        clear();
+        await sessionCli.handleShowInteractive();
+        await waitForEnter();
+        break;
+      case "r":
+        clear();
+        await sessionCli.handleRevokeInteractive();
+        await waitForEnter();
+        break;
+      case "ru":
+        clear();
+        await sessionCli.handleRevokeUserInteractive();
+        await waitForEnter();
+        break;
+      case "ra":
+        clear();
+        await sessionCli.handleRevokeAll();
+        await waitForEnter();
+        break;
+      case "c":
+        clear();
+        await sessionCli.handleCleanupInteractive();
+        await waitForEnter();
+        break;
+      case "st":
+        clear();
+        await sessionCli.handleStatsInteractive();
+        await waitForEnter();
+        break;
+      case "b":
+        return;
+    }
+  }
+}
+
+async function runProjectInteractive() {
+  const projectCli = await import("./project-cli");
+
+  while (true) {
+    clear();
+    header("Project Management", "Manage projects and project members");
+
+    const choice = await menu("Select an action:", [
+      {
+        key: "l",
+        label: "📋 List Projects",
+        description: "View all projects",
+      },
+      {
+        key: "c",
+        label: "➕ Create Project",
+        description: "Create a new project",
+      },
+      {
+        key: "s",
+        label: "🔍 Show Project Details",
+        description: "View detailed project information",
+      },
+      {
+        key: "u",
+        label: "✏️  Update Project",
+        description: "Modify project details",
+      },
+      {
+        key: "am",
+        label: "➕ Add Member",
+        description: "Add a user to project",
+      },
+      {
+        key: "rm",
+        label: "➖ Remove Member",
+        description: "Remove a user from project",
+      },
+      {
+        key: "lm",
+        label: "👥 List Members",
+        description: "View project members",
+      },
+      {
+        key: "ag",
+        label: "➕ Add Group",
+        description: "Add a group to project",
+      },
+      {
+        key: "rg",
+        label: "➖ Remove Group",
+        description: "Remove a group from project",
+      },
+      {
+        key: "lg",
+        label: "👥 List Groups",
+        description: "View project groups",
+      },
+      {
+        key: "d",
+        label: "🗑️  Delete Project",
+        description: "Delete a project (irreversible)",
+      },
+      {
+        key: "b",
+        label: "⬅️  Back to Main Menu",
+        description: "Return to main menu",
+      },
+    ]);
+
+    switch (choice) {
+      case "l":
+        clear();
+        await projectCli.handleListInteractive();
+        await waitForEnter();
+        break;
+      case "c":
+        clear();
+        await projectCli.handleCreateInteractive();
+        await waitForEnter();
+        break;
+      case "s":
+        clear();
+        await projectCli.handleShowInteractive();
+        await waitForEnter();
+        break;
+      case "u":
+        clear();
+        notice("Update project functionality - use non-interactive mode: pnpm cli project update <id|code> [--name=NAME] [--status=STATUS]", "info");
+        await waitForEnter();
+        break;
+      case "am":
+        clear();
+        notice("Add member functionality - use non-interactive mode: pnpm cli project add-member <project> <user> [--role=ROLE]", "info");
+        await waitForEnter();
+        break;
+      case "rm":
+        clear();
+        notice("Remove member functionality - use non-interactive mode: pnpm cli project remove-member <project> <user>", "info");
+        await waitForEnter();
+        break;
+      case "lm":
+        clear();
+        notice("List members functionality - use non-interactive mode: pnpm cli project list-members <project>", "info");
+        await waitForEnter();
+        break;
+      case "ag":
+        clear();
+        notice("Add group functionality - use non-interactive mode: pnpm cli project add-group <project> <group>", "info");
+        await waitForEnter();
+        break;
+      case "rg":
+        clear();
+        notice("Remove group functionality - use non-interactive mode: pnpm cli project remove-group <project> <group>", "info");
+        await waitForEnter();
+        break;
+      case "lg":
+        clear();
+        notice("List groups functionality - use non-interactive mode: pnpm cli project list-groups <project>", "info");
+        await waitForEnter();
+        break;
+      case "d":
+        clear();
+        notice("Delete project functionality - use non-interactive mode: pnpm cli project delete <id|code>", "info");
+        await waitForEnter();
+        break;
+      case "b":
+        return;
+    }
+  }
+}
+
+async function runTaskInteractive() {
+  clear();
+  notice("Task Management CLI - Use non-interactive mode: pnpm cli task <command>", "info");
+  await waitForEnter();
+}
+
+async function runTicketInteractive() {
+  clear();
+  notice("Ticket Management CLI - Use non-interactive mode: pnpm cli ticket <command>", "info");
+  await waitForEnter();
+}
+
+async function runTimeInteractive() {
+  clear();
+  notice("Time Tracking CLI - Use non-interactive mode: pnpm cli time <command>", "info");
+  await waitForEnter();
+}
+
+async function runPermissionInteractive() {
+  clear();
+  notice("Permission Management CLI - Use non-interactive mode: pnpm cli permission <command>", "info");
+  await waitForEnter();
+}
+
+async function runStatsInteractive() {
+  clear();
+  notice("Statistics & Analytics CLI - Use non-interactive mode: pnpm cli stats <command>", "info");
+  await waitForEnter();
+}
+
+async function runDbInteractive() {
+  clear();
+  notice("Database Maintenance CLI - Use non-interactive mode: pnpm cli db <command>", "info");
+  await waitForEnter();
+}
+
 async function executeCommand(args: string[]) {
   const category = args[0];
   const commandArgs = args.slice(1);
@@ -843,9 +1256,31 @@ Run 'pnpm cli help' for more information.
       }
       break;
     case "module":
-      notice("Module management commands coming soon!", "info");
-      await prisma.$disconnect();
-      process.exit(0);
+      await import("./module-cli");
+      break;
+    case "session":
+      await import("./session-cli");
+      break;
+    case "project":
+      await import("./project-cli");
+      break;
+    case "task":
+      await import("./task-cli");
+      break;
+    case "ticket":
+      await import("./ticket-cli");
+      break;
+    case "time":
+      await import("./time-cli");
+      break;
+    case "permission":
+      await import("./permission-cli");
+      break;
+    case "stats":
+      await import("./stats-cli");
+      break;
+    case "db":
+      await import("./db-cli");
       break;
     default:
       error(`Unknown category: ${category}`);
@@ -861,7 +1296,15 @@ function showHelp() {
   console.log(chalk.bold("Available command categories:\n"));
   console.log(chalk.cyan("  user      "), "User management (create, delete, list, show, update-status, update-role, update-password, verify, cookie-accept, cookie-revoke, cookie-status, ban, unban)");
   console.log(chalk.cyan("  group     "), "Group management (create, delete, list, show, update, add-agent, remove-agent, list-agents)");
-  console.log(chalk.cyan("  module    "), "Module management (future)");
+  console.log(chalk.cyan("  module    "), "Module management (list, enable, disable, show, config, status, sync)");
+  console.log(chalk.cyan("  session   "), "Session management (list, show, revoke, revoke-user, revoke-all, cleanup, stats)");
+  console.log(chalk.cyan("  project   "), "Project management (list, create, show, update, delete, add-member, remove-member, list-members, add-group, remove-group, list-groups)");
+  console.log(chalk.cyan("  task      "), "Task management (list, show, create, update, assign, complete, delete)");
+  console.log(chalk.cyan("  ticket    "), "Ticket management (list, show, create, update, assign, close, reopen, delete)");
+  console.log(chalk.cyan("  time      "), "Time tracking (list, show, start, stop, pause, resume, create, update, delete, export, report)");
+  console.log(chalk.cyan("  permission"), "Permission management (list, show, grant, revoke, list-group, sync)");
+  console.log(chalk.cyan("  stats     "), "Statistics & analytics (overview, users, projects, tickets, time, export)");
+  console.log(chalk.cyan("  db        "), "Database maintenance (status, migrate, seed, cleanup, optimize, stats, validate)");
 
   separator();
 
