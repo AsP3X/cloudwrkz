@@ -458,9 +458,12 @@ export async function getTickets(filters?: {
       });
       const agentGroupIds = memberships.map((m) => m.groupId);
 
+      // Agents can only see:
+      // 1. Tickets assigned to them directly (assignedToId === user.id)
+      // 2. Tickets assigned to their groups (assignedToGroupId IN agentGroupIds)
+      // They should NOT see tickets with no group assignment unless assigned to them
       permissionFilters.push(
         { assignedToId: user.id },
-        { assignedToGroupId: null },
         ...(agentGroupIds.length > 0 ? [{ assignedToGroupId: { in: agentGroupIds } }] : [])
       );
     } else if (user.role === "USER") {
@@ -755,33 +758,47 @@ export async function getTicket(id: string) {
     }
     
     if (!hasAccess) {
-      // Check group access for agents (only if they have general tickets.view permission)
-      if (user.role === "AGENT" && ticket.assignedToGroupId) {
-        // Check if agent is a member of the ticket's group
-        const membership = await prisma.groupMembership.findUnique({
-          where: {
-            userId_groupId: {
-              userId: user.id,
-              groupId: ticket.assignedToGroupId,
-            },
-          },
-        });
-
-        if (!membership) {
-          // Agent is not in the group, deny access
+      // For agents, check if they have access through assignment or group membership
+      if (user.role === "AGENT") {
+        // Check if ticket is assigned to the agent directly
+        if (ticket.assignedToId === user.id) {
           if (process.env.NODE_ENV === "development") {
-            console.log(`[getTicket] Agent ${user.id} is not a member of group ${ticket.assignedToGroupId}, denying access`);
+            console.log(`[getTicket] Agent ${user.id} has access - ticket is assigned to them directly`);
+          }
+          // Allow access - ticket is assigned to agent
+        } else if (ticket.assignedToGroupId) {
+          // Check if agent is a member of the ticket's group
+          const membership = await prisma.groupMembership.findUnique({
+            where: {
+              userId_groupId: {
+                userId: user.id,
+                groupId: ticket.assignedToGroupId,
+              },
+            },
+          });
+
+          if (!membership) {
+            // Agent is not in the group and ticket is not assigned to them, deny access
+            if (process.env.NODE_ENV === "development") {
+              console.log(`[getTicket] Agent ${user.id} is not assigned to ticket and not a member of group ${ticket.assignedToGroupId}, denying access`);
+            }
+            return null;
+          }
+          // Agent is in the group, allow access
+          if (process.env.NODE_ENV === "development") {
+            console.log(`[getTicket] Agent ${user.id} has access - is a member of group ${ticket.assignedToGroupId}`);
+          }
+        } else {
+          // Ticket is not assigned to agent and has no group assignment, deny access
+          if (process.env.NODE_ENV === "development") {
+            console.log(`[getTicket] Agent ${user.id} has no access - ticket is not assigned to them and has no group assignment`);
           }
           return null;
         }
-        // Agent is in the group, allow access
-        if (process.env.NODE_ENV === "development") {
-          console.log(`[getTicket] Agent ${user.id} is a member of group ${ticket.assignedToGroupId}, allowing access`);
-        }
       } else {
-        // No permission and no group access, deny
+        // No permission and not an agent, deny
         if (process.env.NODE_ENV === "development") {
-          console.log(`[getTicket] User ${user.id} (role: ${user.role}) has no permission and no group access, denying access`);
+          console.log(`[getTicket] User ${user.id} (role: ${user.role}) has no permission and no agent access, denying access`);
         }
         return null;
       }
