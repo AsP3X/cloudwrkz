@@ -6,6 +6,15 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Select } from "@/components/ui/Select";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import {
+  saveFilterPreferences,
+  clearFilterPreferences,
+  getFilterPresets,
+  saveFilterPreset,
+  deleteFilterPreset,
+  setLastUsedPreset,
+  type FilterPreset as ServerFilterPreset,
+} from "@/server/actions/filter-preferences";
 
 export interface FilterPreset {
   id: string;
@@ -84,25 +93,136 @@ export const FilterDialog = ({
   const storageKey = getStorageKey(config.moduleName);
   const lastUsedKey = getLastUsedKey(config.moduleName);
 
-  // Load saved presets and last used preset from localStorage
+  // Load saved presets from backend, sync with localStorage
   React.useEffect(() => {
     if (!enablePresets) return;
 
-    try {
-      const stored = localStorage.getItem(storageKey);
-      if (stored) {
-        const presets = JSON.parse(stored);
-        setSavedPresets(presets);
-      }
+    const loadPresets = async () => {
+      try {
+        // Load from backend first
+        const backendResult = await getFilterPresets(config.moduleName);
 
-      const lastUsed = localStorage.getItem(lastUsedKey);
-      if (lastUsed) {
-        setLastUsedPresetId(lastUsed);
+        if (backendResult.success && backendResult.data) {
+          const backendPresets = backendResult.data.presets || [];
+          const backendLastUsed = backendResult.data.lastUsedPresetId || "";
+
+          // Update state with backend data
+          setSavedPresets(backendPresets);
+          setLastUsedPresetId(backendLastUsed);
+
+          // Sync with localStorage (update if different)
+          try {
+            const stored = localStorage.getItem(storageKey);
+            const storedPresets = stored ? JSON.parse(stored) : [];
+            const storedLastUsed = localStorage.getItem(lastUsedKey) || "";
+
+            // Check if backend data is different from localStorage
+            const backendChanged =
+              JSON.stringify(backendPresets) !== JSON.stringify(storedPresets) ||
+              backendLastUsed !== storedLastUsed;
+
+            if (backendChanged) {
+              // Update localStorage with backend data
+              localStorage.setItem(storageKey, JSON.stringify(backendPresets));
+              if (backendLastUsed) {
+                localStorage.setItem(lastUsedKey, backendLastUsed);
+              } else {
+                localStorage.removeItem(lastUsedKey);
+              }
+            }
+          } catch (localError) {
+            console.error("Failed to sync localStorage:", localError);
+            // Still update localStorage even if comparison fails
+            try {
+              localStorage.setItem(storageKey, JSON.stringify(backendPresets));
+              if (backendLastUsed) {
+                localStorage.setItem(lastUsedKey, backendLastUsed);
+              }
+            } catch (e) {
+              // Ignore localStorage errors
+            }
+          }
+        } else {
+          // Backend failed or no data, try localStorage as fallback
+          try {
+            const stored = localStorage.getItem(storageKey);
+            if (stored) {
+              const presets = JSON.parse(stored);
+              setSavedPresets(presets);
+            } else {
+              setSavedPresets([]);
+            }
+
+            const lastUsed = localStorage.getItem(lastUsedKey);
+            if (lastUsed) {
+              setLastUsedPresetId(lastUsed);
+            } else {
+              setLastUsedPresetId("");
+            }
+          } catch (error) {
+            console.error("Failed to load filter presets from localStorage:", error);
+            setSavedPresets([]);
+            setLastUsedPresetId("");
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load filter presets:", error);
+        // Fallback to localStorage
+        try {
+          const stored = localStorage.getItem(storageKey);
+          if (stored) {
+            const presets = JSON.parse(stored);
+            setSavedPresets(presets);
+          } else {
+            setSavedPresets([]);
+          }
+
+          const lastUsed = localStorage.getItem(lastUsedKey);
+          if (lastUsed) {
+            setLastUsedPresetId(lastUsed);
+          } else {
+            setLastUsedPresetId("");
+          }
+        } catch (localError) {
+          setSavedPresets([]);
+          setLastUsedPresetId("");
+        }
       }
-    } catch (error) {
-      console.error("Failed to load filter presets:", error);
+    };
+
+    loadPresets();
+
+    // Listen for localStorage changes (e.g., from other tabs) - reload from backend
+    const handleStorageChange = () => {
+      loadPresets();
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+    };
+  }, [storageKey, lastUsedKey, enablePresets, config.moduleName]);
+
+  // Reload presets when dialog opens
+  React.useEffect(() => {
+    if (open && enablePresets) {
+      const reloadPresets = async () => {
+        try {
+          const backendResult = await getFilterPresets(config.moduleName);
+          if (backendResult.success && backendResult.data) {
+            const backendPresets = backendResult.data.presets || [];
+            const backendLastUsed = backendResult.data.lastUsedPresetId || "";
+            setSavedPresets(backendPresets);
+            setLastUsedPresetId(backendLastUsed);
+          }
+        } catch (error) {
+          console.error("Failed to reload filter presets:", error);
+        }
+      };
+      reloadPresets();
     }
-  }, [storageKey, lastUsedKey, enablePresets]);
+  }, [open, config.moduleName, enablePresets]);
 
   // Track if we're manually clearing to prevent auto-sync
   const isManuallyClearingRef = React.useRef(false);
@@ -172,8 +292,9 @@ export const FilterDialog = ({
     });
   };
 
-  const applyFilters = () => {
+  const applyFilters = async () => {
     const params = new URLSearchParams();
+    const filtersToSave: Record<string, string> = {};
 
     Object.entries(filters).forEach(([key, value]) => {
       // Skip sort if it's not a field (e.g., time tracking uses sortBy/sortOrder)
@@ -183,26 +304,41 @@ export const FilterDialog = ({
       const defaultValue = config.defaultFilters[key] || (key === "sort" ? config.defaultSort : "");
       if (value && value !== defaultValue) {
         params.set(key, value);
+        filtersToSave[key] = value;
       }
     });
+
+    // Save filters to backend for persistence across devices
+    if (Object.keys(filtersToSave).length > 0) {
+      await saveFilterPreferences(config.moduleName, filtersToSave);
+    } else {
+      // If no filters, clear saved preferences
+      await clearFilterPreferences(config.moduleName);
+    }
 
     router.push(`${config.baseRoute}?${params.toString()}`);
     onOpenChange(false);
   };
 
-  const clearFilters = () => {
+  const clearFilters = async () => {
     const clearedFilters = { ...config.defaultFilters };
     // Only include sort if it's a field
     if (config.fields.some((f) => f.key === "sort")) {
       clearedFilters.sort = config.defaultSort;
     }
     setFilters(clearedFilters);
+    
+    // Clear saved preferences from backend
+    await clearFilterPreferences(config.moduleName);
+    
     router.push(config.baseRoute);
     onOpenChange(false);
   };
 
-  const applyPresetFilters = (presetFilters: Record<string, string>) => {
+  const applyPresetFilters = async (presetFilters: Record<string, string>) => {
     const params = new URLSearchParams();
+    const filtersToSave: Record<string, string> = {};
+    
     Object.entries(presetFilters).forEach(([key, value]) => {
       // Skip sort if it's not a field
       if (key === "sort" && !config.fields.some((f) => f.key === "sort")) {
@@ -211,39 +347,67 @@ export const FilterDialog = ({
       const defaultValue = config.defaultFilters[key] || (key === "sort" ? config.defaultSort : "");
       if (value && value !== defaultValue) {
         params.set(key, value);
+        filtersToSave[key] = value;
       }
     });
+    
+    // Save preset filters to backend for persistence
+    if (Object.keys(filtersToSave).length > 0) {
+      await saveFilterPreferences(config.moduleName, filtersToSave);
+    } else {
+      await clearFilterPreferences(config.moduleName);
+    }
+    
     router.push(`${config.baseRoute}?${params.toString()}`);
   };
 
-  const savePreset = () => {
+  const savePreset = async () => {
     if (!presetName.trim() || !enablePresets) {
       return;
     }
 
-    const newPreset: FilterPreset = {
+    const newPreset: ServerFilterPreset = {
       id: Date.now().toString(),
       name: presetName.trim(),
       filters: { ...filters },
     };
 
+    // Optimistically update UI
     const updated = [...savedPresets, newPreset];
     setSavedPresets(updated);
     setPresetName("");
     setSelectedPreset(newPreset.id);
+    setLastUsedPresetId(newPreset.id);
 
     try {
-      localStorage.setItem(storageKey, JSON.stringify(updated));
-      localStorage.setItem(lastUsedKey, newPreset.id);
-      setLastUsedPresetId(newPreset.id);
-      window.dispatchEvent(new Event("localStorageChange"));
-      applyPresetFilters(newPreset.filters);
+      // Save to backend
+      const result = await saveFilterPreset(config.moduleName, newPreset);
+      if (result.success) {
+        // Also update localStorage as cache
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(updated));
+          localStorage.setItem(lastUsedKey, newPreset.id);
+        } catch (localError) {
+          // Ignore localStorage errors
+        }
+        await applyPresetFilters(newPreset.filters);
+      } else {
+        // Revert on error
+        setSavedPresets(savedPresets);
+        setSelectedPreset(selectedPreset);
+        setLastUsedPresetId(lastUsedPresetId);
+        console.error("Failed to save preset:", result.error);
+      }
     } catch (error) {
+      // Revert on error
+      setSavedPresets(savedPresets);
+      setSelectedPreset(selectedPreset);
+      setLastUsedPresetId(lastUsedPresetId);
       console.error("Failed to save filter preset:", error);
     }
   };
 
-  const loadPreset = (presetId: string) => {
+  const loadPreset = async (presetId: string) => {
     if (!enablePresets) return;
 
     // If clicking on the already selected preset, unselect it
@@ -256,61 +420,102 @@ export const FilterDialog = ({
     if (preset) {
       setFilters({ ...config.defaultFilters, ...preset.filters, sort: preset.filters.sort || config.defaultSort });
       setSelectedPreset(presetId);
+      setLastUsedPresetId(presetId);
+      
       try {
-        localStorage.setItem(lastUsedKey, presetId);
-        setLastUsedPresetId(presetId);
-        window.dispatchEvent(new Event("localStorageChange"));
+        // Update backend
+        await setLastUsedPreset(config.moduleName, presetId);
+        // Also update localStorage as cache
+        try {
+          localStorage.setItem(lastUsedKey, presetId);
+        } catch (localError) {
+          // Ignore localStorage errors
+        }
       } catch (error) {
         console.error("Failed to save last used preset:", error);
       }
-      applyPresetFilters(preset.filters);
+      await applyPresetFilters(preset.filters);
     }
   };
 
-  const clearPreset = () => {
+  const clearPreset = async () => {
     if (!enablePresets) return;
 
     isManuallyClearingRef.current = true;
     setSelectedPreset("");
+    setLastUsedPresetId("");
+    
     try {
-      localStorage.removeItem(lastUsedKey);
-      setLastUsedPresetId("");
-      window.dispatchEvent(new Event("localStorageChange"));
+      // Update backend
+      await setLastUsedPreset(config.moduleName, null);
+      // Also update localStorage as cache
+      try {
+        localStorage.removeItem(lastUsedKey);
+      } catch (localError) {
+        // Ignore localStorage errors
+      }
     } catch (error) {
       console.error("Failed to clear last used preset:", error);
     }
+    
     const clearedFilters = { ...config.defaultFilters };
     // Only include sort if it's a field
     if (config.fields.some((f) => f.key === "sort")) {
       clearedFilters.sort = config.defaultSort;
     }
     setFilters(clearedFilters);
+    
+    // Clear saved preferences from backend
+    await clearFilterPreferences(config.moduleName);
+    
     router.replace(config.baseRoute);
     onOpenChange(false);
   };
 
-  const deletePreset = (presetId: string) => {
+  const deletePreset = async (presetId: string) => {
     if (!enablePresets) return;
 
+    // Optimistically update UI
     const updated = savedPresets.filter((p) => p.id !== presetId);
+    const previousPresets = savedPresets;
     setSavedPresets(updated);
+    
     if (selectedPreset === presetId) {
       setSelectedPreset("");
     }
+    
     if (lastUsedPresetId === presetId) {
+      setLastUsedPresetId("");
       try {
-        localStorage.removeItem(lastUsedKey);
-        setLastUsedPresetId("");
-        window.dispatchEvent(new Event("localStorageChange"));
+        await setLastUsedPreset(config.moduleName, null);
+        try {
+          localStorage.removeItem(lastUsedKey);
+        } catch (localError) {
+          // Ignore localStorage errors
+        }
       } catch (error) {
         console.error("Failed to clear last used preset:", error);
       }
     }
 
     try {
-      localStorage.setItem(storageKey, JSON.stringify(updated));
-      window.dispatchEvent(new Event("localStorageChange"));
+      // Delete from backend
+      const result = await deleteFilterPreset(config.moduleName, presetId);
+      if (result.success) {
+        // Also update localStorage as cache
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(updated));
+        } catch (localError) {
+          // Ignore localStorage errors
+        }
+      } else {
+        // Revert on error
+        setSavedPresets(previousPresets);
+        console.error("Failed to delete preset:", result.error);
+      }
     } catch (error) {
+      // Revert on error
+      setSavedPresets(previousPresets);
       console.error("Failed to delete filter preset:", error);
     }
   };

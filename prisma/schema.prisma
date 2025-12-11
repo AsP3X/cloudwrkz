@@ -34,6 +34,7 @@ model User {
   role          Role       @default(USER)
   status        UserStatus @default(PENDING)
   timezone      String     @default("UTC") // IANA timezone identifier, e.g. "Europe/Berlin"
+  filterPreferences Json? // User's filter preferences per module (e.g., { "ticket": { "status": "OPEN", ... } })
 
   // Email verification
   emailVerificationToken   String?
