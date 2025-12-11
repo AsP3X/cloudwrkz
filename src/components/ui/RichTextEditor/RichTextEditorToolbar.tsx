@@ -50,6 +50,7 @@ export const RichTextEditorToolbar = ({
   const [selectionUpdate, setSelectionUpdate] = React.useState(0);
   const textColorRef = React.useRef<HTMLDivElement>(null);
   const highlightColorRef = React.useRef<HTMLDivElement>(null);
+  const preservedSelectionRef = React.useRef<{ from: number; to: number } | null>(null);
 
   // Listen to selection changes to update active states
   React.useEffect(() => {
@@ -119,8 +120,48 @@ export const RichTextEditorToolbar = ({
     children: React.ReactNode;
     title?: string;
   }) => {
+    const handleMouseDown = (e: React.MouseEvent) => {
+      // Preserve selection before button click to prevent it from being lost
+      if (editor) {
+        const { from, to } = editor.state.selection;
+        if (from !== to) {
+          // Store the selection to restore it if needed
+          preservedSelectionRef.current = { from, to };
+          // Prevent default to avoid losing focus/selection
+          // This prevents the browser from moving focus away from the editor
+          e.preventDefault();
+          // Execute the click handler immediately to apply formatting
+          // This ensures the selection is still available
+          setTimeout(() => {
+            if (preservedSelectionRef.current && editor) {
+              const { from, to } = preservedSelectionRef.current;
+              // Restore selection before applying formatting
+              editor.commands.setTextSelection({ from, to });
+              // Apply the formatting
+              onClick();
+              // Clear the preserved selection
+              preservedSelectionRef.current = null;
+            }
+          }, 0);
+        } else {
+          preservedSelectionRef.current = null;
+        }
+      }
+    };
+
     const handleClick = () => {
+      // Restore selection if it was preserved and apply formatting
+      if (editor && preservedSelectionRef.current) {
+        const { from, to } = preservedSelectionRef.current;
+        // Restore selection before applying formatting
+        editor.commands.setTextSelection({ from, to });
+        // Clear the preserved selection
+        preservedSelectionRef.current = null;
+      }
+      
+      // Apply the formatting
       onClick();
+      
       // Refocus editor after clicking button on mobile to keep toolbar visible
       if (isMobile && editor) {
         setTimeout(() => {
@@ -133,6 +174,7 @@ export const RichTextEditorToolbar = ({
       <button
         type="button"
         onClick={handleClick}
+        onMouseDown={handleMouseDown}
         disabled={disabled}
         title={title}
         className={cn(
@@ -167,7 +209,17 @@ export const RichTextEditorToolbar = ({
         )}
       >
         <ToolbarButton
-          onClick={() => editor.chain().focus().toggleBold().run()}
+          onClick={() => {
+            // Get selection before any potential loss
+            const selection = preservedSelectionRef.current || editor.state.selection;
+            const { from, to } = selection;
+            if (from !== to) {
+              // Preserve selection when applying formatting
+              editor.chain().focus().setTextSelection({ from, to }).toggleBold().run();
+            } else {
+              editor.chain().focus().toggleBold().run();
+            }
+          }}
           isActive={isBoldActive}
           title="Bold (Ctrl+B)"
         >
@@ -177,7 +229,16 @@ export const RichTextEditorToolbar = ({
           </svg>
         </ToolbarButton>
         <ToolbarButton
-          onClick={() => editor.chain().focus().toggleItalic().run()}
+          onClick={() => {
+            // Get selection before any potential loss
+            const selection = preservedSelectionRef.current || editor.state.selection;
+            const { from, to } = selection;
+            if (from !== to) {
+              editor.chain().focus().setTextSelection({ from, to }).toggleItalic().run();
+            } else {
+              editor.chain().focus().toggleItalic().run();
+            }
+          }}
           isActive={isItalicActive}
           title="Italic (Ctrl+I)"
         >
