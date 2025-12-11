@@ -8,6 +8,7 @@ interface RichTextEditorToolbarProps {
   editor: ReturnType<typeof useEditor> | null;
   onImageUpload?: () => void;
   onLinkAdd?: () => void;
+  isMobile?: boolean;
 }
 
 // Predefined color palettes
@@ -40,6 +41,7 @@ export const RichTextEditorToolbar = ({
   editor,
   onImageUpload,
   onLinkAdd,
+  isMobile = false,
 }: RichTextEditorToolbarProps) => {
   if (!editor) return null;
 
@@ -81,26 +83,54 @@ export const RichTextEditorToolbar = ({
     disabled?: boolean;
     children: React.ReactNode;
     title?: string;
-  }) => (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      className={cn(
-        "p-2 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors",
-        "disabled:opacity-50 disabled:cursor-not-allowed",
-        isActive && "bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300"
-      )}
-    >
-      {children}
-    </button>
-  );
+  }) => {
+    const handleClick = () => {
+      onClick();
+      // Refocus editor after clicking button on mobile to keep toolbar visible
+      if (isMobile && editor) {
+        setTimeout(() => {
+          editor.commands.focus();
+        }, 50);
+      }
+    };
+
+    return (
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={disabled}
+        title={title}
+        className={cn(
+          "rounded transition-colors flex-shrink-0",
+          isMobile ? "p-3 min-w-[44px] min-h-[44px] flex items-center justify-center" : "p-2",
+          "hover:bg-neutral-100 dark:hover:bg-neutral-700",
+          "disabled:opacity-50 disabled:cursor-not-allowed",
+          "active:bg-neutral-200 dark:active:bg-neutral-600",
+          isActive && "bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300"
+        )}
+      >
+        {children}
+      </button>
+    );
+  };
 
   return (
-    <div className="flex flex-wrap items-center gap-1 p-2 border-b border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50 rounded-t-lg">
+    <div
+      className={cn(
+        "flex items-center bg-neutral-50 dark:bg-neutral-800/50",
+        isMobile
+          ? "overflow-x-auto overflow-y-hidden gap-0.5 px-2 py-3 border-t border-neutral-200 dark:border-neutral-700 scrollbar-hide"
+          : "flex-wrap gap-1 p-2 border-b border-neutral-200 dark:border-neutral-700 rounded-t-lg"
+      )}
+      style={isMobile ? { WebkitOverflowScrolling: "touch" } : undefined}
+    >
       {/* Text Formatting */}
-      <div className="flex items-center gap-1 border-r border-neutral-300 dark:border-neutral-600 pr-2 mr-2">
+      <div
+        className={cn(
+          "flex items-center border-r border-neutral-300 dark:border-neutral-600",
+          isMobile ? "gap-0.5 pr-2 mr-1" : "gap-1 pr-2 mr-2"
+        )}
+      >
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleBold().run()}
           isActive={editor.isActive("bold")}
@@ -123,7 +153,13 @@ export const RichTextEditorToolbar = ({
       </div>
 
       {/* Text Color */}
-      <div className="relative border-r border-neutral-300 dark:border-neutral-600 pr-2 mr-2" ref={textColorRef}>
+      <div
+        className={cn(
+          "relative border-r border-neutral-300 dark:border-neutral-600",
+          isMobile ? "pr-2 mr-1" : "pr-2 mr-2"
+        )}
+        ref={textColorRef}
+      >
         <ToolbarButton
           onClick={() => setTextColorOpen(!textColorOpen)}
           isActive={!!currentTextColor}
@@ -142,7 +178,12 @@ export const RichTextEditorToolbar = ({
           </div>
         </ToolbarButton>
         {textColorOpen && (
-          <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg p-2 min-w-[180px]">
+          <div
+            className={cn(
+              "absolute bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg p-2 min-w-[180px] z-50",
+              isMobile ? "bottom-full left-0 mb-1" : "top-full left-0 mt-1"
+            )}
+          >
             <div className="grid grid-cols-4 gap-2">
               {TEXT_COLORS.map((color) => (
                 <button
@@ -179,7 +220,13 @@ export const RichTextEditorToolbar = ({
       </div>
 
       {/* Highlight Color */}
-      <div className="relative border-r border-neutral-300 dark:border-neutral-600 pr-2 mr-2" ref={highlightColorRef}>
+      <div
+        className={cn(
+          "relative border-r border-neutral-300 dark:border-neutral-600",
+          isMobile ? "pr-2 mr-1" : "pr-2 mr-2"
+        )}
+        ref={highlightColorRef}
+      >
         <ToolbarButton
           onClick={() => setHighlightColorOpen(!highlightColorOpen)}
           isActive={!!currentHighlightColor}
@@ -198,7 +245,12 @@ export const RichTextEditorToolbar = ({
           </div>
         </ToolbarButton>
         {highlightColorOpen && (
-          <div className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg p-2 min-w-[180px]">
+          <div
+            className={cn(
+              "absolute bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg p-2 min-w-[180px] z-50",
+              isMobile ? "bottom-full left-0 mb-1" : "top-full left-0 mt-1"
+            )}
+          >
             <div className="grid grid-cols-4 gap-2">
               {HIGHLIGHT_COLORS.map((color) => (
                 <button
@@ -234,33 +286,13 @@ export const RichTextEditorToolbar = ({
         )}
       </div>
 
-      {/* Headings */}
-      <div className="flex items-center gap-1 border-r border-neutral-300 dark:border-neutral-600 pr-2 mr-2">
-        <ToolbarButton
-          onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-          isActive={editor.isActive("heading", { level: 1 })}
-          title="Heading 1"
-        >
-          <span className="text-sm font-bold">H1</span>
-        </ToolbarButton>
-        <ToolbarButton
-          onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-          isActive={editor.isActive("heading", { level: 2 })}
-          title="Heading 2"
-        >
-          <span className="text-sm font-bold">H2</span>
-        </ToolbarButton>
-        <ToolbarButton
-          onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-          isActive={editor.isActive("heading", { level: 3 })}
-          title="Heading 3"
-        >
-          <span className="text-sm font-bold">H3</span>
-        </ToolbarButton>
-      </div>
-
       {/* Lists */}
-      <div className="flex items-center gap-1 border-r border-neutral-300 dark:border-neutral-600 pr-2 mr-2">
+      <div
+        className={cn(
+          "flex items-center border-r border-neutral-300 dark:border-neutral-600",
+          isMobile ? "gap-0.5 pr-2 mr-1" : "gap-1 pr-2 mr-2"
+        )}
+      >
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleBulletList().run()}
           isActive={editor.isActive("bulletList")}
@@ -282,10 +314,85 @@ export const RichTextEditorToolbar = ({
       </div>
 
       {/* Block Elements */}
-      <div className="flex items-center gap-1 border-r border-neutral-300 dark:border-neutral-600 pr-2 mr-2">
+      <div
+        className={cn(
+          "flex items-center border-r border-neutral-300 dark:border-neutral-600",
+          isMobile ? "gap-0.5 pr-2 mr-1" : "gap-1 pr-2 mr-2"
+        )}
+      >
         <ToolbarButton
-          onClick={() => editor.chain().focus().toggleBlockquote().run()}
-          isActive={editor.isActive("blockquote")}
+          onClick={() => {
+            const { from, to } = editor.state.selection;
+            const hasSelection = from !== to;
+            
+            // Check if already in blockquote or inline quote (highlight with special color)
+            if (editor.isActive("blockquote")) {
+              editor.chain().focus().toggleBlockquote().run();
+            } else if (editor.isActive("highlight", { color: "#inline-quote" })) {
+              editor.chain().focus().unsetHighlight().run();
+            } else if (hasSelection) {
+              // If text is selected, determine if it should be inline or block
+              const selectedText = editor.state.doc.textBetween(from, to);
+              if (selectedText.trim()) {
+                // Get the block containing the selection
+                const $from = editor.state.doc.resolve(from);
+                const blockStart = $from.start($from.depth);
+                const blockEnd = $from.end($from.depth);
+                
+                // Check if selection is the entire block
+                const isFullBlock = from === blockStart && to === blockEnd;
+                
+                // Check if there's text before or after the selection in the same block
+                const textBefore = editor.state.doc.textBetween(blockStart, from);
+                const textAfter = editor.state.doc.textBetween(to, blockEnd);
+                const hasTextAround = (textBefore.trim().length > 0 || textAfter.trim().length > 0);
+                
+                // Check if the entire block content is just the selected text (single word/line)
+                const entireBlockText = editor.state.doc.textBetween(blockStart, blockEnd);
+                const isOnlyContentInBlock = entireBlockText.trim() === selectedText.trim();
+                
+                // Use block-level blockquote only for full blocks or when it's the only content in the block
+                if (isFullBlock || (isOnlyContentInBlock && !hasTextAround)) {
+                  // Use block-level blockquote for full blocks or when it's the only content
+                  const blockquoteNode = editor.schema.nodes.blockquote.create(
+                    {},
+                    editor.schema.nodes.paragraph.create({}, editor.schema.text(selectedText))
+                  );
+                  
+                  editor
+                    .chain()
+                    .focus()
+                    .command(({ tr, dispatch }) => {
+                      if (dispatch) {
+                        if (isFullBlock) {
+                          tr.replaceWith(blockStart, blockEnd, blockquoteNode);
+                        } else {
+                          tr.delete(from, to);
+                          const $newPos = tr.doc.resolve(Math.min(from, tr.doc.content.size));
+                          const insertPos = $newPos.after($newPos.depth);
+                          tr.insert(insertPos, blockquoteNode);
+                        }
+                      }
+                      return true;
+                    })
+                    .run();
+                } else {
+                  // Use inline quote for text in the middle of a paragraph
+                  // Since TipTap escapes custom HTML, we'll use Highlight with a special marker
+                  // and style it to look like an inline quote
+                  editor
+                    .chain()
+                    .focus()
+                    .setHighlight({ color: "#inline-quote" })
+                    .run();
+                }
+              }
+            } else {
+              // No selection, just toggle blockquote at current position
+              editor.chain().focus().toggleBlockquote().run();
+            }
+          }}
+          isActive={editor.isActive("blockquote") || editor.isActive("highlight", { color: "#inline-quote" })}
           title="Quote"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -304,7 +411,12 @@ export const RichTextEditorToolbar = ({
       </div>
 
       {/* Links and Images */}
-      <div className="flex items-center gap-1 border-r border-neutral-300 dark:border-neutral-600 pr-2 mr-2">
+      <div
+        className={cn(
+          "flex items-center border-r border-neutral-300 dark:border-neutral-600",
+          isMobile ? "gap-0.5 pr-2 mr-1" : "gap-1 pr-2 mr-2"
+        )}
+      >
         <ToolbarButton
           onClick={onLinkAdd || (() => {
             const url = window.prompt("Enter URL:");
@@ -332,7 +444,7 @@ export const RichTextEditorToolbar = ({
       </div>
 
       {/* Undo/Redo */}
-      <div className="flex items-center gap-1">
+      <div className={cn("flex items-center", isMobile ? "gap-0.5" : "gap-1")}>
         <ToolbarButton
           onClick={() => editor.chain().focus().undo().run()}
           disabled={!editor.can().undo()}

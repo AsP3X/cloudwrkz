@@ -133,6 +133,61 @@
     z-index: 99999 !important;
   }
 
+  /* Blockquote styling for rich text editor and display */
+  .prose blockquote,
+  blockquote {
+    border-left: 4px solid rgb(59 130 246) !important; /* primary-500 */
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+    padding-top: 0.75rem !important;
+    padding-bottom: 0.75rem !important;
+    margin-top: 1rem !important;
+    margin-bottom: 1rem !important;
+    background-color: rgb(245 245 244) !important; /* neutral-100 */
+    color: rgb(55 65 81) !important; /* neutral-700 */
+    font-style: italic !important;
+    border-radius: 0 0.5rem 0.5rem 0 !important;
+  }
+
+  .dark .prose blockquote,
+  .dark blockquote {
+    background-color: rgba(31, 41, 55, 0.5) !important; /* neutral-800/50 */
+    color: rgb(209 213 219) !important; /* neutral-300 */
+    border-left-color: rgb(59 130 246) !important; /* primary-500 */
+  }
+
+  /* Inline quote styling - using highlight mark with special color */
+  .prose mark[data-color="#inline-quote"],
+  mark[data-color="#inline-quote"],
+  .ProseMirror mark[data-color="#inline-quote"],
+  .prose span[data-type="inline-quote"],
+  span.inline-quote,
+  span[data-type="inline-quote"],
+  .ProseMirror span[data-type="inline-quote"],
+  .ProseMirror span.inline-quote {
+    border-left: 3px solid rgb(59 130 246) !important; /* primary-500 */
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+    background-color: rgb(245 245 244) !important; /* neutral-100 */
+    color: rgb(55 65 81) !important; /* neutral-700 */
+    font-style: italic !important;
+    border-radius: 0.25rem !important;
+    display: inline !important;
+  }
+
+  .dark .prose mark[data-color="#inline-quote"],
+  .dark mark[data-color="#inline-quote"],
+  .dark .ProseMirror mark[data-color="#inline-quote"],
+  .dark .prose span[data-type="inline-quote"],
+  .dark span.inline-quote,
+  .dark span[data-type="inline-quote"],
+  .dark .ProseMirror span[data-type="inline-quote"],
+  .dark .ProseMirror span.inline-quote {
+    background-color: rgba(31, 41, 55, 0.5) !important; /* neutral-800/50 */
+    color: rgb(209 213 219) !important; /* neutral-300 */
+    border-left-color: rgb(59 130 246) !important; /* primary-500 */
+  }
+
 }
 
 /* Fix calendar picker icon visibility in dark mode - outside layer for higher specificity */

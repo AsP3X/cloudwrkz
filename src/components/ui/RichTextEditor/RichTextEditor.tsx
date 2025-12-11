@@ -1,12 +1,12 @@
 "use client";
 
 import React from "react";
+import { createPortal } from "react-dom";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TextAlign from "@tiptap/extension-text-align";
 import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
-import Blockquote from "@tiptap/extension-blockquote";
 import CodeBlock from "@tiptap/extension-code-block";
 import Code from "@tiptap/extension-code";
 import Highlight from "@tiptap/extension-highlight";
@@ -41,6 +41,11 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
   ) => {
     const [isImageUploading, setIsImageUploading] = React.useState(false);
     const fileInputRef = React.useRef<HTMLInputElement>(null);
+    const [isMobile, setIsMobile] = React.useState(false);
+    const [isFocused, setIsFocused] = React.useState(false);
+    const [mounted, setMounted] = React.useState(false);
+    const [keyboardHeight, setKeyboardHeight] = React.useState(0);
+    const [viewportHeight, setViewportHeight] = React.useState(0);
 
     const editor = useEditor({
       immediatelyRender: false,
@@ -49,6 +54,7 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
           heading: {
             levels: [1, 2, 3],
           },
+          blockquote: true,
         }),
         TextAlign.configure({
           types: ["heading", "paragraph"],
@@ -67,7 +73,6 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
             class: "max-w-full h-auto rounded-lg",
           },
         }),
-        Blockquote,
         CodeBlock,
         Code,
         Highlight.configure({
@@ -84,12 +89,25 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
       ],
       content: value || null,
       editable: !disabled,
+      parseOptions: {
+        preserveWhitespace: "full",
+      },
       onUpdate: ({ editor }) => {
         const html = editor.getHTML();
         const plainText = extractPlainText(html);
         onChange(html, plainText);
       },
       editorProps: {
+        transformPastedHTML(html) {
+          // Preserve HTML including custom spans
+          return html;
+        },
+        transformPastedText(text) {
+          return text;
+        },
+        handleDOMEvents: {
+          // Allow HTML to be parsed correctly
+        },
         attributes: {
           class: cn(
             "prose prose-sm max-w-none focus:outline-none",
@@ -98,7 +116,13 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
             "prose-strong:text-neutral-900 dark:prose-strong:text-neutral-100",
             "prose-code:text-neutral-900 dark:prose-code:text-neutral-100",
             "prose-pre:bg-neutral-100 dark:prose-pre:bg-neutral-800",
-            "prose-blockquote:border-l-primary-500",
+            "prose-blockquote:border-l-4 prose-blockquote:border-l-primary-500",
+            "prose-blockquote:pl-4 prose-blockquote:pr-4 prose-blockquote:py-3",
+            "prose-blockquote:my-4 prose-blockquote:bg-neutral-100 dark:prose-blockquote:bg-neutral-800/50",
+            "prose-blockquote:text-neutral-700 dark:prose-blockquote:text-neutral-300",
+            "prose-blockquote:italic",
+            "prose-blockquote:rounded-r",
+            "prose-blockquote:border-primary-500",
             "prose-a:text-primary-600 dark:prose-a:text-primary-400",
             "min-h-[100px] p-4"
           ),
@@ -123,7 +147,149 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
     const [isMounted, setIsMounted] = React.useState(false);
     React.useEffect(() => {
       setIsMounted(true);
+      setMounted(true);
     }, []);
+
+    // Detect mobile view
+    React.useEffect(() => {
+      if (typeof window === "undefined") return;
+
+      const checkMobile = () => {
+        // Use md breakpoint (768px) for mobile detection
+        setIsMobile(window.innerWidth < 768);
+      };
+
+      checkMobile();
+      window.addEventListener("resize", checkMobile);
+      window.addEventListener("orientationchange", checkMobile);
+
+      return () => {
+        window.removeEventListener("resize", checkMobile);
+        window.removeEventListener("orientationchange", checkMobile);
+      };
+    }, []);
+
+    // Track keyboard height for mobile devices
+    React.useEffect(() => {
+      if (typeof window === "undefined" || !isMobile) return;
+
+      const updateKeyboardHeight = () => {
+        // Use Visual Viewport API if available (modern browsers - iOS Safari 13+, Chrome 61+)
+        if (window.visualViewport) {
+          const viewport = window.visualViewport;
+          const windowHeight = window.innerHeight;
+          const viewportHeight = viewport.height;
+          const viewportTop = viewport.offsetTop;
+          
+          // Calculate keyboard height: difference between window height and visible viewport
+          // Also account for viewport offset (scroll position)
+          const calculatedKeyboardHeight = windowHeight - (viewportHeight + viewportTop);
+          
+          // Only consider it a keyboard if the difference is significant (>100px)
+          // This prevents false positives from browser UI changes
+          if (calculatedKeyboardHeight > 100) {
+            setKeyboardHeight(calculatedKeyboardHeight);
+            setViewportHeight(viewportHeight);
+          } else {
+            setKeyboardHeight(0);
+            setViewportHeight(window.innerHeight);
+          }
+        } else {
+          // Fallback for older browsers: detect keyboard by window height changes
+          // Store initial height on mount
+          const storedInitialHeight = sessionStorage.getItem("initialWindowHeight");
+          const currentHeight = window.innerHeight;
+          
+          if (!storedInitialHeight) {
+            // Store initial height on first load
+            sessionStorage.setItem("initialWindowHeight", currentHeight.toString());
+            setKeyboardHeight(0);
+            setViewportHeight(currentHeight);
+          } else {
+            const initialHeight = parseInt(storedInitialHeight, 10);
+            const heightDiff = initialHeight - currentHeight;
+            
+            // If window height decreased significantly, keyboard is likely open
+            if (heightDiff > 100 && currentHeight < initialHeight * 0.7) {
+              setKeyboardHeight(heightDiff);
+              setViewportHeight(currentHeight);
+            } else if (heightDiff < 50) {
+              // Window height is back to normal, keyboard is closed
+              setKeyboardHeight(0);
+              setViewportHeight(currentHeight);
+            }
+          }
+        }
+      };
+
+      // Initial check
+      if (window.visualViewport) {
+        setViewportHeight(window.visualViewport.height);
+      } else {
+        setViewportHeight(window.innerHeight);
+      }
+      updateKeyboardHeight();
+
+      // Listen to visual viewport changes (preferred method)
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener("resize", updateKeyboardHeight);
+        window.visualViewport.addEventListener("scroll", updateKeyboardHeight);
+      }
+
+      // Fallback: listen to window resize and orientation changes
+      window.addEventListener("resize", updateKeyboardHeight);
+      window.addEventListener("orientationchange", () => {
+        // Reset stored height on orientation change
+        sessionStorage.removeItem("initialWindowHeight");
+        setTimeout(updateKeyboardHeight, 100);
+      });
+
+      // Also listen to focus/blur on inputs to help detect keyboard
+      const handleInputFocus = () => {
+        setTimeout(updateKeyboardHeight, 300); // Delay to allow keyboard animation
+      };
+      const handleInputBlur = () => {
+        setTimeout(updateKeyboardHeight, 300);
+      };
+
+      document.addEventListener("focusin", handleInputFocus);
+      document.addEventListener("focusout", handleInputBlur);
+
+      return () => {
+        if (window.visualViewport) {
+          window.visualViewport.removeEventListener("resize", updateKeyboardHeight);
+          window.visualViewport.removeEventListener("scroll", updateKeyboardHeight);
+        }
+        window.removeEventListener("resize", updateKeyboardHeight);
+        window.removeEventListener("orientationchange", updateKeyboardHeight);
+        document.removeEventListener("focusin", handleInputFocus);
+        document.removeEventListener("focusout", handleInputBlur);
+      };
+    }, [isMobile]);
+
+    // Track editor focus state
+    React.useEffect(() => {
+      if (!editor || !isMobile) return;
+
+      const handleFocus = () => setIsFocused(true);
+      const handleBlur = () => {
+        // Delay blur check to allow toolbar button clicks to refocus editor
+        setTimeout(() => {
+          // Only hide toolbar if editor is still not focused after delay
+          if (!editor.isFocused) {
+            setIsFocused(false);
+          }
+        }, 150);
+      };
+
+      editor.on("focus", handleFocus);
+      editor.on("blur", handleBlur);
+
+      return () => {
+        editor.off("focus", handleFocus);
+        editor.off("blur", handleBlur);
+      };
+    }, [editor, isMobile]);
 
     const handleImageUpload = React.useCallback(async () => {
       if (!onImageUpload || !editor) return;
@@ -209,7 +375,8 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
         >
           {isMounted && (
             <>
-              {showToolbar && (
+              {/* Desktop toolbar - always at top */}
+              {showToolbar && !isMobile && (
                 <RichTextEditorToolbar
                   editor={editor}
                   onImageUpload={handleImageUpload}
@@ -221,7 +388,8 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
                 className={cn(
                   "overflow-y-auto",
                   !showToolbar && "rounded-lg",
-                  showToolbar && "rounded-b-lg"
+                  showToolbar && !isMobile && "rounded-b-lg",
+                  showToolbar && isMobile && "rounded-lg"
                 )}
                 style={{ maxHeight: maxHeight || "400px" }}
               />
@@ -232,7 +400,8 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
               className={cn(
                 "overflow-y-auto p-4 min-h-[100px]",
                 !showToolbar && "rounded-lg",
-                showToolbar && "rounded-b-lg"
+                showToolbar && !isMobile && "rounded-b-lg",
+                showToolbar && isMobile && "rounded-lg"
               )}
               style={{ maxHeight: maxHeight || "400px" }}
             >
@@ -240,6 +409,41 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
             </div>
           )}
         </div>
+        {/* Mobile toolbar - fixed at bottom when focused, above keyboard */}
+        {mounted &&
+          showToolbar &&
+          isMobile &&
+          isFocused &&
+          editor &&
+          typeof window !== "undefined" &&
+          createPortal(
+            <div
+              data-mobile-toolbar
+              className="fixed left-0 right-0 z-50 bg-white dark:bg-neutral-800 border-t-2 border-neutral-200 dark:border-neutral-700 shadow-lg transition-all duration-300 ease-out"
+              style={{
+                // Position above keyboard when it's visible, otherwise at bottom with safe area
+                bottom: keyboardHeight > 0 
+                  ? `${keyboardHeight}px` 
+                  : "env(safe-area-inset-bottom, 0px)",
+                // Add safe area padding when keyboard is not visible
+                paddingBottom: keyboardHeight > 0 
+                  ? "0px" 
+                  : "env(safe-area-inset-bottom, 0px)",
+                // Ensure toolbar doesn't take up too much space when keyboard is visible
+                maxHeight: keyboardHeight > 0 && viewportHeight > 0
+                  ? `${Math.min(viewportHeight * 0.3, 200)}px`
+                  : "none",
+              }}
+            >
+              <RichTextEditorToolbar
+                editor={editor}
+                onImageUpload={handleImageUpload}
+                onLinkAdd={handleLinkAdd}
+                isMobile={true}
+              />
+            </div>,
+            document.body
+          )}
         {error && (
           <p className="mt-2 text-sm text-error-600 dark:text-error-400 flex items-center gap-1">
             <svg
