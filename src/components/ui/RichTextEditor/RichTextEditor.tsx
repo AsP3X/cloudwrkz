@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { createPortal } from "react-dom";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TextAlign from "@tiptap/extension-text-align";
@@ -381,12 +380,13 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
         >
           {isMounted && (
             <>
-              {/* Desktop toolbar - always at top */}
-              {showToolbar && !isMobile && (
+              {/* Toolbar - always at top for both desktop and mobile */}
+              {showToolbar && (
                 <RichTextEditorToolbar
                   editor={editor}
                   onImageUpload={handleImageUpload}
                   onLinkAdd={handleLinkAdd}
+                  isMobile={isMobile}
                 />
               )}
               <EditorContent
@@ -394,8 +394,7 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
                 className={cn(
                   "overflow-y-auto",
                   !showToolbar && "rounded-lg",
-                  showToolbar && !isMobile && "rounded-b-lg",
-                  showToolbar && isMobile && "rounded-lg"
+                  showToolbar && "rounded-b-lg"
                 )}
                 style={{ maxHeight: maxHeight || "400px" }}
               />
@@ -406,8 +405,7 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
               className={cn(
                 "overflow-y-auto p-4 min-h-[100px]",
                 !showToolbar && "rounded-lg",
-                showToolbar && !isMobile && "rounded-b-lg",
-                showToolbar && isMobile && "rounded-lg"
+                showToolbar && "rounded-b-lg"
               )}
               style={{ maxHeight: maxHeight || "400px" }}
             >
@@ -415,41 +413,6 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
             </div>
           )}
         </div>
-        {/* Mobile toolbar - fixed at bottom when focused, above keyboard */}
-        {mounted &&
-          showToolbar &&
-          isMobile &&
-          isFocused &&
-          editor &&
-          typeof window !== "undefined" &&
-          createPortal(
-            <div
-              data-mobile-toolbar
-              className="fixed left-0 right-0 z-50 bg-white dark:bg-neutral-800 border-t-2 border-neutral-200 dark:border-neutral-700 shadow-lg transition-all duration-300 ease-out"
-              style={{
-                // Position above keyboard when it's visible, otherwise at bottom with safe area
-                bottom: keyboardHeight > 0 
-                  ? `${keyboardHeight}px` 
-                  : "env(safe-area-inset-bottom, 0px)",
-                // Add safe area padding when keyboard is not visible
-                paddingBottom: keyboardHeight > 0 
-                  ? "0px" 
-                  : "env(safe-area-inset-bottom, 0px)",
-                // Ensure toolbar doesn't take up too much space when keyboard is visible
-                maxHeight: keyboardHeight > 0 && viewportHeight > 0
-                  ? `${Math.min(viewportHeight * 0.3, 200)}px`
-                  : "none",
-              }}
-            >
-              <RichTextEditorToolbar
-                editor={editor}
-                onImageUpload={handleImageUpload}
-                onLinkAdd={handleLinkAdd}
-                isMobile={true}
-              />
-            </div>,
-            document.body
-          )}
         {error && (
           <p className="mt-2 text-sm text-error-600 dark:text-error-400 flex items-center gap-1">
             <svg

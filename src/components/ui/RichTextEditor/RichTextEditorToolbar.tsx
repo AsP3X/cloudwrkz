@@ -173,12 +173,18 @@ export const RichTextEditorToolbar = ({
         disabled={disabled}
         title={title}
         className={cn(
-          "rounded transition-colors flex-shrink-0",
-          isMobile ? "p-3 min-w-[44px] min-h-[44px] flex items-center justify-center" : "p-2",
+          "rounded-lg transition-all flex-shrink-0",
+          isMobile ? "p-2.5 min-w-[40px] min-h-[40px] flex items-center justify-center" : "p-2",
           "hover:bg-neutral-100 dark:hover:bg-neutral-700",
           "disabled:opacity-50 disabled:cursor-not-allowed",
-          "active:bg-neutral-200 dark:active:bg-neutral-600",
-          isActive && "bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300"
+          "active:scale-95",
+          isMobile
+            ? isActive
+              ? "bg-primary-500 text-white shadow-md"
+              : "bg-transparent"
+            : isActive
+            ? "bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300"
+            : ""
         )}
       >
         {children}
@@ -186,30 +192,164 @@ export const RichTextEditorToolbar = ({
     );
   };
 
+
+  if (isMobile) {
+    // Mobile layout: Simplified toolbar with only Bold, List, Link, and Color
+    return (
+      <>
+        <div
+          className={cn(
+            "flex items-center bg-neutral-50 dark:bg-neutral-800/50 gap-1 p-2 border-b border-neutral-200 dark:border-neutral-700 rounded-t-lg"
+          )}
+        >
+          {/* Bold */}
+          <ToolbarButton
+            onClick={() => {
+              const selection = preservedSelectionRef.current || editor.state.selection;
+              const { from, to } = selection;
+              if (from !== to) {
+                editor.chain().focus().setTextSelection({ from, to }).toggleBold().run();
+              } else {
+                editor.chain().focus().toggleBold().run();
+              }
+            }}
+            isActive={isBoldActive}
+            title="Bold"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 4h8a4 4 0 014 4 4 4 0 01-4 4H6z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 12h9a4 4 0 014 4 4 4 0 01-4 4H6z" />
+            </svg>
+          </ToolbarButton>
+
+          {/* List (Bullet List) */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              preservedSelectionRef.current = null;
+              if (editor && !editor.isDestroyed) {
+                editor.chain().focus().toggleBulletList().run();
+              }
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            disabled={!editor}
+            title="Bullet List"
+            className={cn(
+              "rounded transition-colors flex-shrink-0 p-2",
+              "hover:bg-neutral-100 dark:hover:bg-neutral-700",
+              "disabled:opacity-50 disabled:cursor-not-allowed",
+              "active:bg-neutral-200 dark:active:bg-neutral-600",
+              isBulletListActive && "bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300"
+            )}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+            </svg>
+          </button>
+
+          {/* Link */}
+          <ToolbarButton
+            onClick={onLinkAdd || (() => {
+              const url = window.prompt("Enter URL:");
+              if (url) {
+                editor.chain().focus().setLink({ href: url }).run();
+              }
+            })}
+            isActive={isLinkActive}
+            title="Add Link"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+          </ToolbarButton>
+
+          {/* Text Color */}
+          <div
+            className="relative"
+            ref={textColorRef}
+          >
+            <ToolbarButton
+              onClick={() => setTextColorOpen(!textColorOpen)}
+              isActive={!!currentTextColor}
+              title="Text Color"
+            >
+              <div className="relative">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                </svg>
+                {currentTextColor && (
+                  <div
+                    className="absolute bottom-0 right-0 w-2 h-2 rounded-full border border-white dark:border-neutral-800"
+                    style={{ backgroundColor: currentTextColor }}
+                  />
+                )}
+              </div>
+            </ToolbarButton>
+            {textColorOpen && (
+              <div
+                className={cn(
+                  "absolute bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg p-2 min-w-[180px] z-50 top-full left-0 mt-1"
+                )}
+              >
+                <div className="grid grid-cols-4 gap-2">
+                  {TEXT_COLORS.map((color) => (
+                    <button
+                      key={color.name}
+                      type="button"
+                      onClick={() => {
+                        if (color.value) {
+                          editor.chain().focus().setColor(color.value).run();
+                        } else {
+                          editor.chain().focus().unsetColor().run();
+                        }
+                        setTextColorOpen(false);
+                      }}
+                      className={cn(
+                        "w-8 h-8 rounded border-2 transition-all hover:scale-110",
+                        color.value === null
+                          ? "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 flex items-center justify-center"
+                          : "border-transparent",
+                        currentTextColor === color.value && "ring-2 ring-primary-500 ring-offset-1"
+                      )}
+                      style={color.value ? { backgroundColor: color.value } : undefined}
+                      title={color.name}
+                    >
+                      {color.value === null && (
+                        <svg className="w-4 h-4 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // Desktop layout: Original single-row design
   return (
     <div
       className={cn(
-        "flex items-center bg-neutral-50 dark:bg-neutral-800/50",
-        isMobile
-          ? "overflow-x-auto overflow-y-hidden gap-0.5 px-2 py-3 border-t border-neutral-200 dark:border-neutral-700 scrollbar-hide"
-          : "flex-wrap gap-1 p-2 border-b border-neutral-200 dark:border-neutral-700 rounded-t-lg"
+        "flex items-center bg-neutral-50 dark:bg-neutral-800/50 flex-wrap gap-1 p-2 border-b border-neutral-200 dark:border-neutral-700 rounded-t-lg"
       )}
-      style={isMobile ? { WebkitOverflowScrolling: "touch" } : undefined}
     >
       {/* Text Formatting */}
       <div
         className={cn(
-          "flex items-center border-r border-neutral-300 dark:border-neutral-600",
-          isMobile ? "gap-0.5 pr-2 mr-1" : "gap-1 pr-2 mr-2"
+          "flex items-center border-r border-neutral-300 dark:border-neutral-600 gap-1 pr-2 mr-2"
         )}
       >
         <ToolbarButton
           onClick={() => {
-            // Get selection before any potential loss
             const selection = preservedSelectionRef.current || editor.state.selection;
             const { from, to } = selection;
             if (from !== to) {
-              // Preserve selection when applying formatting
               editor.chain().focus().setTextSelection({ from, to }).toggleBold().run();
             } else {
               editor.chain().focus().toggleBold().run();
@@ -225,7 +365,6 @@ export const RichTextEditorToolbar = ({
         </ToolbarButton>
         <ToolbarButton
           onClick={() => {
-            // Get selection before any potential loss
             const selection = preservedSelectionRef.current || editor.state.selection;
             const { from, to } = selection;
             if (from !== to) {
@@ -246,8 +385,7 @@ export const RichTextEditorToolbar = ({
       {/* Text Color */}
       <div
         className={cn(
-          "relative border-r border-neutral-300 dark:border-neutral-600",
-          isMobile ? "pr-2 mr-1" : "pr-2 mr-2"
+          "relative border-r border-neutral-300 dark:border-neutral-600 pr-2 mr-2"
         )}
         ref={textColorRef}
       >
@@ -271,8 +409,7 @@ export const RichTextEditorToolbar = ({
         {textColorOpen && (
           <div
             className={cn(
-              "absolute bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg p-2 min-w-[180px] z-50",
-              isMobile ? "bottom-full left-0 mb-1" : "top-full left-0 mt-1"
+              "absolute bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg p-2 min-w-[180px] z-50 top-full left-0 mt-1"
             )}
           >
             <div className="grid grid-cols-4 gap-2">
@@ -313,8 +450,7 @@ export const RichTextEditorToolbar = ({
       {/* Highlight Color */}
       <div
         className={cn(
-          "relative border-r border-neutral-300 dark:border-neutral-600",
-          isMobile ? "pr-2 mr-1" : "pr-2 mr-2"
+          "relative border-r border-neutral-300 dark:border-neutral-600 pr-2 mr-2"
         )}
         ref={highlightColorRef}
       >
@@ -338,8 +474,7 @@ export const RichTextEditorToolbar = ({
         {highlightColorOpen && (
           <div
             className={cn(
-              "absolute bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg p-2 min-w-[180px] z-50",
-              isMobile ? "bottom-full left-0 mb-1" : "top-full left-0 mt-1"
+              "absolute bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg p-2 min-w-[180px] z-50 top-full left-0 mt-1"
             )}
           >
             <div className="grid grid-cols-4 gap-2">
@@ -380,8 +515,7 @@ export const RichTextEditorToolbar = ({
       {/* Lists */}
       <div
         className={cn(
-          "flex items-center border-r border-neutral-300 dark:border-neutral-600",
-          isMobile ? "gap-0.5 pr-2 mr-1" : "gap-1 pr-2 mr-2"
+          "flex items-center border-r border-neutral-300 dark:border-neutral-600 gap-1 pr-2 mr-2"
         )}
       >
         <button
@@ -389,22 +523,16 @@ export const RichTextEditorToolbar = ({
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            // Clear preserved selection to avoid interference
             preservedSelectionRef.current = null;
-            // Focus editor and toggle bullet list
             if (editor && !editor.isDestroyed) {
               editor.chain().focus().toggleBulletList().run();
             }
           }}
-          onMouseDown={(e) => {
-            // Stop propagation to prevent ToolbarButton's mousedown handler from interfering
-            e.stopPropagation();
-          }}
+          onMouseDown={(e) => e.stopPropagation()}
           disabled={!editor}
           title="Bullet List"
           className={cn(
-            "rounded transition-colors flex-shrink-0",
-            isMobile ? "p-3 min-w-[44px] min-h-[44px] flex items-center justify-center" : "p-2",
+            "rounded transition-colors flex-shrink-0 p-2",
             "hover:bg-neutral-100 dark:hover:bg-neutral-700",
             "disabled:opacity-50 disabled:cursor-not-allowed",
             "active:bg-neutral-200 dark:active:bg-neutral-600",
@@ -420,22 +548,16 @@ export const RichTextEditorToolbar = ({
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            // Clear preserved selection to avoid interference
             preservedSelectionRef.current = null;
-            // Focus editor and toggle ordered list
             if (editor && !editor.isDestroyed) {
               editor.chain().focus().toggleOrderedList().run();
             }
           }}
-          onMouseDown={(e) => {
-            // Stop propagation to prevent ToolbarButton's mousedown handler from interfering
-            e.stopPropagation();
-          }}
+          onMouseDown={(e) => e.stopPropagation()}
           disabled={!editor}
           title="Numbered List"
           className={cn(
-            "rounded transition-colors flex-shrink-0",
-            isMobile ? "p-3 min-w-[44px] min-h-[44px] flex items-center justify-center" : "p-2",
+            "rounded transition-colors flex-shrink-0 p-2",
             "hover:bg-neutral-100 dark:hover:bg-neutral-700",
             "disabled:opacity-50 disabled:cursor-not-allowed",
             "active:bg-neutral-200 dark:active:bg-neutral-600",
@@ -451,8 +573,7 @@ export const RichTextEditorToolbar = ({
       {/* Block Elements */}
       <div
         className={cn(
-          "flex items-center border-r border-neutral-300 dark:border-neutral-600",
-          isMobile ? "gap-0.5 pr-2 mr-1" : "gap-1 pr-2 mr-2"
+          "flex items-center border-r border-neutral-300 dark:border-neutral-600 gap-1 pr-2 mr-2"
         )}
       >
         <ToolbarButton
@@ -460,35 +581,24 @@ export const RichTextEditorToolbar = ({
             const { from, to } = editor.state.selection;
             const hasSelection = from !== to;
             
-            // Check if already in blockquote or inline quote (highlight with special color)
             if (isBlockquoteActive) {
               editor.chain().focus().toggleBlockquote().run();
             } else if (isInlineQuoteActive) {
               editor.chain().focus().unsetHighlight().run();
             } else if (hasSelection) {
-              // If text is selected, determine if it should be inline or block
               const selectedText = editor.state.doc.textBetween(from, to);
               if (selectedText.trim()) {
-                // Get the block containing the selection
                 const $from = editor.state.doc.resolve(from);
                 const blockStart = $from.start($from.depth);
                 const blockEnd = $from.end($from.depth);
-                
-                // Check if selection is the entire block
                 const isFullBlock = from === blockStart && to === blockEnd;
-                
-                // Check if there's text before or after the selection in the same block
                 const textBefore = editor.state.doc.textBetween(blockStart, from);
                 const textAfter = editor.state.doc.textBetween(to, blockEnd);
                 const hasTextAround = (textBefore.trim().length > 0 || textAfter.trim().length > 0);
-                
-                // Check if the entire block content is just the selected text (single word/line)
                 const entireBlockText = editor.state.doc.textBetween(blockStart, blockEnd);
                 const isOnlyContentInBlock = entireBlockText.trim() === selectedText.trim();
                 
-                // Use block-level blockquote only for full blocks or when it's the only content in the block
                 if (isFullBlock || (isOnlyContentInBlock && !hasTextAround)) {
-                  // Use block-level blockquote for full blocks or when it's the only content
                   const blockquoteNode = editor.schema.nodes.blockquote.create(
                     {},
                     editor.schema.nodes.paragraph.create({}, editor.schema.text(selectedText))
@@ -512,18 +622,10 @@ export const RichTextEditorToolbar = ({
                     })
                     .run();
                 } else {
-                  // Use inline quote for text in the middle of a paragraph
-                  // Since TipTap escapes custom HTML, we'll use Highlight with a special marker
-                  // and style it to look like an inline quote
-                  editor
-                    .chain()
-                    .focus()
-                    .setHighlight({ color: "#inline-quote" })
-                    .run();
+                  editor.chain().focus().setHighlight({ color: "#inline-quote" }).run();
                 }
               }
             } else {
-              // No selection, just toggle blockquote at current position
               editor.chain().focus().toggleBlockquote().run();
             }
           }}
@@ -548,8 +650,7 @@ export const RichTextEditorToolbar = ({
       {/* Links and Images */}
       <div
         className={cn(
-          "flex items-center border-r border-neutral-300 dark:border-neutral-600",
-          isMobile ? "gap-0.5 pr-2 mr-1" : "gap-1 pr-2 mr-2"
+          "flex items-center border-r border-neutral-300 dark:border-neutral-600 gap-1 pr-2 mr-2"
         )}
       >
         <ToolbarButton
@@ -579,7 +680,7 @@ export const RichTextEditorToolbar = ({
       </div>
 
       {/* Undo/Redo */}
-      <div className={cn("flex items-center", isMobile ? "gap-0.5" : "gap-1")}>
+      <div className="flex items-center gap-1">
         <ToolbarButton
           onClick={() => editor.chain().focus().undo().run()}
           disabled={!editor.can().undo()}
