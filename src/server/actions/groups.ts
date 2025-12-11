@@ -542,6 +542,12 @@ export async function addDynamicTicketPermissionToGroup(
     });
     members.forEach((m) => clearPermissionCache(m.userId));
 
+    // Revalidate all ticket-related pages to ensure permissions are updated
+    const { revalidatePath } = await import("next/cache");
+    revalidatePath("/dashboard/tickets");
+    revalidatePath("/dashboard/tickets/[id]", "page");
+    revalidatePath("/dashboard");
+
     return {
       success: true,
       data: { permissionId: permission.id },
@@ -581,6 +587,12 @@ export async function removePermissionFromGroup(
       select: { userId: true },
     });
     members.forEach((m) => clearPermissionCache(m.userId));
+
+    // Revalidate all ticket-related pages to ensure permissions are updated
+    const { revalidatePath } = await import("next/cache");
+    revalidatePath("/dashboard/tickets");
+    revalidatePath("/dashboard/tickets/[id]", "page");
+    revalidatePath("/dashboard");
 
     return {
       success: true,
@@ -651,6 +663,12 @@ export async function updateGroupPermissions(
       select: { userId: true },
     });
     members.forEach((m) => clearPermissionCache(m.userId));
+
+    // Revalidate all ticket-related pages to ensure permissions are updated
+    const { revalidatePath } = await import("next/cache");
+    revalidatePath("/dashboard/tickets");
+    revalidatePath("/dashboard/tickets/[id]", "page");
+    revalidatePath("/dashboard");
 
     return {
       success: true,

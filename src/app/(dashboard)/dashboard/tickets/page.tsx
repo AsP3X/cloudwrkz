@@ -29,6 +29,10 @@ interface TicketsPageProps {
   }>;
 }
 
+// Force dynamic rendering to prevent caching issues with permissions
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function TicketsPage({ searchParams }: TicketsPageProps) {
   const user = await getCurrentUser();
   const params = await searchParams;

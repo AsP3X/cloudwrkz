@@ -287,17 +287,42 @@ async function searchTicketsWithFilters(
     }
   }
 
+  // Check if user has any dynamic ticket view permissions
+  const { parseTicketPermissionKey } = await import("@/lib/utils/permissions");
+  let hasDynamicViewPermissions = false;
+  const dynamicTicketIds: string[] = [];
+  for (const permissionKey of userPermissions) {
+    const parsed = parseTicketPermissionKey(permissionKey);
+    if (parsed && parsed.action === "view") {
+      hasDynamicViewPermissions = true;
+      dynamicTicketIds.push(parsed.ticketId);
+    }
+  }
+  
   // Apply permission-based filtering
   const canViewAllTickets = userPermissions.has("tickets.view_all") || userPermissions.has("admin.tickets.manage");
-  const canViewTickets = userPermissions.has("tickets.view") || canViewAllTickets;
+  const canViewTickets = userPermissions.has("tickets.view") || canViewAllTickets || hasDynamicViewPermissions;
 
   if (!canViewTickets) {
-    // User has no permission to view tickets
+    // User has no permission to view tickets (neither general nor dynamic)
     return [];
+  }
+  for (const permissionKey of userPermissions) {
+    const parsed = parseTicketPermissionKey(permissionKey);
+    if (parsed && parsed.action === "view") {
+      dynamicTicketIds.push(parsed.ticketId);
+    }
   }
 
   if (!canViewAllTickets) {
     // User can only view specific tickets
+    const permissionFilters: any[] = [];
+    
+    // Add tickets with dynamic permissions
+    if (dynamicTicketIds.length > 0) {
+      permissionFilters.push({ id: { in: dynamicTicketIds } });
+    }
+    
     if (user.role === "AGENT") {
       // Agents can see tickets assigned to them or their groups
       const memberships = await prisma.groupMembership.findMany({
@@ -306,19 +331,24 @@ async function searchTicketsWithFilters(
       });
       const agentGroupIds = memberships.map((m) => m.groupId);
 
-      const groupFilter = {
-        OR: [
-          { assignedToId: user.id },
-          { assignedToGroupId: null },
-          ...(agentGroupIds.length > 0 ? [{ assignedToGroupId: { in: agentGroupIds } }] : []),
-        ],
+      permissionFilters.push(
+        { assignedToId: user.id },
+        { assignedToGroupId: null },
+        ...(agentGroupIds.length > 0 ? [{ assignedToGroupId: { in: agentGroupIds } }] : [])
+      );
+    } else if (user.role === "USER") {
+      // Regular users can see tickets they created
+      permissionFilters.push({ createdById: user.id });
+    }
+
+    // If we have permission filters, combine them with OR
+    if (permissionFilters.length > 0) {
+      const permissionFilter = {
+        OR: permissionFilters,
       };
 
       where.AND = where.AND || [];
-      where.AND.push(groupFilter);
-    } else if (user.role === "USER") {
-      // Regular users can only see tickets they created
-      where.createdById = user.id;
+      where.AND.push(permissionFilter);
     }
   }
   // ADMIN/MODERATOR with view_all permission can see all tickets (no filter)
@@ -990,17 +1020,36 @@ async function searchTickets(
 ): Promise<SearchResult[]> {
   const where: any = {};
 
+  // Check if user has any dynamic ticket view permissions
+  const { parseTicketPermissionKey } = await import("@/lib/utils/permissions");
+  let hasDynamicViewPermissions = false;
+  const dynamicTicketIds: string[] = [];
+  for (const permissionKey of userPermissions) {
+    const parsed = parseTicketPermissionKey(permissionKey);
+    if (parsed && parsed.action === "view") {
+      hasDynamicViewPermissions = true;
+      dynamicTicketIds.push(parsed.ticketId);
+    }
+  }
+
   // Apply permission-based filtering
   const canViewAllTickets = userPermissions.has("tickets.view_all") || userPermissions.has("admin.tickets.manage");
-  const canViewTickets = userPermissions.has("tickets.view") || canViewAllTickets;
+  const canViewTickets = userPermissions.has("tickets.view") || canViewAllTickets || hasDynamicViewPermissions;
 
   if (!canViewTickets) {
-    // User has no permission to view tickets
+    // User has no permission to view tickets (neither general nor dynamic)
     return [];
   }
 
   if (!canViewAllTickets) {
     // User can only view specific tickets
+    const permissionFilters: any[] = [];
+    
+    // Add tickets with dynamic permissions
+    if (dynamicTicketIds.length > 0) {
+      permissionFilters.push({ id: { in: dynamicTicketIds } });
+    }
+    
     if (user.role === "AGENT") {
       // Agents can see tickets assigned to them or their groups
       const memberships = await prisma.groupMembership.findMany({
@@ -1009,14 +1058,19 @@ async function searchTickets(
       });
       const agentGroupIds = memberships.map((m) => m.groupId);
 
-      where.OR = [
+      permissionFilters.push(
         { assignedToId: user.id },
         { assignedToGroupId: null },
-        ...(agentGroupIds.length > 0 ? [{ assignedToGroupId: { in: agentGroupIds } }] : []),
-      ];
+        ...(agentGroupIds.length > 0 ? [{ assignedToGroupId: { in: agentGroupIds } }] : [])
+      );
     } else if (user.role === "USER") {
-      // Regular users can only see tickets they created
-      where.createdById = user.id;
+      // Regular users can see tickets they created
+      permissionFilters.push({ createdById: user.id });
+    }
+
+    // If we have permission filters, combine them with OR
+    if (permissionFilters.length > 0) {
+      where.OR = permissionFilters;
     }
   }
   // ADMIN/MODERATOR with view_all permission can see all tickets (no filter)

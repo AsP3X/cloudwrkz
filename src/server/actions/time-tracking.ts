@@ -1251,13 +1251,39 @@ export async function getTimeEntriesForTicket(ticketId: string) {
 
     const user = await requireAuth();
 
-    // Check permission to view ticket time entries
-    try {
-      await requireAnyPermission("tickets.time_entries.view", "time_tracking.view", "time_tracking.view_all");
-    } catch {
-      // Fallback to role check for backward compatibility
-      if (!["ADMIN", "MODERATOR", "AGENT", "USER"].includes(user.role)) {
-        return [];
+    // Get ticket to check dynamic permissions
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: { id: true, type: true },
+    });
+
+    if (!ticket) {
+      return [];
+    }
+
+    // Check permission to view ticket time entries (including dynamic permissions)
+    if (user.role !== "ADMIN") {
+      const { hasTicketPermission } = await import("@/lib/utils/permissions");
+      const { getTicketTypePrefix } = await import("@/lib/utils/tickets");
+      const ticketPrefix = getTicketTypePrefix(ticket.type);
+      
+      const hasDynamicPermission = await hasTicketPermission(
+        user.id,
+        ticket.id,
+        ticketPrefix,
+        "time_entries.view"
+      );
+      
+      if (!hasDynamicPermission) {
+        // Check general permissions
+        try {
+          await requireAnyPermission("tickets.time_entries.view", "time_tracking.view", "time_tracking.view_all");
+        } catch {
+          // Fallback to role check for backward compatibility
+          if (!["ADMIN", "MODERATOR", "AGENT", "USER"].includes(user.role)) {
+            return [];
+          }
+        }
       }
     }
 

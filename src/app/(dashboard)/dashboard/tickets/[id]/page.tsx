@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/utils/auth-server";
-import { hasPermission } from "@/lib/utils/permissions";
+import { hasPermission, hasTicketPermission } from "@/lib/utils/permissions";
 import { formatUserName } from "@/lib/utils/users";
+import { getTicketTypePrefix } from "@/lib/utils/tickets";
 import { formatDateTime } from "@/lib/utils/date";
 import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
@@ -53,42 +54,42 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
     );
   }
 
+  // getTicket already checks for dynamic permissions and general permissions
+  // It returns null if the user doesn't have access
   const ticket = await getTicket(id);
 
   if (!ticket) {
-    notFound();
-  }
-
-  // Check if user is the owner or manager of the project this ticket belongs to
-  let isProjectOwnerOrManager = false;
-  if (ticket.projectId) {
-    const project = await getProject(ticket.projectId);
-    if (project) {
-      // Check if user is the project creator (owner)
-      if (project.createdById === user.id) {
-        isProjectOwnerOrManager = true;
-      } else {
-        // Check if user is a manager of the project
-        const membership = project.members.find((m) => m.user.id === user.id);
-        if (membership?.role === "MANAGER") {
-          isProjectOwnerOrManager = true;
-        }
-      }
-    }
-  }
-
-  // Check if user has permission to view this ticket
-  // Creator, assigned agent, admin, moderator, or project owner/manager can view
-  const canView = 
-    ticket.createdById === user.id ||
-    user.role === "ADMIN" ||
-    user.role === "MODERATOR" ||
-    (user.role === "AGENT" && ticket.assignedToId === user.id) ||
-    user.role === "AGENT" || // Agents can view all tickets
-    isProjectOwnerOrManager; // Project owners and managers can view tickets for their projects
-  
-  if (!canView) {
-    redirect(ROUTES.DASHBOARD);
+    // Show permission denied page instead of 404
+    return (
+      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8 text-center">
+        <div className="max-w-md mx-auto">
+          <div className="mb-6">
+            <svg
+              className="w-16 h-16 text-error-500 mx-auto"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">
+            Access Denied
+          </h2>
+          <p className="text-neutral-600 dark:text-neutral-400 mb-6">
+            You don't have permission to view this ticket. The permission may have been removed or you may not have been granted access to this specific ticket.
+          </p>
+          <Link href="/dashboard/tickets">
+            <Button variant="primary">Back to Tickets</Button>
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   // Get agents and groups for editable assignment fields (only for agents/admins/moderators)
@@ -99,14 +100,20 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
 
   // Check if time tracking module is enabled and user has permission to view ticket time entries
   const timeTrackingEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
+  const ticketPrefix = getTicketTypePrefix(ticket.type as any);
+  const hasDynamicTimeEntriesView = await hasTicketPermission(user.id, ticket.id, ticketPrefix, "time_entries.view");
+  const hasDynamicTimeEntriesCreate = await hasTicketPermission(user.id, ticket.id, ticketPrefix, "time_entries.create");
+  
   const canViewTimeEntries = timeTrackingEnabled && (
     user.role === "ADMIN" || 
+    hasDynamicTimeEntriesView ||
     await hasPermission(user.id, "tickets.time_entries.view") ||
     await hasPermission(user.id, "time_tracking.view") ||
     await hasPermission(user.id, "time_tracking.view_all")
   );
   const canCreateTimeEntries = timeTrackingEnabled && (
     user.role === "ADMIN" ||
+    hasDynamicTimeEntriesCreate ||
     await hasPermission(user.id, "tickets.time_entries.create") ||
     await hasPermission(user.id, "time_tracking.create")
   );

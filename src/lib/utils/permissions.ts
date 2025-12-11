@@ -133,12 +133,28 @@ export async function getUserPermissions(userId: string): Promise<Set<string>> {
   for (const membership of memberships) {
     for (const groupPermission of membership.group.permissions) {
       // Include all permissions (both static PermissionKey and dynamic ticket permissions)
-      groupPermissions.add(groupPermission.permission.key);
+      const permissionKey = groupPermission.permission.key;
+      groupPermissions.add(permissionKey);
+      
+      // Debug logging for dynamic permissions
+      if (process.env.NODE_ENV === "development" && isDynamicTicketPermission(permissionKey)) {
+        console.log(`[getUserPermissions] Found dynamic permission for user ${userId}: ${permissionKey}`);
+      }
     }
   }
 
   // Combine role and group permissions (union)
-  return new Set([...rolePermissions, ...groupPermissions]);
+  const allPermissions = new Set([...rolePermissions, ...groupPermissions]);
+  
+  if (process.env.NODE_ENV === "development") {
+    console.log(`[getUserPermissions] User ${userId} has ${allPermissions.size} total permissions (${rolePermissions.size} role, ${groupPermissions.size} group)`);
+    const dynamicPerms = Array.from(allPermissions).filter(p => isDynamicTicketPermission(p));
+    if (dynamicPerms.length > 0) {
+      console.log(`[getUserPermissions] Dynamic permissions:`, dynamicPerms);
+    }
+  }
+  
+  return allPermissions;
 }
 
 /**
@@ -203,8 +219,14 @@ export async function getCachedUserPermissions(userId: string): Promise<Set<stri
 export function clearPermissionCache(userId?: string): void {
   if (userId) {
     permissionCache.delete(userId);
+    if (process.env.NODE_ENV === "development") {
+      console.log(`[clearPermissionCache] Cleared permission cache for user ${userId}`);
+    }
   } else {
     permissionCache.clear();
+    if (process.env.NODE_ENV === "development") {
+      console.log(`[clearPermissionCache] Cleared all permission caches`);
+    }
   }
 }
 
@@ -222,6 +244,22 @@ export async function hasTicketPermission(
   
   // Check for dynamic ticket-specific permission
   const dynamicKey = generateTicketPermissionKey(ticketId, ticketPrefix, action);
+  
+  // Debug logging (can be removed in production)
+  if (process.env.NODE_ENV === "development") {
+    console.log(`[hasTicketPermission] Checking permission for user ${userId}, ticket ${ticketId}, prefix ${ticketPrefix}, action ${action}`);
+    console.log(`[hasTicketPermission] Generated dynamic key: ${dynamicKey}`);
+    console.log(`[hasTicketPermission] User has ${permissions.size} permissions`);
+    console.log(`[hasTicketPermission] Has dynamic key: ${permissions.has(dynamicKey)}`);
+    if (permissions.has(dynamicKey)) {
+      console.log(`[hasTicketPermission] Found dynamic permission: ${dynamicKey}`);
+    } else {
+      // Log some sample permissions to help debug
+      const samplePerms = Array.from(permissions).filter(p => p.includes("tickets")).slice(0, 5);
+      console.log(`[hasTicketPermission] Sample ticket permissions:`, samplePerms);
+    }
+  }
+  
   if (permissions.has(dynamicKey)) {
     return true;
   }
@@ -229,7 +267,11 @@ export async function hasTicketPermission(
   // Check for general ticket permissions
   // For view action, check tickets.view or tickets.view_all
   if (action === "view") {
-    return permissions.has("tickets.view") || permissions.has("tickets.view_all") || permissions.has("admin.tickets.manage");
+    const hasGeneral = permissions.has("tickets.view") || permissions.has("tickets.view_all") || permissions.has("admin.tickets.manage");
+    if (process.env.NODE_ENV === "development") {
+      console.log(`[hasTicketPermission] Has general view permission: ${hasGeneral}`);
+    }
+    return hasGeneral;
   }
   
   // For comment action, check tickets.comment
