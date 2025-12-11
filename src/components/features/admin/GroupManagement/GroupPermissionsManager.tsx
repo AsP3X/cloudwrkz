@@ -8,7 +8,7 @@ import { updateGroupPermissions, addDynamicTicketPermissionToGroup } from "@/ser
 import { getPermissions, getPermissionCategories, getGroupPermissions, getGroupDynamicTicketPermissions } from "@/server/actions/permissions";
 import { getTickets } from "@/server/actions/tickets";
 import type { Permission } from "@prisma/client";
-import { TICKET_PERMISSION_ACTIONS, type TicketPermissionAction, generateTicketPermissionKey } from "@/lib/utils/permissions";
+import { TICKET_PERMISSION_ACTIONS, type TicketPermissionAction, generateTicketPermissionKey, isDynamicTicketPermission } from "@/lib/utils/permissions";
 import { getTicketTypePrefix } from "@/lib/utils/tickets";
 
 interface GroupPermissionsManagerProps {
@@ -69,7 +69,20 @@ export function GroupPermissionsManager({
           getGroupPermissions(groupId),
           getGroupDynamicTicketPermissions(groupId),
         ]);
-        setPermissions(perms);
+        
+        // Merge static permissions with dynamic permissions for display
+        // Dynamic permissions should appear in the permissions list as well
+        const allPermissions = [...perms];
+        const dynamicPermissionIds = new Set(perms.filter(p => isDynamicTicketPermission(p.key)).map(p => p.id));
+        
+        // Add dynamic permissions that aren't already in the permissions list
+        dynamicPerms.forEach((dp) => {
+          if (!dynamicPermissionIds.has(dp.id)) {
+            allPermissions.push(dp);
+          }
+        });
+        
+        setPermissions(allPermissions);
         setCategories(cats);
         const loadedPermissionIds = groupPerms.map((p) => p.id);
         setSelectedPermissionIds(new Set(loadedPermissionIds));
@@ -88,13 +101,20 @@ export function GroupPermissionsManager({
     loadData();
   }, [groupId]);
 
-  // Filter permissions by search query
+  // Filter permissions by search query and separate static from dynamic
   const filteredPermissions = useMemo(() => {
+    // Separate static and dynamic permissions
+    const staticPermissions = permissions.filter((p) => !isDynamicTicketPermission(p.key));
+    const dynamicPermissions = permissions.filter((p) => isDynamicTicketPermission(p.key));
+    
+    // Combine all permissions for filtering
+    const allPermissions = [...staticPermissions, ...dynamicPermissions];
+    
     if (!searchQuery.trim()) {
-      return permissions;
+      return allPermissions;
     }
     const query = searchQuery.toLowerCase();
-    return permissions.filter(
+    return allPermissions.filter(
       (p) =>
         p.name.toLowerCase().includes(query) ||
         p.description?.toLowerCase().includes(query) ||
@@ -102,15 +122,28 @@ export function GroupPermissionsManager({
     );
   }, [permissions, searchQuery]);
 
-  // Group permissions by category
+  // Group permissions by category, with dynamic permissions in their own category
   const permissionsByCategory = useMemo(() => {
     const grouped: Record<string, Permission[]> = {};
+    
+    // First, add all static permissions grouped by their category
     for (const perm of filteredPermissions) {
+      if (isDynamicTicketPermission(perm.key)) {
+        // Skip dynamic permissions here - they'll be added separately
+        continue;
+      }
       if (!grouped[perm.category]) {
         grouped[perm.category] = [];
       }
       grouped[perm.category].push(perm);
     }
+    
+    // Add dynamic permissions as a separate "dynamic" category
+    const dynamicPerms = filteredPermissions.filter((p) => isDynamicTicketPermission(p.key));
+    if (dynamicPerms.length > 0) {
+      grouped["dynamic"] = dynamicPerms;
+    }
+    
     return grouped;
   }, [filteredPermissions]);
 
@@ -221,19 +254,18 @@ export function GroupPermissionsManager({
       }
 
       // 2. Remove dynamic permissions that were deleted
+      // Check both the dynamicTicketPermissions state and selectedPermissionIds
+      // A dynamic permission is removed if it was in baseDynamicPermissions but is not in selectedPermissionIds
+      const currentSelectedIds = new Set(selectedPermissionIds);
       const removedDynamicKeys = new Set(
         baseDynamicPermissions
-          .filter((base) => !dynamicTicketPermissions.some((current) => current.id === base.id))
+          .filter((base) => !currentSelectedIds.has(base.id))
           .map((p) => p.id)
       );
 
-      if (removedDynamicKeys.size > 0) {
-        const updatedIds = Array.from(selectedPermissionIds).filter(
-          (id) => !removedDynamicKeys.has(id)
-        );
-        await updateGroupPermissions(groupId, updatedIds);
-        setSelectedPermissionIds(new Set(updatedIds));
-      }
+      // Note: The updateGroupPermissions call above already handles removing permissions
+      // that are not in selectedPermissionIds, so we don't need to call it again here.
+      // The removal is already handled by the first updateGroupPermissions call.
 
       // Reload all permissions to get updated state
       const [updatedGroupPerms, updatedDynamicPerms] = await Promise.all([
@@ -849,9 +881,14 @@ export function GroupPermissionsManager({
 
       {/* Permissions List */}
       <div className="space-y-2 max-h-[600px] overflow-y-auto">
-        {categories
-          .filter((cat) => permissionsByCategory[cat] && permissionsByCategory[cat].length > 0)
-          .map((category) => {
+        {(() => {
+          // Get all categories including "dynamic" if it exists
+          const allCategories = [
+            ...categories.filter((cat) => permissionsByCategory[cat] && permissionsByCategory[cat].length > 0),
+            ...(permissionsByCategory["dynamic"] && permissionsByCategory["dynamic"].length > 0 ? ["dynamic"] : [])
+          ];
+          
+          return allCategories.map((category) => {
             const categoryPerms = permissionsByCategory[category] || [];
             const selectedCount = getCategorySelectedCount(category);
             const totalCount = categoryPerms.length;
@@ -881,10 +918,15 @@ export function GroupPermissionsManager({
                     </button>
                     <div>
                       <h3 className="font-semibold text-neutral-900 dark:text-neutral-100 capitalize">
-                        {category.replace(/_/g, " ")}
+                        {category === "dynamic" ? "Dynamic Permissions" : category.replace(/_/g, " ")}
                       </h3>
                       <p className="text-sm text-neutral-600 dark:text-neutral-400">
                         {selectedCount} of {totalCount} selected
+                        {category === "dynamic" && (
+                          <span className="ml-2 text-xs text-neutral-500 dark:text-neutral-500">
+                            (Ticket-specific permissions)
+                          </span>
+                        )}
                       </p>
                     </div>
                   </div>
@@ -939,7 +981,8 @@ export function GroupPermissionsManager({
                 )}
               </div>
             );
-          })}
+          });
+        })()}
       </div>
 
       {/* Actions */}
