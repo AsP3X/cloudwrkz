@@ -25,20 +25,9 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
   // Track if we're syncing from context to prevent feedback loop
   const isSyncingFromContext = React.useRef(false);
   
-  // Initialize theme from localStorage directly on mount to prevent flash
-  // This ensures the form has the correct theme value immediately
-  const [initialTheme] = React.useState<"light" | "dark" | "system">(() => {
-    if (typeof window === "undefined") return "system";
-    try {
-      const stored = localStorage.getItem("theme");
-      if (stored && ["light", "dark", "system"].includes(stored)) {
-        return stored as "light" | "dark" | "system";
-      }
-    } catch {
-      // Ignore localStorage errors
-    }
-    return "system";
-  });
+  // Initialize theme with safe default to avoid hydration mismatch
+  // Will be updated after mount from localStorage
+  const [initialTheme, setInitialTheme] = React.useState<"light" | "dark" | "system">("system");
   
   // Get theme - will throw if ThemeProvider is not available, but it should be in root layout
   const { theme, setTheme } = useTheme();
@@ -65,10 +54,21 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
     },
   });
 
-  // Mark as mounted after initial render
+  // Mark as mounted and load theme from localStorage after initial render
   React.useEffect(() => {
     setMounted(true);
-  }, []);
+    // Load theme from localStorage after mount to prevent hydration mismatch
+    try {
+      const stored = localStorage.getItem("theme");
+      if (stored && ["light", "dark", "system"].includes(stored)) {
+        const themeValue = stored as "light" | "dark" | "system";
+        setInitialTheme(themeValue);
+        setValue("theme", themeValue);
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [setValue]);
 
   // Reset form when initialValues change (e.g., after successful save and page revalidation)
   // Note: theme is excluded because it's stored in localStorage on client side, not on server

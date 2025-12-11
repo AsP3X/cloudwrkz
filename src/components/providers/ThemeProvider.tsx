@@ -39,18 +39,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // The blocking script in layout.tsx already sets the dark class based on localStorage
   const [theme, setThemeState] = useState<Theme>("system");
 
-  // Initialize effectiveTheme by checking DOM (set by blocking script)
-  // This is safe because the blocking script runs before React hydrates
-  const [effectiveTheme, setEffectiveTheme] = useState<"light" | "dark">(() => {
-    if (typeof window === "undefined") return "light";
-    // Check if dark class is already on the document (from blocking script)
-    // This is safe because blocking script runs synchronously before React
-    try {
-      return document.documentElement.classList.contains("dark") ? "dark" : "light";
-    } catch {
-      return "light";
-    }
-  });
+  // Initialize effectiveTheme with safe default to avoid hydration mismatch
+  // Will be updated after mount when we can safely access DOM
+  const [effectiveTheme, setEffectiveTheme] = useState<"light" | "dark">("light");
 
   const [mounted, setMounted] = useState(false);
 
@@ -68,13 +59,23 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         const resolved = storedTheme === "system" ? getSystemTheme() : storedTheme;
         setEffectiveTheme(resolved);
       } else {
-        // No stored theme, use system preference
-        const resolved = getSystemTheme();
+        // No stored theme, check DOM first (set by blocking script), then use system preference
+        let resolved: "light" | "dark";
+        try {
+          resolved = document.documentElement.classList.contains("dark") ? "dark" : getSystemTheme();
+        } catch {
+          resolved = getSystemTheme();
+        }
         setEffectiveTheme(resolved);
       }
     } catch {
-      // localStorage not available, use system preference
-      const resolved = getSystemTheme();
+      // localStorage not available, check DOM first, then use system preference
+      let resolved: "light" | "dark";
+      try {
+        resolved = document.documentElement.classList.contains("dark") ? "dark" : getSystemTheme();
+      } catch {
+        resolved = getSystemTheme();
+      }
       setEffectiveTheme(resolved);
     }
   }, [getSystemTheme]);

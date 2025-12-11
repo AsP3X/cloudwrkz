@@ -248,13 +248,15 @@ model GroupMembership {
 
 // Ticket model for the ticket system module
 model Ticket {
-  id           String         @id @default(cuid())
-  ticketNumber String         @unique // e.g., #INC-000001, #SRC-000001
-  title        String
-  description  String?
-  type         TicketType     @default(BUG)
-  status       TicketStatus   @default(OPEN)
-  priority     TicketPriority @default(MEDIUM)
+  id             String         @id @default(cuid())
+  ticketNumber   String         @unique // e.g., #INC-000001, #SRC-000001
+  title          String
+  description    String? // Legacy plain text field (will be migrated)
+  descriptionHtml String? // Rich text HTML (sanitized)
+  descriptionPlain String? // Plain text version for search/indexing
+  type           TicketType     @default(BUG)
+  status         TicketStatus   @default(OPEN)
+  priority       TicketPriority @default(MEDIUM)
 
   // Relations
   createdById       String?
@@ -329,7 +331,9 @@ enum TicketActivityType {
 // Ticket Comments
 model TicketComment {
   id          String   @id @default(cuid())
-  content     String
+  content     String // Legacy plain text field (will be migrated)
+  contentHtml String? // Rich text HTML (sanitized)
+  contentPlain String? // Plain text version for search/indexing
   ticketId    String
   ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   userId      String?

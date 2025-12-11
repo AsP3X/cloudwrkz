@@ -280,7 +280,11 @@ export function ProjectsPage({ initialProjects, searchParams = {} }: ProjectsPag
                   <tr
                     key={project.id}
                     className="hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
-                    onClick={() => window.location.href = `/dashboard/projects/${project.id}`}
+                    onClick={() => {
+                      if (typeof window !== "undefined") {
+                        window.location.href = `/dashboard/projects/${project.id}`;
+                      }
+                    }}
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">

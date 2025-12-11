@@ -44,7 +44,8 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
       if (!open) return;
 
       // Check if mobile (viewport width < 640px which is sm breakpoint)
-      const isMobile = window.innerWidth < 640;
+      // Only check on client side to avoid hydration mismatch
+      const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
       
       if (isMobile) {
         // Store original values

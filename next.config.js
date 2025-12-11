@@ -7,6 +7,8 @@ const nextConfig = {
       allowedOrigins: ['cloudwrkz.corespace.de', 'localhost'],
     },
   },
+  // Configure server external packages for jsdom
+  serverExternalPackages: ['jsdom'],
 };
 
 module.exports = nextConfig;

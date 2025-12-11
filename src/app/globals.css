@@ -2,6 +2,28 @@
 @tailwind components;
 @tailwind utilities;
 
+/* TipTap Editor Placeholder */
+.ProseMirror.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: rgb(163 163 163);
+  pointer-events: none;
+  height: 0;
+}
+
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: rgb(163 163 163);
+  pointer-events: none;
+  height: 0;
+}
+
+.dark .ProseMirror.is-editor-empty:first-child::before,
+.dark .ProseMirror p.is-editor-empty:first-child::before {
+  color: rgb(115 115 115);
+}
+
 @layer base {
   :root {
     --font-inter: "Inter", system-ui, sans-serif;

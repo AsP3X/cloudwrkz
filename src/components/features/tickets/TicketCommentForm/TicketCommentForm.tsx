@@ -4,17 +4,18 @@ import React from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { Textarea } from "@/components/ui/Textarea";
+import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { Button } from "@/components/ui/Button";
 import { z } from "zod";
 import { addTicketComment, updateTicket } from "@/server/actions/tickets";
+import { sanitizeHtml } from "@/lib/utils/rich-text";
 
 const commentSchema = z.object({
   content: z
     .string()
     .min(1, "Comment cannot be empty")
-    .max(5000, "Comment must be less than 5000 characters")
-    .trim(),
+    .max(50000, "Comment is too long")
+    .transform((html) => sanitizeHtml(html)),
   isAgentOnly: z.boolean().default(false),
 });
 
@@ -56,6 +57,8 @@ export const TicketCommentForm = ({ ticketId, userRole }: TicketCommentFormProps
     handleSubmit,
     reset,
     getValues,
+    watch,
+    setValue,
     formState: { errors },
   } = useForm<CommentInput>({
     resolver: zodResolver(commentSchema),
@@ -161,12 +164,29 @@ export const TicketCommentForm = ({ ticketId, userRole }: TicketCommentFormProps
         </div>
       )}
 
-      <Textarea
+      <RichTextEditor
         label="Add a comment"
         placeholder="Write your comment here..."
         error={errors.content?.message}
-        rows={4}
-        {...register("content")}
+        value={watch("content") || ""}
+        onChange={(html) => {
+          setValue("content", html, { shouldValidate: true });
+        }}
+        onImageUpload={async (file) => {
+          const formData = new FormData();
+          formData.append("file", file);
+          const response = await fetch("/api/tickets/upload-image", {
+            method: "POST",
+            body: formData,
+          });
+          if (!response.ok) {
+            throw new Error("Failed to upload image");
+          }
+          const data = await response.json();
+          return data.url;
+        }}
+        minHeight="150px"
+        name="content"
       />
 
       {isAgent && (

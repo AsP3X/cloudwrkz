@@ -5,6 +5,7 @@ import { Tabs } from "@/components/ui/Tabs";
 import { formatUserName, formatUserInitial } from "@/lib/utils/users";
 import { TicketActivity } from "../TicketActivity";
 import { TicketCommentForm } from "../TicketCommentForm";
+import { RichTextDisplay } from "../RichTextDisplay";
 import { formatDuration } from "@/lib/utils/time-tracking";
 import { formatDate, formatDateTime } from "@/lib/utils/date";
 import Link from "next/link";
@@ -13,6 +14,8 @@ import { ROUTES } from "@/lib/constants/routes";
 interface Comment {
   id: string;
   content: string;
+  contentHtml?: string | null;
+  contentPlain?: string | null;
   createdAt: Date;
   isAgentOnly: boolean;
   userId?: string | null;
@@ -197,8 +200,10 @@ export const TicketCommentsAndActivity = ({
                   </div>
                 </div>
               </div>
-              <div className="text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap mt-2">
-                {comment.content}
+              <div className="mt-2">
+                <RichTextDisplay
+                  content={comment.contentHtml || comment.content || ""}
+                />
               </div>
             </div>
           ))}

@@ -15,6 +15,7 @@ import { createTimeEntry } from "./time-tracking";
 import { formatUserName } from "@/lib/utils/users";
 import { logTicketActivity } from "../utils/ticket-activity-logger";
 import { hasTicketPermission } from "@/lib/utils/permissions";
+import { sanitizeHtml, extractPlainText } from "@/lib/utils/rich-text";
 
 export type TicketInput = {
   title: string;
@@ -158,11 +159,21 @@ export async function createTicket(input: TicketInput): Promise<ActionResult<{ i
       }
     }
 
+    // Process description: sanitize HTML and extract plain text
+    const descriptionHtml = input.description 
+      ? sanitizeHtml(input.description) 
+      : null;
+    const descriptionPlain = descriptionHtml 
+      ? extractPlainText(descriptionHtml) 
+      : null;
+
     const ticket = await prisma.ticket.create({
       data: {
         ticketNumber,
         title: input.title.trim(),
-        description: input.description?.trim(),
+        description: descriptionPlain, // Keep legacy field for backward compatibility
+        descriptionHtml,
+        descriptionPlain,
         type: ticketType,
         priority: input.priority || "MEDIUM",
         status: "OPEN",
@@ -507,51 +518,53 @@ export async function getTickets(filters?: {
 
   return prisma.ticket.findMany({
     where,
-    select: {
-      id: true,
-      ticketNumber: true,
-      title: true,
-      description: true,
-      type: true,
-      status: true,
-      priority: true,
-      createdAt: true,
-      updatedAt: true,
-      resolvedAt: true,
-      closedAt: true,
-      createdById: true,
-      createdByName: true,
-      createdBy: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          status: true,
+      select: {
+        id: true,
+        ticketNumber: true,
+        title: true,
+        description: true,
+        descriptionHtml: true,
+        descriptionPlain: true,
+        type: true,
+        status: true,
+        priority: true,
+        createdAt: true,
+        updatedAt: true,
+        resolvedAt: true,
+        closedAt: true,
+        createdById: true,
+        createdByName: true,
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            status: true,
+          },
+        },
+        assignedToId: true,
+        assignedTo: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            status: true,
+          },
+        },
+        assignedToGroupId: true,
+        assignedToGroup: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+          },
+        },
+        _count: {
+          select: {
+            comments: true,
+          },
         },
       },
-      assignedToId: true,
-      assignedTo: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          status: true,
-        },
-      },
-      assignedToGroupId: true,
-      assignedToGroup: {
-        select: {
-          id: true,
-          name: true,
-          description: true,
-        },
-      },
-      _count: {
-        select: {
-          comments: true,
-        },
-      },
-    },
     orderBy: {
       [sortBy]: sortOrder,
     },
@@ -571,6 +584,8 @@ export async function getTicket(id: string) {
       ticketNumber: true,
       title: true,
       description: true,
+      descriptionHtml: true,
+      descriptionPlain: true,
       type: true,
       status: true,
       priority: true,
@@ -624,6 +639,8 @@ export async function getTicket(id: string) {
         select: {
           id: true,
           content: true,
+          contentHtml: true,
+          contentPlain: true,
           createdAt: true,
           updatedAt: true,
           isAgentOnly: true,
@@ -817,6 +834,8 @@ export async function updateTicket(
         type: true,
         title: true,
         description: true,
+        descriptionHtml: true,
+        descriptionPlain: true,
         tags: true,
         ticketNumber: true,
       },
@@ -943,17 +962,25 @@ export async function updateTicket(
 
     // Track description changes
     if (input.description !== undefined) {
-      const newDescription = input.description?.trim() || null;
+      const descriptionHtml = input.description 
+        ? sanitizeHtml(input.description) 
+        : null;
+      const descriptionPlain = descriptionHtml 
+        ? extractPlainText(descriptionHtml) 
+        : null;
+      
       const oldDescription = currentTicket.description || null;
-      if (newDescription !== oldDescription) {
-        updateData.description = newDescription;
+      if (descriptionPlain !== oldDescription) {
+        updateData.description = descriptionPlain; // Keep legacy field
+        updateData.descriptionHtml = descriptionHtml;
+        updateData.descriptionPlain = descriptionPlain;
         await logTicketActivity(
           id,
           "DESCRIPTION_CHANGED",
           user.id,
           userDisplayName,
           oldDescription || "(empty)",
-          newDescription || "(empty)"
+          descriptionPlain || "(empty)"
         );
       }
     }
@@ -1424,11 +1451,17 @@ export async function addTicketComment(
       }
     }
 
+    // Process comment: sanitize HTML and extract plain text
+    const contentHtml = sanitizeHtml(content);
+    const contentPlain = extractPlainText(contentHtml);
+
     const comment = await prisma.ticketComment.create({
       data: {
         ticketId,
         userId: user.id,
-        content: content.trim(),
+        content: contentPlain, // Keep legacy field for backward compatibility
+        contentHtml,
+        contentPlain,
         isAgentOnly,
       },
       select: {
