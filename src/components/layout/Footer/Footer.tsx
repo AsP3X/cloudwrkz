@@ -180,7 +180,7 @@ export const Footer = () => {
 
         {/* Bottom */}
         <div className="border-t border-neutral-800 dark:border-neutral-900 pt-8 flex flex-col sm:flex-row justify-between items-center">
-          <p className={cn("text-neutral-400 dark:text-neutral-500 text-sm transition-opacity duration-300", mounted ? "opacity-100" : "opacity-0")}>
+          <p className={cn("text-neutral-400 dark:text-neutral-500 text-sm transition-opacity duration-300", mounted ? "opacity-100" : "opacity-0")} suppressHydrationWarning>
             © {currentYear ?? new Date().getFullYear()} {APP_CONFIG.name}. All rights reserved.
           </p>
           <p className="text-neutral-400 dark:text-neutral-500 text-sm mt-4 sm:mt-0">

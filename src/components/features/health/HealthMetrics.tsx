@@ -98,24 +98,31 @@ const MAX_DATA_POINTS = 50; // Maximum number of data points to display
 export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: HealthMetricsProps) {
   const [dbHealth, setDbHealth] = useState(initialDbHealth);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [lastFetchTime, setLastFetchTime] = useState<number>(Date.now());
+  const [mounted, setMounted] = useState(false);
+  const [lastFetchTime, setLastFetchTime] = useState<number>(0);
   const [progress, setProgress] = useState<number>(0);
   const [pageResponseTimeHistory, setPageResponseTimeHistory] = useState<Array<{ time: string; timestamp: number; responseTime: number }>>([]);
-  const [databaseResponseTimeHistory, setDatabaseResponseTimeHistory] = useState<Array<{ time: string; timestamp: number; responseTime: number }>>(() => {
-    // Initialize with initial database response time if available
+  const [databaseResponseTimeHistory, setDatabaseResponseTimeHistory] = useState<Array<{ time: string; timestamp: number; responseTime: number }>>([]);
+
+  // Initialize client-side only values after mount to prevent hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+    const now = Date.now();
+    setLastFetchTime(now);
+    
+    // Initialize with initial database response time if available (only on client)
     if (initialDbHealth.responseTime !== undefined && 
         initialDbHealth.responseTime !== null &&
         typeof initialDbHealth.responseTime === 'number' &&
         !isNaN(initialDbHealth.responseTime) &&
         isFinite(initialDbHealth.responseTime)) {
-      return [{
+      setDatabaseResponseTimeHistory([{
         time: new Date().toLocaleTimeString(),
-        timestamp: Date.now(),
+        timestamp: now,
         responseTime: initialDbHealth.responseTime,
-      }];
+      }]);
     }
-    return [];
-  });
+  }, []);
 
   // Get the most recent data points (page response time)
   const visibleData = pageResponseTimeHistory.slice(-MAX_DATA_POINTS);
