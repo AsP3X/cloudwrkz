@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import type { DatabaseHealthStatus } from "@/lib/utils/db-health";
 import { formatDateTimeFull } from "@/lib/utils/date";
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, Area, AreaChart, CartesianGrid, ReferenceLine } from "recharts";
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, Area, AreaChart, CartesianGrid, ReferenceLine, ComposedChart, Cell } from "recharts";
 
 interface HealthMetricsProps {
   initialDbHealth: DatabaseHealthStatus;
@@ -114,6 +114,21 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
 
   // Get the most recent data points (page response time)
   const visibleData = pageResponseTimeHistory.slice(-MAX_DATA_POINTS);
+  
+  // Helper function to get color based on response time
+  const getResponseTimeColor = (value: number): string => {
+    if (value > 1000) return "#ef4444"; // red-500
+    if (value > 500) return "#eab308"; // yellow-500
+    return "#22c55e"; // green-500
+  };
+
+  // Create separate data series for color coding
+  const colorCodedData = visibleData.map(entry => ({
+    ...entry,
+    fast: entry.responseTime < 500 ? entry.responseTime : null,
+    moderate: entry.responseTime >= 500 && entry.responseTime <= 1000 ? entry.responseTime : null,
+    slow: entry.responseTime > 1000 ? entry.responseTime : null,
+  }));
   
   // Get the most recent database response time data points
   const visibleDatabaseData = databaseResponseTimeHistory.slice(-MAX_DATA_POINTS);
@@ -521,27 +536,59 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
         {pageResponseTimeHistory.length > 0 && (
           <div className="absolute inset-0 pointer-events-none z-0" style={{ opacity: 0.25 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart
-                data={visibleData}
+              <ComposedChart
+                data={colorCodedData}
                 margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
               >
                 <defs>
-                  <linearGradient id="colorResponseTimeCardBackground" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.6}/>
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1}/>
+                  <linearGradient id="colorResponseTimeCardBackgroundGreen" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#22c55e" stopOpacity={0.6}/>
+                    <stop offset="95%" stopColor="#22c55e" stopOpacity={0.1}/>
+                  </linearGradient>
+                  <linearGradient id="colorResponseTimeCardBackgroundYellow" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#eab308" stopOpacity={0.6}/>
+                    <stop offset="95%" stopColor="#eab308" stopOpacity={0.1}/>
+                  </linearGradient>
+                  <linearGradient id="colorResponseTimeCardBackgroundRed" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.6}/>
+                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0.1}/>
                   </linearGradient>
                 </defs>
                 <YAxis type="number" domain={yAxisDomain} hide />
+                {/* Fast response times (< 500ms) - Green */}
                 <Area
                   type="monotone"
-                  dataKey="responseTime"
-                  stroke="#3b82f6"
+                  dataKey="fast"
+                  stroke="#22c55e"
                   strokeWidth={2}
-                  fill="url(#colorResponseTimeCardBackground)"
+                  fill="url(#colorResponseTimeCardBackgroundGreen)"
                   dot={false}
                   isAnimationActive={false}
+                  connectNulls
                 />
-              </AreaChart>
+                {/* Moderate response times (500-1000ms) - Yellow */}
+                <Area
+                  type="monotone"
+                  dataKey="moderate"
+                  stroke="#eab308"
+                  strokeWidth={2}
+                  fill="url(#colorResponseTimeCardBackgroundYellow)"
+                  dot={false}
+                  isAnimationActive={false}
+                  connectNulls
+                />
+                {/* Slow response times (> 1000ms) - Red */}
+                <Area
+                  type="monotone"
+                  dataKey="slow"
+                  stroke="#ef4444"
+                  strokeWidth={2}
+                  fill="url(#colorResponseTimeCardBackgroundRed)"
+                  dot={false}
+                  isAnimationActive={false}
+                  connectNulls
+                />
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
         )}
