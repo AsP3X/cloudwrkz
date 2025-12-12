@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { DatabaseHealthStatus } from "@/lib/utils/db-health";
 import { formatDateTimeFull } from "@/lib/utils/date";
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, Area, AreaChart, CartesianGrid, ReferenceLine, ComposedChart, Cell, LineProps } from "recharts";
@@ -92,9 +92,8 @@ function MetricCard({
 /**
  * Client component that displays and auto-updates health metrics
  */
-const HEALTH_CHECK_INTERVAL = 30000; // 30 seconds
+const HEALTH_CHECK_INTERVAL = 30000; // 30 second
 const MAX_DATA_POINTS = 50; // Maximum number of data points to display
-const MAX_TIME_WINDOW_MS = 10 * 60 * 1000; // 10 minutes in milliseconds
 
 export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: HealthMetricsProps) {
   const [dbHealth, setDbHealth] = useState(initialDbHealth);
@@ -103,36 +102,23 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
   const [progress, setProgress] = useState<number>(0);
   const [pageResponseTimeHistory, setPageResponseTimeHistory] = useState<Array<{ time: string; timestamp: number; responseTime: number }>>([]);
   const [databaseResponseTimeHistory, setDatabaseResponseTimeHistory] = useState<Array<{ time: string; timestamp: number; responseTime: number }>>(() => {
-    // Initialize with initial database response time if available and valid
+    // Initialize with initial database response time if available
     if (initialDbHealth.responseTime !== undefined && 
         initialDbHealth.responseTime !== null &&
         typeof initialDbHealth.responseTime === 'number' &&
         !isNaN(initialDbHealth.responseTime) &&
         isFinite(initialDbHealth.responseTime)) {
-      const now = Date.now();
       return [{
         time: new Date().toLocaleTimeString(),
-        timestamp: now,
+        timestamp: Date.now(),
         responseTime: initialDbHealth.responseTime,
       }];
     }
     return [];
   });
 
-  // Filter data to only show entries from the last 10 minutes
-  const now = Date.now();
-  const tenMinutesAgo = now - MAX_TIME_WINDOW_MS;
-  
-  // Helper function to validate response time values
-  const isValidResponseTime = (val: number): boolean => {
-    return typeof val === 'number' && !isNaN(val) && isFinite(val) && val >= 0;
-  };
-  
-  // Get the most recent data points within the 10-minute window (page response time)
-  // Also filter out any invalid values that might have been stored previously
-  const visibleData = pageResponseTimeHistory
-    .filter(entry => entry.timestamp >= tenMinutesAgo && isValidResponseTime(entry.responseTime))
-    .slice(-MAX_DATA_POINTS);
+  // Get the most recent data points (page response time)
+  const visibleData = pageResponseTimeHistory.slice(-MAX_DATA_POINTS);
   
   // Helper function to get color based on response time
   const getResponseTimeColor = (value: number): string => {
@@ -141,160 +127,25 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
     return "#22c55e"; // green-500
   };
 
-  // Create segments with seamless gradient transitions - no visible seams
-  const createColorSegments = () => {
-    if (visibleData.length === 0) return [];
-    
-    const segments: Array<{ 
-      data: typeof visibleData; 
-      color: string; 
-      dataKey: string;
-      gradientId: string;
-      isGradient?: boolean;
-      fromColor?: string;
-      toColor?: string;
-    }> = [];
-    
-    let segmentStart = 0;
-    let currentColor = getResponseTimeColor(visibleData[0].responseTime);
-    let gradientIndex = 0;
-    
-    visibleData.forEach((entry, index) => {
-      const entryColor = getResponseTimeColor(entry.responseTime);
-      const isLast = index === visibleData.length - 1;
-      const isFirst = index === 0;
-      
-      // Check if color changed (threshold crossed)
-      if (entryColor !== currentColor && !isFirst) {
-        const gradientZoneSize = 8; // Number of points on each side for smooth gradient transition (increased for longer, smoother gradient)
-        
-        // Create solid color segment that ends before the gradient zone starts
-        // The gradient will extend into this segment for seamless blending
-        const segmentEnd = Math.max(segmentStart, index - gradientZoneSize);
-        const segmentData = visibleData.slice(segmentStart, segmentEnd);
-        
-        if (segmentData.length > 0) {
-          const segmentIndex = segments.length;
-          const dataKey = `segment-${segmentIndex}`;
-          const gradientId = 
-            currentColor === "#22c55e" ? "colorResponseTimeCardBackgroundGreen" :
-            currentColor === "#eab308" ? "colorResponseTimeCardBackgroundYellow" :
-            "colorResponseTimeCardBackgroundRed";
-          
-          segments.push({
-            data: segmentData,
-            color: currentColor,
-            dataKey,
-            gradientId,
-          });
-        }
-        
-        // Create gradient transition segment that extends well into both adjacent segments
-        // This creates a long, smooth blend zone where colors gradually transition
-        // The gradient starts with the exact previous color and ends with the exact next color
-        const gradientStart = Math.max(0, index - gradientZoneSize);
-        const gradientEnd = Math.min(visibleData.length, index + gradientZoneSize);
-        const transitionData = visibleData.slice(gradientStart, gradientEnd);
-        
-        if (transitionData.length > 1) {
-          const gradientDataKey = `gradient-${gradientIndex}`;
-          const gradientId = `gradient-${gradientIndex}`;
-          
-          // Use the exact colors from the solid segments for perfect color matching
-          // fromColor = currentColor (the color of the previous solid segment)
-          // toColor = entryColor (the color of the next solid segment)
-          // The gradient will start with fromColor and end with toColor, extending into both segments
-          const fromColor = currentColor; // Previous solid segment color
-          const toColor = entryColor; // Next solid segment color
-          
-          segments.push({
-            data: transitionData,
-            color: fromColor,
-            dataKey: gradientDataKey,
-            gradientId,
-            isGradient: true,
-            fromColor: fromColor,
-            toColor: toColor,
-          });
-          
-          gradientIndex++;
-        }
-        
-        // Start next solid segment after the gradient zone starts (creates overlap)
-        // This ensures continuous coverage with the gradient blending on top
-        segmentStart = Math.max(0, index - gradientZoneSize);
-        currentColor = entryColor;
-      } else if (isLast) {
-        // Create final segment from last segment start to end
-        const segmentData = visibleData.slice(segmentStart, index + 1);
-        if (segmentData.length > 0) {
-          const segmentIndex = segments.length;
-          const dataKey = `segment-${segmentIndex}`;
-          const gradientId = 
-            currentColor === "#22c55e" ? "colorResponseTimeCardBackgroundGreen" :
-            currentColor === "#eab308" ? "colorResponseTimeCardBackgroundYellow" :
-            "colorResponseTimeCardBackgroundRed";
-          
-          segments.push({
-            data: segmentData,
-            color: currentColor,
-            dataKey,
-            gradientId,
-          });
-        }
-      }
-    });
-    
-    // If no color changes occurred, create a single segment
-    if (segments.length === 0 && visibleData.length > 0) {
-      const gradientId = 
-        currentColor === "#22c55e" ? "colorResponseTimeCardBackgroundGreen" :
-        currentColor === "#eab308" ? "colorResponseTimeCardBackgroundYellow" :
-        "colorResponseTimeCardBackgroundRed";
-      
-      segments.push({
-        data: visibleData,
-        color: currentColor,
-        dataKey: "segment-0",
-        gradientId,
-      });
-    }
-    
-    return segments;
-  };
+  // Create separate data series for color coding
+  const colorCodedData = visibleData.map(entry => ({
+    ...entry,
+    fast: entry.responseTime < 500 ? entry.responseTime : null,
+    moderate: entry.responseTime >= 500 && entry.responseTime <= 1000 ? entry.responseTime : null,
+    slow: entry.responseTime > 1000 ? entry.responseTime : null,
+  }));
   
-  const colorSegments = createColorSegments();
+  // Ensure colorCodedData is always defined (fallback to empty array)
+  const chartData = colorCodedData || [];
   
-  // Create a combined data object with all segment data keys
-  const combinedData = visibleData.map((entry) => {
-    const dataPoint: any = { ...entry };
-    colorSegments.forEach(segment => {
-      const isInSegment = segment.data.some(segEntry => 
-        segEntry.timestamp === entry.timestamp
-      );
-      dataPoint[segment.dataKey] = isInSegment ? entry.responseTime : null;
-    });
-    return dataPoint;
-  });
-  
-  // Get the most recent database response time data points within the 10-minute window
-  // Also filter out any invalid values that might have been stored previously
-  const visibleDatabaseData = databaseResponseTimeHistory
-    .filter(entry => entry.timestamp >= tenMinutesAgo && isValidResponseTime(entry.responseTime))
-    .slice(-MAX_DATA_POINTS);
+  // Get the most recent database response time data points
+  const visibleDatabaseData = databaseResponseTimeHistory.slice(-MAX_DATA_POINTS);
 
   // Calculate dynamic Y-axis domain based on max value (for page response time)
   const yAxisDomain = (() => {
     if (visibleData.length === 0) return [0, 200] as [number, number];
     
-    // Filter out invalid values (NaN, null, undefined, non-finite)
-    const validValues = visibleData
-      .map(d => d.responseTime)
-      .filter(val => typeof val === 'number' && !isNaN(val) && isFinite(val));
-    
-    if (validValues.length === 0) return [0, 200] as [number, number];
-    
-    const maxValue = Math.max(...validValues);
+    const maxValue = Math.max(...visibleData.map(d => d.responseTime));
     // Use the exact max value recorded
     return [0, maxValue] as [number, number];
   })();
@@ -303,31 +154,17 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
   const databaseYAxisDomain = (() => {
     if (visibleDatabaseData.length === 0) return [0, 200] as [number, number];
     
-    // Filter out invalid values (NaN, null, undefined, non-finite)
-    const validValues = visibleDatabaseData
-      .map(d => d.responseTime)
-      .filter(val => typeof val === 'number' && !isNaN(val) && isFinite(val));
-    
-    if (validValues.length === 0) return [0, 200] as [number, number];
-    
-    const maxValue = Math.max(...validValues);
+    const maxValue = Math.max(...visibleDatabaseData.map(d => d.responseTime));
     // Use the exact max value recorded, ensure minimum of 10 for very small values
     return [0, Math.max(maxValue, 10)] as [number, number];
   })();
 
-  // Get current page response time (latest entry) - ensure it's valid
-  const currentPageResponseTime = (() => {
-    if (pageResponseTimeHistory.length === 0) return undefined;
-    const lastEntry = pageResponseTimeHistory[pageResponseTimeHistory.length - 1];
-    const responseTime = lastEntry.responseTime;
-    // Validate the response time is a valid number
-    if (typeof responseTime === 'number' && !isNaN(responseTime) && isFinite(responseTime)) {
-      return responseTime;
-    }
-    return undefined;
-  })();
+  // Get current page response time (latest entry)
+  const currentPageResponseTime = pageResponseTimeHistory.length > 0 
+    ? pageResponseTimeHistory[pageResponseTimeHistory.length - 1].responseTime 
+    : undefined;
 
-  const fetchHealthData = async () => {
+  const fetchHealthData = useCallback(async () => {
     setIsRefreshing(true);
     const startTime = Date.now();
     try {
@@ -365,40 +202,32 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
         });
 
         // Update page response time history
-        const pageTimestamp = Date.now();
         setPageResponseTimeHistory((prev) => {
           const newHistory = [
             ...prev,
             {
               time: new Date().toLocaleTimeString(),
-              timestamp: pageTimestamp,
+              timestamp: Date.now(),
               responseTime: pageResponseTime,
             },
           ];
-          // Filter out entries older than 10 minutes and keep only the most recent entries
-          const tenMinutesAgo = pageTimestamp - MAX_TIME_WINDOW_MS;
-          return newHistory
-            .filter(entry => entry.timestamp >= tenMinutesAgo)
-            .slice(-MAX_DATA_POINTS);
+          // Keep only the most recent entries
+          return newHistory.slice(-MAX_DATA_POINTS);
         });
 
         // Update database response time history - only if we have a valid response time
         if (newResponseTime !== undefined && newResponseTime !== null) {
-          const dbTimestamp = Date.now();
           setDatabaseResponseTimeHistory((prev) => {
             const newHistory = [
               ...prev,
               {
                 time: new Date().toLocaleTimeString(),
-                timestamp: dbTimestamp,
+                timestamp: Date.now(),
                 responseTime: newResponseTime,
               },
             ];
-            // Filter out entries older than 10 minutes and keep only the most recent entries
-            const tenMinutesAgo = dbTimestamp - MAX_TIME_WINDOW_MS;
-            return newHistory
-              .filter(entry => entry.timestamp >= tenMinutesAgo)
-              .slice(-MAX_DATA_POINTS);
+            // Keep only the most recent entries
+            return newHistory.slice(-MAX_DATA_POINTS);
           });
         }
       }
@@ -417,34 +246,33 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
       }));
 
       // Still record the response time (even if it's an error)
-      const errorTimestamp = Date.now();
       setPageResponseTimeHistory((prev) => {
         const newHistory = [
           ...prev,
           {
             time: new Date().toLocaleTimeString(),
-            timestamp: errorTimestamp,
+            timestamp: Date.now(),
             responseTime: pageResponseTime,
           },
         ];
-        // Filter out entries older than 10 minutes and keep only the most recent entries
-        const tenMinutesAgo = errorTimestamp - MAX_TIME_WINDOW_MS;
-        return newHistory
-          .filter(entry => entry.timestamp >= tenMinutesAgo)
-          .slice(-MAX_DATA_POINTS);
+        return newHistory.slice(-MAX_DATA_POINTS);
       });
     } finally {
       setIsRefreshing(false);
       setLastFetchTime(Date.now());
       setProgress(0);
     }
-  };
+  }, []);
 
-  // Auto-refresh every 30 seconds
+  // Fetch health data immediately on mount and then auto-refresh every 30 seconds
   useEffect(() => {
+    // Fetch immediately on first load
+    fetchHealthData();
+    
+    // Then set up interval for subsequent fetches
     const interval = setInterval(fetchHealthData, HEALTH_CHECK_INTERVAL);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchHealthData]);
 
   // Update progress bar every second
   useEffect(() => {
@@ -457,39 +285,6 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
     return () => clearInterval(progressInterval);
   }, [lastFetchTime]);
 
-  // Cleanup invalid entries from history arrays periodically
-  useEffect(() => {
-    const cleanupInterval = setInterval(() => {
-      const now = Date.now();
-      const tenMinutesAgo = now - MAX_TIME_WINDOW_MS;
-      
-      // Clean up page response time history
-      setPageResponseTimeHistory((prev) => {
-        return prev
-          .filter(entry => 
-            entry.timestamp >= tenMinutesAgo && 
-            typeof entry.responseTime === 'number' && 
-            !isNaN(entry.responseTime) && 
-            isFinite(entry.responseTime)
-          )
-          .slice(-MAX_DATA_POINTS);
-      });
-      
-      // Clean up database response time history
-      setDatabaseResponseTimeHistory((prev) => {
-        return prev
-          .filter(entry => 
-            entry.timestamp >= tenMinutesAgo && 
-            typeof entry.responseTime === 'number' && 
-            !isNaN(entry.responseTime) && 
-            isFinite(entry.responseTime)
-          )
-          .slice(-MAX_DATA_POINTS);
-      });
-    }, 60000); // Run cleanup every minute
-
-    return () => clearInterval(cleanupInterval);
-  }, []);
 
 
   const overallStatus =
@@ -772,200 +567,63 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
           <div className="absolute inset-0 pointer-events-none z-0" style={{ opacity: 0.25 }}>
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart
-                data={combinedData}
+                data={chartData}
                 margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
               >
                 <defs>
                   <linearGradient id="colorResponseTimeCardBackgroundGreen" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox">
-                    <stop offset="5%" stopColor="#22c55e" stopOpacity={0.6}/>
-                    <stop offset="95%" stopColor="#22c55e" stopOpacity={0.1}/>
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.6}/>
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1}/>
                   </linearGradient>
                   <linearGradient id="colorResponseTimeCardBackgroundYellow" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox">
-                    <stop offset="5%" stopColor="#eab308" stopOpacity={0.6}/>
-                    <stop offset="95%" stopColor="#fde047" stopOpacity={0.1}/>
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.6}/>
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1}/>
                   </linearGradient>
                   <linearGradient id="colorResponseTimeCardBackgroundRed" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox">
-                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.6}/>
-                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0.1}/>
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.6}/>
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1}/>
                   </linearGradient>
-                  {/* Dynamic gradient definitions for stroke color transitions */}
-                  {/* Smooth gradient that blends seamlessly - no visible seams */}
-                  {colorSegments
-                    .filter(seg => seg.isGradient && seg.fromColor && seg.toColor)
-                    .map((seg) => {
-                      const gradientId = seg.gradientId;
-                      // Helper function to interpolate between two hex colors
-                      const interpolateColor = (color1: string, color2: string, factor: number): string => {
-                        const r1 = parseInt(color1.slice(1, 3), 16);
-                        const g1 = parseInt(color1.slice(3, 5), 16);
-                        const b1 = parseInt(color1.slice(5, 7), 16);
-                        const r2 = parseInt(color2.slice(1, 3), 16);
-                        const g2 = parseInt(color2.slice(3, 5), 16);
-                        const b2 = parseInt(color2.slice(5, 7), 16);
-                        
-                        const r = Math.round(r1 + (r2 - r1) * factor);
-                        const g = Math.round(g1 + (g2 - g1) * factor);
-                        const b = Math.round(b1 + (b2 - b1) * factor);
-                        
-                        return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-                      };
-                      
-                      // Create a very fine, smooth gradient with proper color interpolation
-                      // The gradient blends very gradually from start color to end color
-                      return (
-                        <linearGradient 
-                          key={gradientId} 
-                          id={gradientId} 
-                          x1="0%" 
-                          y1="0%" 
-                          x2="100%" 
-                          y2="0%"
-                          gradientUnits="objectBoundingBox"
-                        >
-                          {/* Start with exact start color - seamlessly matches previous segment */}
-                          <stop offset="0%" stopColor={seg.fromColor!}/>
-                          {/* Interpolated colors for smooth blending */}
-                          <stop offset="10%" stopColor={interpolateColor(seg.fromColor!, seg.toColor!, 0.1)}/>
-                          <stop offset="20%" stopColor={interpolateColor(seg.fromColor!, seg.toColor!, 0.2)}/>
-                          <stop offset="30%" stopColor={interpolateColor(seg.fromColor!, seg.toColor!, 0.3)}/>
-                          <stop offset="40%" stopColor={interpolateColor(seg.fromColor!, seg.toColor!, 0.4)}/>
-                          <stop offset="50%" stopColor={interpolateColor(seg.fromColor!, seg.toColor!, 0.5)}/>
-                          <stop offset="60%" stopColor={interpolateColor(seg.fromColor!, seg.toColor!, 0.6)}/>
-                          <stop offset="70%" stopColor={interpolateColor(seg.fromColor!, seg.toColor!, 0.7)}/>
-                          <stop offset="80%" stopColor={interpolateColor(seg.fromColor!, seg.toColor!, 0.8)}/>
-                          <stop offset="90%" stopColor={interpolateColor(seg.fromColor!, seg.toColor!, 0.9)}/>
-                          {/* End with exact end color - seamlessly matches next segment */}
-                          <stop offset="100%" stopColor={seg.toColor!}/>
-                        </linearGradient>
-                      );
-                    })}
-                  {/* Horizontal gradients for gradient segments (fill) - blends left to right */}
-                  {/* Gradient starts at threshold crossing point and ends at next measuring point */}
-                  {/* Colors match at both top (line) and bottom (x-axis) of the fill area */}
-                  {colorSegments
-                    .filter(seg => seg.isGradient && seg.fromColor && seg.toColor)
-                    .map((seg) => {
-                      const fillGradientId = `${seg.gradientId}-fill`;
-                      // Convert hex to rgba for opacity control
-                      const hexToRgba = (hex: string, opacity: number) => {
-                        const r = parseInt(hex.slice(1, 3), 16);
-                        const g = parseInt(hex.slice(3, 5), 16);
-                        const b = parseInt(hex.slice(5, 7), 16);
-                        return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-                      };
-                      // Helper function to interpolate between two hex colors
-                      const interpolateColor = (color1: string, color2: string, factor: number): string => {
-                        const r1 = parseInt(color1.slice(1, 3), 16);
-                        const g1 = parseInt(color1.slice(3, 5), 16);
-                        const b1 = parseInt(color1.slice(5, 7), 16);
-                        const r2 = parseInt(color2.slice(1, 3), 16);
-                        const g2 = parseInt(color2.slice(3, 5), 16);
-                        const b2 = parseInt(color2.slice(5, 7), 16);
-                        
-                        const r = Math.round(r1 + (r2 - r1) * factor);
-                        const g = Math.round(g1 + (g2 - g1) * factor);
-                        const b = Math.round(b1 + (b2 - b1) * factor);
-                        
-                        return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-                      };
-                      
-                      // Create a very fine, smooth horizontal gradient with proper color interpolation
-                      // The gradient blends very gradually from start color to end color
-                      // Interpolated colors create a smooth, imperceptible color transition
-                      return (
-                        <linearGradient 
-                          key={fillGradientId} 
-                          id={fillGradientId} 
-                          x1="0%" 
-                          y1="0%" 
-                          x2="100%" 
-                          y2="0%"
-                          gradientUnits="objectBoundingBox"
-                        >
-                          {/* Start with exact start color - seamlessly matches previous segment */}
-                          <stop offset="0%" stopColor={hexToRgba(seg.fromColor!, 0.6)}/>
-                          {/* Interpolated colors with gradual opacity transition */}
-                          <stop offset="10%" stopColor={hexToRgba(interpolateColor(seg.fromColor!, seg.toColor!, 0.1), 0.58)}/>
-                          <stop offset="20%" stopColor={hexToRgba(interpolateColor(seg.fromColor!, seg.toColor!, 0.2), 0.56)}/>
-                          <stop offset="30%" stopColor={hexToRgba(interpolateColor(seg.fromColor!, seg.toColor!, 0.3), 0.54)}/>
-                          <stop offset="40%" stopColor={hexToRgba(interpolateColor(seg.fromColor!, seg.toColor!, 0.4), 0.52)}/>
-                          <stop offset="50%" stopColor={hexToRgba(interpolateColor(seg.fromColor!, seg.toColor!, 0.5), 0.5)}/>
-                          <stop offset="60%" stopColor={hexToRgba(interpolateColor(seg.fromColor!, seg.toColor!, 0.6), 0.52)}/>
-                          <stop offset="70%" stopColor={hexToRgba(interpolateColor(seg.fromColor!, seg.toColor!, 0.7), 0.54)}/>
-                          <stop offset="80%" stopColor={hexToRgba(interpolateColor(seg.fromColor!, seg.toColor!, 0.8), 0.56)}/>
-                          <stop offset="90%" stopColor={hexToRgba(interpolateColor(seg.fromColor!, seg.toColor!, 0.9), 0.58)}/>
-                          {/* End with exact end color - seamlessly matches next segment */}
-                          <stop offset="100%" stopColor={hexToRgba(seg.toColor!, 0.6)}/>
-                        </linearGradient>
-                      );
-                    })}
                 </defs>
                 <YAxis type="number" domain={yAxisDomain} hide />
-                {/* Render all fill areas first */}
-                {colorSegments.map((segment) => {
-                  if (segment.isGradient && segment.fromColor && segment.toColor) {
-                    const fillGradientId = `${segment.gradientId}-fill`;
-                    return (
-                      <Area
-                        key={`${segment.dataKey}-fill`}
-                        type="monotone"
-                        dataKey={segment.dataKey}
-                        stroke="none"
-                        fill={`url(#${fillGradientId})`}
-                        dot={false}
-                        isAnimationActive={true}
-                        animationDuration={0}
-                        connectNulls={false}
-                      />
-                    );
-                  } else {
-                    return (
-                      <Area
-                        key={`${segment.dataKey}-fill`}
-                        type="monotone"
-                        dataKey={segment.dataKey}
-                        stroke="none"
-                        fill={`url(#${segment.gradientId})`}
-                        dot={false}
-                        isAnimationActive={true}
-                        animationDuration={0}
-                        connectNulls={false}
-                      />
-                    );
-                  }
-                })}
-                {/* Render all stroke lines - solid segments first, then gradient segments on top */}
-                {/* This ensures gradient strokes cover overlap areas and prevent double lines */}
-                {colorSegments
-                  .filter(seg => !seg.isGradient)
-                  .map((segment) => (
-                    <Line
-                      key={`${segment.dataKey}-stroke`}
-                      type="monotone"
-                      dataKey={segment.dataKey}
-                      stroke={segment.color}
-                      strokeWidth={2}
-                      dot={false}
-                      isAnimationActive={true}
-                      animationDuration={0}
-                      connectNulls={false}
-                    />
-                  ))}
-                {colorSegments
-                  .filter(seg => seg.isGradient && seg.fromColor && seg.toColor)
-                  .map((segment) => (
-                    <Line
-                      key={`${segment.dataKey}-stroke`}
-                      type="monotone"
-                      dataKey={segment.dataKey}
-                      stroke={`url(#${segment.gradientId})`}
-                      strokeWidth={2}
-                      dot={false}
-                      isAnimationActive={true}
-                      animationDuration={0}
-                      connectNulls={false}
-                    />
-                  ))}
+                {/* Fast response times (< 500ms) - Green fill, blue line */}
+                <Area
+                  type="monotone"
+                  dataKey="fast"
+                  stroke="#3b82f6"
+                  strokeWidth={2}
+                  fill="url(#colorResponseTimeCardBackgroundGreen)"
+                  dot={false}
+                  isAnimationActive={true}
+                  animationDuration={500}
+                  animationEasing="ease-out"
+                  connectNulls
+                />
+                {/* Moderate response times (500-1000ms) - Yellow fill, blue line */}
+                <Area
+                  type="monotone"
+                  dataKey="moderate"
+                  stroke="#3b82f6"
+                  strokeWidth={2}
+                  fill="url(#colorResponseTimeCardBackgroundYellow)"
+                  dot={false}
+                  isAnimationActive={true}
+                  animationDuration={500}
+                  animationEasing="ease-out"
+                  connectNulls
+                />
+                {/* Slow response times (> 1000ms) - Red fill, blue line */}
+                <Area
+                  type="monotone"
+                  dataKey="slow"
+                  stroke="#3b82f6"
+                  strokeWidth={2}
+                  fill="url(#colorResponseTimeCardBackgroundRed)"
+                  dot={false}
+                  isAnimationActive={true}
+                  animationDuration={500}
+                  animationEasing="ease-out"
+                  connectNulls
+                />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
