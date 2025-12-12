@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import type { DatabaseHealthStatus } from "@/lib/utils/db-health";
 import { formatDateTimeFull } from "@/lib/utils/date";
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, Area, AreaChart, CartesianGrid, ReferenceLine } from "recharts";
 
 interface HealthMetricsProps {
   initialDbHealth: DatabaseHealthStatus;
@@ -84,12 +85,27 @@ function MetricCard({
  * Client component that displays and auto-updates health metrics
  */
 const HEALTH_CHECK_INTERVAL = 30000; // 30 seconds
+const MAX_DATA_POINTS = 50; // Maximum number of data points to display
 
 export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: HealthMetricsProps) {
   const [dbHealth, setDbHealth] = useState(initialDbHealth);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastFetchTime, setLastFetchTime] = useState<number>(Date.now());
   const [progress, setProgress] = useState<number>(0);
+  const [chartWidth, setChartWidth] = useState<number>(0);
+  const [responseTimeHistory, setResponseTimeHistory] = useState<Array<{ time: string; responseTime: number }>>(() => {
+    // Initialize with initial response time if available
+    if (initialDbHealth.responseTime !== undefined) {
+      return [{
+        time: new Date().toLocaleTimeString(),
+        responseTime: initialDbHealth.responseTime,
+      }];
+    }
+    return [];
+  });
+
+  // Get the most recent data points
+  const visibleData = responseTimeHistory.slice(-MAX_DATA_POINTS);
 
   const fetchHealthData = async () => {
     setIsRefreshing(true);
@@ -105,10 +121,11 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
         const data = await response.json();
         const dbData = data.services.database;
 
+        const newResponseTime = dbData.responseTime;
         setDbHealth({
           status: dbData.status,
           connected: dbData.connected,
-          responseTime: dbData.responseTime,
+          responseTime: newResponseTime,
           error: dbData.error,
           activeConnections: dbData.activeConnections,
           maxConnections: dbData.maxConnections,
@@ -116,6 +133,21 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
           databaseSize: dbData.databaseSize,
           lastChecked: new Date(dbData.lastChecked),
         });
+
+        // Update response time history
+        if (newResponseTime !== undefined) {
+          setResponseTimeHistory((prev) => {
+            const newHistory = [
+              ...prev,
+              {
+                time: new Date().toLocaleTimeString(),
+                responseTime: newResponseTime,
+              },
+            ];
+            // Keep only the most recent entries
+            return newHistory.slice(-MAX_DATA_POINTS);
+          });
+        }
       }
     } catch (err) {
       console.error("Failed to fetch health data:", err);
@@ -150,6 +182,7 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
 
     return () => clearInterval(progressInterval);
   }, [lastFetchTime]);
+
 
   const overallStatus =
     dbHealth.status === "healthy"
@@ -387,6 +420,118 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
               </p>
             </div>
           )}
+      </div>
+
+      {/* Response Time Graph Section */}
+      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
+            Response Time History
+          </h2>
+          {dbHealth.responseTime !== undefined && (
+            <span className="text-sm text-neutral-500 dark:text-neutral-400">
+              Current: {dbHealth.responseTime}ms
+            </span>
+          )}
+        </div>
+
+        {responseTimeHistory.length > 0 ? (
+          <div className="w-full">
+            <div className="w-full" style={{ height: '400px' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart
+                  data={visibleData}
+                  margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
+                >
+                  <defs>
+                    <linearGradient id="colorResponseTime" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:stroke-neutral-700" />
+                  <XAxis 
+                    dataKey="time" 
+                    tick={{ fontSize: 11 }}
+                    interval={Math.max(0, Math.floor(visibleData.length / 8))}
+                    stroke="currentColor"
+                    className="text-neutral-600 dark:text-neutral-400"
+                    height={40}
+                  />
+                  <YAxis 
+                    type="number"
+                    domain={[0, (dataMax: number) => Math.max(dataMax + 100, 200)]}
+                    tick={{ fontSize: 11 }}
+                    stroke="currentColor"
+                    className="text-neutral-600 dark:text-neutral-400"
+                    width={60}
+                    label={{ 
+                      value: 'Response Time (ms)', 
+                      angle: -90, 
+                      position: 'insideLeft',
+                      style: { textAnchor: 'middle' },
+                      className: 'text-neutral-700 dark:text-neutral-300 text-xs'
+                    }}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '0.5rem',
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                    }}
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const value = payload[0].value as number;
+                        const color = value > 1000 ? "#ef4444" : value > 500 ? "#eab308" : "#22c55e";
+                        return (
+                          <div className="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg p-3">
+                            <p className="text-xs font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
+                              {payload[0].payload.time}
+                            </p>
+                            <p className="text-sm font-bold" style={{ color }}>
+                              {value}ms
+                            </p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <ReferenceLine y={500} stroke="#eab308" strokeDasharray="3 3" strokeOpacity={0.5} />
+                  <ReferenceLine y={1000} stroke="#ef4444" strokeDasharray="3 3" strokeOpacity={0.5} />
+                  <Area
+                    type="monotone"
+                    dataKey="responseTime"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                    fill="url(#colorResponseTime)"
+                    dot={{ fill: '#3b82f6', r: 3 }}
+                    activeDot={{ r: 5 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-center gap-6 text-xs text-neutral-500 dark:text-neutral-400">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded bg-green-500"></div>
+                <span>&lt; 500ms (Fast)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded bg-yellow-500"></div>
+                <span>500-1000ms (Moderate)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded bg-red-500"></div>
+                <span>&gt; 1000ms (Slow)</span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="h-96 flex items-center justify-center text-neutral-500 dark:text-neutral-400">
+            <p>No response time data available yet. Data will appear after the first health check.</p>
+          </div>
+        )}
       </div>
     </>
   );
