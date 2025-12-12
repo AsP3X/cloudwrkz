@@ -94,26 +94,45 @@ function MetricCard({
  */
 const HEALTH_CHECK_INTERVAL = 30000; // 30 seconds
 const MAX_DATA_POINTS = 50; // Maximum number of data points to display
+const MAX_TIME_WINDOW_MS = 10 * 60 * 1000; // 10 minutes in milliseconds
 
 export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: HealthMetricsProps) {
   const [dbHealth, setDbHealth] = useState(initialDbHealth);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastFetchTime, setLastFetchTime] = useState<number>(Date.now());
   const [progress, setProgress] = useState<number>(0);
-  const [pageResponseTimeHistory, setPageResponseTimeHistory] = useState<Array<{ time: string; responseTime: number }>>([]);
-  const [databaseResponseTimeHistory, setDatabaseResponseTimeHistory] = useState<Array<{ time: string; responseTime: number }>>(() => {
-    // Initialize with initial database response time if available
-    if (initialDbHealth.responseTime !== undefined) {
+  const [pageResponseTimeHistory, setPageResponseTimeHistory] = useState<Array<{ time: string; timestamp: number; responseTime: number }>>([]);
+  const [databaseResponseTimeHistory, setDatabaseResponseTimeHistory] = useState<Array<{ time: string; timestamp: number; responseTime: number }>>(() => {
+    // Initialize with initial database response time if available and valid
+    if (initialDbHealth.responseTime !== undefined && 
+        initialDbHealth.responseTime !== null &&
+        typeof initialDbHealth.responseTime === 'number' &&
+        !isNaN(initialDbHealth.responseTime) &&
+        isFinite(initialDbHealth.responseTime)) {
+      const now = Date.now();
       return [{
         time: new Date().toLocaleTimeString(),
+        timestamp: now,
         responseTime: initialDbHealth.responseTime,
       }];
     }
     return [];
   });
 
-  // Get the most recent data points (page response time)
-  const visibleData = pageResponseTimeHistory.slice(-MAX_DATA_POINTS);
+  // Filter data to only show entries from the last 10 minutes
+  const now = Date.now();
+  const tenMinutesAgo = now - MAX_TIME_WINDOW_MS;
+  
+  // Helper function to validate response time values
+  const isValidResponseTime = (val: number): boolean => {
+    return typeof val === 'number' && !isNaN(val) && isFinite(val) && val >= 0;
+  };
+  
+  // Get the most recent data points within the 10-minute window (page response time)
+  // Also filter out any invalid values that might have been stored previously
+  const visibleData = pageResponseTimeHistory
+    .filter(entry => entry.timestamp >= tenMinutesAgo && isValidResponseTime(entry.responseTime))
+    .slice(-MAX_DATA_POINTS);
   
   // Helper function to get color based on response time
   const getResponseTimeColor = (value: number): string => {
@@ -130,14 +149,24 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
     slow: entry.responseTime > 1000 ? entry.responseTime : null,
   }));
   
-  // Get the most recent database response time data points
-  const visibleDatabaseData = databaseResponseTimeHistory.slice(-MAX_DATA_POINTS);
+  // Get the most recent database response time data points within the 10-minute window
+  // Also filter out any invalid values that might have been stored previously
+  const visibleDatabaseData = databaseResponseTimeHistory
+    .filter(entry => entry.timestamp >= tenMinutesAgo && isValidResponseTime(entry.responseTime))
+    .slice(-MAX_DATA_POINTS);
 
   // Calculate dynamic Y-axis domain based on max value (for page response time)
   const yAxisDomain = (() => {
     if (visibleData.length === 0) return [0, 200] as [number, number];
     
-    const maxValue = Math.max(...visibleData.map(d => d.responseTime));
+    // Filter out invalid values (NaN, null, undefined, non-finite)
+    const validValues = visibleData
+      .map(d => d.responseTime)
+      .filter(val => typeof val === 'number' && !isNaN(val) && isFinite(val));
+    
+    if (validValues.length === 0) return [0, 200] as [number, number];
+    
+    const maxValue = Math.max(...validValues);
     // Use the exact max value recorded
     return [0, maxValue] as [number, number];
   })();
@@ -146,15 +175,29 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
   const databaseYAxisDomain = (() => {
     if (visibleDatabaseData.length === 0) return [0, 200] as [number, number];
     
-    const maxValue = Math.max(...visibleDatabaseData.map(d => d.responseTime));
+    // Filter out invalid values (NaN, null, undefined, non-finite)
+    const validValues = visibleDatabaseData
+      .map(d => d.responseTime)
+      .filter(val => typeof val === 'number' && !isNaN(val) && isFinite(val));
+    
+    if (validValues.length === 0) return [0, 200] as [number, number];
+    
+    const maxValue = Math.max(...validValues);
     // Use the exact max value recorded, ensure minimum of 10 for very small values
     return [0, Math.max(maxValue, 10)] as [number, number];
   })();
 
-  // Get current page response time (latest entry)
-  const currentPageResponseTime = pageResponseTimeHistory.length > 0 
-    ? pageResponseTimeHistory[pageResponseTimeHistory.length - 1].responseTime 
-    : undefined;
+  // Get current page response time (latest entry) - ensure it's valid
+  const currentPageResponseTime = (() => {
+    if (pageResponseTimeHistory.length === 0) return undefined;
+    const lastEntry = pageResponseTimeHistory[pageResponseTimeHistory.length - 1];
+    const responseTime = lastEntry.responseTime;
+    // Validate the response time is a valid number
+    if (typeof responseTime === 'number' && !isNaN(responseTime) && isFinite(responseTime)) {
+      return responseTime;
+    }
+    return undefined;
+  })();
 
   const fetchHealthData = async () => {
     setIsRefreshing(true);
@@ -174,7 +217,13 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
         const data = await response.json();
         const dbData = data.services.database;
 
-        const newResponseTime = dbData.responseTime;
+        // Validate and sanitize response time - ensure it's a valid number
+        const newResponseTime = typeof dbData.responseTime === 'number' && 
+                                !isNaN(dbData.responseTime) && 
+                                isFinite(dbData.responseTime) 
+                                ? dbData.responseTime 
+                                : undefined;
+        
         setDbHealth({
           status: dbData.status,
           connected: dbData.connected,
@@ -188,30 +237,40 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
         });
 
         // Update page response time history
+        const pageTimestamp = Date.now();
         setPageResponseTimeHistory((prev) => {
           const newHistory = [
             ...prev,
             {
               time: new Date().toLocaleTimeString(),
+              timestamp: pageTimestamp,
               responseTime: pageResponseTime,
             },
           ];
-          // Keep only the most recent entries
-          return newHistory.slice(-MAX_DATA_POINTS);
+          // Filter out entries older than 10 minutes and keep only the most recent entries
+          const tenMinutesAgo = pageTimestamp - MAX_TIME_WINDOW_MS;
+          return newHistory
+            .filter(entry => entry.timestamp >= tenMinutesAgo)
+            .slice(-MAX_DATA_POINTS);
         });
 
-        // Update database response time history
-        if (newResponseTime !== undefined) {
+        // Update database response time history - only if we have a valid response time
+        if (newResponseTime !== undefined && newResponseTime !== null) {
+          const dbTimestamp = Date.now();
           setDatabaseResponseTimeHistory((prev) => {
             const newHistory = [
               ...prev,
               {
                 time: new Date().toLocaleTimeString(),
+                timestamp: dbTimestamp,
                 responseTime: newResponseTime,
               },
             ];
-            // Keep only the most recent entries
-            return newHistory.slice(-MAX_DATA_POINTS);
+            // Filter out entries older than 10 minutes and keep only the most recent entries
+            const tenMinutesAgo = dbTimestamp - MAX_TIME_WINDOW_MS;
+            return newHistory
+              .filter(entry => entry.timestamp >= tenMinutesAgo)
+              .slice(-MAX_DATA_POINTS);
           });
         }
       }
@@ -230,15 +289,21 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
       }));
 
       // Still record the response time (even if it's an error)
+      const errorTimestamp = Date.now();
       setPageResponseTimeHistory((prev) => {
         const newHistory = [
           ...prev,
           {
             time: new Date().toLocaleTimeString(),
+            timestamp: errorTimestamp,
             responseTime: pageResponseTime,
           },
         ];
-        return newHistory.slice(-MAX_DATA_POINTS);
+        // Filter out entries older than 10 minutes and keep only the most recent entries
+        const tenMinutesAgo = errorTimestamp - MAX_TIME_WINDOW_MS;
+        return newHistory
+          .filter(entry => entry.timestamp >= tenMinutesAgo)
+          .slice(-MAX_DATA_POINTS);
       });
     } finally {
       setIsRefreshing(false);
@@ -263,6 +328,40 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
 
     return () => clearInterval(progressInterval);
   }, [lastFetchTime]);
+
+  // Cleanup invalid entries from history arrays periodically
+  useEffect(() => {
+    const cleanupInterval = setInterval(() => {
+      const now = Date.now();
+      const tenMinutesAgo = now - MAX_TIME_WINDOW_MS;
+      
+      // Clean up page response time history
+      setPageResponseTimeHistory((prev) => {
+        return prev
+          .filter(entry => 
+            entry.timestamp >= tenMinutesAgo && 
+            typeof entry.responseTime === 'number' && 
+            !isNaN(entry.responseTime) && 
+            isFinite(entry.responseTime)
+          )
+          .slice(-MAX_DATA_POINTS);
+      });
+      
+      // Clean up database response time history
+      setDatabaseResponseTimeHistory((prev) => {
+        return prev
+          .filter(entry => 
+            entry.timestamp >= tenMinutesAgo && 
+            typeof entry.responseTime === 'number' && 
+            !isNaN(entry.responseTime) && 
+            isFinite(entry.responseTime)
+          )
+          .slice(-MAX_DATA_POINTS);
+      });
+    }, 60000); // Run cleanup every minute
+
+    return () => clearInterval(cleanupInterval);
+  }, []);
 
 
   const overallStatus =
@@ -355,9 +454,20 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
           />
           <MetricCard
             title="Database Response Time"
-            value={dbHealth.responseTime ? `${dbHealth.responseTime}ms` : "N/A"}
+            value={
+              dbHealth.responseTime !== undefined && 
+              dbHealth.responseTime !== null && 
+              !isNaN(dbHealth.responseTime) && 
+              isFinite(dbHealth.responseTime)
+                ? `${dbHealth.responseTime}ms` 
+                : "N/A"
+            }
             subtitle={
-              dbHealth.responseTime && dbHealth.responseTime > 1000
+              dbHealth.responseTime !== undefined && 
+              dbHealth.responseTime !== null && 
+              !isNaN(dbHealth.responseTime) && 
+              isFinite(dbHealth.responseTime) &&
+              dbHealth.responseTime > 1000
                 ? "Slow response detected"
                 : "Normal response time"
             }
