@@ -144,21 +144,23 @@ export const Footer = () => {
               aria-label="Health Status"
             >
               <span className="relative flex h-2 w-2">
-                {healthStatus === "healthy" && (
-                  <>
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                  </>
+                {(healthStatus === "healthy" || healthStatus === "degraded") && (
+                  <span 
+                    className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 transition-colors duration-500"
+                    style={{
+                      backgroundColor: healthStatus === "healthy" ? "#4ade80" : "#eab308" // green-400 : yellow-400
+                    }}
+                  ></span>
                 )}
-                {healthStatus === "degraded" && (
-                  <>
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500"></span>
-                  </>
-                )}
-                {(healthStatus === "unhealthy" || healthStatus === "loading") && (
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                )}
+                <span 
+                  className="relative inline-flex rounded-full h-2 w-2 transition-colors duration-500"
+                  style={{
+                    backgroundColor: 
+                      healthStatus === "healthy" ? "#22c55e" : // green-500
+                      healthStatus === "degraded" ? "#eab308" : // yellow-500
+                      "#ef4444" // red-500
+                  }}
+                ></span>
               </span>
               <span>Health Status</span>
             </Link>
