@@ -11,20 +11,47 @@ import { getAllModules, isModuleEnabled } from "@/server/actions/modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { FloatingTimerWidgetProvider } from "@/components/features/time-tracking/FloatingTimerWidget/FloatingTimerWidgetProvider";
 import { getUserPermissions } from "@/lib/utils/permissions";
+import { isDatabaseAccessible } from "@/lib/utils/db-health";
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const user = await getCurrentUser();
+  // Check database availability FIRST before attempting any database operations
+  let databaseAvailable = true;
+  try {
+    databaseAvailable = await isDatabaseAccessible();
+  } catch (error) {
+    databaseAvailable = false;
+    console.error("Database health check failed in dashboard layout:", error);
+  }
+
+  // Only try to get current user if database is available
+  let user = null;
+  if (databaseAvailable) {
+    try {
+      user = await getCurrentUser();
+    } catch (error) {
+      // If getCurrentUser fails (e.g., database connection lost), treat as no user
+      console.error("Error getting current user in dashboard layout:", error);
+      user = null;
+    }
+  }
 
   // Redirect to login if not authenticated, active, or verified
   if (!user) {
-    // Check if user is banned (they might have a session but be banned)
-    const bannedUser = await getBannedUserInfo();
-    if (bannedUser) {
-      redirect(ROUTES.BANNED);
+    // Only check banned user if database is available
+    if (databaseAvailable) {
+      try {
+        const bannedUser = await getBannedUserInfo();
+        if (bannedUser) {
+          redirect(ROUTES.BANNED);
+        }
+      } catch (error) {
+        // If getBannedUserInfo fails, continue with normal redirect
+        console.error("Error getting banned user info:", error);
+      }
     }
     redirect(`${ROUTES.LOGIN}?error=account_not_verified`);
   }
@@ -37,13 +64,29 @@ export default async function DashboardLayout({
   // Use AdminSidebar for admins, DashboardSidebar for others
   const isAdmin = user.role === "ADMIN";
   
-  // Get enabled modules for sidebar
-  const modules = await getAllModules();
+  // Get enabled modules for sidebar (only if database is available)
+  let modules: Awaited<ReturnType<typeof getAllModules>> = [];
+  if (databaseAvailable) {
+    try {
+      modules = await getAllModules();
+    } catch (error) {
+      console.error("Error getting modules:", error);
+      modules = [];
+    }
+  }
   // Sort modules by key to ensure consistent order between server and client
   const sortedModules = [...modules].sort((a, b) => a.key.localeCompare(b.key));
   
-  // Get user permissions to check module visibility
-  const userPermissions = await getUserPermissions(user.id);
+  // Get user permissions to check module visibility (only if database is available)
+  let userPermissions = new Set<string>();
+  if (databaseAvailable) {
+    try {
+      userPermissions = await getUserPermissions(user.id);
+    } catch (error) {
+      console.error("Error getting user permissions:", error);
+      userPermissions = new Set<string>();
+    }
+  }
   
   // Map module keys to permission keys
   const modulePermissionMap: Record<string, string> = {
@@ -74,8 +117,16 @@ export default async function DashboardLayout({
   // Use sorted modules to ensure consistent key generation
   const moduleStatusKey = sortedModules.map((m: typeof modules[0]) => `${m.key}:${m.enabled}`).join(",");
 
-  // Check if time tracking module is enabled for floating timer widget
-  const timeTrackingEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
+  // Check if time tracking module is enabled for floating timer widget (only if database is available)
+  let timeTrackingEnabled = false;
+  if (databaseAvailable) {
+    try {
+      timeTrackingEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
+    } catch (error) {
+      console.error("Error checking time tracking module:", error);
+      timeTrackingEnabled = false;
+    }
+  }
 
   return (
     <SidebarLayoutWrapper>
@@ -92,7 +143,7 @@ export default async function DashboardLayout({
           <DashboardSidebar enabledModuleKeys={enabledModuleKeys} userRole={user.role} />
         )}
         <div className="lg:pl-64 relative z-10">
-          <DashboardHeader user={user} />
+          <DashboardHeader user={user} databaseAvailable={databaseAvailable} />
           <main className="p-4 sm:p-6 lg:p-8">
             {children}
           </main>

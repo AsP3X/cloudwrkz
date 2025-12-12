@@ -5,6 +5,8 @@ import { APP_CONFIG } from "@/lib/constants/config";
 import { CookiesDisclaimer } from "@/components/ui/CookiesDisclaimer";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import { getUserTheme } from "@/server/actions/theme";
+import { isDatabaseAccessible } from "@/lib/utils/db-health";
+import { DatabaseConnectionError } from "@/lib/utils/auth-server";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -25,14 +27,29 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Check database health
+  let databaseAvailable = true;
+  try {
+    databaseAvailable = await isDatabaseAccessible();
+  } catch (error) {
+    databaseAvailable = false;
+    console.error("Database health check failed:", error);
+  }
+
   // Fetch theme from database (for authenticated users)
   // This ensures theme is applied immediately on first load, even on new devices
   let serverTheme: "light" | "dark" | "system" = "system";
-  try {
-    serverTheme = await getUserTheme();
-  } catch (error) {
-    // If fetching fails, fall back to "system"
-    console.error("Error fetching theme in layout:", error);
+  if (databaseAvailable) {
+    try {
+      serverTheme = await getUserTheme();
+    } catch (error) {
+      // If fetching fails, fall back to "system"
+      // Check if it's a database connection error
+      if (error instanceof DatabaseConnectionError) {
+        databaseAvailable = false;
+      }
+      console.error("Error fetching theme in layout:", error);
+    }
   }
 
   return (

@@ -4,6 +4,7 @@ import { Footer } from "@/components/layout/Footer";
 import { LoginForm } from "@/components/features/auth/LoginForm";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
+import { isDatabaseAccessible } from "@/lib/utils/db-health";
 
 type LoginPageProps = {
   searchParams: Promise<{ error?: string; redirect?: string }>;
@@ -11,9 +12,19 @@ type LoginPageProps = {
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;
+  
+  // Check database availability
+  let databaseAvailable = true;
+  try {
+    databaseAvailable = await isDatabaseAccessible();
+  } catch (error) {
+    databaseAvailable = false;
+    console.error("Database health check failed:", error);
+  }
+
   return (
     <>
-      <Header />
+      <Header databaseAvailable={databaseAvailable} />
       <main className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-secondary-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950 pt-16 pb-20">
         {/* Background decoration */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">

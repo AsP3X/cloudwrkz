@@ -6,6 +6,7 @@ import { Hero } from "@/components/features/landing/Hero";
 import { SkipToContent } from "@/components/ui/SkipToContent";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ScrollAnimation } from "@/components/features/landing/ScrollAnimation";
+import { isDatabaseAccessible } from "@/lib/utils/db-health";
 
 // Lazy load below-the-fold components for better performance
 const Features = dynamic(() => import("@/components/features/landing/Features").then((mod) => ({ default: mod.Features })), {
@@ -23,7 +24,16 @@ export const metadata: Metadata = {
   description: `Learn more about ${APP_CONFIG.name} - our mission, vision, and the team behind building modern enterprise applications with cutting-edge technology.`,
 };
 
-export default function AboutPage() {
+export default async function AboutPage() {
+  // Check database availability
+  let databaseAvailable = true;
+  try {
+    databaseAvailable = await isDatabaseAccessible();
+  } catch (error) {
+    databaseAvailable = false;
+    console.error("Database health check failed:", error);
+  }
+
   const teamMembers = [
     {
       name: "Alex Johnson",
@@ -90,7 +100,7 @@ export default function AboutPage() {
   return (
     <>
       <SkipToContent />
-      <Header />
+      <Header databaseAvailable={databaseAvailable} />
       <main id="main-content">
         <Hero />
         <Features />

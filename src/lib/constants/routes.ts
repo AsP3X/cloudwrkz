@@ -12,6 +12,7 @@ export const ROUTES = {
   PRIVACY: "/privacy",
   ABOUT: "/about",
   CONTACT: "/contact",
+  HEALTH: "/health",
   // Admin routes
   ADMIN_USERS: "/dashboard/admin/users",
   ADMIN_MODULES: "/dashboard/admin/modules",

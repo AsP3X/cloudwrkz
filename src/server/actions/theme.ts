@@ -1,7 +1,8 @@
 "use server";
 
 import { prisma } from "@/lib/db/prisma";
-import { getCurrentUser } from "@/lib/utils/auth-server";
+import { getCurrentUser, DatabaseConnectionError } from "@/lib/utils/auth-server";
+import { isDatabaseConnectionError } from "@/lib/utils/db-health";
 
 /**
  * Get the current user's theme preference from the database
@@ -27,6 +28,12 @@ export async function getUserTheme(): Promise<"light" | "dark" | "system"> {
 
     return "system";
   } catch (error) {
+    // If it's a database connection error, return "system" instead of throwing
+    // The layout already checks database availability before calling this function
+    if (isDatabaseConnectionError(error) || error instanceof DatabaseConnectionError) {
+      console.warn("Database unavailable, using default theme");
+      return "system";
+    }
     console.error("Error getting user theme:", error);
     return "system";
   }
@@ -55,6 +62,9 @@ export async function updateUserTheme(theme: "light" | "dark" | "system"): Promi
 
     return { success: true };
   } catch (error) {
+    if (isDatabaseConnectionError(error) || error instanceof DatabaseConnectionError) {
+      return { success: false, error: "Database is not available" };
+    }
     console.error("Error updating user theme:", error);
     return { success: false, error: "Failed to update theme" };
   }

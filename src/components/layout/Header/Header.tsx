@@ -7,8 +7,21 @@ import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils/cn";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
+import { DatabaseWarning } from "@/components/ui/DatabaseWarning";
 
-export const Header = () => {
+interface HeaderProps {
+  databaseAvailable?: boolean;
+}
+
+export const Header = ({ databaseAvailable = true }: HeaderProps) => {
+  // If database is unavailable, show the warning banner instead of navigation
+  if (!databaseAvailable) {
+    return (
+      <header className="fixed top-0 left-0 right-0 z-[100]">
+        <DatabaseWarning />
+      </header>
+    );
+  }
   const [scrolled, setScrolled] = React.useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [mounted, setMounted] = React.useState(false);

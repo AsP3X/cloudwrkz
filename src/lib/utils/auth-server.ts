@@ -1,6 +1,17 @@
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db/prisma";
 import { hasPermission, hasAnyPermission, type PermissionKey, type DynamicPermissionKey } from "./permissions";
+import { isDatabaseConnectionError } from "./db-health";
+
+/**
+ * Custom error class for database connection issues
+ */
+export class DatabaseConnectionError extends Error {
+  constructor(message: string = "Database connection unavailable") {
+    super(message);
+    this.name = "DatabaseConnectionError";
+  }
+}
 
 export type CurrentUser = {
   id: string;
@@ -83,6 +94,12 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
       theme: session.user.theme ?? "system",
     };
   } catch (error) {
+    // Check if this is a database connection error
+    if (isDatabaseConnectionError(error)) {
+      console.error("Database connection error in getCurrentUser:", error);
+      // Re-throw as DatabaseConnectionError so it can be caught and handled appropriately
+      throw new DatabaseConnectionError("Database is not available");
+    }
     console.error("Error getting current user:", error);
     return null;
   }
@@ -188,6 +205,11 @@ export async function getBannedUserInfo(): Promise<{
       banReason: session.user.banReason,
     };
   } catch (error) {
+    // Check if this is a database connection error
+    if (isDatabaseConnectionError(error)) {
+      console.error("Database connection error in getBannedUserInfo:", error);
+      throw new DatabaseConnectionError("Database is not available");
+    }
     console.error("Error getting banned user info:", error);
     return null;
   }
