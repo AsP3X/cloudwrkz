@@ -8,6 +8,7 @@ import { getCurrentUser } from "@/lib/utils/auth-server";
 import { redirect } from "next/navigation";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { isDatabaseAccessible } from "@/lib/utils/db-health";
+import { LandingPageClient } from "@/components/features/landing/LandingPageClient";
 
 // Lazy load below-the-fold components for better performance
 const Features = dynamic(() => import("@/components/features/landing/Features").then((mod) => ({ default: mod.Features })), {
@@ -65,13 +66,15 @@ export default async function Home() {
   return (
     <>
       <SkipToContent />
-      <Header databaseAvailable={databaseAvailable} />
-      <main id="main-content">
-        <Hero />
-        <Features />
-        <CTA />
-      </main>
-      <Footer />
+      <LandingPageClient initialDatabaseAvailable={databaseAvailable}>
+        <Header databaseAvailable={databaseAvailable} />
+        <main id="main-content">
+          <Hero />
+          <Features />
+          <CTA />
+        </main>
+        <Footer />
+      </LandingPageClient>
     </>
   );
 }
