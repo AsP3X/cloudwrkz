@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
@@ -8,20 +8,24 @@ import { cn } from "@/lib/utils/cn";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 import { DatabaseWarning } from "@/components/ui/DatabaseWarning";
+import { useDatabaseHealth } from "@/lib/hooks/useDatabaseHealth";
 
 interface HeaderProps {
   databaseAvailable?: boolean;
 }
 
-export const Header = ({ databaseAvailable = true }: HeaderProps) => {
-  // If database is unavailable, show the warning banner instead of navigation
-  if (!databaseAvailable) {
-    return (
-      <header className="fixed top-0 left-0 right-0 z-[100]">
-        <DatabaseWarning />
-      </header>
-    );
-  }
+export const Header = ({ databaseAvailable: initialDatabaseAvailable = true }: HeaderProps) => {
+  // Use client-side health monitoring to detect database status changes
+  const { status } = useDatabaseHealth({
+    pollInterval: 10000, // Check every 10 seconds
+    initialStatus: initialDatabaseAvailable ? "healthy" : "unhealthy",
+  });
+
+  // Determine if database is available based on health status
+  const databaseAvailable = status === "healthy" || status === "degraded";
+
+  // ALL HOOKS MUST BE CALLED BEFORE ANY CONDITIONAL RETURNS
+  // This ensures hooks are called in the same order on every render
   const [scrolled, setScrolled] = React.useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [mounted, setMounted] = React.useState(false);
@@ -79,6 +83,16 @@ export const Header = ({ databaseAvailable = true }: HeaderProps) => {
       document.body.style.overflow = "";
     };
   }, [mobileMenuOpen]);
+
+  // If database is unavailable, show the warning banner instead of navigation
+  // This conditional return is now AFTER all hooks have been called
+  if (!databaseAvailable) {
+    return (
+      <header className="fixed top-0 left-0 right-0 z-[100]">
+        <DatabaseWarning />
+      </header>
+    );
+  }
 
   const handleNavClick = () => {
     setMobileMenuOpen(false);

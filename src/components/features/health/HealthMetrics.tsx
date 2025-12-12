@@ -114,11 +114,9 @@ export function HealthMetrics({ initialDbHealth }: HealthMetricsProps) {
     }
   };
 
-  // Auto-refresh every 5 seconds
+  // Auto-refresh every 10 seconds
   useEffect(() => {
-    const interval = setInterval(fetchHealthData, 5000);
-    // Initial fetch after mount to get fresh data
-    fetchHealthData();
+    const interval = setInterval(fetchHealthData, 10000);
     return () => clearInterval(interval);
   }, []);
 
