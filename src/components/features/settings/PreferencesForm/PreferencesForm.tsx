@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Select } from "@/components/ui/Select";
@@ -12,12 +13,14 @@ import {
 import { updatePreferences } from "@/server/actions/preferences";
 import { useTheme } from "@/components/providers/ThemeProvider";
 import { useTimerWidgetPreference, getTimerWidgetPreference } from "@/lib/hooks/useTimerWidgetPreference";
+import { COMMON_TIMEZONES } from "@/lib/constants/timezones";
 
 type PreferencesFormProps = {
   initialValues?: Partial<PreferencesInput>;
 };
 
 export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
+  const router = useRouter();
   const [error, setError] = React.useState<string | null>(null);
   const [success, setSuccess] = React.useState<string | null>(null);
   const [mounted, setMounted] = React.useState(false);
@@ -158,6 +161,8 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
       if (result.success) {
         setSuccess(result.message || "Preferences updated successfully");
         setTimeout(() => setSuccess(null), 3000);
+        // Refresh the page to get updated user data (especially timezone)
+        router.refresh();
       } else {
         setError(result.error || "Failed to update preferences. Please try again.");
       }
@@ -244,19 +249,10 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
         {/* Timezone */}
         <Select
           label="Time Zone"
-          options={[
-            { value: "UTC", label: "UTC" },
-            { value: "America/New_York", label: "America / New York" },
-            { value: "America/Chicago", label: "America / Chicago" },
-            { value: "America/Denver", label: "America / Denver" },
-            { value: "America/Los_Angeles", label: "America / Los Angeles" },
-            { value: "Europe/London", label: "Europe / London" },
-            { value: "Europe/Berlin", label: "Europe / Berlin" },
-            { value: "Europe/Paris", label: "Europe / Paris" },
-            { value: "Asia/Tokyo", label: "Asia / Tokyo" },
-            { value: "Asia/Singapore", label: "Asia / Singapore" },
-            { value: "Australia/Sydney", label: "Australia / Sydney" },
-          ]}
+          options={COMMON_TIMEZONES.map((tz) => ({
+            value: tz.value,
+            label: tz.label,
+          }))}
           error={errors.timezone?.message}
           helperText="Choose your preferred time zone for displaying dates and times"
           {...register("timezone")}

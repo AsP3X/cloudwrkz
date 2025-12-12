@@ -6,9 +6,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { Button } from "@/components/ui/Button";
+import { Select } from "@/components/ui/Select";
 import { updateTimeEntrySchema, type UpdateTimeEntryInput } from "@/lib/validations/time-tracking";
 import { type TimeEntryStatus } from "@prisma/client";
 import { TimeEntryBreaks } from "../TimeEntryBreaks";
+import { COMMON_TIMEZONES } from "@/lib/constants/timezones";
 
 type TimeEntry = {
   id: string;
@@ -18,6 +20,7 @@ type TimeEntry = {
   tags: string[];
   billable: boolean;
   location: string | null;
+  timezone: string | null;
   startedAt: Date;
   stoppedAt: Date | null;
   ticket: {
@@ -32,7 +35,8 @@ interface TimeEntryEditFormProps {
   onSave: (data: UpdateTimeEntryInput) => Promise<void>;
   onCancel: () => void;
   isSubmitting: boolean;
-  userTimezone?: string;
+  userTimezone: string;
+  entryTimezone?: string | null;
   breaks?: Array<{
     id: string;
     startedAt: Date;
@@ -42,7 +46,7 @@ interface TimeEntryEditFormProps {
   }>;
 }
 
-export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting, userTimezone = "UTC", breaks = [] }: TimeEntryEditFormProps) {
+export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting, userTimezone, entryTimezone, breaks = [] }: TimeEntryEditFormProps) {
   const [tags, setTags] = React.useState<string[]>(entry.tags);
   const [tagInput, setTagInput] = React.useState("");
 
@@ -69,6 +73,7 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting, userT
       tags: entry.tags,
       billable: entry.billable,
       location: entry.location || "",
+      timezone: entry.timezone || "",
       startedAt: entry.startedAt,
       stoppedAt: entry.stoppedAt ?? undefined,
     },
@@ -138,6 +143,40 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting, userT
           error={errors.location?.message}
           placeholder="Optional location/address"
         />
+      </div>
+
+      <div>
+        <label htmlFor="timezone" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+          Timezone
+        </label>
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
+          Select a timezone for this entry. If not set, your user timezone ({userTimezone || "UTC"}) will be used.
+        </p>
+        <Controller
+          name="timezone"
+          control={control}
+          render={({ field }) => (
+            <Select
+              id="timezone"
+              value={field.value || ""}
+              onChange={(e) => {
+                const value = e.target.value;
+                // Convert empty string to null for proper handling
+                field.onChange(value === "" ? null : value);
+              }}
+              options={[
+                { value: "", label: `Use user timezone (${userTimezone || "UTC"})` },
+                ...COMMON_TIMEZONES.map((tz) => ({
+                  value: tz.value,
+                  label: tz.label,
+                })),
+              ]}
+            />
+          )}
+        />
+        {errors.timezone && (
+          <p className="mt-1 text-sm text-error-600 dark:text-error-400">{errors.timezone.message}</p>
+        )}
       </div>
 
       <div>
@@ -254,6 +293,7 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting, userT
       <TimeEntryBreaks
         timeEntryId={entry.id}
         userTimezone={userTimezone}
+        entryTimezone={entryTimezone}
         initialBreaks={breaks}
       />
     </div>

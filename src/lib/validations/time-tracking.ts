@@ -32,6 +32,7 @@ export const updateTimeEntrySchema = z.object({
   ticketId: z.string().nullable().optional(),
   billable: z.boolean().optional(),
   location: z.string().nullable().optional(),
+  timezone: z.string().nullable().optional(),
   startedAt: z.date().optional(),
   stoppedAt: z.date().optional(),
 });

@@ -395,25 +395,37 @@ export async function getTickets(filters?: {
   
   // Support OR condition: tickets created by user OR tickets from their projects
   // This is used for project owners/managers to see all tickets for their projects
+  // IMPORTANT: If user has dynamic permissions, we should NOT restrict by createdById or projectId
+  // because dynamic permissions may grant access to tickets from any project
   if (filters?.projectIds && filters.projectIds.length > 0 && filters?.createdById && !filters?.projectId) {
-    // Create an OR condition: tickets created by user OR tickets from their projects
-    const orCondition = {
-      OR: [
-        { createdById: filters.createdById },
-        { projectId: { in: filters.projectIds } },
-      ],
-    };
-    
-    // Combine OR condition with base filters using AND
-    const andConditions: any[] = [orCondition];
-    if (Object.keys(baseFilters).length > 0) {
-      andConditions.push(baseFilters);
-    }
-    
-    if (andConditions.length > 1) {
-      where.AND = andConditions;
+    // If user has dynamic permissions, don't restrict by createdById or projectId in base filters
+    // The permission filter will handle access control, and dynamic permission tickets
+    // should be visible regardless of project
+    if (hasDynamicPermissions && !canViewAllTickets) {
+      // Don't apply projectId or createdById filters - dynamic permissions override these
+      // The permission filter will include dynamic ticket IDs, and those tickets should
+      // be visible even if they're not in the user's projects
+      Object.assign(where, baseFilters);
     } else {
-      Object.assign(where, orCondition);
+      // Create an OR condition: tickets created by user OR tickets from their projects
+      const orCondition = {
+        OR: [
+          { createdById: filters.createdById },
+          { projectId: { in: filters.projectIds } },
+        ],
+      };
+      
+      // Combine OR condition with base filters using AND
+      const andConditions: any[] = [orCondition];
+      if (Object.keys(baseFilters).length > 0) {
+        andConditions.push(baseFilters);
+      }
+      
+      if (andConditions.length > 1) {
+        where.AND = andConditions;
+      } else {
+        Object.assign(where, orCondition);
+      }
     }
   } else if (filters?.createdById && !filters?.projectId) {
     // Only apply createdById filter if user doesn't have dynamic permissions
@@ -430,8 +442,15 @@ export async function getTickets(filters?: {
     }
   } else if (filters?.projectIds && filters.projectIds.length > 0 && !filters?.projectId) {
     // Just filter by projectIds if no createdById
-    baseFilters.projectId = { in: filters.projectIds };
-    Object.assign(where, baseFilters);
+    // BUT: If user has dynamic permissions, don't restrict by projectId
+    // because dynamic permissions may grant access to tickets from any project
+    if (hasDynamicPermissions && !canViewAllTickets) {
+      // Don't apply projectId filter - dynamic permissions override this
+      Object.assign(where, baseFilters);
+    } else {
+      baseFilters.projectId = { in: filters.projectIds };
+      Object.assign(where, baseFilters);
+    }
   } else {
     // No special OR condition, just use base filters
     Object.assign(where, baseFilters);
@@ -467,9 +486,9 @@ export async function getTickets(filters?: {
         ...(agentGroupIds.length > 0 ? [{ assignedToGroupId: { in: agentGroupIds } }] : [])
       );
     } else if (user.role === "USER") {
-      // Regular users can see tickets they created
-      // BUT: if they have dynamic permissions, those tickets are already included above
-      // So we only add createdById if they don't have dynamic permissions, or as an additional option
+      // Regular users can ALWAYS see tickets they created, regardless of dynamic permissions
+      // This is a fundamental access right - ticket creators should always have access
+      // We add this to the OR condition so tickets created by the user are always included
       permissionFilters.push({ createdById: user.id });
     }
 
@@ -485,12 +504,11 @@ export async function getTickets(filters?: {
       }
 
       // IMPORTANT: For users with dynamic permissions, we need to ensure the permission filter
-      // takes precedence. If there are base filters (like createdById from the page),
-      // we need to combine them properly so dynamic permissions work.
-      
-      // If where already has filters, we need to be careful about how we combine them
-      // The permission filter should allow tickets that match ANY of the permission conditions
-      // AND also match the base filters (status, priority, etc.)
+      // takes precedence. The permission filter should allow tickets that match ANY of the 
+      // permission conditions AND also match the base filters (status, priority, type, etc.)
+      // 
+      // We've already ensured that createdById is not in baseFilters when the user has
+      // dynamic permissions (see lines 418-430), so we just need to combine the filters correctly.
       
       if (where.AND) {
         // If where already has AND conditions, add permission filter to the AND array
@@ -735,15 +753,27 @@ export async function getTicket(id: string) {
       console.log(`[getTicket] All ticket permissions:`, ticketPerms);
     }
     
-    // IMPORTANT: If a dynamic permission was ever created for this ticket,
-    // we MUST require it specifically. General permissions alone are not enough
+    // IMPORTANT: Ticket creators should ALWAYS have access to their own tickets,
+    // regardless of dynamic permissions. This is a fundamental access right.
+    // 
+    // If a dynamic permission was ever created for this ticket,
+    // we require it specifically for other users. General permissions alone are not enough
     // if a dynamic permission was created and then removed from the user's group.
     //
     // If no dynamic permission was ever created for this ticket,
     // general permissions should still work (backward compatibility).
     
+    // First, check if user created the ticket - creators always have access
+    const isCreator = ticket.createdById === user.id;
+    
     let hasAccess = false;
-    if (dynamicPermissionExists) {
+    if (isCreator) {
+      // User created the ticket - always allow access
+      hasAccess = true;
+      if (process.env.NODE_ENV === "development") {
+        console.log(`[getTicket] User ${user.id} created this ticket - allowing access`);
+      }
+    } else if (dynamicPermissionExists) {
       // Dynamic permission exists - require it specifically
       hasAccess = hasSpecificDynamicPermission;
       if (process.env.NODE_ENV === "development") {
@@ -765,7 +795,8 @@ export async function getTicket(id: string) {
           if (process.env.NODE_ENV === "development") {
             console.log(`[getTicket] Agent ${user.id} has access - ticket is assigned to them directly`);
           }
-          // Allow access - ticket is assigned to agent
+          // Allow access - ticket is assigned to agent (continue to return ticket)
+          hasAccess = true;
         } else if (ticket.assignedToGroupId) {
           // Check if agent is a member of the ticket's group
           const membership = await prisma.groupMembership.findUnique({
@@ -788,6 +819,7 @@ export async function getTicket(id: string) {
           if (process.env.NODE_ENV === "development") {
             console.log(`[getTicket] Agent ${user.id} has access - is a member of group ${ticket.assignedToGroupId}`);
           }
+          hasAccess = true;
         } else {
           // Ticket is not assigned to agent and has no group assignment, deny access
           if (process.env.NODE_ENV === "development") {
@@ -802,9 +834,11 @@ export async function getTicket(id: string) {
         }
         return null;
       }
-    } else {
-      if (process.env.NODE_ENV === "development") {
-        console.log(`[getTicket] User ${user.id} has permission (dynamic: ${hasSpecificDynamicPermission}, general: ${hasGeneralViewPermission}), allowing access`);
+    }
+    
+    if (process.env.NODE_ENV === "development") {
+      if (hasAccess) {
+        console.log(`[getTicket] User ${user.id} has access (dynamic: ${hasSpecificDynamicPermission}, general: ${hasGeneralViewPermission}, agent assignment: ${user.role === "AGENT" && (ticket.assignedToId === user.id || ticket.assignedToGroupId)}), allowing access`);
       }
     }
   }

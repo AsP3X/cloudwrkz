@@ -42,6 +42,7 @@ export type UpdateTimeEntryInput = {
   ticketId?: string | null;
   billable?: boolean;
   location?: string | null;
+  timezone?: string | null;
   stoppedAt?: Date;
   startedAt?: Date;
 };
@@ -411,6 +412,9 @@ export async function updateTimeEntry(
       ...(input.location !== undefined && {
         location: input.location?.trim() || null,
       }),
+      ...(input.timezone !== undefined && {
+        timezone: input.timezone?.trim() || null,
+      }),
       ...(input.startedAt !== undefined && { startedAt: input.startedAt }),
       ...(input.stoppedAt !== undefined && { stoppedAt: input.stoppedAt }),
       ...(calculatedDuration !== undefined && { totalDuration: calculatedDuration }),
@@ -482,10 +486,12 @@ export async function updateTimeEntry(
     }
 
     revalidatePath("/dashboard/time-tracking");
+    revalidatePath(`/dashboard/time-tracking/${id}`);
     emitTimeTrackingEvent(user.id, "ENTRY_UPDATED", updated);
     return {
       success: true,
       message: "Time entry updated successfully",
+      data: updated,
     };
   } catch (error: any) {
     console.error("Error updating time entry:", error);

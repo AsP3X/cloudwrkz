@@ -23,10 +23,16 @@ type Break = {
 interface TimeEntryBreaksProps {
   timeEntryId: string;
   userTimezone: string;
+  entryTimezone?: string | null;
   initialBreaks?: Break[];
 }
 
-export function TimeEntryBreaks({ timeEntryId, userTimezone, initialBreaks = [] }: TimeEntryBreaksProps) {
+export function TimeEntryBreaks({ timeEntryId, userTimezone, entryTimezone, initialBreaks = [] }: TimeEntryBreaksProps) {
+  // Use entry timezone if set, otherwise fall back to user timezone
+  const displayTimezone = React.useMemo(() => {
+    return entryTimezone || userTimezone || "UTC";
+  }, [entryTimezone, userTimezone]);
+  
   const [breaks, setBreaks] = React.useState<Break[]>(initialBreaks);
   const [showAddDialog, setShowAddDialog] = React.useState(false);
   const [editingBreak, setEditingBreak] = React.useState<Break | null>(null);
@@ -34,9 +40,9 @@ export function TimeEntryBreaks({ timeEntryId, userTimezone, initialBreaks = [] 
   const [error, setError] = React.useState<string | null>(null);
   const addBreakFormRef = React.useRef<HTMLFormElement | null>(null);
 
-  const formatDate = (date: Date) => {
-    return formatDateTimeInTimezone(date, userTimezone || "UTC");
-  };
+  const formatDate = React.useCallback((date: Date) => {
+    return formatDateTimeInTimezone(date, displayTimezone);
+  }, [displayTimezone]);
 
   const loadBreaks = async () => {
     try {
@@ -50,6 +56,11 @@ export function TimeEntryBreaks({ timeEntryId, userTimezone, initialBreaks = [] 
   React.useEffect(() => {
     loadBreaks();
   }, [timeEntryId]);
+
+  // Update breaks when initialBreaks prop changes (after timezone update)
+  React.useEffect(() => {
+    setBreaks(initialBreaks);
+  }, [initialBreaks]);
 
   const handleAddBreak = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();

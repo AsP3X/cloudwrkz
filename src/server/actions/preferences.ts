@@ -13,32 +13,16 @@ export type ActionResult<T = void> =
   | { success: false; error: string; fieldErrors?: Record<string, string[]> };
 
 /**
- * Valid timezone values from the preferences schema
- */
-const VALID_TIMEZONES = [
-  "UTC",
-  "America/New_York",
-  "America/Chicago",
-  "America/Denver",
-  "America/Los_Angeles",
-  "Europe/London",
-  "Europe/Berlin",
-  "Europe/Paris",
-  "Asia/Tokyo",
-  "Asia/Singapore",
-  "Australia/Sydney",
-] as const;
-
-type ValidTimezone = (typeof VALID_TIMEZONES)[number];
-
-/**
  * Validate and normalize timezone value
+ * Accepts any valid IANA timezone string
  */
-function validateTimezone(timezone: string | null | undefined): ValidTimezone {
+function validateTimezone(timezone: string | null | undefined): string {
   if (!timezone) return "UTC";
-  return VALID_TIMEZONES.includes(timezone as ValidTimezone)
-    ? (timezone as ValidTimezone)
-    : "UTC";
+  // Basic validation: IANA timezone format (Area/Location or Area/SubArea/Location)
+  if (/^[A-Za-z_]+\/[A-Za-z_]+(\/[A-Za-z_]+)?$/.test(timezone) || timezone === "UTC") {
+    return timezone;
+  }
+  return "UTC";
 }
 
 /**
@@ -126,8 +110,9 @@ export async function updatePreferences(
       data: updateData,
     });
 
-    // Revalidate settings page
+    // Revalidate settings page and time tracking pages (timezone affects date displays)
     revalidatePath("/dashboard/settings");
+    revalidatePath("/dashboard/time-tracking");
 
     return {
       success: true,

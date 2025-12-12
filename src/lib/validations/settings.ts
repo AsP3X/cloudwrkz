@@ -52,19 +52,16 @@ export const preferencesSchema = z.object({
   pushNotifications: z.boolean().optional(),
   marketingEmails: z.boolean().optional(),
   timezone: z
-    .enum([
-      "UTC",
-      "America/New_York",
-      "America/Chicago",
-      "America/Denver",
-      "America/Los_Angeles",
-      "Europe/London",
-      "Europe/Berlin",
-      "Europe/Paris",
-      "Asia/Tokyo",
-      "Asia/Singapore",
-      "Australia/Sydney",
-    ])
+    .string()
+    .refine(
+      (tz) => {
+        if (!tz) return true; // Optional
+        // Validate IANA timezone format (basic check)
+        // IANA timezones are in format: Area/Location or Area/SubArea/Location
+        return /^[A-Za-z_]+\/[A-Za-z_]+(\/[A-Za-z_]+)?$/.test(tz) || tz === "UTC";
+      },
+      { message: "Invalid timezone format" }
+    )
     .optional(),
   timerWidgetMobileMode: z.enum(["dialog", "floating"]).optional(),
 });

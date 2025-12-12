@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/Badge";
 import { DurationDisplay } from "../DurationDisplay";
 import { getStatusColor, getStatusLabel, formatDuration, canPause, canResume, canStop, calculateTotalBreakDuration } from "@/lib/utils/time-tracking";
 import { formatDateTimeInTimezone } from "@/lib/utils/date";
+import { getTimezoneLabel } from "@/lib/constants/timezones";
 import { pauseTimeEntry, resumeTimeEntry, stopTimeEntry, completeTimeEntry, deleteTimeEntry, updateTimeEntry } from "@/server/actions/time-tracking";
 import { type TimeEntryStatus } from "@prisma/client";
 import { TimeEntryEditForm } from "../TimeEntryEditForm";
@@ -28,6 +29,7 @@ type TimeEntry = {
   tags: string[];
   billable: boolean;
   location: string | null;
+  timezone: string | null;
   ticket: {
     id: string;
     ticketNumber: string;
@@ -61,9 +63,19 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
   const [processing, setProcessing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  const formatDate = (date: Date) => {
-    return formatDateTimeInTimezone(date, userTimezone || "UTC");
-  };
+  // Update entry when initialEntry changes (after router.refresh())
+  React.useEffect(() => {
+    setEntry(initialEntry);
+  }, [initialEntry]);
+
+  // Use entry timezone if set, otherwise fall back to user timezone
+  const displayTimezone = React.useMemo(() => {
+    return entry.timezone || userTimezone || "UTC";
+  }, [entry.timezone, userTimezone]);
+  
+  const formatDate = React.useCallback((date: Date) => {
+    return formatDateTimeInTimezone(date, displayTimezone);
+  }, [displayTimezone]);
 
   // Create handler functions that directly call server actions to avoid serialization issues
   // Wrapping server actions in arrow functions causes hash mismatches in production builds
@@ -139,9 +151,21 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
     setProcessing(true);
     setError(null);
     try {
-      const result = await updateTimeEntry(entry.id, data);
+      // Normalize timezone: empty string becomes null
+      const normalizedData = {
+        ...data,
+        timezone: data.timezone === "" ? null : data.timezone,
+      };
+      
+      const result = await updateTimeEntry(entry.id, normalizedData);
       if (result.success) {
         setIsEditing(false);
+        // Update local state immediately with normalized data
+        setEntry((prev) => ({
+          ...prev,
+          ...normalizedData,
+        }));
+        // Refresh the page data to get the latest entry from the server
         router.refresh();
       } else {
         setError(result.error || "Failed to update time entry");
@@ -370,6 +394,7 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
             <TimeEntryBreaks
               timeEntryId={entry.id}
               userTimezone={userTimezone}
+              entryTimezone={entry.timezone}
               initialBreaks={entry.breaks || []}
             />
           </div>
@@ -383,7 +408,13 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
             <div className="space-y-4">
               <div>
                 <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">Timezone</label>
-                <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400 font-mono">{userTimezone || "UTC"}</p>
+                <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+                  {entry.timezone ? (
+                    <span className="font-medium">{getTimezoneLabel(entry.timezone)}</span>
+                  ) : (
+                    <span>{getTimezoneLabel(userTimezone)}</span>
+                  )}
+                </p>
               </div>
               <div>
                 <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">Started</label>

@@ -401,6 +401,7 @@ model TimeEntry {
   tags     String[] @default([])
   billable Boolean  @default(false) // Future: Billable flag
   location String? // Optional location/address
+  timezone String? // Optional timezone override (IANA timezone identifier, e.g., "Europe/Berlin")
 
   // Timestamps
   createdAt DateTime @default(now())

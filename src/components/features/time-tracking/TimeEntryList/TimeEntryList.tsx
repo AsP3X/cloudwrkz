@@ -29,6 +29,7 @@ type TimeEntry = {
   lastResumedAt: Date | null;
   tags: string[];
   location: string | null;
+  timezone: string | null;
   billable: boolean;
   ticket: {
     id: string;
@@ -67,9 +68,11 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
 
   // Format date consistently between server and client
   const formatDate = React.useCallback(
-    (date: Date) => {
+    (date: Date, entryTimezone?: string | null) => {
+      // Use entry timezone if set, otherwise fall back to user timezone
+      const tz = entryTimezone || userTimezone || "UTC";
       // Use deterministic timezone-aware formatting to avoid hydration mismatches
-      return formatDateTimeInTimezone(date, userTimezone);
+      return formatDateTimeInTimezone(date, tz);
     },
     [userTimezone]
   );
@@ -384,11 +387,11 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
               <div className="space-y-2 text-sm">
                 <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
                   <span className="font-medium min-w-[80px]">Started:</span>
-                  <span className="text-neutral-900 dark:text-neutral-100">{formatDate(entry.startedAt)}</span>
+                  <span className="text-neutral-900 dark:text-neutral-100">{formatDate(entry.startedAt, entry.timezone)}</span>
                 </div>
                 <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
                   <span className="font-medium min-w-[80px]">Timezone:</span>
-                  <span className="font-mono text-xs text-neutral-900 dark:text-neutral-100">{userTimezone}</span>
+                  <span className="font-mono text-xs text-neutral-900 dark:text-neutral-100">{entry.timezone || userTimezone}</span>
                 </div>
                 {entry.location && (
                   <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
@@ -581,10 +584,10 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
                     <DurationDisplay entry={{ ...entry, breaks: entry.breaks || [] }} className="font-mono text-sm" />
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-600 dark:text-neutral-400">
-                    {formatDate(entry.startedAt)}
+                    {formatDate(entry.startedAt, entry.timezone)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-600 dark:text-neutral-400 hidden lg:table-cell">
-                    <span className="font-mono text-xs">{userTimezone}</span>
+                    <span className="font-mono text-xs">{entry.timezone || userTimezone}</span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-600 dark:text-neutral-400 hidden md:table-cell">
                     {entry.location ? (
