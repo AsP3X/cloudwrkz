@@ -32,6 +32,15 @@ export const Header = ({ databaseAvailable: initialDatabaseAvailable = true }: H
   // Initialize with safe default to avoid hydration mismatch
   // Will be updated after mount when we can safely access DOM
   const [isDark, setIsDark] = React.useState(false);
+  
+  // Monitor online/offline status
+  const [isOnline, setIsOnline] = React.useState<boolean>(() => {
+    // Initialize with navigator.onLine if available, default to true
+    if (typeof window !== "undefined" && typeof navigator !== "undefined") {
+      return navigator.onLine;
+    }
+    return true;
+  });
 
   React.useEffect(() => {
     setMounted(true);
@@ -51,6 +60,30 @@ export const Header = ({ databaseAvailable: initialDatabaseAvailable = true }: H
       });
       return () => observer.disconnect();
     }
+  }, []);
+
+  React.useEffect(() => {
+    // Set initial online status
+    if (typeof window !== "undefined" && typeof navigator !== "undefined") {
+      setIsOnline(navigator.onLine);
+    }
+
+    // Listen for online/offline events
+    const handleOnline = () => {
+      setIsOnline(true);
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
   }, []);
 
   React.useEffect(() => {
@@ -92,6 +125,11 @@ export const Header = ({ databaseAvailable: initialDatabaseAvailable = true }: H
         <DatabaseWarning />
       </header>
     );
+  }
+
+  // Hide header when offline (offline banner will be shown instead)
+  if (!isOnline) {
+    return null;
   }
 
   const handleNavClick = () => {
