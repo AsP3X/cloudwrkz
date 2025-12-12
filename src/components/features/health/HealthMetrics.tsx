@@ -141,7 +141,7 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
     return "#22c55e"; // green-500
   };
 
-  // Create segments with gradient transitions that start at threshold crossings
+  // Create segments with seamless gradient transitions - no visible seams
   const createColorSegments = () => {
     if (visibleData.length === 0) return [];
     
@@ -166,8 +166,13 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
       
       // Check if color changed (threshold crossed)
       if (entryColor !== currentColor && !isFirst) {
-        // Create solid color segment up to the point where threshold was crossed
-        const segmentData = visibleData.slice(segmentStart, index);
+        const gradientZoneSize = 8; // Number of points on each side for smooth gradient transition (increased for longer, smoother gradient)
+        
+        // Create solid color segment that ends before the gradient zone starts
+        // The gradient will extend into this segment for seamless blending
+        const segmentEnd = Math.max(segmentStart, index - gradientZoneSize);
+        const segmentData = visibleData.slice(segmentStart, segmentEnd);
+        
         if (segmentData.length > 0) {
           const segmentIndex = segments.length;
           const dataKey = `segment-${segmentIndex}`;
@@ -184,22 +189,27 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
           });
         }
         
-        // Create gradient transition segment: starts at threshold crossing point, ends at next point
-        // This creates a smooth transition from the color at index-1 to the color at index
-        const prevEntry = visibleData[index - 1];
-        const transitionData = [prevEntry, entry]; // Start point (old color) to end point (new color)
+        // Create gradient transition segment that extends well into both adjacent segments
+        // This creates a long, smooth blend zone where colors gradually transition
+        // The gradient starts with the exact previous color and ends with the exact next color
+        const gradientStart = Math.max(0, index - gradientZoneSize);
+        const gradientEnd = Math.min(visibleData.length, index + gradientZoneSize);
+        const transitionData = visibleData.slice(gradientStart, gradientEnd);
         
-        if (transitionData.length === 2) {
+        if (transitionData.length > 1) {
           const gradientDataKey = `gradient-${gradientIndex}`;
           const gradientId = `gradient-${gradientIndex}`;
           
-          // Get the actual colors at the start and end points
-          const fromColor = getResponseTimeColor(prevEntry.responseTime);
-          const toColor = getResponseTimeColor(entry.responseTime);
+          // Use the exact colors from the solid segments for perfect color matching
+          // fromColor = currentColor (the color of the previous solid segment)
+          // toColor = entryColor (the color of the next solid segment)
+          // The gradient will start with fromColor and end with toColor, extending into both segments
+          const fromColor = currentColor; // Previous solid segment color
+          const toColor = entryColor; // Next solid segment color
           
           segments.push({
             data: transitionData,
-            color: fromColor, // Will use gradient instead
+            color: fromColor,
             dataKey: gradientDataKey,
             gradientId,
             isGradient: true,
@@ -210,7 +220,9 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
           gradientIndex++;
         }
         
-        segmentStart = index;
+        // Start next solid segment after the gradient zone starts (creates overlap)
+        // This ensures continuous coverage with the gradient blending on top
+        segmentStart = Math.max(0, index - gradientZoneSize);
         currentColor = entryColor;
       } else if (isLast) {
         // Create final segment from last segment start to end
@@ -764,64 +776,156 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
                 margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
               >
                 <defs>
-                  <linearGradient id="colorResponseTimeCardBackgroundGreen" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id="colorResponseTimeCardBackgroundGreen" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox">
                     <stop offset="5%" stopColor="#22c55e" stopOpacity={0.6}/>
                     <stop offset="95%" stopColor="#22c55e" stopOpacity={0.1}/>
                   </linearGradient>
-                  <linearGradient id="colorResponseTimeCardBackgroundYellow" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id="colorResponseTimeCardBackgroundYellow" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox">
                     <stop offset="5%" stopColor="#eab308" stopOpacity={0.6}/>
-                    <stop offset="95%" stopColor="#eab308" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#fde047" stopOpacity={0.1}/>
                   </linearGradient>
-                  <linearGradient id="colorResponseTimeCardBackgroundRed" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id="colorResponseTimeCardBackgroundRed" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox">
                     <stop offset="5%" stopColor="#ef4444" stopOpacity={0.6}/>
                     <stop offset="95%" stopColor="#ef4444" stopOpacity={0.1}/>
                   </linearGradient>
                   {/* Dynamic gradient definitions for stroke color transitions */}
-                  {/* Gradient starts at threshold crossing point and ends at next measuring point */}
+                  {/* Smooth gradient that blends seamlessly - no visible seams */}
                   {colorSegments
                     .filter(seg => seg.isGradient && seg.fromColor && seg.toColor)
                     .map((seg) => {
                       const gradientId = seg.gradientId;
-                      // Gradient matches exact start and end colors
+                      // Helper function to interpolate between two hex colors
+                      const interpolateColor = (color1: string, color2: string, factor: number): string => {
+                        const r1 = parseInt(color1.slice(1, 3), 16);
+                        const g1 = parseInt(color1.slice(3, 5), 16);
+                        const b1 = parseInt(color1.slice(5, 7), 16);
+                        const r2 = parseInt(color2.slice(1, 3), 16);
+                        const g2 = parseInt(color2.slice(3, 5), 16);
+                        const b2 = parseInt(color2.slice(5, 7), 16);
+                        
+                        const r = Math.round(r1 + (r2 - r1) * factor);
+                        const g = Math.round(g1 + (g2 - g1) * factor);
+                        const b = Math.round(b1 + (b2 - b1) * factor);
+                        
+                        return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+                      };
+                      
+                      // Create a very fine, smooth gradient with proper color interpolation
+                      // The gradient blends very gradually from start color to end color
                       return (
-                        <linearGradient key={gradientId} id={gradientId} x1="0" y1="0" x2="1" y2="0">
+                        <linearGradient 
+                          key={gradientId} 
+                          id={gradientId} 
+                          x1="0%" 
+                          y1="0%" 
+                          x2="100%" 
+                          y2="0%"
+                          gradientUnits="objectBoundingBox"
+                        >
+                          {/* Start with exact start color - seamlessly matches previous segment */}
                           <stop offset="0%" stopColor={seg.fromColor!}/>
+                          {/* Interpolated colors for smooth blending */}
+                          <stop offset="10%" stopColor={interpolateColor(seg.fromColor!, seg.toColor!, 0.1)}/>
+                          <stop offset="20%" stopColor={interpolateColor(seg.fromColor!, seg.toColor!, 0.2)}/>
+                          <stop offset="30%" stopColor={interpolateColor(seg.fromColor!, seg.toColor!, 0.3)}/>
+                          <stop offset="40%" stopColor={interpolateColor(seg.fromColor!, seg.toColor!, 0.4)}/>
+                          <stop offset="50%" stopColor={interpolateColor(seg.fromColor!, seg.toColor!, 0.5)}/>
+                          <stop offset="60%" stopColor={interpolateColor(seg.fromColor!, seg.toColor!, 0.6)}/>
+                          <stop offset="70%" stopColor={interpolateColor(seg.fromColor!, seg.toColor!, 0.7)}/>
+                          <stop offset="80%" stopColor={interpolateColor(seg.fromColor!, seg.toColor!, 0.8)}/>
+                          <stop offset="90%" stopColor={interpolateColor(seg.fromColor!, seg.toColor!, 0.9)}/>
+                          {/* End with exact end color - seamlessly matches next segment */}
                           <stop offset="100%" stopColor={seg.toColor!}/>
                         </linearGradient>
                       );
                     })}
                   {/* Horizontal gradients for gradient segments (fill) - blends left to right */}
                   {/* Gradient starts at threshold crossing point and ends at next measuring point */}
+                  {/* Colors match at both top (line) and bottom (x-axis) of the fill area */}
                   {colorSegments
                     .filter(seg => seg.isGradient && seg.fromColor && seg.toColor)
                     .map((seg) => {
                       const fillGradientId = `${seg.gradientId}-fill`;
-                      // Convert hex to rgba for opacity control (vertical fade effect)
+                      // Convert hex to rgba for opacity control
                       const hexToRgba = (hex: string, opacity: number) => {
                         const r = parseInt(hex.slice(1, 3), 16);
                         const g = parseInt(hex.slice(3, 5), 16);
                         const b = parseInt(hex.slice(5, 7), 16);
                         return `rgba(${r}, ${g}, ${b}, ${opacity})`;
                       };
-                      // Gradient matches exact start and end colors, with vertical opacity fade
-                      // Horizontal color blend matches start/end colors exactly
+                      // Helper function to interpolate between two hex colors
+                      const interpolateColor = (color1: string, color2: string, factor: number): string => {
+                        const r1 = parseInt(color1.slice(1, 3), 16);
+                        const g1 = parseInt(color1.slice(3, 5), 16);
+                        const b1 = parseInt(color1.slice(5, 7), 16);
+                        const r2 = parseInt(color2.slice(1, 3), 16);
+                        const g2 = parseInt(color2.slice(3, 5), 16);
+                        const b2 = parseInt(color2.slice(5, 7), 16);
+                        
+                        const r = Math.round(r1 + (r2 - r1) * factor);
+                        const g = Math.round(g1 + (g2 - g1) * factor);
+                        const b = Math.round(b1 + (b2 - b1) * factor);
+                        
+                        return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+                      };
+                      
+                      // Create a very fine, smooth horizontal gradient with proper color interpolation
+                      // The gradient blends very gradually from start color to end color
+                      // Interpolated colors create a smooth, imperceptible color transition
                       return (
-                        <linearGradient key={fillGradientId} id={fillGradientId} x1="0" y1="0" x2="1" y2="0">
+                        <linearGradient 
+                          key={fillGradientId} 
+                          id={fillGradientId} 
+                          x1="0%" 
+                          y1="0%" 
+                          x2="100%" 
+                          y2="0%"
+                          gradientUnits="objectBoundingBox"
+                        >
+                          {/* Start with exact start color - seamlessly matches previous segment */}
                           <stop offset="0%" stopColor={hexToRgba(seg.fromColor!, 0.6)}/>
+                          {/* Interpolated colors with gradual opacity transition */}
+                          <stop offset="10%" stopColor={hexToRgba(interpolateColor(seg.fromColor!, seg.toColor!, 0.1), 0.58)}/>
+                          <stop offset="20%" stopColor={hexToRgba(interpolateColor(seg.fromColor!, seg.toColor!, 0.2), 0.56)}/>
+                          <stop offset="30%" stopColor={hexToRgba(interpolateColor(seg.fromColor!, seg.toColor!, 0.3), 0.54)}/>
+                          <stop offset="40%" stopColor={hexToRgba(interpolateColor(seg.fromColor!, seg.toColor!, 0.4), 0.52)}/>
+                          <stop offset="50%" stopColor={hexToRgba(interpolateColor(seg.fromColor!, seg.toColor!, 0.5), 0.5)}/>
+                          <stop offset="60%" stopColor={hexToRgba(interpolateColor(seg.fromColor!, seg.toColor!, 0.6), 0.52)}/>
+                          <stop offset="70%" stopColor={hexToRgba(interpolateColor(seg.fromColor!, seg.toColor!, 0.7), 0.54)}/>
+                          <stop offset="80%" stopColor={hexToRgba(interpolateColor(seg.fromColor!, seg.toColor!, 0.8), 0.56)}/>
+                          <stop offset="90%" stopColor={hexToRgba(interpolateColor(seg.fromColor!, seg.toColor!, 0.9), 0.58)}/>
+                          {/* End with exact end color - seamlessly matches next segment */}
                           <stop offset="100%" stopColor={hexToRgba(seg.toColor!, 0.6)}/>
                         </linearGradient>
                       );
                     })}
                 </defs>
                 <YAxis type="number" domain={yAxisDomain} hide />
-                {colorSegments.map((segment) => {
-                  if (segment.isGradient && segment.fromColor && segment.toColor) {
-                    // Gradient segment - transition starts at threshold crossing, ends at next point
-                    // Use monotone interpolation for smooth curve
+                {/* Render solid segments first, then gradient segments on top for seamless blending */}
+                {colorSegments
+                  .filter(seg => !seg.isGradient)
+                  .map((segment) => (
+                    <Area
+                      key={segment.dataKey}
+                      type="monotone"
+                      dataKey={segment.dataKey}
+                      stroke={segment.color}
+                      strokeWidth={2}
+                      fill={`url(#${segment.gradientId})`}
+                      dot={false}
+                      isAnimationActive={true}
+                      animationDuration={0}
+                      connectNulls={false}
+                    />
+                  ))}
+                {/* Render gradient segments on top to blend seamlessly with solid segments */}
+                {colorSegments
+                  .filter(seg => seg.isGradient && seg.fromColor && seg.toColor)
+                  .map((segment) => {
                     const fillGradientId = `${segment.gradientId}-fill`;
                     return (
                       <g key={segment.dataKey}>
-                        {/* Gradient fill area - horizontal color blend matching start/end colors */}
+                        {/* Gradient fill area - seamless blend with no visible seams */}
                         <Area
                           type="monotone"
                           dataKey={segment.dataKey}
@@ -832,7 +936,7 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
                           animationDuration={0}
                           connectNulls={false}
                         />
-                        {/* Gradient stroke line - horizontal color blend matching start/end colors */}
+                        {/* Gradient stroke line - seamless color transition */}
                         <Line
                           type="monotone"
                           dataKey={segment.dataKey}
@@ -845,24 +949,7 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
                         />
                       </g>
                     );
-                  } else {
-                    // Solid color segment - use monotone for smooth curves
-                    return (
-                      <Area
-                        key={segment.dataKey}
-                        type="monotone"
-                        dataKey={segment.dataKey}
-                        stroke={segment.color}
-                        strokeWidth={2}
-                        fill={`url(#${segment.gradientId})`}
-                        dot={false}
-                        isAnimationActive={true}
-                        animationDuration={0}
-                        connectNulls={false}
-                      />
-                    );
-                  }
-                })}
+                  })}
               </ComposedChart>
             </ResponsiveContainer>
           </div>
