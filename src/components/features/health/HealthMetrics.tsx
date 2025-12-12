@@ -6,6 +6,7 @@ import { formatDateTimeFull } from "@/lib/utils/date";
 
 interface HealthMetricsProps {
   initialDbHealth: DatabaseHealthStatus;
+  isAuthenticated?: boolean;
 }
 
 function StatusBadge({ status }: { status: "healthy" | "unhealthy" | "degraded" }) {
@@ -84,7 +85,7 @@ function MetricCard({
  */
 const HEALTH_CHECK_INTERVAL = 30000; // 30 seconds
 
-export function HealthMetrics({ initialDbHealth }: HealthMetricsProps) {
+export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: HealthMetricsProps) {
   const [dbHealth, setDbHealth] = useState(initialDbHealth);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastFetchTime, setLastFetchTime] = useState<number>(Date.now());
@@ -263,25 +264,6 @@ export function HealthMetrics({ initialDbHealth }: HealthMetricsProps) {
             }
           />
           <MetricCard
-            title="Database Size"
-            value={dbHealth.databaseSize ?? "N/A"}
-            icon={
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
-                />
-              </svg>
-            }
-          />
-          <MetricCard
             title="Active Connections"
             value={dbHealth.activeConnections ?? "N/A"}
             icon={
@@ -300,48 +282,72 @@ export function HealthMetrics({ initialDbHealth }: HealthMetricsProps) {
               </svg>
             }
           />
-          <MetricCard
-            title="Max Connections"
-            value={dbHealth.maxConnections ?? "N/A"}
-            icon={
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                />
-              </svg>
-            }
-          />
-          <MetricCard
-            title="Dropped Connections"
-            value={dbHealth.droppedConnections ?? "N/A"}
-            icon={
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
-                />
-              </svg>
-            }
-          />
+          {isAuthenticated && (
+            <>
+              <MetricCard
+                title="Database Size"
+                value={dbHealth.databaseSize ?? "N/A"}
+                icon={
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
+                    />
+                  </svg>
+                }
+              />
+              <MetricCard
+                title="Max Connections"
+                value={dbHealth.maxConnections ?? "N/A"}
+                icon={
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                    />
+                  </svg>
+                }
+              />
+              <MetricCard
+                title="Dropped Connections"
+                value={dbHealth.droppedConnections ?? "N/A"}
+                icon={
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+                    />
+                  </svg>
+                }
+              />
+            </>
+          )}
         </div>
 
-        {/* Connection Usage Progress Bar */}
-        {dbHealth.activeConnections !== undefined &&
+        {/* Connection Usage Progress Bar - Only visible to authenticated users */}
+        {isAuthenticated &&
+          dbHealth.activeConnections !== undefined &&
           dbHealth.maxConnections !== undefined && (
             <div className="mt-6 pt-6 border-t border-neutral-200 dark:border-neutral-800">
               <div className="flex items-center justify-between text-sm text-neutral-600 dark:text-neutral-400 mb-3">

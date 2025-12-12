@@ -8,6 +8,7 @@ import type { DatabaseHealthStatus } from "@/lib/utils/db-health";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 import { HealthMetrics } from "@/components/features/health/HealthMetrics";
+import { getCurrentUser } from "@/lib/utils/auth-server";
 
 
 export const metadata: Metadata = {
@@ -44,6 +45,16 @@ export default async function HealthPage() {
     console.error("Database health check failed:", error);
   }
 
+  // Check if user is authenticated
+  let isAuthenticated = false;
+  try {
+    const user = await getCurrentUser();
+    isAuthenticated = user !== null;
+  } catch (error) {
+    // If authentication check fails, treat as not authenticated
+    isAuthenticated = false;
+  }
+
   return (
     <>
       <SkipToContent />
@@ -77,7 +88,7 @@ export default async function HealthPage() {
             </div>
 
             {/* Health Metrics - Auto-updating client component */}
-            <HealthMetrics initialDbHealth={dbHealth} />
+            <HealthMetrics initialDbHealth={dbHealth} isAuthenticated={isAuthenticated} />
 
             {/* API Endpoint Info */}
             <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8">
