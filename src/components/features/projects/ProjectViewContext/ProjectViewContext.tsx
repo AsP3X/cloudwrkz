@@ -1,29 +1,29 @@
 "use client";
 
 import React from "react";
-import { getInitialViewMode, saveViewMode, type TimeEntryViewMode } from "../TimeEntryViewToggle";
+import { getInitialViewMode, saveViewMode, type ProjectViewMode } from "../ProjectViewToggle";
 import { getViewPreference, saveViewPreference } from "@/server/actions/view-preferences";
 
-interface TimeEntryViewContextType {
-  viewMode: TimeEntryViewMode;
-  setViewMode: (view: TimeEntryViewMode) => void;
+interface ProjectViewContextType {
+  viewMode: ProjectViewMode;
+  setViewMode: (view: ProjectViewMode) => void;
   isReady: boolean; // Whether the view mode has been loaded from localStorage and is ready to render
 }
 
-const TimeEntryViewContext = React.createContext<TimeEntryViewContextType | undefined>(undefined);
+const ProjectViewContext = React.createContext<ProjectViewContextType | undefined>(undefined);
 
-export const TimeEntryViewProvider = ({ children }: { children: React.ReactNode }) => {
-  // Initialize state: always start with "table" and isReady: false for SSR/hydration consistency
+export const ProjectViewProvider = ({ children }: { children: React.ReactNode }) => {
+  // Initialize state: always start with "grid" and isReady: false for SSR/hydration consistency
   // Both server and client will render nothing initially (isReady: false)
   // Then on client, useLayoutEffect will load from localStorage and set isReady: true
   const [viewState, setViewState] = React.useState<{
-    viewMode: TimeEntryViewMode;
+    viewMode: ProjectViewMode;
     isReady: boolean;
   }>(() => {
-    // On server, always use "table" and not ready
+    // On server, always use "grid" and not ready
     if (typeof window === "undefined") {
       return {
-        viewMode: "table",
+        viewMode: "grid",
         isReady: false,
       };
     }
@@ -42,7 +42,7 @@ export const TimeEntryViewProvider = ({ children }: { children: React.ReactNode 
   const [synced, setSynced] = React.useState(false);
   const userChangedRef = React.useRef(false);
   const syncInProgressRef = React.useRef(false);
-  const localStorageValueRef = React.useRef<TimeEntryViewMode>(viewState.viewMode);
+  const localStorageValueRef = React.useRef<ProjectViewMode | null>(null);
   const initializedRef = React.useRef(false);
 
   // Load from localStorage and mark as ready after mount (before paint)
@@ -72,13 +72,13 @@ export const TimeEntryViewProvider = ({ children }: { children: React.ReactNode 
     const syncFromDatabase = async () => {
       try {
         // Step 1: Pull change from database
-        const dbPreference = await getViewPreference("timeEntry");
+        const dbPreference = await getViewPreference("project");
         
         // Step 2: Check against localStorage (get current value from ref)
         const currentLocalViewMode = localStorageValueRef.current || getInitialViewMode();
         
-        if (dbPreference && (dbPreference === "table" || dbPreference === "card")) {
-          const dbViewMode = dbPreference as TimeEntryViewMode;
+        if (dbPreference && (dbPreference === "grid" || dbPreference === "list" || dbPreference === "card")) {
+          const dbViewMode = dbPreference as ProjectViewMode;
           
           // Step 3: If different, update localStorage first, then load
           if (dbViewMode !== currentLocalViewMode) {
@@ -93,7 +93,7 @@ export const TimeEntryViewProvider = ({ children }: { children: React.ReactNode 
           // No database preference - save current localStorage value to database
           if (currentLocalViewMode) {
             try {
-              await saveViewPreference("timeEntry", currentLocalViewMode);
+              await saveViewPreference("project", currentLocalViewMode);
             } catch (saveError) {
               console.error("Error saving localStorage value to database:", saveError);
             }
@@ -132,7 +132,7 @@ export const TimeEntryViewProvider = ({ children }: { children: React.ReactNode 
     };
   }, [mounted]);
 
-  const setViewMode = React.useCallback(async (view: TimeEntryViewMode) => {
+  const setViewMode = React.useCallback(async (view: ProjectViewMode) => {
     // Mark that user has manually changed the view
     userChangedRef.current = true;
     
@@ -162,7 +162,7 @@ export const TimeEntryViewProvider = ({ children }: { children: React.ReactNode 
     
     // Step 3: Push change to database (after localStorage is updated)
     try {
-      const result = await saveViewPreference("timeEntry", view);
+      const result = await saveViewPreference("project", view);
       if (!result.success) {
         console.error("Failed to save view preference to database:", result.error);
       }
@@ -172,16 +172,16 @@ export const TimeEntryViewProvider = ({ children }: { children: React.ReactNode 
   }, []);
 
   return (
-    <TimeEntryViewContext.Provider value={{ viewMode: viewState.viewMode, setViewMode, isReady: viewState.isReady }}>
+    <ProjectViewContext.Provider value={{ viewMode: viewState.viewMode, setViewMode, isReady: viewState.isReady }}>
       {children}
-    </TimeEntryViewContext.Provider>
+    </ProjectViewContext.Provider>
   );
 };
 
-export const useTimeEntryView = () => {
-  const context = React.useContext(TimeEntryViewContext);
+export const useProjectView = () => {
+  const context = React.useContext(ProjectViewContext);
   if (context === undefined) {
-    throw new Error("useTimeEntryView must be used within a TimeEntryViewProvider");
+    throw new Error("useProjectView must be used within a ProjectViewProvider");
   }
   return context;
 };

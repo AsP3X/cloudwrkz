@@ -52,11 +52,17 @@ export async function getPreferences() {
     where: { id: user.id },
     select: {
       timezone: true,
+      theme: true,
     },
   });
 
+  // Validate theme value
+  const theme = dbUser?.theme && ["light", "dark", "system"].includes(dbUser.theme)
+    ? (dbUser.theme as "light" | "dark" | "system")
+    : "system";
+
   return {
-    theme: "system" as const, // Theme is stored in localStorage on client side
+    theme,
     language: "en" as const,
     emailNotifications: true,
     pushNotifications: false,
@@ -99,11 +105,25 @@ export async function updatePreferences(
     const { theme, language, emailNotifications, pushNotifications, marketingEmails, timezone } =
       validationResult.data;
 
-    // Persist timezone preference on the user record
-    // Always update timezone, even if undefined (to allow clearing it)
+    // Prepare update data
+    const updateData: { timezone?: string; theme?: string } = {};
+    
+    // Update timezone if provided
+    if (timezone !== undefined) {
+      updateData.timezone = timezone ?? "UTC";
+    }
+    
+    // Update theme if provided
+    if (theme !== undefined) {
+      // Validate theme value
+      const validTheme = ["light", "dark", "system"].includes(theme) ? theme : "system";
+      updateData.theme = validTheme;
+    }
+
+    // Persist preferences on the user record
     await prisma.user.update({
       where: { id: user.id },
-      data: { timezone: timezone ?? "UTC" },
+      data: updateData,
     });
 
     // Revalidate settings page

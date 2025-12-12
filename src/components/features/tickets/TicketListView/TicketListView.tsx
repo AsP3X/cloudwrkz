@@ -41,6 +41,18 @@ interface TicketListViewProps {
 }
 
 export const TicketListView = ({ tickets }: TicketListViewProps) => {
-  const { viewMode } = useTicketView();
-  return <TicketList tickets={tickets} viewMode={viewMode} />;
+  const { viewMode, isReady } = useTicketView();
+  
+  // Don't render until we've loaded the correct view mode from localStorage
+  // This prevents flashing between "table" and "card" views
+  if (!isReady) {
+    return null;
+  }
+  
+  // Suppress hydration warning since server and client may render different views initially
+  return (
+    <div suppressHydrationWarning>
+      <TicketList tickets={tickets} viewMode={viewMode} />
+    </div>
+  );
 };

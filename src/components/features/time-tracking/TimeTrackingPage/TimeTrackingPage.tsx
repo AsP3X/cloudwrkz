@@ -81,7 +81,7 @@ interface TimeTrackingPageProps {
 }
 
 function TimeTrackingPageContent({ initialEntries, initialTotal, initialPage, userTimezone }: TimeTrackingPageProps) {
-  const { viewMode, setViewMode } = useTimeEntryView();
+  const { viewMode, setViewMode, isReady } = useTimeEntryView();
   const [showStartDialog, setShowStartDialog] = React.useState(false);
   const [showAddDialog, setShowAddDialog] = React.useState(false);
   const [activeEntries, setActiveEntries] = React.useState<TimeEntry[]>(
@@ -127,7 +127,7 @@ function TimeTrackingPageContent({ initialEntries, initialTotal, initialPage, us
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <TimeEntryViewToggle currentView={viewMode} onViewChange={setViewMode} />
+          {isReady && <TimeEntryViewToggle currentView={viewMode} onViewChange={setViewMode} />}
           <TimeTrackingFilterButton />
           <Button variant="outline" onClick={() => setShowAddDialog(true)}>
             <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">

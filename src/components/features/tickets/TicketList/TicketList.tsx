@@ -234,7 +234,7 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
   }
 
   return (
-    <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+    <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden" suppressHydrationWarning>
       {selectedTickets.size > 0 && (
         <>
           <TicketBulkActionsToolbar
@@ -269,7 +269,7 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
       )}
       {/* Card View */}
       {viewMode === "card" && (
-        <div className="divide-y divide-neutral-200 dark:divide-neutral-700">
+        <div className="divide-y divide-neutral-200 dark:divide-neutral-700" suppressHydrationWarning>
           {tickets.map((ticket) => {
             const isSelected = mounted && selectedTickets.has(ticket.id);
             
@@ -291,6 +291,7 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
                     onClick={(e) => e.stopPropagation()}
                     className="w-4 h-4 mt-1 text-primary-600 bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 cursor-pointer flex-shrink-0"
                     aria-label={`Select ${ticket.ticketNumber}`}
+                    suppressHydrationWarning
                   />
                   <div className="flex-1 min-w-0">
                     {/* Mobile: Stack ID and badges vertically */}
@@ -386,19 +387,20 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
 
       {/* Table View */}
       {viewMode === "table" && (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" suppressHydrationWarning>
           <table className="w-full">
             <thead className="bg-neutral-50 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider w-12">
-                  <input
-                    type="checkbox"
-                    ref={selectAllRef}
-                    checked={allSelected}
-                    onChange={(e) => handleSelectAll(e.target.checked)}
-                    className="w-4 h-4 text-primary-600 bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 cursor-pointer"
-                    aria-label="Select all tickets"
-                  />
+                <input
+                  type="checkbox"
+                  ref={selectAllRef}
+                  checked={allSelected}
+                  onChange={(e) => handleSelectAll(e.target.checked)}
+                  className="w-4 h-4 text-primary-600 bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 cursor-pointer"
+                  aria-label="Select all tickets"
+                  suppressHydrationWarning
+                />
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                   Ticket
@@ -448,6 +450,7 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
                         onClick={(e) => e.stopPropagation()}
                         className="w-4 h-4 text-primary-600 bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 cursor-pointer"
                         aria-label={`Select ticket ${ticket.ticketNumber}`}
+                        suppressHydrationWarning
                       />
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

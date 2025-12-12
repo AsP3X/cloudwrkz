@@ -44,7 +44,7 @@ interface TimeEntryListProps {
 
 export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListProps) {
   const router = useRouter();
-  const { viewMode } = useTimeEntryView();
+  const { viewMode, isReady } = useTimeEntryView();
   const [processing, setProcessing] = React.useState<Set<string>>(new Set());
   const [selectedEntries, setSelectedEntries] = React.useState<Set<string>>(new Set());
   const [isProcessing, setIsProcessing] = React.useState(false);
@@ -292,8 +292,13 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
     setError(null);
   };
 
+  // Don't render view-dependent content until ready to prevent hydration issues
+  if (!isReady) {
+    return null;
+  }
+
   return (
-    <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+    <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden" suppressHydrationWarning>
       {selectedEntries.size > 0 && (
         <>
           <TimeEntryBulkActionsToolbar

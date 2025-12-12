@@ -74,6 +74,8 @@ export async function saveViewPreference(
       revalidatePath("/dashboard/tickets");
     } else if (moduleName === "timeEntry") {
       revalidatePath("/dashboard/time-tracking");
+    } else if (moduleName === "project") {
+      revalidatePath("/dashboard/projects");
     }
 
     return {
