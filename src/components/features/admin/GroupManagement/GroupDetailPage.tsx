@@ -13,7 +13,6 @@ import { updateGroup, addUserToGroup, removeUserFromGroup, getGroup } from "@/se
 import { getAllUsers } from "@/server/actions/users";
 import { formatDate } from "@/lib/utils/date";
 import { isDynamicTicketPermission } from "@/lib/utils/permissions";
-import { GroupPermissionsManager } from "./GroupPermissionsManager";
 
 type Group = NonNullable<Awaited<ReturnType<typeof getGroup>>>;
 
@@ -120,6 +119,9 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
           )}
         </div>
         <div className="flex gap-2">
+          <Link href={`/dashboard/admin/permissions/groups/${group.id}`}>
+            <Button variant="outline">Manage Permissions</Button>
+          </Link>
           <Button variant="outline" onClick={() => setEditDialogOpen(true)}>
             Edit Group
           </Button>
@@ -201,7 +203,7 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
                             return (
                               <div className="p-4 bg-warning-50 dark:bg-warning-950 border border-warning-200 dark:border-warning-800 rounded-lg">
                                 <p className="text-sm text-warning-800 dark:text-warning-200">
-                                  Permissions data may be out of sync. Please refresh the page or check the Permissions tab.
+                                  Permissions data may be out of sync. Please refresh the page or manage permissions in the Permissions section.
                                 </p>
                                 <p className="text-xs text-warning-600 dark:text-warning-400 mt-1">
                                   Expected {group._count?.permissions || 0} permissions but found {permissionsArray.length} in data.
@@ -243,7 +245,7 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
                           if (sortedCategories.length === 0) {
                             return (
                               <p className="text-neutral-600 dark:text-neutral-400">
-                                No permissions found in the data. Please check the Permissions tab.
+                                No permissions found. Manage permissions in the Permissions section.
                               </p>
                             );
                           }
@@ -391,31 +393,6 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
                       ))}
                     </div>
                   )}
-                </div>
-              ),
-            },
-            {
-              id: "permissions",
-              label: "Permissions",
-              content: (
-                <div>
-                  <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-4">Group Permissions</h3>
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
-                    Manage what this group can access. Permissions are additive - users get permissions from their role plus all groups they belong to.
-                  </p>
-                  <GroupPermissionsManager
-                    groupId={group.id}
-                    initialPermissionIds={group.permissions?.map((p) => p.permission.id) || []}
-                    onSave={async () => {
-                      // Reload the group data to update the overview immediately
-                      const updatedGroup = await getGroup(group.id);
-                      if (updatedGroup) {
-                        setGroup(updatedGroup);
-                      }
-                      // Also trigger router refresh for server component updates
-                      router.refresh();
-                    }}
-                  />
                 </div>
               ),
             },

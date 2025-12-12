@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils/cn";
 import type { DialogProps } from "./Dialog.types";
 
@@ -133,9 +134,20 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
       return undefined;
     }, [open]);
 
+    const [mounted, setMounted] = React.useState(false);
+    const [portalContainer, setPortalContainer] = React.useState<HTMLElement | null>(null);
+
+    // Ensure we only render portal on client side
+    React.useEffect(() => {
+      if (typeof document !== "undefined" && document.body) {
+        setMounted(true);
+        setPortalContainer(document.body);
+      }
+    }, []);
+
     if (!open) return null;
 
-    return (
+    const dialogContent = (
       <>
         {/* Backdrop */}
         <div
@@ -219,6 +231,18 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
         </div>
       </>
     );
+
+    // Render dialog in a portal at the body level, only when mounted and container is available
+    if (!mounted || !portalContainer || typeof document === "undefined" || !document.body) {
+      return null;
+    }
+
+    // Ensure portalContainer is still valid (body might have changed)
+    if (portalContainer !== document.body) {
+      return null;
+    }
+
+    return createPortal(dialogContent, portalContainer);
   }
 );
 

@@ -100,6 +100,10 @@ Examples:
 | `projects.delete` | Delete Projects | Delete projects |
 | `projects.manage_members` | Manage Project Members | Add/remove project members |
 | `projects.manage_groups` | Manage Project Groups | Assign groups to projects |
+| `projects.risks.view` | View Project Risks | View project risks |
+| `projects.risks.create` | Create Project Risks | Create new project risks |
+| `projects.risks.update` | Update Project Risks | Update existing project risks |
+| `projects.risks.delete` | Delete Project Risks | Delete project risks |
 
 #### Time Tracking Category
 | Key | Name | Description |
@@ -117,14 +121,6 @@ Examples:
 | `tasks.create` | Create Tasks | Create new tasks |
 | `tasks.update` | Update Tasks | Update existing tasks |
 | `tasks.delete` | Delete Tasks | Delete tasks |
-
-#### Risks Category
-| Key | Name | Description |
-|-----|------|-------------|
-| `risks.view` | View Risks | View project risks |
-| `risks.create` | Create Risks | Create new risks |
-| `risks.update` | Update Risks | Update existing risks |
-| `risks.delete` | Delete Risks | Delete risks |
 
 #### Issues Category
 | Key | Name | Description |
