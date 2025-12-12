@@ -338,10 +338,17 @@ export async function updateTimeEntry(
 
     const user = await requireAuth();
 
-    // Verify ownership and get current ticketId for logging
+    // Verify ownership and get current entry data for duration calculation
     const existing = await prisma.timeEntry.findUnique({
       where: { id },
-      select: { userId: true, ticketId: true, name: true, startedAt: true },
+      select: { 
+        userId: true, 
+        ticketId: true, 
+        name: true, 
+        startedAt: true,
+        stoppedAt: true,
+        status: true,
+      },
     });
 
     if (!existing) {
@@ -373,22 +380,45 @@ export async function updateTimeEntry(
       }
     }
 
+    // Determine final startedAt and stoppedAt values
+    const finalStartedAt = input.startedAt !== undefined ? input.startedAt : existing.startedAt;
+    const finalStoppedAt = input.stoppedAt !== undefined ? input.stoppedAt : existing.stoppedAt;
+
+    // Calculate duration if both start and end times are present and times are being updated
+    let calculatedDuration: number | undefined;
+    const isTimeUpdated = input.startedAt !== undefined || input.stoppedAt !== undefined;
+    
+    if (isTimeUpdated && finalStoppedAt) {
+      // Calculate duration in seconds from the difference between stoppedAt and startedAt
+      const durationSeconds = Math.floor(
+        (finalStoppedAt.getTime() - finalStartedAt.getTime()) / 1000
+      );
+      
+      // Only update if duration is non-negative
+      if (durationSeconds >= 0) {
+        calculatedDuration = durationSeconds;
+      }
+    }
+
+    const updateData: any = {
+      ...(input.name !== undefined && { name: input.name.trim() }),
+      ...(input.description !== undefined && {
+        description: input.description.trim() || null,
+      }),
+      ...(input.tags !== undefined && { tags: input.tags }),
+      ...(input.ticketId !== undefined && { ticketId: input.ticketId }),
+      ...(input.billable !== undefined && { billable: input.billable }),
+      ...(input.location !== undefined && {
+        location: input.location?.trim() || null,
+      }),
+      ...(input.startedAt !== undefined && { startedAt: input.startedAt }),
+      ...(input.stoppedAt !== undefined && { stoppedAt: input.stoppedAt }),
+      ...(calculatedDuration !== undefined && { totalDuration: calculatedDuration }),
+    };
+
     const updated = await prisma.timeEntry.update({
       where: { id },
-      data: {
-        ...(input.name !== undefined && { name: input.name.trim() }),
-        ...(input.description !== undefined && {
-          description: input.description.trim() || null,
-        }),
-        ...(input.tags !== undefined && { tags: input.tags }),
-        ...(input.ticketId !== undefined && { ticketId: input.ticketId }),
-        ...(input.billable !== undefined && { billable: input.billable }),
-        ...(input.location !== undefined && {
-          location: input.location?.trim() || null,
-        }),
-        ...(input.startedAt !== undefined && { startedAt: input.startedAt }),
-        ...(input.stoppedAt !== undefined && { stoppedAt: input.stoppedAt }),
-      },
+      data: updateData,
     });
 
     // Log activity if ticket assignment changed
