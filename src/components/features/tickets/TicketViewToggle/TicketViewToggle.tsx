@@ -4,7 +4,7 @@ import React from "react";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils/cn";
 
-export type TicketViewMode = "normal" | "detailed" | "compact" | "title-only";
+export type TicketViewMode = "table" | "card";
 
 const VIEW_MODE_STORAGE_KEY = "ticket-view-mode";
 
@@ -15,8 +15,8 @@ interface TicketViewToggleProps {
 
 const viewModes: Array<{ value: TicketViewMode; label: string; icon: React.ReactNode }> = [
   {
-    value: "normal",
-    label: "Normal",
+    value: "table",
+    label: "Table",
     icon: (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -24,29 +24,11 @@ const viewModes: Array<{ value: TicketViewMode; label: string; icon: React.React
     ),
   },
   {
-    value: "detailed",
-    label: "Detailed",
+    value: "card",
+    label: "Card",
     icon: (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-      </svg>
-    ),
-  },
-  {
-    value: "compact",
-    label: "Compact",
-    icon: (
-      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-      </svg>
-    ),
-  },
-  {
-    value: "title-only",
-    label: "Title Only",
-    icon: (
-      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
       </svg>
     ),
   },
@@ -54,7 +36,7 @@ const viewModes: Array<{ value: TicketViewMode; label: string; icon: React.React
 
 export const TicketViewToggle = ({ currentView, onViewChange }: TicketViewToggleProps) => {
   return (
-    <div className="inline-flex rounded-lg border-2 border-neutral-200 bg-white p-1" role="group" aria-label="Ticket view options">
+    <div className="inline-flex rounded-lg border-2 border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-1" role="group" aria-label="Ticket view options" suppressHydrationWarning>
       {viewModes.map((mode) => (
         <button
           key={mode.value}
@@ -65,9 +47,10 @@ export const TicketViewToggle = ({ currentView, onViewChange }: TicketViewToggle
             "focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2",
             currentView === mode.value
               ? "bg-primary-600 text-white shadow-sm"
-              : "text-neutral-700 hover:bg-neutral-50 active:bg-neutral-100"
+              : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 active:bg-neutral-100 dark:active:bg-neutral-700"
           )}
           aria-pressed={currentView === mode.value}
+          suppressHydrationWarning
         >
           {mode.icon}
           <span className="hidden sm:inline">{mode.label}</span>
@@ -79,18 +62,18 @@ export const TicketViewToggle = ({ currentView, onViewChange }: TicketViewToggle
 
 // Helper function to get initial view mode from localStorage
 export const getInitialViewMode = (): TicketViewMode => {
-  if (typeof window === "undefined") return "normal";
+  if (typeof window === "undefined") return "table";
   
   try {
     const stored = localStorage.getItem(VIEW_MODE_STORAGE_KEY);
-    if (stored && ["normal", "detailed", "compact", "title-only"].includes(stored)) {
+    if (stored && ["table", "card"].includes(stored)) {
       return stored as TicketViewMode;
     }
   } catch (error) {
     // Ignore localStorage errors
   }
   
-  return "normal";
+  return "table";
 };
 
 // Helper function to save view mode to localStorage
@@ -99,7 +82,12 @@ export const saveViewMode = (view: TicketViewMode): void => {
   
   try {
     localStorage.setItem(VIEW_MODE_STORAGE_KEY, view);
+    // Verify it was saved (important for mobile browsers)
+    const verify = localStorage.getItem(VIEW_MODE_STORAGE_KEY);
+    if (verify !== view) {
+      console.error("Failed to persist view mode to localStorage");
+    }
   } catch (error) {
-    // Ignore localStorage errors
+    console.error("Error saving view mode to localStorage:", error);
   }
 };

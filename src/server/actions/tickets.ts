@@ -15,6 +15,7 @@ import { createTimeEntry } from "./time-tracking";
 import { formatUserName } from "@/lib/utils/users";
 import { logTicketActivity } from "../utils/ticket-activity-logger";
 import { hasTicketPermission } from "@/lib/utils/permissions";
+import { sanitizeHtml, extractPlainText } from "@/lib/utils/rich-text";
 
 export type TicketInput = {
   title: string;
@@ -158,11 +159,21 @@ export async function createTicket(input: TicketInput): Promise<ActionResult<{ i
       }
     }
 
+    // Process description: sanitize HTML and extract plain text
+    const descriptionHtml = input.description 
+      ? sanitizeHtml(input.description) 
+      : null;
+    const descriptionPlain = descriptionHtml 
+      ? extractPlainText(descriptionHtml) 
+      : null;
+
     const ticket = await prisma.ticket.create({
       data: {
         ticketNumber,
         title: input.title.trim(),
-        description: input.description?.trim(),
+        description: descriptionPlain, // Keep legacy field for backward compatibility
+        descriptionHtml,
+        descriptionPlain,
         type: ticketType,
         priority: input.priority || "MEDIUM",
         status: "OPEN",
@@ -447,9 +458,12 @@ export async function getTickets(filters?: {
       });
       const agentGroupIds = memberships.map((m) => m.groupId);
 
+      // Agents can only see:
+      // 1. Tickets assigned to them directly (assignedToId === user.id)
+      // 2. Tickets assigned to their groups (assignedToGroupId IN agentGroupIds)
+      // They should NOT see tickets with no group assignment unless assigned to them
       permissionFilters.push(
         { assignedToId: user.id },
-        { assignedToGroupId: null },
         ...(agentGroupIds.length > 0 ? [{ assignedToGroupId: { in: agentGroupIds } }] : [])
       );
     } else if (user.role === "USER") {
@@ -507,51 +521,53 @@ export async function getTickets(filters?: {
 
   return prisma.ticket.findMany({
     where,
-    select: {
-      id: true,
-      ticketNumber: true,
-      title: true,
-      description: true,
-      type: true,
-      status: true,
-      priority: true,
-      createdAt: true,
-      updatedAt: true,
-      resolvedAt: true,
-      closedAt: true,
-      createdById: true,
-      createdByName: true,
-      createdBy: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          status: true,
+      select: {
+        id: true,
+        ticketNumber: true,
+        title: true,
+        description: true,
+        descriptionHtml: true,
+        descriptionPlain: true,
+        type: true,
+        status: true,
+        priority: true,
+        createdAt: true,
+        updatedAt: true,
+        resolvedAt: true,
+        closedAt: true,
+        createdById: true,
+        createdByName: true,
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            status: true,
+          },
+        },
+        assignedToId: true,
+        assignedTo: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            status: true,
+          },
+        },
+        assignedToGroupId: true,
+        assignedToGroup: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+          },
+        },
+        _count: {
+          select: {
+            comments: true,
+          },
         },
       },
-      assignedToId: true,
-      assignedTo: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          status: true,
-        },
-      },
-      assignedToGroupId: true,
-      assignedToGroup: {
-        select: {
-          id: true,
-          name: true,
-          description: true,
-        },
-      },
-      _count: {
-        select: {
-          comments: true,
-        },
-      },
-    },
     orderBy: {
       [sortBy]: sortOrder,
     },
@@ -571,6 +587,8 @@ export async function getTicket(id: string) {
       ticketNumber: true,
       title: true,
       description: true,
+      descriptionHtml: true,
+      descriptionPlain: true,
       type: true,
       status: true,
       priority: true,
@@ -624,6 +642,8 @@ export async function getTicket(id: string) {
         select: {
           id: true,
           content: true,
+          contentHtml: true,
+          contentPlain: true,
           createdAt: true,
           updatedAt: true,
           isAgentOnly: true,
@@ -738,33 +758,47 @@ export async function getTicket(id: string) {
     }
     
     if (!hasAccess) {
-      // Check group access for agents (only if they have general tickets.view permission)
-      if (user.role === "AGENT" && ticket.assignedToGroupId) {
-        // Check if agent is a member of the ticket's group
-        const membership = await prisma.groupMembership.findUnique({
-          where: {
-            userId_groupId: {
-              userId: user.id,
-              groupId: ticket.assignedToGroupId,
-            },
-          },
-        });
-
-        if (!membership) {
-          // Agent is not in the group, deny access
+      // For agents, check if they have access through assignment or group membership
+      if (user.role === "AGENT") {
+        // Check if ticket is assigned to the agent directly
+        if (ticket.assignedToId === user.id) {
           if (process.env.NODE_ENV === "development") {
-            console.log(`[getTicket] Agent ${user.id} is not a member of group ${ticket.assignedToGroupId}, denying access`);
+            console.log(`[getTicket] Agent ${user.id} has access - ticket is assigned to them directly`);
+          }
+          // Allow access - ticket is assigned to agent
+        } else if (ticket.assignedToGroupId) {
+          // Check if agent is a member of the ticket's group
+          const membership = await prisma.groupMembership.findUnique({
+            where: {
+              userId_groupId: {
+                userId: user.id,
+                groupId: ticket.assignedToGroupId,
+              },
+            },
+          });
+
+          if (!membership) {
+            // Agent is not in the group and ticket is not assigned to them, deny access
+            if (process.env.NODE_ENV === "development") {
+              console.log(`[getTicket] Agent ${user.id} is not assigned to ticket and not a member of group ${ticket.assignedToGroupId}, denying access`);
+            }
+            return null;
+          }
+          // Agent is in the group, allow access
+          if (process.env.NODE_ENV === "development") {
+            console.log(`[getTicket] Agent ${user.id} has access - is a member of group ${ticket.assignedToGroupId}`);
+          }
+        } else {
+          // Ticket is not assigned to agent and has no group assignment, deny access
+          if (process.env.NODE_ENV === "development") {
+            console.log(`[getTicket] Agent ${user.id} has no access - ticket is not assigned to them and has no group assignment`);
           }
           return null;
         }
-        // Agent is in the group, allow access
-        if (process.env.NODE_ENV === "development") {
-          console.log(`[getTicket] Agent ${user.id} is a member of group ${ticket.assignedToGroupId}, allowing access`);
-        }
       } else {
-        // No permission and no group access, deny
+        // No permission and not an agent, deny
         if (process.env.NODE_ENV === "development") {
-          console.log(`[getTicket] User ${user.id} (role: ${user.role}) has no permission and no group access, denying access`);
+          console.log(`[getTicket] User ${user.id} (role: ${user.role}) has no permission and no agent access, denying access`);
         }
         return null;
       }
@@ -817,6 +851,8 @@ export async function updateTicket(
         type: true,
         title: true,
         description: true,
+        descriptionHtml: true,
+        descriptionPlain: true,
         tags: true,
         ticketNumber: true,
       },
@@ -943,17 +979,25 @@ export async function updateTicket(
 
     // Track description changes
     if (input.description !== undefined) {
-      const newDescription = input.description?.trim() || null;
+      const descriptionHtml = input.description 
+        ? sanitizeHtml(input.description) 
+        : null;
+      const descriptionPlain = descriptionHtml 
+        ? extractPlainText(descriptionHtml) 
+        : null;
+      
       const oldDescription = currentTicket.description || null;
-      if (newDescription !== oldDescription) {
-        updateData.description = newDescription;
+      if (descriptionPlain !== oldDescription) {
+        updateData.description = descriptionPlain; // Keep legacy field
+        updateData.descriptionHtml = descriptionHtml;
+        updateData.descriptionPlain = descriptionPlain;
         await logTicketActivity(
           id,
           "DESCRIPTION_CHANGED",
           user.id,
           userDisplayName,
           oldDescription || "(empty)",
-          newDescription || "(empty)"
+          descriptionPlain || "(empty)"
         );
       }
     }
@@ -1424,11 +1468,17 @@ export async function addTicketComment(
       }
     }
 
+    // Process comment: sanitize HTML and extract plain text
+    const contentHtml = sanitizeHtml(content);
+    const contentPlain = extractPlainText(contentHtml);
+
     const comment = await prisma.ticketComment.create({
       data: {
         ticketId,
         userId: user.id,
-        content: content.trim(),
+        content: contentPlain, // Keep legacy field for backward compatibility
+        contentHtml,
+        contentPlain,
         isAgentOnly,
       },
       select: {

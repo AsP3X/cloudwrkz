@@ -30,10 +30,10 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
     
     // Ensure dark mode background is applied correctly
     React.useEffect(() => {
-      if (!textareaRef.current) return;
+      if (!textareaRef.current || typeof window === "undefined" || typeof document === "undefined") return;
       
       const updateBackground = () => {
-        if (!textareaRef.current || error) {
+        if (!textareaRef.current || error || typeof document === "undefined") {
           // Remove inline style for error states
           if (textareaRef.current) {
             textareaRef.current.style.removeProperty("background-color");
@@ -53,6 +53,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
       
       // Initial update with multiple strategies to catch late-applied dark class
       const applyBackground = () => {
+        if (typeof window === "undefined") return;
         // Use requestAnimationFrame to ensure DOM is ready
         requestAnimationFrame(() => {
           updateBackground();
@@ -68,45 +69,54 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
       const timeout4 = setTimeout(applyBackground, 500);
       
       // Watch for theme changes
-      const observer = new MutationObserver(() => {
-        updateBackground();
-        // Also retry after a short delay when class changes
-        setTimeout(updateBackground, 10);
-      });
-      observer.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ["class"],
-      });
-      
-      // Also listen for when the page becomes visible (after navigation)
-      const handleVisibilityChange = () => {
-        if (document.visibilityState === "visible") {
-          setTimeout(updateBackground, 0);
-          setTimeout(updateBackground, 50);
-        }
-      };
-      document.addEventListener("visibilitychange", handleVisibilityChange);
+      if (typeof document !== "undefined") {
+        const observer = new MutationObserver(() => {
+          updateBackground();
+          // Also retry after a short delay when class changes
+          setTimeout(updateBackground, 10);
+        });
+        observer.observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ["class"],
+        });
+        
+        // Also listen for when the page becomes visible (after navigation)
+        const handleVisibilityChange = () => {
+          if (document.visibilityState === "visible") {
+            setTimeout(updateBackground, 0);
+            setTimeout(updateBackground, 50);
+          }
+        };
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+        
+        return () => {
+          clearTimeout(timeout1);
+          clearTimeout(timeout2);
+          clearTimeout(timeout3);
+          clearTimeout(timeout4);
+          observer.disconnect();
+          document.removeEventListener("visibilitychange", handleVisibilityChange);
+        };
+      }
       
       return () => {
         clearTimeout(timeout1);
         clearTimeout(timeout2);
         clearTimeout(timeout3);
         clearTimeout(timeout4);
-        observer.disconnect();
-        document.removeEventListener("visibilitychange", handleVisibilityChange);
       };
     }, [error]);
     
     // Aggressive check for client-side navigation - continuously check for first second
     React.useEffect(() => {
-      if (!textareaRef.current || error) return;
+      if (!textareaRef.current || error || typeof window === "undefined" || typeof document === "undefined") return;
       
       let intervalId: NodeJS.Timeout | null = null;
       let checkCount = 0;
       const maxChecks = 20; // Check 20 times over 1 second
       
       const checkAndApply = () => {
-        if (!textareaRef.current || error || checkCount >= maxChecks) {
+        if (!textareaRef.current || error || checkCount >= maxChecks || typeof document === "undefined") {
           if (intervalId) {
             clearInterval(intervalId);
             intervalId = null;

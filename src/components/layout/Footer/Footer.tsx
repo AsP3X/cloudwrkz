@@ -6,14 +6,35 @@ import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 import { cn } from "@/lib/utils/cn";
 
+type HealthStatus = "healthy" | "degraded" | "unhealthy" | "loading";
+
 export const Footer = () => {
   // Use state to ensure year is only set on client to avoid hydration mismatches
   const [currentYear, setCurrentYear] = useState<number | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [healthStatus, setHealthStatus] = useState<HealthStatus>("loading");
 
   useEffect(() => {
     setMounted(true);
     setCurrentYear(new Date().getFullYear());
+
+    // Fetch health status
+    const fetchHealthStatus = async () => {
+      try {
+        const response = await fetch("/api/health");
+        const data = await response.json();
+        setHealthStatus(data.status || "unhealthy");
+      } catch (error) {
+        console.error("Error fetching health status:", error);
+        setHealthStatus("unhealthy");
+      }
+    };
+
+    fetchHealthStatus();
+
+    // Refresh health status every 30 seconds
+    const interval = setInterval(fetchHealthStatus, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const footerLinks = {
@@ -113,6 +134,35 @@ export const Footer = () => {
               </ul>
             </div>
           ))}
+
+          {/* System Section with Health Status Button */}
+          <div>
+            <h3 className="text-white dark:text-neutral-200 font-semibold mb-4">System</h3>
+            <Link
+              href={ROUTES.HEALTH}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-neutral-800 dark:bg-neutral-900 hover:bg-neutral-700 dark:hover:bg-neutral-800 rounded-lg transition-colors text-neutral-300 dark:text-neutral-400 hover:text-white dark:hover:text-neutral-300"
+              aria-label="Health Status"
+            >
+              <span className="relative flex h-2 w-2">
+                {healthStatus === "healthy" && (
+                  <>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                  </>
+                )}
+                {healthStatus === "degraded" && (
+                  <>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500"></span>
+                  </>
+                )}
+                {(healthStatus === "unhealthy" || healthStatus === "loading") && (
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                )}
+              </span>
+              <span>Health Status</span>
+            </Link>
+          </div>
         </div>
 
         {/* Bottom */}

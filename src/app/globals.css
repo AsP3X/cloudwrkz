@@ -2,6 +2,28 @@
 @tailwind components;
 @tailwind utilities;
 
+/* TipTap Editor Placeholder */
+.ProseMirror.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: rgb(163 163 163);
+  pointer-events: none;
+  height: 0;
+}
+
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: rgb(163 163 163);
+  pointer-events: none;
+  height: 0;
+}
+
+.dark .ProseMirror.is-editor-empty:first-child::before,
+.dark .ProseMirror p.is-editor-empty:first-child::before {
+  color: rgb(115 115 115);
+}
+
 @layer base {
   :root {
     --font-inter: "Inter", system-ui, sans-serif;
@@ -98,6 +120,42 @@
     display: none; /* Chrome, Safari and Opera */
   }
 
+  /* Safe area padding for mobile devices */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .h-safe {
+    height: env(safe-area-inset-bottom);
+  }
+
+  /* Animations for mobile modals */
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideIn {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.2s ease-out;
+  }
+
+  .animate-slide-in {
+    animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
   /* Text selection */
   ::selection {
     @apply bg-primary-200 text-primary-900 dark:bg-primary-800 dark:text-primary-100;
@@ -109,6 +167,122 @@
     bottom: 24px !important;
     right: 24px !important;
     z-index: 99999 !important;
+  }
+
+  /* Blockquote styling for rich text editor and display */
+  .prose blockquote,
+  blockquote {
+    border-left: 4px solid rgb(59 130 246) !important; /* primary-500 */
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+    padding-top: 0.75rem !important;
+    padding-bottom: 0.75rem !important;
+    margin-top: 1rem !important;
+    margin-bottom: 1rem !important;
+    background-color: rgb(245 245 244) !important; /* neutral-100 */
+    color: rgb(55 65 81) !important; /* neutral-700 */
+    font-style: italic !important;
+    border-radius: 0 0.5rem 0.5rem 0 !important;
+  }
+
+  .dark .prose blockquote,
+  .dark blockquote {
+    background-color: rgba(31, 41, 55, 0.5) !important; /* neutral-800/50 */
+    color: rgb(209 213 219) !important; /* neutral-300 */
+    border-left-color: rgb(59 130 246) !important; /* primary-500 */
+  }
+
+  /* Inline quote styling - using highlight mark with special color */
+  .prose mark[data-color="#inline-quote"],
+  mark[data-color="#inline-quote"],
+  .ProseMirror mark[data-color="#inline-quote"],
+  .prose span[data-type="inline-quote"],
+  span.inline-quote,
+  span[data-type="inline-quote"],
+  .ProseMirror span[data-type="inline-quote"],
+  .ProseMirror span.inline-quote {
+    border-left: 4px solid rgb(37 99 235) !important; /* primary-600 - darker blue for more visibility */
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+    padding-top: 0.25rem !important;
+    padding-bottom: 0.25rem !important;
+    background-color: rgb(219 234 254) !important; /* blue-100 - lighter blue background for better contrast */
+    color: rgb(30 58 138) !important; /* blue-900 - darker blue text for readability */
+    font-style: italic !important;
+    font-weight: 500 !important;
+    border-radius: 0.375rem !important;
+    display: inline !important;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
+  }
+
+  .dark .prose mark[data-color="#inline-quote"],
+  .dark mark[data-color="#inline-quote"],
+  .dark .ProseMirror mark[data-color="#inline-quote"],
+  .dark .prose span[data-type="inline-quote"],
+  .dark span.inline-quote,
+  .dark span[data-type="inline-quote"],
+  .dark .ProseMirror span[data-type="inline-quote"],
+  .dark .ProseMirror span.inline-quote {
+    background-color: rgba(30, 58, 138, 0.3) !important; /* blue-900 with opacity */
+    color: rgb(191 219 254) !important; /* blue-200 - lighter blue text for dark mode */
+    border-left-color: rgb(96 165 250) !important; /* blue-400 - brighter blue border for dark mode */
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.2) !important;
+  }
+
+  /* List styling for rich text editor and display */
+  .prose ul,
+  .prose ol,
+  .ProseMirror ul,
+  .ProseMirror ol {
+    list-style-position: outside !important;
+    padding-left: 1.5rem !important;
+    margin-top: 0.5rem !important;
+    margin-bottom: 0.5rem !important;
+  }
+
+  .prose ul {
+    list-style-type: disc !important;
+  }
+
+  .prose ol {
+    list-style-type: decimal !important;
+  }
+
+  .ProseMirror ul {
+    list-style-type: disc !important;
+  }
+
+  .ProseMirror ol {
+    list-style-type: decimal !important;
+  }
+
+  .prose li,
+  .ProseMirror li {
+    margin-top: 0.25rem !important;
+    margin-bottom: 0.25rem !important;
+    padding-left: 0.25rem !important;
+    color: rgb(55 65 81) !important; /* neutral-700 */
+  }
+
+  .dark .prose li,
+  .dark .ProseMirror li {
+    color: rgb(209 213 219) !important; /* neutral-300 */
+  }
+
+  /* Ensure list markers are visible */
+  .prose ul li::marker,
+  .prose ol li::marker,
+  .ProseMirror ul li::marker,
+  .ProseMirror ol li::marker {
+    color: rgb(55 65 81) !important; /* neutral-700 */
+    font-weight: 500 !important;
+  }
+
+  .dark .prose ul li::marker,
+  .dark .prose ol li::marker,
+  .dark .ProseMirror ul li::marker,
+  .dark .ProseMirror ol li::marker {
+    color: rgb(209 213 219) !important; /* neutral-300 */
   }
 
 }

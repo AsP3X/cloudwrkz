@@ -180,7 +180,7 @@ export function SessionManagementPage({ initialData }: SessionManagementPageProp
   };
 
   // Group sessions by user
-  const groupedSessions = useMemo(() => {
+  const groupedSessions = (() => {
     const groups = new Map<string, GroupedSessions>();
     
     initialData.sessions.forEach((session) => {
@@ -195,7 +195,7 @@ export function SessionManagementPage({ initialData }: SessionManagementPageProp
     });
 
     return Array.from(groups.values());
-  }, [initialData.sessions]);
+  })();
 
   // Filter groups based on local search
   const filteredGroups = useMemo(() => {

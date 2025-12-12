@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { FilterConfig } from "./FilterDialog";
+import { getFilterPreferences } from "@/server/actions/filter-preferences";
 
 interface FilterLoaderProps {
   config: FilterConfig;
@@ -14,7 +15,7 @@ const getLastUsedKey = (moduleName: string) => `${moduleName}-filter-last-used-p
 
 /**
  * Client component that automatically applies the last used filter preset
- * when accessing a page with filters
+ * when accessing a page with filters. Loads from backend for cross-device persistence.
  */
 export const FilterLoader = ({ config, enabled = true }: FilterLoaderProps) => {
   const router = useRouter();
@@ -23,7 +24,7 @@ export const FilterLoader = ({ config, enabled = true }: FilterLoaderProps) => {
 
   useEffect(() => {
     // Only apply preset if enabled
-    if (!enabled || !config.enablePresets) {
+    if (!enabled) {
       return;
     }
 
@@ -40,51 +41,105 @@ export const FilterLoader = ({ config, enabled = true }: FilterLoaderProps) => {
       return; // Don't override existing filters
     }
 
-    try {
-      const storageKey = getStorageKey(config.moduleName);
-      const lastUsedKey = getLastUsedKey(config.moduleName);
+    const loadFilters = async () => {
+      try {
+        // Check backend for saved filter preferences
+        const backendResult = await getFilterPreferences(config.moduleName);
+        
+        let filtersToApply: Record<string, string> | null = null;
 
-      // Load last used preset
-      const lastUsedId = localStorage.getItem(lastUsedKey);
-      if (!lastUsedId) {
-        hasAppliedRef.current = true;
-        return; // No preset to load
-      }
+        if (backendResult.success && backendResult.data) {
+          // Backend has saved filters
+          filtersToApply = backendResult.data;
+          
+          // Sync with localStorage: update if different
+          try {
+            const storageKey = getStorageKey(config.moduleName);
+            const lastUsedKey = getLastUsedKey(config.moduleName);
+            const lastUsedId = localStorage.getItem(lastUsedKey);
+            
+            if (lastUsedId && config.enablePresets) {
+              // Check if we need to update localStorage preset
+              const stored = localStorage.getItem(storageKey);
+              if (stored) {
+                const presets = JSON.parse(stored);
+                const preset = presets.find((p: { id: string }) => p.id === lastUsedId);
+                
+                // Compare backend filters with localStorage preset
+                if (preset) {
+                  const presetFilters = preset.filters || {};
+                  const backendChanged = JSON.stringify(filtersToApply) !== JSON.stringify(presetFilters);
+                  
+                  if (backendChanged) {
+                    // Update localStorage preset with backend data
+                    preset.filters = { ...filtersToApply };
+                    localStorage.setItem(storageKey, JSON.stringify(presets));
+                  }
+                }
+              }
+            }
+          } catch (localError) {
+            // Ignore localStorage sync errors
+            console.warn("Failed to sync localStorage:", localError);
+          }
+        } else {
+          // No backend filters, check localStorage
+          if (config.enablePresets) {
+            const storageKey = getStorageKey(config.moduleName);
+            const lastUsedKey = getLastUsedKey(config.moduleName);
 
-      // Load presets
-      const stored = localStorage.getItem(storageKey);
-      if (!stored) {
-        hasAppliedRef.current = true;
-        return;
-      }
+            // Load last used preset
+            const lastUsedId = localStorage.getItem(lastUsedKey);
+            if (!lastUsedId) {
+              hasAppliedRef.current = true;
+              return; // No preset to load
+            }
 
-      const presets = JSON.parse(stored);
-      const preset = presets.find((p: { id: string }) => p.id === lastUsedId);
-      
-      if (!preset) {
-        hasAppliedRef.current = true;
-        return; // Preset not found
-      }
+            // Load presets
+            const stored = localStorage.getItem(storageKey);
+            if (!stored) {
+              hasAppliedRef.current = true;
+              return;
+            }
 
-      // Apply preset filters to URL
-      const params = new URLSearchParams();
-      Object.entries(preset.filters).forEach(([key, value]) => {
-        if (value && typeof value === 'string' && value !== (config.defaultFilters[key] || config.defaultSort)) {
-          params.set(key, value);
+            const presets = JSON.parse(stored);
+            const preset = presets.find((p: { id: string }) => p.id === lastUsedId);
+            
+            if (!preset) {
+              hasAppliedRef.current = true;
+              return; // Preset not found
+            }
+
+            filtersToApply = preset.filters || {};
+          }
         }
-      });
 
-      // Only redirect if there are filters to apply
-      if (params.toString()) {
-        hasAppliedRef.current = true;
-        router.replace(`${config.baseRoute}?${params.toString()}`);
-      } else {
+        // Apply filters to URL if we have any
+        if (filtersToApply) {
+          const params = new URLSearchParams();
+          Object.entries(filtersToApply).forEach(([key, value]) => {
+            if (value && typeof value === 'string' && value !== (config.defaultFilters[key] || config.defaultSort)) {
+              params.set(key, value);
+            }
+          });
+
+          // Only redirect if there are filters to apply
+          if (params.toString()) {
+            hasAppliedRef.current = true;
+            router.replace(`${config.baseRoute}?${params.toString()}`);
+          } else {
+            hasAppliedRef.current = true;
+          }
+        } else {
+          hasAppliedRef.current = true;
+        }
+      } catch (error) {
+        console.error("Failed to load filter preferences:", error);
         hasAppliedRef.current = true;
       }
-    } catch (error) {
-      console.error("Failed to load filter preset:", error);
-      hasAppliedRef.current = true;
-    }
+    };
+
+    loadFilters();
   }, [enabled, config, router]); // Removed searchParams from dependencies to prevent reload loops
 
   return null; // This component doesn't render anything

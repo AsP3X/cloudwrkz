@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sanitizeHtml } from "@/lib/utils/rich-text";
 
 /**
  * Ticket creation schema
@@ -11,8 +12,8 @@ export const createTicketSchema = z.object({
     .trim(),
   description: z
     .string()
-    .max(5000, "Description must be less than 5000 characters")
-    .trim()
+    .max(50000, "Description is too long")
+    .transform((html) => html ? sanitizeHtml(html) : "")
     .optional()
     .or(z.literal("")),
   type: z.enum(["BUG", "FEATURE", "QUESTION", "SUPPORT", "TASK"]).default("BUG"),
@@ -36,8 +37,8 @@ export const updateTicketSchema = z.object({
     .trim(),
   description: z
     .string()
-    .max(5000, "Description must be less than 5000 characters")
-    .trim()
+    .max(50000, "Description is too long")
+    .transform((html) => html ? sanitizeHtml(html) : "")
     .optional()
     .or(z.literal("")),
   type: z.enum(["BUG", "FEATURE", "QUESTION", "SUPPORT", "TASK"]),

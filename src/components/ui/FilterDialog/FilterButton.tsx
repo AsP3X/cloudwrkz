@@ -80,6 +80,8 @@ export const FilterButton = ({
       }
     };
 
+    if (typeof window === "undefined") return;
+
     window.addEventListener("storage", handleStorageChange);
 
     const handleCustomStorageChange = () => {
@@ -89,8 +91,10 @@ export const FilterButton = ({
     window.addEventListener("localStorageChange", handleCustomStorageChange);
 
     return () => {
-      window.removeEventListener("storage", handleStorageChange);
-      window.removeEventListener("localStorageChange", handleCustomStorageChange);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("storage", handleStorageChange);
+        window.removeEventListener("localStorageChange", handleCustomStorageChange);
+      }
     };
   }, [config.moduleName, enablePresets]);
 

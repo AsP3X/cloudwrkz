@@ -50,7 +50,7 @@ export function UserUnbanDialog({ open, onOpenChange, user, onConfirm, isLoading
       <div className="p-6">
         <div className="p-4 bg-success-50 dark:bg-success-950 border border-success-200 dark:border-success-800 rounded-lg mb-4">
           <p className="text-sm text-success-700 dark:text-success-300">
-            This will restore the user's access to the platform. Any pending unban requests will be automatically approved and associated tickets will be marked as resolved.
+            This will restore the user&apos;s access to the platform. Any pending unban requests will be automatically approved and associated tickets will be marked as resolved.
           </p>
         </div>
 

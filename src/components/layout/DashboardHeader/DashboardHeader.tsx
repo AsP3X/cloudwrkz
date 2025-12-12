@@ -7,12 +7,22 @@ import { ROUTES } from "@/lib/constants/routes";
 import type { CurrentUser } from "@/lib/utils/auth-server";
 import { GlobalSearch } from "@/components/features/search/GlobalSearch";
 import { useSidebar } from "../SidebarContext";
+import { DatabaseWarning } from "@/components/ui/DatabaseWarning";
 
 interface DashboardHeaderProps {
   user: CurrentUser;
+  databaseAvailable?: boolean;
 }
 
-export const DashboardHeader = ({ user }: DashboardHeaderProps) => {
+export const DashboardHeader = ({ user, databaseAvailable = true }: DashboardHeaderProps) => {
+  // If database is unavailable, show the warning banner instead of navigation
+  if (!databaseAvailable) {
+    return (
+      <header className="sticky top-0 z-30">
+        <DatabaseWarning />
+      </header>
+    );
+  }
   const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);

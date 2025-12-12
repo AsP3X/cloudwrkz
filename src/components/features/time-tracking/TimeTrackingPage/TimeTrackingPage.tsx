@@ -46,9 +46,9 @@ function TotalTimeDisplay({ entries }: { entries: TimeEntry[] }) {
   const staticHours = Math.floor(staticTotal / 3600);
 
   return (
-    <div className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-1" suppressHydrationWarning>
+    <span className="text-sm sm:text-2xl font-bold text-neutral-900 dark:text-neutral-100 sm:block sm:mt-1" suppressHydrationWarning>
       {mounted ? totalHours : staticHours}h
-    </div>
+    </span>
   );
 }
 
@@ -81,7 +81,7 @@ interface TimeTrackingPageProps {
 }
 
 function TimeTrackingPageContent({ initialEntries, initialTotal, initialPage, userTimezone }: TimeTrackingPageProps) {
-  const { viewMode, setViewMode } = useTimeEntryView();
+  const { viewMode, setViewMode, isReady } = useTimeEntryView();
   const [showStartDialog, setShowStartDialog] = React.useState(false);
   const [showAddDialog, setShowAddDialog] = React.useState(false);
   const [activeEntries, setActiveEntries] = React.useState<TimeEntry[]>(
@@ -127,7 +127,7 @@ function TimeTrackingPageContent({ initialEntries, initialTotal, initialPage, us
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <TimeEntryViewToggle currentView={viewMode} onViewChange={setViewMode} />
+          {isReady && <TimeEntryViewToggle currentView={viewMode} onViewChange={setViewMode} />}
           <TimeTrackingFilterButton />
           <Button variant="outline" onClick={() => setShowAddDialog(true)}>
             <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -146,19 +146,45 @@ function TimeTrackingPageContent({ initialEntries, initialTotal, initialPage, us
       </div>
 
       {/* Stats Cards - Show before list on all screen sizes */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-4 sm:p-6">
-          <div className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400">Total Entries</div>
-          <div className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-1">{initialTotal}</div>
+      {/* Mobile: Single compact card with horizontal layout */}
+      <div className="sm:hidden">
+        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-3">
+          <div className="flex items-center justify-between">
+            <div className="flex-1 text-center">
+              <div className="text-xs text-neutral-600 dark:text-neutral-400 mb-1">Total Entries</div>
+              <div className="text-lg font-bold text-neutral-900 dark:text-neutral-100">{initialTotal}</div>
+            </div>
+            <div className="w-px h-12 bg-neutral-200 dark:bg-neutral-700 mx-2"></div>
+            <div className="flex-1 text-center">
+              <div className="text-xs text-neutral-600 dark:text-neutral-400 mb-1">Active Timers</div>
+              <div className="text-lg font-bold text-neutral-900 dark:text-neutral-100">
+                {initialEntries.filter((e) => e.status === "RUNNING" || e.status === "PAUSED").length}
+              </div>
+            </div>
+            <div className="w-px h-12 bg-neutral-200 dark:bg-neutral-700 mx-2"></div>
+            <div className="flex-1 text-center">
+              <div className="text-xs text-neutral-600 dark:text-neutral-400 mb-1">Total Time</div>
+              <div className="text-lg font-bold text-neutral-900 dark:text-neutral-100">
+                <TotalTimeDisplay entries={initialEntries} />
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-4 sm:p-6">
-          <div className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400">Active Timers</div>
-          <div className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-1">
+      </div>
+      {/* Desktop: Original card layout */}
+      <div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
+          <div className="text-sm text-neutral-600 dark:text-neutral-400">Total Entries</div>
+          <div className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-1">{initialTotal}</div>
+        </div>
+        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
+          <div className="text-sm text-neutral-600 dark:text-neutral-400">Active Timers</div>
+          <div className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-1">
             {initialEntries.filter((e) => e.status === "RUNNING" || e.status === "PAUSED").length}
           </div>
         </div>
-        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-4 sm:p-6">
-          <div className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400">Total Time</div>
+        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
+          <div className="text-sm text-neutral-600 dark:text-neutral-400">Total Time</div>
           <TotalTimeDisplay entries={initialEntries} />
         </div>
       </div>

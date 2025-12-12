@@ -5,7 +5,7 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/Input";
-import { Textarea } from "@/components/ui/Textarea";
+import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { createTicketSchema, type CreateTicketInput } from "@/lib/validations/tickets";
@@ -84,6 +84,7 @@ export const TicketForm = ({ isAgent = false, users = [], agents = [], groups = 
     handleSubmit,
     formState: { errors, isSubmitting },
     watch,
+    setValue,
   } = useForm<CreateTicketInput>({
     resolver: zodResolver(createTicketSchema),
     defaultValues: {
@@ -182,14 +183,32 @@ export const TicketForm = ({ isAgent = false, users = [], agents = [], groups = 
       />
 
       {/* Description Field */}
-      <Textarea
-        label="Description"
-        placeholder="Provide detailed information about your issue, request, or question..."
-        error={errors.description?.message}
-        helperText="Include any relevant details, steps to reproduce, or context that would help us assist you"
-        rows={8}
-        {...register("description")}
-      />
+      <div>
+        <RichTextEditor
+          label="Description"
+          placeholder="Provide detailed information about your issue, request, or question..."
+          error={errors.description?.message}
+          helperText="Include any relevant details, steps to reproduce, or context that would help us assist you"
+          value={watch("description") || ""}
+          onChange={(html) => {
+            setValue("description", html, { shouldValidate: true });
+          }}
+          onImageUpload={async (file) => {
+            const formData = new FormData();
+            formData.append("file", file);
+            const response = await fetch("/api/tickets/upload-image", {
+              method: "POST",
+              body: formData,
+            });
+            if (!response.ok) {
+              throw new Error("Failed to upload image");
+            }
+            const data = await response.json();
+            return data.url;
+          }}
+          name="description"
+        />
+      </div>
 
       {/* Type and Priority Row */}
       <div className={`grid grid-cols-1 ${isAgent ? 'md:grid-cols-2' : 'md:grid-cols-2'} gap-6`}>

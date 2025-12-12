@@ -331,9 +331,12 @@ async function searchTicketsWithFilters(
       });
       const agentGroupIds = memberships.map((m) => m.groupId);
 
+      // Agents can only see:
+      // 1. Tickets assigned to them directly (assignedToId === user.id)
+      // 2. Tickets assigned to their groups (assignedToGroupId IN agentGroupIds)
+      // They should NOT see tickets with no group assignment unless assigned to them
       permissionFilters.push(
         { assignedToId: user.id },
-        { assignedToGroupId: null },
         ...(agentGroupIds.length > 0 ? [{ assignedToGroupId: { in: agentGroupIds } }] : [])
       );
     } else if (user.role === "USER") {
@@ -1058,9 +1061,12 @@ async function searchTickets(
       });
       const agentGroupIds = memberships.map((m) => m.groupId);
 
+      // Agents can only see:
+      // 1. Tickets assigned to them directly (assignedToId === user.id)
+      // 2. Tickets assigned to their groups (assignedToGroupId IN agentGroupIds)
+      // They should NOT see tickets with no group assignment unless assigned to them
       permissionFilters.push(
         { assignedToId: user.id },
-        { assignedToGroupId: null },
         ...(agentGroupIds.length > 0 ? [{ assignedToGroupId: { in: agentGroupIds } }] : [])
       );
     } else if (user.role === "USER") {

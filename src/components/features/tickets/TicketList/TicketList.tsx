@@ -3,6 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Badge } from "@/components/ui/Badge";
 import { getTicketTypeLabel, type TicketType } from "@/lib/utils/tickets";
 import { formatUserName } from "@/lib/utils/users";
 import { formatDate, formatDateTime } from "@/lib/utils/date";
@@ -11,6 +12,7 @@ import { TicketBulkActionsToolbar } from "../TicketBulkActionsToolbar";
 import { bulkUpdateTickets, bulkDeleteTickets } from "@/server/actions/tickets";
 import { TicketBulkAssignDialog } from "../TicketBulkAssignDialog";
 import { TicketBulkDeleteDialog } from "../TicketBulkDeleteDialog";
+import { cn } from "@/lib/utils/cn";
 
 type Ticket = {
   id: string;
@@ -86,18 +88,11 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
   const [showAssignDialog, setShowAssignDialog] = React.useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false);
   const selectAllRef = React.useRef<HTMLInputElement>(null);
+  const [mounted, setMounted] = React.useState(false);
 
-
-  // Determine which columns to show based on view mode
-  const showType = viewMode === "normal" || viewMode === "detailed";
-  const showAssignedTo = viewMode === "normal" || viewMode === "detailed";
-  const showCreated = viewMode === "normal" || viewMode === "detailed" || viewMode === "compact";
-  const showComments = viewMode === "normal" || viewMode === "detailed";
-  const showDescription = viewMode === "detailed";
-  const showPriority = viewMode !== "title-only";
-  const showUpdated = viewMode === "detailed";
-  const isCompact = viewMode === "compact";
-  const isNormal = viewMode === "normal";
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const allSelected = tickets.length > 0 && selectedTickets.size === tickets.length;
   const someSelected = selectedTickets.size > 0 && selectedTickets.size < tickets.length;
@@ -239,7 +234,7 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
   }
 
   return (
-    <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+    <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden" suppressHydrationWarning>
       {selectedTickets.size > 0 && (
         <>
           <TicketBulkActionsToolbar
@@ -272,11 +267,131 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
           )}
         </>
       )}
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead className="bg-neutral-50 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider w-12">
+      {/* Card View */}
+      {viewMode === "card" && (
+        <div className="divide-y divide-neutral-200 dark:divide-neutral-700" suppressHydrationWarning>
+          {tickets.map((ticket) => {
+            const isSelected = mounted && selectedTickets.has(ticket.id);
+            
+            const cardClassName = cn(
+              "hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors",
+              isSelected && "bg-primary-50/50 dark:bg-primary-900/10"
+            );
+
+            return (
+              <div key={ticket.id} className={cn(cardClassName, "p-3 sm:p-4")}>
+                <div className="flex items-start gap-3 mb-3">
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      handleSelectTicket(ticket.id, e.target.checked);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="w-4 h-4 mt-1 text-primary-600 bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 cursor-pointer flex-shrink-0"
+                    aria-label={`Select ${ticket.ticketNumber}`}
+                    suppressHydrationWarning
+                  />
+                  <div className="flex-1 min-w-0">
+                    {/* Mobile: Stack ID and badges vertically */}
+                    <div className="flex flex-col sm:hidden mb-2">
+                      <Link 
+                        href={`/dashboard/tickets/${ticket.id}`}
+                        className="font-mono text-sm font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 mb-1.5"
+                      >
+                        {ticket.ticketNumber}
+                      </Link>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge className={cn(getStatusColor(ticket.status), "text-[9px] px-1.5 py-0.5")}>
+                          {ticket.status.replace("_", " ")}
+                        </Badge>
+                        <Badge className={cn(getPriorityColor(ticket.priority), "text-[9px] px-1.5 py-0.5")}>
+                          {ticket.priority}
+                        </Badge>
+                        <Badge className={cn("bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300", "text-[9px] px-1.5 py-0.5")}>
+                          {getTicketTypeLabel(ticket.type as TicketType)}
+                        </Badge>
+                      </div>
+                    </div>
+                    {/* Desktop: ID and badges in a row */}
+                    <div className="hidden sm:flex flex-wrap items-center gap-2 mb-2">
+                      <Link 
+                        href={`/dashboard/tickets/${ticket.id}`}
+                        className="font-mono text-sm font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
+                      >
+                        {ticket.ticketNumber}
+                      </Link>
+                      <Badge className={cn(getStatusColor(ticket.status), "text-xs")}>
+                        {ticket.status.replace("_", " ")}
+                      </Badge>
+                      <Badge className={cn(getPriorityColor(ticket.priority), "text-xs")}>
+                        {ticket.priority}
+                      </Badge>
+                      <Badge className={cn("bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300", "text-xs")}>
+                        {getTicketTypeLabel(ticket.type as TicketType)}
+                      </Badge>
+                    </div>
+                    <Link 
+                      href={`/dashboard/tickets/${ticket.id}`}
+                      className="block font-semibold text-sm sm:text-base text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400 mb-1"
+                    >
+                      {ticket.title}
+                    </Link>
+                    {ticket.description && (
+                      <div className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 mb-2 line-clamp-2">
+                        {ticket.description}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="space-y-2 text-xs sm:text-sm">
+                  <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
+                    <span className="font-medium min-w-[80px] sm:min-w-[100px] text-[11px] sm:text-xs">Assigned To:</span>
+                    <span className="text-neutral-900 dark:text-neutral-100">
+                      {ticket.assignedTo 
+                        ? formatUserName(ticket.assignedTo)
+                        : ticket.assignedToGroup 
+                        ? `Group: ${ticket.assignedToGroup.name}`
+                        : "Unassigned"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
+                    <span className="font-medium min-w-[80px] sm:min-w-[100px] text-[11px] sm:text-xs">Created:</span>
+                    <span className="text-neutral-900 dark:text-neutral-100">{formatDate(ticket.createdAt)}</span>
+                  </div>
+                  {ticket.updatedAt && ticket.updatedAt.getTime() !== ticket.createdAt.getTime() && (
+                    <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
+                      <span className="font-medium min-w-[80px] sm:min-w-[100px] text-[11px] sm:text-xs">Updated:</span>
+                      <span className="text-neutral-900 dark:text-neutral-100">{formatDate(ticket.updatedAt)}</span>
+                    </div>
+                  )}
+                  {ticket._count.comments > 0 && (
+                    <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
+                      <span className="font-medium min-w-[80px] sm:min-w-[100px] text-[11px] sm:text-xs">Comments:</span>
+                      <div className="flex items-center gap-1 text-neutral-900 dark:text-neutral-100">
+                        <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-neutral-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        </svg>
+                        <span>{ticket._count.comments}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Table View */}
+      {viewMode === "table" && (
+        <div className="overflow-x-auto" suppressHydrationWarning>
+          <table className="w-full">
+            <thead className="bg-neutral-50 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider w-12">
                 <input
                   type="checkbox"
                   ref={selectAllRef}
@@ -284,173 +399,137 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
                   onChange={(e) => handleSelectAll(e.target.checked)}
                   className="w-4 h-4 text-primary-600 bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 cursor-pointer"
                   aria-label="Select all tickets"
+                  suppressHydrationWarning
                 />
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
-                Ticket
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
-                Title
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
-                Status
-              </th>
-              {showPriority && (
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                  Ticket
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                  Title
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                  Status
+                </th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                   Priority
                 </th>
-              )}
-              {showType && (
-                <th className={`px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider ${viewMode === "normal" ? "hidden md:table-cell" : ""}`}>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden md:table-cell">
                   Type
                 </th>
-              )}
-              {showAssignedTo && (
-                <th className={`px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider ${viewMode === "normal" ? "hidden lg:table-cell" : ""}`}>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden lg:table-cell">
                   Assigned To
                 </th>
-              )}
-              {showCreated && (
-                <th className={`px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider ${viewMode === "normal" ? "hidden lg:table-cell" : viewMode === "compact" ? "" : ""}`}>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden lg:table-cell">
                   Created
                 </th>
-              )}
-              {showUpdated && (
-                <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
-                  Updated
-                </th>
-              )}
-              {showComments && (
-                <th className={`px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider ${viewMode === "normal" ? "hidden md:table-cell" : ""}`}>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden md:table-cell">
                   Comments
                 </th>
-              )}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-neutral-200 dark:divide-neutral-700">
-            {tickets.map((ticket) => (
-              <tr
-                key={ticket.id}
-                className={`hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors ${selectedTickets.has(ticket.id) ? "bg-primary-50 dark:bg-primary-900/20" : ""}`}
-              >
-                <td className="px-6 py-4 whitespace-nowrap w-12">
-                  <input
-                    type="checkbox"
-                    checked={selectedTickets.has(ticket.id)}
-                    onChange={(e) => handleSelectTicket(ticket.id, e.target.checked)}
-                    onClick={(e) => e.stopPropagation()}
-                    className="w-4 h-4 text-primary-600 bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 cursor-pointer"
-                    aria-label={`Select ticket ${ticket.ticketNumber}`}
-                  />
-                </td>
-                <td className={`px-6 py-4 whitespace-nowrap ${viewMode === "compact" ? "px-4 py-3" : viewMode === "title-only" ? "px-4 py-2" : ""}`}>
-                  <Link
-                    href={`/dashboard/tickets/${ticket.id}`}
-                    className={`${viewMode === "title-only" ? "text-xs" : "text-sm"} font-mono font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300`}
-                  >
-                    {ticket.ticketNumber}
-                  </Link>
-                </td>
-                <td className={`px-6 py-4 ${viewMode === "compact" ? "px-4 py-3" : viewMode === "title-only" ? "px-4 py-2" : ""}`}>
-                  <Link
-                    href={`/dashboard/tickets/${ticket.id}`}
-                    className={`${viewMode === "title-only" ? "text-xs" : "text-sm"} font-semibold text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400`}
-                  >
-                    <div className={viewMode === "title-only" ? "max-w-xs" : "max-w-md"}>
-                      <div className={viewMode === "title-only" ? "truncate" : viewMode === "compact" ? "line-clamp-1" : "truncate"}>{ticket.title}</div>
-                      {showDescription && ticket.description && (
-                        <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 line-clamp-2">
-                          {ticket.description}
-                        </div>
-                      )}
-                      {!showDescription && viewMode === "normal" && ticket.description && (
-                        <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 line-clamp-1">
-                          {ticket.description}
-                        </div>
-                      )}
-                    </div>
-                  </Link>
-                </td>
-                <td className={`px-6 py-4 whitespace-nowrap ${viewMode === "compact" ? "px-4 py-3" : viewMode === "title-only" ? "px-4 py-2" : ""}`}>
-                  <span className={`px-2 py-1 rounded-full ${viewMode === "title-only" ? "text-xs" : "text-xs"} font-medium ${getStatusColor(ticket.status)}`}>
-                    {ticket.status.replace("_", " ")}
-                  </span>
-                </td>
-                {showPriority && (
-                  <td className={`px-6 py-4 whitespace-nowrap ${viewMode === "compact" ? "px-4 py-3" : ""}`}>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(ticket.priority)}`}>
-                      {ticket.priority}
-                    </span>
-                  </td>
-                )}
-                {showType && (
-                  <td className={`px-6 py-4 whitespace-nowrap ${isNormal ? "hidden md:table-cell" : ""} ${isCompact ? "px-4 py-3" : ""}`}>
-                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
-                      {getTicketTypeLabel(ticket.type as TicketType)}
-                    </span>
-                  </td>
-                )}
-                {showAssignedTo && (
-                  <td className={`px-6 py-4 whitespace-nowrap ${isNormal ? "hidden lg:table-cell" : ""} ${isCompact ? "px-4 py-3" : ""}`}>
-                    {ticket.assignedTo ? (
-                      <div className="text-sm text-neutral-700 dark:text-neutral-300">
-                        {formatUserName(ticket.assignedTo)}
-                      </div>
-                    ) : ticket.assignedToGroup ? (
-                      <div className="text-sm text-neutral-700 dark:text-neutral-300">
-                        <span className="text-xs text-neutral-500 dark:text-neutral-400">Group: </span>
-                        {ticket.assignedToGroup.name}
-                      </div>
-                    ) : (
-                      <span className="text-xs text-neutral-400 dark:text-neutral-400">Unassigned</span>
-                    )}
-                  </td>
-                )}
-                {showCreated && (
-                  <td className={`px-6 py-4 whitespace-nowrap ${isNormal ? "hidden lg:table-cell" : ""} ${isCompact ? "px-4 py-3" : ""}`}>
-                    <div className={`${isCompact ? "text-xs" : "text-sm"} text-neutral-600 dark:text-neutral-400`}>
-                      {formatDate(ticket.createdAt)}
-                    </div>
-                    {showUpdated && ticket.updatedAt && ticket.updatedAt.getTime() !== ticket.createdAt.getTime() && (
-                      <div className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
-                        Updated {formatDate(ticket.updatedAt)}
-                      </div>
-                    )}
-                    {!showUpdated && viewMode === "normal" && ticket.updatedAt && ticket.updatedAt.getTime() !== ticket.createdAt.getTime() && (
-                      <div className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
-                        Updated {formatDate(ticket.updatedAt)}
-                      </div>
-                    )}
-                  </td>
-                )}
-                {showUpdated && (
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-neutral-600 dark:text-neutral-400">
-                      {ticket.updatedAt && ticket.updatedAt.getTime() !== ticket.createdAt.getTime() 
-                        ? formatDateTime(ticket.updatedAt)
-                        : formatDateTime(ticket.createdAt)}
-                    </div>
-                  </td>
-                )}
-                {showComments && (
-                  <td className={`px-6 py-4 whitespace-nowrap ${isNormal ? "hidden md:table-cell" : ""} ${isCompact ? "px-4 py-3" : ""}`}>
-                    {ticket._count.comments > 0 ? (
-                      <div className="flex items-center gap-1 text-sm text-neutral-600 dark:text-neutral-400">
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                        </svg>
-                        <span>{ticket._count.comments}</span>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-neutral-400 dark:text-neutral-400">—</span>
-                    )}
-                  </td>
-                )}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-neutral-200 dark:divide-neutral-700">
+              {tickets.map((ticket) => {
+                const isSelected = mounted && selectedTickets.has(ticket.id);
+                
+                const rowClassName = cn(
+                  "hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors",
+                  isSelected && "bg-primary-50 dark:bg-primary-900/20"
+                );
+
+                return (
+                  <tr key={ticket.id} className={rowClassName}>
+                    <td className="px-6 py-4 whitespace-nowrap w-12" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          handleSelectTicket(ticket.id, e.target.checked);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-4 h-4 text-primary-600 bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 cursor-pointer"
+                        aria-label={`Select ticket ${ticket.ticketNumber}`}
+                        suppressHydrationWarning
+                      />
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <Link
+                        href={`/dashboard/tickets/${ticket.id}`}
+                        className="text-sm font-mono font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
+                      >
+                        {ticket.ticketNumber}
+                      </Link>
+                    </td>
+                    <td className="px-6 py-4">
+                      <Link
+                        href={`/dashboard/tickets/${ticket.id}`}
+                        className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400"
+                      >
+                        <div className="max-w-md">
+                          <div className="truncate">{ticket.title}</div>
+                          {ticket.description && (
+                            <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 line-clamp-1">
+                              {ticket.description}
+                            </div>
+                          )}
+                        </div>
+                      </Link>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <Badge className={getStatusColor(ticket.status)}>{ticket.status.replace("_", " ")}</Badge>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <Badge className={getPriorityColor(ticket.priority)}>{ticket.priority}</Badge>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap hidden md:table-cell">
+                      <Badge className="bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
+                        {getTicketTypeLabel(ticket.type as TicketType)}
+                      </Badge>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap hidden lg:table-cell">
+                      {ticket.assignedTo ? (
+                        <div className="text-sm text-neutral-700 dark:text-neutral-300">
+                          {formatUserName(ticket.assignedTo)}
+                        </div>
+                      ) : ticket.assignedToGroup ? (
+                        <div className="text-sm text-neutral-700 dark:text-neutral-300">
+                          <span className="text-xs text-neutral-500 dark:text-neutral-400">Group: </span>
+                          {ticket.assignedToGroup.name}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-neutral-400 dark:text-neutral-400">Unassigned</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap hidden lg:table-cell">
+                      <div className="text-sm text-neutral-600 dark:text-neutral-400">
+                        {formatDate(ticket.createdAt)}
+                      </div>
+                      {ticket.updatedAt && ticket.updatedAt.getTime() !== ticket.createdAt.getTime() && (
+                        <div className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
+                          Updated {formatDate(ticket.updatedAt)}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap hidden md:table-cell">
+                      {ticket._count.comments > 0 ? (
+                        <div className="flex items-center gap-1 text-sm text-neutral-600 dark:text-neutral-400">
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                          </svg>
+                          <span>{ticket._count.comments}</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-neutral-400 dark:text-neutral-400">—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
       {showAssignDialog && (
         <TicketBulkAssignDialog
           open={showAssignDialog}

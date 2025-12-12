@@ -22,6 +22,10 @@ export type PermissionKey =
   | "projects.delete"
   | "projects.manage_members"
   | "projects.manage_groups"
+  | "projects.risks.view"
+  | "projects.risks.create"
+  | "projects.risks.update"
+  | "projects.risks.delete"
   // Time Tracking
   | "time_tracking.view"
   | "time_tracking.view_all"
@@ -33,11 +37,6 @@ export type PermissionKey =
   | "tasks.create"
   | "tasks.update"
   | "tasks.delete"
-  // Risks
-  | "risks.view"
-  | "risks.create"
-  | "risks.update"
-  | "risks.delete"
   // Issues
   | "issues.view"
   | "issues.create"
@@ -187,6 +186,34 @@ export const PERMISSIONS: PermissionDefinition[] = [
     category: "projects",
     module: "projects",
   },
+  {
+    key: "projects.risks.view",
+    name: "View Project Risks",
+    description: "View project risks",
+    category: "projects",
+    module: "projects",
+  },
+  {
+    key: "projects.risks.create",
+    name: "Create Project Risks",
+    description: "Create new project risks",
+    category: "projects",
+    module: "projects",
+  },
+  {
+    key: "projects.risks.update",
+    name: "Update Project Risks",
+    description: "Update existing project risks",
+    category: "projects",
+    module: "projects",
+  },
+  {
+    key: "projects.risks.delete",
+    name: "Delete Project Risks",
+    description: "Delete project risks",
+    category: "projects",
+    module: "projects",
+  },
   // Time Tracking
   {
     key: "time_tracking.view",
@@ -250,35 +277,6 @@ export const PERMISSIONS: PermissionDefinition[] = [
     name: "Delete Tasks",
     description: "Delete tasks",
     category: "tasks",
-    module: "projects",
-  },
-  // Risks
-  {
-    key: "risks.view",
-    name: "View Risks",
-    description: "View project risks",
-    category: "risks",
-    module: "projects",
-  },
-  {
-    key: "risks.create",
-    name: "Create Risks",
-    description: "Create new risks",
-    category: "risks",
-    module: "projects",
-  },
-  {
-    key: "risks.update",
-    name: "Update Risks",
-    description: "Update existing risks",
-    category: "risks",
-    module: "projects",
-  },
-  {
-    key: "risks.delete",
-    name: "Delete Risks",
-    description: "Delete risks",
-    category: "risks",
     module: "projects",
   },
   // Issues
@@ -469,6 +467,10 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     "projects.delete",
     "projects.manage_members",
     "projects.manage_groups",
+    "projects.risks.view",
+    "projects.risks.create",
+    "projects.risks.update",
+    "projects.risks.delete",
     // Time Tracking
     "time_tracking.view",
     "time_tracking.view_all",
@@ -480,11 +482,6 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     "tasks.create",
     "tasks.update",
     "tasks.delete",
-    // Risks
-    "risks.view",
-    "risks.create",
-    "risks.update",
-    "risks.delete",
     // Issues
     "issues.view",
     "issues.create",

@@ -7,21 +7,50 @@ import { ROUTES } from "@/lib/constants/routes";
 import { getBannedUserInfo } from "@/lib/utils/auth-server";
 import { getPendingUnbanRequest } from "@/server/actions/unban";
 import { redirect } from "next/navigation";
+import { isDatabaseAccessible } from "@/lib/utils/db-health";
+
+export const dynamic = 'force-dynamic';
 
 export default async function BannedPage() {
-  const userInfo = await getBannedUserInfo();
+  // Check database availability FIRST before attempting any database operations
+  let databaseAvailable = true;
+  try {
+    databaseAvailable = await isDatabaseAccessible();
+  } catch (error) {
+    databaseAvailable = false;
+    console.error("Database health check failed:", error);
+  }
+
+  // Only try to get banned user info if database is available
+  let userInfo = null;
+  if (databaseAvailable) {
+    try {
+      userInfo = await getBannedUserInfo();
+    } catch (error) {
+      console.error("Error getting banned user info:", error);
+      userInfo = null;
+    }
+  }
 
   // If user is not banned or not logged in, redirect to login
   if (!userInfo) {
     redirect(ROUTES.LOGIN);
   }
 
-  // Get pending unban request if one exists
-  const pendingRequest = await getPendingUnbanRequest();
+  // Get pending unban request if one exists (only if database is available)
+  let pendingRequest = null;
+  if (databaseAvailable) {
+    try {
+      pendingRequest = await getPendingUnbanRequest();
+    } catch (error) {
+      console.error("Error getting pending unban request:", error);
+      pendingRequest = null;
+    }
+  }
 
   return (
     <>
-      <Header />
+      <Header databaseAvailable={databaseAvailable} />
       <main className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-secondary-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950 pt-16 pb-20">
         {/* Background decoration */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">

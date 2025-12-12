@@ -14,7 +14,7 @@ The group-based permission system has been fully implemented. This document summ
 
 ### 2. Permission Definitions
 - ✅ Created `/src/lib/constants/permissions.ts` with 50+ permissions
-- ✅ Permissions organized by category (tickets, projects, time_tracking, tasks, risks, issues, notes, admin)
+- ✅ Permissions organized by category (tickets, projects, time_tracking, tasks, issues, notes, admin)
 - ✅ Role-based default permissions defined
 - ✅ Permission constants and types exported
 

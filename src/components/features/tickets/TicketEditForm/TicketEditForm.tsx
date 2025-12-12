@@ -5,7 +5,7 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/Input";
-import { Textarea } from "@/components/ui/Textarea";
+import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { updateTicketSchema, type UpdateTicketInput } from "@/lib/validations/tickets";
@@ -85,11 +85,13 @@ export const TicketEditForm = ({ ticket, agents, groups = [] }: TicketEditFormPr
     control,
     handleSubmit,
     formState: { errors, isSubmitting },
+    watch,
+    setValue,
   } = useForm<UpdateTicketInput>({
     resolver: zodResolver(updateTicketSchema),
     defaultValues: {
       title: ticket.title,
-      description: ticket.description || "",
+      description: (ticket as any).descriptionHtml || ticket.description || "",
       type: ticket.type,
       priority: ticket.priority as "LOW" | "MEDIUM" | "HIGH" | "URGENT",
       status: ticket.status as
@@ -192,14 +194,32 @@ export const TicketEditForm = ({ ticket, agents, groups = [] }: TicketEditFormPr
       />
 
       {/* Description Field */}
-      <Textarea
-        label="Description"
-        placeholder="Provide detailed information about the issue, request, or question..."
-        error={errors.description?.message}
-        helperText="Include any relevant details, steps to reproduce, or context"
-        rows={8}
-        {...register("description")}
-      />
+      <div>
+        <RichTextEditor
+          label="Description"
+          placeholder="Provide detailed information about the issue, request, or question..."
+          error={errors.description?.message}
+          helperText="Include any relevant details, steps to reproduce, or context"
+          value={watch("description") || ""}
+          onChange={(html) => {
+            setValue("description", html, { shouldValidate: true });
+          }}
+          onImageUpload={async (file) => {
+            const formData = new FormData();
+            formData.append("file", file);
+            const response = await fetch("/api/tickets/upload-image", {
+              method: "POST",
+              body: formData,
+            });
+            if (!response.ok) {
+              throw new Error("Failed to upload image");
+            }
+            const data = await response.json();
+            return data.url;
+          }}
+          name="description"
+        />
+      </div>
 
       {/* Type, Priority, and Status Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
@@ -36,11 +36,7 @@ export function ProjectPlanningTab({ project }: ProjectPlanningTabProps) {
   const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
 
-  useEffect(() => {
-    loadData();
-  }, [project.id]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const [milestonesData, tasksData, budgetData] = await Promise.all([
@@ -56,7 +52,11 @@ export function ProjectPlanningTab({ project }: ProjectPlanningTabProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [project.id]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handleCreateMilestone = async (data: any) => {
     const result = await createMilestone(project.id, data);

@@ -14,6 +14,7 @@ import { TicketCommentsAndActivity } from "@/components/features/tickets/TicketC
 import { TicketAssignmentFields } from "@/components/features/tickets/TicketAssignmentFields";
 import { TicketStatusPriorityFields } from "@/components/features/tickets/TicketStatusPriorityFields";
 import { TicketTimerSection } from "@/components/features/tickets/TicketTimerSection";
+import { RichTextDisplay } from "@/components/features/tickets/RichTextDisplay";
 import { getTicketTypeLabel, type TicketType } from "@/lib/utils/tickets";
 import { notFound } from "next/navigation";
 import { getAgents } from "@/server/actions/users";
@@ -45,7 +46,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
       <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8 text-center">
         <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">Access Denied</h2>
         <p className="text-neutral-600 dark:text-neutral-400 mb-4">
-          You don't have permission to access the Tickets module. Please contact an administrator.
+          You don&apos;t have permission to access the Tickets module. Please contact an administrator.
         </p>
         <Link href={ROUTES.DASHBOARD}>
           <Button variant="primary">Back to Dashboard</Button>
@@ -82,7 +83,7 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
             Access Denied
           </h2>
           <p className="text-neutral-600 dark:text-neutral-400 mb-6">
-            You don't have permission to view this ticket. The permission may have been removed or you may not have been granted access to this specific ticket.
+            You don&apos;t have permission to view this ticket. The permission may have been removed or you may not have been granted access to this specific ticket.
           </p>
           <Link href="/dashboard/tickets">
             <Button variant="primary">Back to Tickets</Button>
@@ -284,13 +285,9 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
           {/* Ticket Description */}
           <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
             <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">Description</h2>
-            {ticket.description ? (
-              <div className="prose prose-sm max-w-none text-neutral-600 dark:text-neutral-300 whitespace-pre-wrap">
-                {ticket.description}
-              </div>
-            ) : (
-              <p className="text-neutral-500 dark:text-neutral-500 italic">No description provided.</p>
-            )}
+            <RichTextDisplay
+              content={(ticket as any).descriptionHtml || ticket.description || ""}
+            />
           </div>
 
           {/* Comments and Activity Section */}

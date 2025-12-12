@@ -12,7 +12,7 @@ import { Tabs } from "@/components/ui/Tabs";
 import { updateGroup, addUserToGroup, removeUserFromGroup, getGroup } from "@/server/actions/groups";
 import { getAllUsers } from "@/server/actions/users";
 import { formatDate } from "@/lib/utils/date";
-import { GroupPermissionsManager } from "./GroupPermissionsManager";
+import { isDynamicTicketPermission } from "@/lib/utils/permissions";
 
 type Group = NonNullable<Awaited<ReturnType<typeof getGroup>>>;
 
@@ -39,7 +39,7 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
   // Sync group state when initialGroup changes (e.g., after router.refresh())
   React.useEffect(() => {
     setGroup(initialGroup);
-  }, [initialGroup.id, initialGroup.permissions?.length, initialGroup._count?.permissions]);
+  }, [initialGroup]);
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,6 +119,9 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
           )}
         </div>
         <div className="flex gap-2">
+          <Link href={`/dashboard/admin/permissions/groups/${group.id}`}>
+            <Button variant="outline">Manage Permissions</Button>
+          </Link>
           <Button variant="outline" onClick={() => setEditDialogOpen(true)}>
             Edit Group
           </Button>
@@ -200,7 +203,7 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
                             return (
                               <div className="p-4 bg-warning-50 dark:bg-warning-950 border border-warning-200 dark:border-warning-800 rounded-lg">
                                 <p className="text-sm text-warning-800 dark:text-warning-200">
-                                  Permissions data may be out of sync. Please refresh the page or check the Permissions tab.
+                                  Permissions data may be out of sync. Please refresh the page or manage permissions in the Permissions section.
                                 </p>
                                 <p className="text-xs text-warning-600 dark:text-warning-400 mt-1">
                                   Expected {group._count?.permissions || 0} permissions but found {permissionsArray.length} in data.
@@ -210,10 +213,20 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
                           }
 
                           const permissionsByCategory: Record<string, typeof group.permissions> = {};
+                          const dynamicPermissions: typeof group.permissions = [];
+                          
                           permissionsArray.forEach((gp) => {
                             if (!gp || !gp.permission) {
                               return;
                             }
+                            
+                            // Filter out dynamic permissions - they should only appear in the Dynamic section
+                            // Dynamic permissions will be shown separately below
+                            if (isDynamicTicketPermission(gp.permission.key)) {
+                              dynamicPermissions.push(gp);
+                              return;
+                            }
+                            
                             // Use category from permission, default to "other" if missing
                             const category = gp.permission.category || "other";
                             if (!permissionsByCategory[category]) {
@@ -232,74 +245,111 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
                           if (sortedCategories.length === 0) {
                             return (
                               <p className="text-neutral-600 dark:text-neutral-400">
-                                No permissions found in the data. Please check the Permissions tab.
+                                No permissions found. Manage permissions in the Permissions section.
                               </p>
                             );
                           }
 
-                          return sortedCategories.map(([category, permissions]) => (
-                            <div
-                              key={category}
-                              className="border border-neutral-200 dark:border-neutral-800 rounded-lg overflow-hidden"
-                            >
-                              <div className="bg-neutral-50 dark:bg-neutral-900 px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
-                                <h4 className="font-semibold text-neutral-900 dark:text-neutral-100 capitalize">
-                                  {category.replace(/_/g, " ")} ({permissions.length})
-                                </h4>
-                              </div>
-                              <div className="p-4 bg-white dark:bg-neutral-800">
-                                <div className="space-y-2">
-                                  {permissions
-                                    .filter((gp) => gp && gp.permission) // Filter out any null/undefined entries
-                                    .sort((a, b) => {
-                                      // Sort by key alphabetically, but put dynamic permissions (tickets.NUMBER.action) after static ones
-                                      const aKey = a.permission.key;
-                                      const bKey = b.permission.key;
-                                      const aIsDynamic = aKey.startsWith("tickets.") && aKey.split(".").length === 3;
-                                      const bIsDynamic = bKey.startsWith("tickets.") && bKey.split(".").length === 3;
-                                      
-                                      if (aIsDynamic && !bIsDynamic) return 1;
-                                      if (!aIsDynamic && bIsDynamic) return -1;
-                                      return aKey.localeCompare(bKey);
-                                    })
-                                    .map((gp) => {
-                                      if (!gp || !gp.permission) {
-                                        return null;
-                                      }
-                                      // Check if this is a dynamic ticket permission
-                                      const isDynamic = gp.permission.key.startsWith("tickets.") && 
-                                                        gp.permission.key.split(".").length === 3;
-                                      
-                                      return (
-                                        <div
-                                          key={gp.permission.id}
-                                          className="flex items-start gap-3 p-2 rounded hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
-                                        >
-                                          <div className="flex-1">
-                                            <div className="flex items-center gap-2">
-                                              <div className="font-medium text-neutral-900 dark:text-neutral-100">
-                                                {gp.permission.name}
+                          return (
+                            <>
+                              {/* Regular category sections */}
+                              {sortedCategories.map(([category, permissions]) => (
+                                <div
+                                  key={category}
+                                  className="border border-neutral-200 dark:border-neutral-800 rounded-lg overflow-hidden"
+                                >
+                                  <div className="bg-neutral-50 dark:bg-neutral-900 px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
+                                    <h4 className="font-semibold text-neutral-900 dark:text-neutral-100 capitalize">
+                                      {category.replace(/_/g, " ")} ({permissions.length})
+                                    </h4>
+                                  </div>
+                                  <div className="p-4 bg-white dark:bg-neutral-800">
+                                    <div className="space-y-2">
+                                      {permissions
+                                        .filter((gp) => gp && gp.permission) // Filter out any null/undefined entries
+                                        .sort((a, b) => a.permission.key.localeCompare(b.permission.key))
+                                        .map((gp) => {
+                                          if (!gp || !gp.permission) {
+                                            return null;
+                                          }
+                                          
+                                          return (
+                                            <div
+                                              key={gp.permission.id}
+                                              className="flex items-start gap-3 p-2 rounded hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
+                                            >
+                                              <div className="flex-1">
+                                                <div className="font-medium text-neutral-900 dark:text-neutral-100">
+                                                  {gp.permission.name}
+                                                </div>
+                                                {gp.permission.description && (
+                                                  <div className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                                                    {gp.permission.description}
+                                                  </div>
+                                                )}
+                                                <div className="text-xs text-neutral-500 dark:text-neutral-500 mt-1 font-mono">
+                                                  {gp.permission.key}
+                                                </div>
                                               </div>
-                                              {isDynamic && (
-                                                <Badge variant="info" size="sm">Dynamic</Badge>
-                                              )}
                                             </div>
-                                            {gp.permission.description && (
-                                              <div className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
-                                                {gp.permission.description}
-                                              </div>
-                                            )}
-                                            <div className="text-xs text-neutral-500 dark:text-neutral-500 mt-1 font-mono">
-                                              {gp.permission.key}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
+                                          );
+                                        })}
+                                    </div>
+                                  </div>
                                 </div>
-                              </div>
-                            </div>
-                          ));
+                              ))}
+                              
+                              {/* Dynamic Permissions Section */}
+                              {dynamicPermissions.length > 0 && (
+                                <div className="border border-neutral-200 dark:border-neutral-800 rounded-lg overflow-hidden">
+                                  <div className="bg-neutral-50 dark:bg-neutral-900 px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
+                                    <h4 className="font-semibold text-neutral-900 dark:text-neutral-100">
+                                      Dynamic Permissions ({dynamicPermissions.length})
+                                    </h4>
+                                    <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                                      Ticket-specific permissions (e.g., tickets.INC-000001.view)
+                                    </p>
+                                  </div>
+                                  <div className="p-4 bg-white dark:bg-neutral-800">
+                                    <div className="space-y-2">
+                                      {dynamicPermissions
+                                        .filter((gp) => gp && gp.permission)
+                                        .sort((a, b) => a.permission.key.localeCompare(b.permission.key))
+                                        .map((gp) => {
+                                          if (!gp || !gp.permission) {
+                                            return null;
+                                          }
+                                          
+                                          return (
+                                            <div
+                                              key={gp.permission.id}
+                                              className="flex items-start gap-3 p-2 rounded hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
+                                            >
+                                              <div className="flex-1">
+                                                <div className="flex items-center gap-2">
+                                                  <div className="font-medium text-neutral-900 dark:text-neutral-100">
+                                                    {gp.permission.name}
+                                                  </div>
+                                                  <Badge variant="info" size="sm">Dynamic</Badge>
+                                                </div>
+                                                {gp.permission.description && (
+                                                  <div className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                                                    {gp.permission.description}
+                                                  </div>
+                                                )}
+                                                <div className="text-xs text-neutral-500 dark:text-neutral-500 mt-1 font-mono">
+                                                  {gp.permission.key}
+                                                </div>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </>
+                          );
                         })()}
                       </div>
                     )}
@@ -343,31 +393,6 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
                       ))}
                     </div>
                   )}
-                </div>
-              ),
-            },
-            {
-              id: "permissions",
-              label: "Permissions",
-              content: (
-                <div>
-                  <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-4">Group Permissions</h3>
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
-                    Manage what this group can access. Permissions are additive - users get permissions from their role plus all groups they belong to.
-                  </p>
-                  <GroupPermissionsManager
-                    groupId={group.id}
-                    initialPermissionIds={group.permissions?.map((p) => p.permission.id) || []}
-                    onSave={async () => {
-                      // Reload the group data to update the overview immediately
-                      const updatedGroup = await getGroup(group.id);
-                      if (updatedGroup) {
-                        setGroup(updatedGroup);
-                      }
-                      // Also trigger router refresh for server component updates
-                      router.refresh();
-                    }}
-                  />
                 </div>
               ),
             },

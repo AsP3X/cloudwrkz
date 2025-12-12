@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { getUserTheme, updateUserTheme } from "@/server/actions/theme";
 
 type Theme = "light" | "dark" | "system";
 
@@ -39,44 +40,91 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // The blocking script in layout.tsx already sets the dark class based on localStorage
   const [theme, setThemeState] = useState<Theme>("system");
 
-  // Initialize effectiveTheme by checking DOM (set by blocking script)
-  // This is safe because the blocking script runs before React hydrates
-  const [effectiveTheme, setEffectiveTheme] = useState<"light" | "dark">(() => {
-    if (typeof window === "undefined") return "light";
-    // Check if dark class is already on the document (from blocking script)
-    // This is safe because blocking script runs synchronously before React
-    try {
-      return document.documentElement.classList.contains("dark") ? "dark" : "light";
-    } catch {
-      return "light";
-    }
-  });
+  // Initialize effectiveTheme with safe default to avoid hydration mismatch
+  // Will be updated after mount when we can safely access DOM
+  const [effectiveTheme, setEffectiveTheme] = useState<"light" | "dark">("light");
 
   const [mounted, setMounted] = useState(false);
 
-  // Load theme from localStorage after mount to prevent hydration mismatch
+  // Load theme from database and localStorage after mount to prevent hydration mismatch
   useEffect(() => {
     // Mark as mounted
     setMounted(true);
 
-    // Load theme from localStorage now that we're on the client
-    try {
-      const storedTheme = localStorage.getItem("theme") as Theme | null;
-      if (storedTheme && ["light", "dark", "system"].includes(storedTheme)) {
-        setThemeState(storedTheme);
-        // Update effectiveTheme based on stored theme
-        const resolved = storedTheme === "system" ? getSystemTheme() : storedTheme;
-        setEffectiveTheme(resolved);
-      } else {
-        // No stored theme, use system preference
-        const resolved = getSystemTheme();
-        setEffectiveTheme(resolved);
+    // Load theme priority: database (if authenticated) > localStorage > system
+    const loadTheme = async () => {
+      try {
+        // First, try to get theme from database (for authenticated users)
+        const dbTheme = await getUserTheme();
+        
+        if (dbTheme && dbTheme !== "system") {
+          // User has a theme preference in database, use it
+          setThemeState(dbTheme);
+          // dbTheme is already "light" or "dark" at this point (not "system")
+          setEffectiveTheme(dbTheme);
+          
+          // Sync localStorage with database value
+          if (typeof window !== "undefined") {
+            localStorage.setItem("theme", dbTheme);
+          }
+          return;
+        }
+        
+        // Fallback to localStorage if no database theme or theme is "system"
+        const storedTheme = localStorage.getItem("theme") as Theme | null;
+        if (storedTheme && ["light", "dark", "system"].includes(storedTheme)) {
+          setThemeState(storedTheme);
+          const resolved = storedTheme === "system" ? getSystemTheme() : storedTheme;
+          setEffectiveTheme(resolved);
+          
+          // If we have a stored theme but database has "system", update database
+          if (storedTheme !== "system" && dbTheme === "system") {
+            updateUserTheme(storedTheme).catch((err) => {
+              console.error("Failed to sync theme to database:", err);
+            });
+          }
+        } else {
+          // No stored theme, check DOM first (set by blocking script), then use system preference
+          let resolved: "light" | "dark";
+          try {
+            resolved = document.documentElement.classList.contains("dark") ? "dark" : getSystemTheme();
+          } catch {
+            resolved = getSystemTheme();
+          }
+          setEffectiveTheme(resolved);
+        }
+      } catch (error) {
+        // If database fetch fails, fall back to localStorage
+        console.error("Error loading theme from database:", error);
+        try {
+          const storedTheme = localStorage.getItem("theme") as Theme | null;
+          if (storedTheme && ["light", "dark", "system"].includes(storedTheme)) {
+            setThemeState(storedTheme);
+            const resolved = storedTheme === "system" ? getSystemTheme() : storedTheme;
+            setEffectiveTheme(resolved);
+          } else {
+            let resolved: "light" | "dark";
+            try {
+              resolved = document.documentElement.classList.contains("dark") ? "dark" : getSystemTheme();
+            } catch {
+              resolved = getSystemTheme();
+            }
+            setEffectiveTheme(resolved);
+          }
+        } catch {
+          // localStorage not available, check DOM first, then use system preference
+          let resolved: "light" | "dark";
+          try {
+            resolved = document.documentElement.classList.contains("dark") ? "dark" : getSystemTheme();
+          } catch {
+            resolved = getSystemTheme();
+          }
+          setEffectiveTheme(resolved);
+        }
       }
-    } catch {
-      // localStorage not available, use system preference
-      const resolved = getSystemTheme();
-      setEffectiveTheme(resolved);
-    }
+    };
+
+    loadTheme();
   }, [getSystemTheme]);
 
   // Determine effective theme (resolves "system" to light or dark)
@@ -144,9 +192,18 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);
+    
+    // Update localStorage immediately for instant UI update
     if (typeof window !== "undefined") {
       localStorage.setItem("theme", newTheme);
     }
+    
+    // Save to database in the background (for authenticated users)
+    // This ensures theme syncs across all devices
+    updateUserTheme(newTheme).catch((err) => {
+      console.error("Failed to save theme to database:", err);
+      // Theme is still saved in localStorage, so it works locally
+    });
   };
 
   // Always provide the context, even before mounted (prevents hydration errors)

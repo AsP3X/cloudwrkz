@@ -36,7 +36,7 @@ const viewModes: Array<{ value: TimeEntryViewMode; label: string; icon: React.Re
 
 export const TimeEntryViewToggle = ({ currentView, onViewChange }: TimeEntryViewToggleProps) => {
   return (
-    <div className="inline-flex rounded-lg border-2 border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-1" role="group" aria-label="Time entry view options">
+    <div className="inline-flex rounded-lg border-2 border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-1" role="group" aria-label="Time entry view options" suppressHydrationWarning>
       {viewModes.map((mode) => (
         <button
           key={mode.value}
@@ -81,7 +81,12 @@ export const saveViewMode = (view: TimeEntryViewMode): void => {
   
   try {
     localStorage.setItem(VIEW_MODE_STORAGE_KEY, view);
+    // Verify it was saved (important for mobile browsers)
+    const verify = localStorage.getItem(VIEW_MODE_STORAGE_KEY);
+    if (verify !== view) {
+      console.error("Failed to persist view mode to localStorage");
+    }
   } catch (error) {
-    // Ignore localStorage errors
+    console.error("Error saving view mode to localStorage:", error);
   }
 };

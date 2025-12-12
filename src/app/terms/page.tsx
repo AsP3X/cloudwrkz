@@ -4,16 +4,28 @@ import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
+import { isDatabaseAccessible } from "@/lib/utils/db-health";
+
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: `Terms and Conditions | ${APP_CONFIG.name}`,
   description: `Read the Terms and Conditions for ${APP_CONFIG.name}. Understand your rights and responsibilities when using our service.`,
 };
 
-export default function TermsPage() {
+export default async function TermsPage() {
+  // Check database availability
+  let databaseAvailable = true;
+  try {
+    databaseAvailable = await isDatabaseAccessible();
+  } catch (error) {
+    databaseAvailable = false;
+    console.error("Database health check failed:", error);
+  }
+
   return (
     <>
-      <Header />
+      <Header databaseAvailable={databaseAvailable} />
       <main className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-secondary-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950 pt-16 pb-20">
         {/* Background decoration */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">

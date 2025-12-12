@@ -6,6 +6,8 @@ import { ROUTES } from "@/lib/constants/routes";
 
 const handleLearnMoreClick = (e: React.MouseEvent<HTMLElement>) => {
   e.preventDefault();
+  // Only access document on client side
+  if (typeof window === "undefined") return;
   const featuresSection = document.getElementById("features");
   if (featuresSection) {
     featuresSection.scrollIntoView({ behavior: "smooth", block: "start" });
