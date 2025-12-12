@@ -107,6 +107,15 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
   // Get the most recent data points
   const visibleData = responseTimeHistory.slice(-MAX_DATA_POINTS);
 
+  // Calculate dynamic Y-axis domain based on max value
+  const yAxisDomain = (() => {
+    if (visibleData.length === 0) return [0, 200] as [number, number];
+    
+    const maxValue = Math.max(...visibleData.map(d => d.responseTime));
+    // Use the exact max value recorded
+    return [0, maxValue] as [number, number];
+  })();
+
   const fetchHealthData = async () => {
     setIsRefreshing(true);
     try {
@@ -460,7 +469,7 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
                   />
                   <YAxis 
                     type="number"
-                    domain={[0, (dataMax: number) => Math.max(dataMax + 100, 200)]}
+                    domain={yAxisDomain}
                     tick={{ fontSize: 11 }}
                     stroke="currentColor"
                     className="text-neutral-600 dark:text-neutral-400"
