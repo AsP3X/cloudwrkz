@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import dynamic from "next/dynamic";
+import dynamicImport from "next/dynamic";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { Hero } from "@/components/features/landing/Hero";
@@ -11,15 +11,17 @@ import { isDatabaseAccessible } from "@/lib/utils/db-health";
 import { LandingPageClient } from "@/components/features/landing/LandingPageClient";
 
 // Lazy load below-the-fold components for better performance
-const Features = dynamic(() => import("@/components/features/landing/Features").then((mod) => ({ default: mod.Features })), {
+const Features = dynamicImport(() => import("@/components/features/landing/Features").then((mod) => ({ default: mod.Features })), {
   ssr: true,
   loading: () => <div className="min-h-[600px]" />,
 });
 
-const CTA = dynamic(() => import("@/components/features/landing/CTA").then((mod) => ({ default: mod.CTA })), {
+const CTA = dynamicImport(() => import("@/components/features/landing/CTA").then((mod) => ({ default: mod.CTA })), {
   ssr: true,
   loading: () => <div className="min-h-[400px]" />,
 });
+
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: `Home | ${APP_CONFIG.name}`,

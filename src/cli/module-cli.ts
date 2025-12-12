@@ -180,7 +180,7 @@ async function handleEnable() {
     // Ensure module exists
     await initializeModules();
 
-    const module = await prisma.module.update({
+    const moduleData = await prisma.module.update({
       where: { key: moduleKey },
       data: { enabled: true },
       select: {
@@ -192,7 +192,7 @@ async function handleEnable() {
     });
 
     spinner.succeed("Module enabled");
-    console.log(`\n✅ Module "${module.name}" (${module.key}) has been enabled.`);
+    console.log(`\n✅ Module "${moduleData.name}" (${moduleData.key}) has been enabled.`);
   } catch (err) {
     spinner.fail("Failed to enable module");
     if (err instanceof Error && err.message.includes("Record to update does not exist")) {
@@ -223,7 +223,7 @@ async function handleDisable() {
   spinner.start();
 
   try {
-    const module = await prisma.module.update({
+    const moduleData = await prisma.module.update({
       where: { key: moduleKey },
       data: { enabled: false },
       select: {
@@ -235,7 +235,7 @@ async function handleDisable() {
     });
 
     spinner.succeed("Module disabled");
-    console.log(`\n✅ Module "${module.name}" (${module.key}) has been disabled.`);
+    console.log(`\n✅ Module "${moduleData.name}" (${moduleData.key}) has been disabled.`);
   } catch (err) {
     spinner.fail("Failed to disable module");
     if (err instanceof Error && err.message.includes("Record to update does not exist")) {
@@ -260,27 +260,27 @@ async function handleShow() {
   spinner.start();
 
   try {
-    const module = await prisma.module.findUnique({
+    const moduleData = await prisma.module.findUnique({
       where: { key: moduleKey },
     });
 
     spinner.succeed("Module details loaded");
 
-    if (!module) {
+    if (!moduleData) {
       error(`Module "${moduleKey}" not found. Run 'sync' to initialize modules.`);
       process.exit(1);
     }
 
     separator();
     sectionHeader("Module Details");
-    displayKeyValue("ID", module.id);
-    displayKeyValue("Key", module.key);
-    displayKeyValue("Name", module.name);
-    displayKeyValue("Description", module.description || "-");
-    displayKeyValue("Status", module.enabled ? chalk.green("Enabled") : chalk.gray("Disabled"));
-    displayKeyValue("Config", module.config ? JSON.stringify(module.config, null, 2) : "-");
-    displayKeyValue("Created", module.createdAt.toLocaleString());
-    displayKeyValue("Updated", module.updatedAt.toLocaleString());
+    displayKeyValue("ID", moduleData.id);
+    displayKeyValue("Key", moduleData.key);
+    displayKeyValue("Name", moduleData.name);
+    displayKeyValue("Description", moduleData.description || "-");
+    displayKeyValue("Status", moduleData.enabled ? chalk.green("Enabled") : chalk.gray("Disabled"));
+    displayKeyValue("Config", moduleData.config ? JSON.stringify(moduleData.config, null, 2) : "-");
+    displayKeyValue("Created", moduleData.createdAt.toLocaleString());
+    displayKeyValue("Updated", moduleData.updatedAt.toLocaleString());
   } catch (err) {
     spinner.fail("Failed to load module details");
     error(err instanceof Error ? err.message : String(err));
@@ -307,23 +307,23 @@ async function handleConfig() {
     }
   } else {
     // Interactive mode - get current config and allow editing
-    const module = await prisma.module.findUnique({
+    const moduleData = await prisma.module.findUnique({
       where: { key: moduleKey },
       select: { config: true },
     });
 
-    if (!module) {
+    if (!moduleData) {
       error(`Module "${moduleKey}" not found. Run 'sync' to initialize modules.`);
       process.exit(1);
     }
 
-    const currentConfig = module.config ? JSON.stringify(module.config, null, 2) : "{}";
+    const currentConfig = moduleData.config ? JSON.stringify(moduleData.config, null, 2) : "{}";
     const configInput = await prompt("Enter config JSON (press Enter to keep current):", {
       default: currentConfig,
     });
 
     try {
-      configJson = configInput.trim() ? JSON.parse(configInput) : module.config;
+      configJson = configInput.trim() ? JSON.parse(configInput) : moduleData.config;
     } catch (err) {
       error("Invalid JSON format");
       process.exit(1);
@@ -334,7 +334,7 @@ async function handleConfig() {
   spinner.start();
 
   try {
-    const module = await prisma.module.update({
+    const moduleData = await prisma.module.update({
       where: { key: moduleKey },
       data: { config: configJson },
       select: {
@@ -345,8 +345,8 @@ async function handleConfig() {
     });
 
     spinner.succeed("Module config updated");
-    console.log(`\n✅ Config for "${module.name}" (${module.key}) has been updated.`);
-    console.log(`\nConfig: ${JSON.stringify(module.config, null, 2)}`);
+    console.log(`\n✅ Config for "${moduleData.name}" (${moduleData.key}) has been updated.`);
+    console.log(`\nConfig: ${JSON.stringify(moduleData.config, null, 2)}`);
   } catch (err) {
     spinner.fail("Failed to update module config");
     if (err instanceof Error && err.message.includes("Record to update does not exist")) {
@@ -450,7 +450,7 @@ async function initializeModules() {
   const allModules = await prisma.module.findMany();
 
   const modulesToDelete = allModules.filter(
-    (module) => !validModuleKeys.has(module.key)
+    (moduleData) => !validModuleKeys.has(moduleData.key)
   );
 
   if (modulesToDelete.length > 0) {

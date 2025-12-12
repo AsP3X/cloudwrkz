@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
@@ -57,24 +57,21 @@ export function TicketManagementPage({ initialData }: TicketManagementPageProps)
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const [filters, setFilters] = useState<TicketFilters>({
+  // Derive filters from searchParams to avoid setState in effect
+  const currentFilters = useMemo(() => ({
     status: searchParams.get("status") || undefined,
     priority: searchParams.get("priority") || undefined,
     type: searchParams.get("type") || undefined,
     search: searchParams.get("search") || undefined,
     page: initialData.page,
-  });
+  }), [searchParams, initialData.page]);
+
+  const [filters, setFilters] = useState<TicketFilters>(currentFilters);
 
   // Sync filters when searchParams change (e.g., after router.refresh())
   useEffect(() => {
-    setFilters({
-      status: searchParams.get("status") || undefined,
-      priority: searchParams.get("priority") || undefined,
-      type: searchParams.get("type") || undefined,
-      search: searchParams.get("search") || undefined,
-      page: initialData.page,
-    });
-  }, [searchParams, initialData.page]);
+    setFilters(currentFilters);
+  }, [currentFilters]);
 
   const updateFilters = (newFilters: Partial<TicketFilters>) => {
     const updated = { ...filters, ...newFilters, page: 1 };

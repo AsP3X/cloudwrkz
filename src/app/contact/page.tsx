@@ -3,6 +3,8 @@ import { Footer } from "@/components/layout/Footer";
 import { ContactForm } from "@/components/features/contact/ContactForm";
 import { isDatabaseAccessible } from "@/lib/utils/db-health";
 
+export const dynamic = 'force-dynamic';
+
 export default async function ContactPage() {
   // Check database availability
   let databaseAvailable = true;

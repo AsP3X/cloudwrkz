@@ -6,6 +6,8 @@ import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 import { isDatabaseAccessible } from "@/lib/utils/db-health";
 
+export const dynamic = 'force-dynamic';
+
 export default async function RegisterPage() {
   // Check database availability
   let databaseAvailable = true;

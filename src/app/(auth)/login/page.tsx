@@ -10,6 +10,8 @@ type LoginPageProps = {
   searchParams: Promise<{ error?: string; redirect?: string }>;
 };
 
+export const dynamic = 'force-dynamic';
+
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;
   

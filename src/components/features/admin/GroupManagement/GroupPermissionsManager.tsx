@@ -686,7 +686,7 @@ export function GroupPermissionsManager({
 
         {dynamicTicketPermissions.length === 0 && pendingDynamicPermissions.length === 0 && (
           <div className="p-4 bg-white dark:bg-neutral-800 border-t border-neutral-200 dark:border-neutral-700 text-center text-neutral-600 dark:text-neutral-400">
-            No dynamic permissions assigned. Click "Add Permission" to add one.
+            No dynamic permissions assigned. Click &quot;Add Permission&quot; to add one.
           </div>
         )}
       </div>

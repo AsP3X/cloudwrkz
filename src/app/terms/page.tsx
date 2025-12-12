@@ -6,6 +6,8 @@ import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 import { isDatabaseAccessible } from "@/lib/utils/db-health";
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: `Terms and Conditions | ${APP_CONFIG.name}`,
   description: `Read the Terms and Conditions for ${APP_CONFIG.name}. Understand your rights and responsibilities when using our service.`,

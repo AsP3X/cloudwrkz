@@ -49,7 +49,7 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
       <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8 text-center">
         <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">Access Denied</h2>
         <p className="text-neutral-600 dark:text-neutral-400">
-          You don't have permission to access the Tickets module. Please contact an administrator.
+          You don&apos;t have permission to access the Tickets module. Please contact an administrator.
         </p>
       </div>
     );

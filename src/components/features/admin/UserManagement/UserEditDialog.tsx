@@ -168,7 +168,7 @@ export function UserEditDialog({ open, onOpenChange, user, onSubmit, isLoading }
               </div>
             )}
             <p className="text-xs text-error-600 dark:text-error-400 mt-2">
-              Change status to "Active" to unban this user.
+              Change status to &quot;Active&quot; to unban this user.
             </p>
           </div>
         )}

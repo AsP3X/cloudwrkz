@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
@@ -37,11 +37,7 @@ export function ProjectRisksIssuesTab({ project }: ProjectRisksIssuesTabProps) {
   const [issueDialogOpen, setIssueDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
 
-  useEffect(() => {
-    loadData();
-  }, [project.id]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const [risksData, issuesData] = await Promise.all([
@@ -55,7 +51,11 @@ export function ProjectRisksIssuesTab({ project }: ProjectRisksIssuesTabProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [project.id]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   if (loading) {
     return <div className="text-center py-8">Loading...</div>;

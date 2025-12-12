@@ -11,6 +11,8 @@ import { HealthMetrics } from "@/components/features/health/HealthMetrics";
 import { getCurrentUser } from "@/lib/utils/auth-server";
 
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: `Health Status | ${APP_CONFIG.name}`,
   description: "Service health status and database monitoring",

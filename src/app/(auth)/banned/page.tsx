@@ -9,6 +9,8 @@ import { getPendingUnbanRequest } from "@/server/actions/unban";
 import { redirect } from "next/navigation";
 import { isDatabaseAccessible } from "@/lib/utils/db-health";
 
+export const dynamic = 'force-dynamic';
+
 export default async function BannedPage() {
   // Check database availability FIRST before attempting any database operations
   let databaseAvailable = true;

@@ -168,24 +168,24 @@ async function handleGet() {
   spinner.start();
 
   try {
-    const module = await prisma.module.findUnique({
+    const moduleData = await prisma.module.findUnique({
       where: { key: moduleKey },
       select: { config: true },
     });
 
-    if (!module) {
+    if (!moduleData) {
       spinner.fail("Module not found");
       error(`Module "${moduleKey}" not found`);
       process.exit(1);
     }
 
-    if (!module.config) {
+    if (!moduleData.config) {
       spinner.succeed("No configuration found");
       notice(`Module "${moduleKey}" has no configuration`, "info");
       return;
     }
 
-    const config = module.config as any;
+    const config = moduleData.config as any;
     const value = configKey ? config[configKey] : config;
 
     spinner.succeed("Configuration retrieved");
@@ -219,18 +219,18 @@ async function handleSet() {
   spinner.start();
 
   try {
-    const module = await prisma.module.findUnique({
+    const moduleData = await prisma.module.findUnique({
       where: { key: moduleKey },
       select: { config: true },
     });
 
-    if (!module) {
+    if (!moduleData) {
       spinner.fail("Module not found");
       error(`Module "${moduleKey}" not found`);
       process.exit(1);
     }
 
-    let config = (module.config as any) || {};
+    let config = (moduleData.config as any) || {};
     let parsedValue: any;
 
     // Try to parse as JSON, otherwise use as string
@@ -274,18 +274,18 @@ async function handleUnset() {
   spinner.start();
 
   try {
-    const module = await prisma.module.findUnique({
+    const moduleData = await prisma.module.findUnique({
       where: { key: moduleKey },
       select: { config: true },
     });
 
-    if (!module || !module.config) {
+    if (!moduleData || !moduleData.config) {
       spinner.fail("Configuration not found");
       error(`Configuration "${key}" not found`);
       process.exit(1);
     }
 
-    const config = module.config as any;
+    const config = moduleData.config as any;
 
     if (configKey) {
       if (config[configKey] === undefined) {
@@ -335,13 +335,13 @@ async function handleValidate() {
     let valid = true;
     const issues: string[] = [];
 
-    for (const module of modules) {
-      if (module.config) {
+    for (const moduleData of modules) {
+      if (moduleData.config) {
         try {
-          JSON.parse(JSON.stringify(module.config));
+          JSON.parse(JSON.stringify(moduleData.config));
         } catch {
           valid = false;
-          issues.push(`Module "${module.key}" has invalid JSON configuration`);
+          issues.push(`Module "${moduleData.key}" has invalid JSON configuration`);
         }
       }
     }

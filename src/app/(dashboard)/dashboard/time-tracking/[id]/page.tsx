@@ -29,7 +29,7 @@ export default async function TimeEntryDetailPageRoute({ params }: TimeEntryDeta
           Access Denied
         </h2>
         <p className="text-neutral-600 dark:text-neutral-400 mb-4">
-          You don't have permission to access the Time Tracking module. Please contact an administrator.
+          You don&apos;t have permission to access the Time Tracking module. Please contact an administrator.
         </p>
         <a href={ROUTES.DASHBOARD}>
           <button className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700">

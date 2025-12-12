@@ -6,6 +6,8 @@ import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 import { isDatabaseAccessible } from "@/lib/utils/db-health";
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: `Privacy Policy | ${APP_CONFIG.name}`,
   description: `Read the Privacy Policy for ${APP_CONFIG.name}. Learn how we collect, use, and protect your personal data in accordance with GDPR and German data protection laws.`,

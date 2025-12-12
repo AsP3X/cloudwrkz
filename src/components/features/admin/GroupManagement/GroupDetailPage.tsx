@@ -39,7 +39,7 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
   // Sync group state when initialGroup changes (e.g., after router.refresh())
   React.useEffect(() => {
     setGroup(initialGroup);
-  }, [initialGroup.id, initialGroup.permissions?.length, initialGroup._count?.permissions]);
+  }, [initialGroup]);
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();

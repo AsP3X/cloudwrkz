@@ -112,7 +112,7 @@ function parseArgs(args: string[]): { [key: string]: string | boolean } {
 async function handleList() {
   const parsed = parseArgs(commandArgs.slice(1));
   const category = parsed.category as string | undefined;
-  const module = parsed.module as string | undefined;
+  const moduleKey = parsed.module as string | undefined;
 
   const spinner = createSpinner("Loading permissions...");
   spinner.start();
@@ -120,7 +120,7 @@ async function handleList() {
   try {
     const where: any = {};
     if (category) where.category = category;
-    if (module) where.module = module;
+    if (moduleKey) where.module = moduleKey;
 
     const permissions = await prisma.permission.findMany({
       where,
