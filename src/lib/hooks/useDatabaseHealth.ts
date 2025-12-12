@@ -22,12 +22,12 @@ interface HealthCheckResponse {
  * Automatically polls the health endpoint and updates when database status changes
  */
 export function useDatabaseHealth(options?: {
-  pollInterval?: number; // Polling interval in milliseconds (default: 10000)
+  pollInterval?: number; // Polling interval in milliseconds (default: 30000)
   initialStatus?: DatabaseHealthStatus; // Initial status from server
   onStatusChange?: (status: DatabaseHealthStatus, wasUnhealthy: boolean) => void; // Callback when status changes
 }) {
   const {
-    pollInterval = 10000,
+    pollInterval = 30000,
     initialStatus = "loading",
     onStatusChange,
   } = options || {};

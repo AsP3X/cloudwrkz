@@ -17,7 +17,7 @@ interface HeaderProps {
 export const Header = ({ databaseAvailable: initialDatabaseAvailable = true }: HeaderProps) => {
   // Use client-side health monitoring to detect database status changes
   const { status } = useDatabaseHealth({
-    pollInterval: 10000, // Check every 10 seconds
+    pollInterval: 30000, // Check every 30 seconds
     initialStatus: initialDatabaseAvailable ? "healthy" : "unhealthy",
   });
 

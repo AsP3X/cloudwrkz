@@ -15,7 +15,7 @@ interface LandingPageClientProps {
  */
 export function LandingPageClient({ children, initialDatabaseAvailable }: LandingPageClientProps) {
   const { status } = useDatabaseHealth({
-    pollInterval: 10000, // Check every 10 seconds
+    pollInterval: 30000, // Check every 30 seconds
     initialStatus: initialDatabaseAvailable ? "healthy" : "unhealthy",
     onStatusChange: (newStatus, wasUnhealthy) => {
       // If database just came back online, log for debugging

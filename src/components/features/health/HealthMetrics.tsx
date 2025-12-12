@@ -36,32 +36,45 @@ function MetricCard({
   value,
   subtitle,
   icon,
+  progress,
 }: {
   title: string;
   value: string | number | undefined;
   subtitle?: string;
   icon?: React.ReactNode;
+  progress?: number; // Progress from 0 to 100
 }) {
   return (
-    <div className="bg-white dark:bg-neutral-900 rounded-lg border border-neutral-200 dark:border-neutral-800 p-6 hover:shadow-soft-lg hover:border-primary-200 dark:hover:border-primary-800 transition-all duration-300">
-      <div className="flex items-start justify-between mb-2">
-        <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
-          {title}
-        </h3>
-        {icon && (
-          <div className="text-primary-600 dark:text-primary-400">
-            {icon}
-          </div>
+    <div className="bg-white dark:bg-neutral-900 rounded-lg border border-neutral-200 dark:border-neutral-800 p-6 hover:shadow-soft-lg hover:border-primary-200 dark:hover:border-primary-800 transition-all duration-300 relative overflow-hidden">
+      {/* Progress bar background - fills entire card with gradient */}
+      {progress !== undefined && (
+        <div
+          className="absolute inset-0 bg-gradient-to-r from-primary-200 via-primary-100 to-secondary-200 dark:from-primary-900/30 dark:via-primary-800/20 dark:to-secondary-900/30 transition-all duration-1000 ease-linear pointer-events-none"
+          style={{ 
+            width: `${progress}%`,
+          }}
+        />
+      )}
+      <div className="relative z-10">
+        <div className="flex items-start justify-between mb-2">
+          <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
+            {title}
+          </h3>
+          {icon && (
+            <div className="text-primary-600 dark:text-primary-400">
+              {icon}
+            </div>
+          )}
+        </div>
+        <p className="text-3xl font-bold text-neutral-900 dark:text-neutral-100 mb-1">
+          {value ?? "N/A"}
+        </p>
+        {subtitle && (
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2">
+            {subtitle}
+          </p>
         )}
       </div>
-      <p className="text-3xl font-bold text-neutral-900 dark:text-neutral-100 mb-1">
-        {value ?? "N/A"}
-      </p>
-      {subtitle && (
-        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2">
-          {subtitle}
-        </p>
-      )}
     </div>
   );
 }
@@ -69,9 +82,13 @@ function MetricCard({
 /**
  * Client component that displays and auto-updates health metrics
  */
+const HEALTH_CHECK_INTERVAL = 30000; // 30 seconds
+
 export function HealthMetrics({ initialDbHealth }: HealthMetricsProps) {
   const [dbHealth, setDbHealth] = useState(initialDbHealth);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastFetchTime, setLastFetchTime] = useState<number>(Date.now());
+  const [progress, setProgress] = useState<number>(0);
 
   const fetchHealthData = async () => {
     setIsRefreshing(true);
@@ -111,14 +128,27 @@ export function HealthMetrics({ initialDbHealth }: HealthMetricsProps) {
       }));
     } finally {
       setIsRefreshing(false);
+      setLastFetchTime(Date.now());
+      setProgress(0);
     }
   };
 
-  // Auto-refresh every 10 seconds
+  // Auto-refresh every 30 seconds
   useEffect(() => {
-    const interval = setInterval(fetchHealthData, 10000);
+    const interval = setInterval(fetchHealthData, HEALTH_CHECK_INTERVAL);
     return () => clearInterval(interval);
   }, []);
+
+  // Update progress bar every second
+  useEffect(() => {
+    const progressInterval = setInterval(() => {
+      const elapsed = Date.now() - lastFetchTime;
+      const progressPercent = Math.min((elapsed / HEALTH_CHECK_INTERVAL) * 100, 100);
+      setProgress(progressPercent);
+    }, 1000);
+
+    return () => clearInterval(progressInterval);
+  }, [lastFetchTime]);
 
   const overallStatus =
     dbHealth.status === "healthy"
@@ -191,6 +221,7 @@ export function HealthMetrics({ initialDbHealth }: HealthMetricsProps) {
           <MetricCard
             title="Connection Status"
             value={dbHealth.connected ? "Connected" : "Disconnected"}
+            progress={progress}
             icon={
               <svg
                 className="w-5 h-5"
