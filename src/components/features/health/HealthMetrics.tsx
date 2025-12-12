@@ -901,55 +901,71 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
                     })}
                 </defs>
                 <YAxis type="number" domain={yAxisDomain} hide />
-                {/* Render solid segments first, then gradient segments on top for seamless blending */}
+                {/* Render all fill areas first */}
+                {colorSegments.map((segment) => {
+                  if (segment.isGradient && segment.fromColor && segment.toColor) {
+                    const fillGradientId = `${segment.gradientId}-fill`;
+                    return (
+                      <Area
+                        key={`${segment.dataKey}-fill`}
+                        type="monotone"
+                        dataKey={segment.dataKey}
+                        stroke="none"
+                        fill={`url(#${fillGradientId})`}
+                        dot={false}
+                        isAnimationActive={true}
+                        animationDuration={0}
+                        connectNulls={false}
+                      />
+                    );
+                  } else {
+                    return (
+                      <Area
+                        key={`${segment.dataKey}-fill`}
+                        type="monotone"
+                        dataKey={segment.dataKey}
+                        stroke="none"
+                        fill={`url(#${segment.gradientId})`}
+                        dot={false}
+                        isAnimationActive={true}
+                        animationDuration={0}
+                        connectNulls={false}
+                      />
+                    );
+                  }
+                })}
+                {/* Render all stroke lines - solid segments first, then gradient segments on top */}
+                {/* This ensures gradient strokes cover overlap areas and prevent double lines */}
                 {colorSegments
                   .filter(seg => !seg.isGradient)
                   .map((segment) => (
-                    <Area
-                      key={segment.dataKey}
+                    <Line
+                      key={`${segment.dataKey}-stroke`}
                       type="monotone"
                       dataKey={segment.dataKey}
                       stroke={segment.color}
                       strokeWidth={2}
-                      fill={`url(#${segment.gradientId})`}
                       dot={false}
                       isAnimationActive={true}
                       animationDuration={0}
                       connectNulls={false}
                     />
                   ))}
-                {/* Render gradient segments on top to blend seamlessly with solid segments */}
                 {colorSegments
                   .filter(seg => seg.isGradient && seg.fromColor && seg.toColor)
-                  .map((segment) => {
-                    const fillGradientId = `${segment.gradientId}-fill`;
-                    return (
-                      <g key={segment.dataKey}>
-                        {/* Gradient fill area - seamless blend with no visible seams */}
-                        <Area
-                          type="monotone"
-                          dataKey={segment.dataKey}
-                          stroke="none"
-                          fill={`url(#${fillGradientId})`}
-                          dot={false}
-                          isAnimationActive={true}
-                          animationDuration={0}
-                          connectNulls={false}
-                        />
-                        {/* Gradient stroke line - seamless color transition */}
-                        <Line
-                          type="monotone"
-                          dataKey={segment.dataKey}
-                          stroke={`url(#${segment.gradientId})`}
-                          strokeWidth={2}
-                          dot={false}
-                          isAnimationActive={true}
-                          animationDuration={0}
-                          connectNulls={false}
-                        />
-                      </g>
-                    );
-                  })}
+                  .map((segment) => (
+                    <Line
+                      key={`${segment.dataKey}-stroke`}
+                      type="monotone"
+                      dataKey={segment.dataKey}
+                      stroke={`url(#${segment.gradientId})`}
+                      strokeWidth={2}
+                      dot={false}
+                      isAnimationActive={true}
+                      animationDuration={0}
+                      connectNulls={false}
+                    />
+                  ))}
               </ComposedChart>
             </ResponsiveContainer>
           </div>
