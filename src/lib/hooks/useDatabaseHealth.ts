@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useContext } from "react";
+import { DatabaseHealthContext } from "@/components/providers/DatabaseHealthProvider";
 
 export type DatabaseHealthStatus = "healthy" | "degraded" | "unhealthy" | "loading";
 
@@ -27,36 +28,78 @@ export function useDatabaseHealth(options?: {
   onStatusChange?: (status: DatabaseHealthStatus, wasUnhealthy: boolean) => void; // Callback when status changes
 }) {
   const {
-    pollInterval = 30000,
+    pollInterval = 60000, // Default to 60 seconds (less frequent)
     initialStatus = "loading",
     onStatusChange,
   } = options || {};
 
+  // Check if we're within a DatabaseHealthProvider context
+  // If so, use that context instead of creating our own polling
+  const context = useContext(DatabaseHealthContext);
+  
+  // If context exists, return context values (no need to poll)
+  if (context) {
+    return {
+      status: context.status,
+      isConnected: context.isConnected,
+      lastChecked: context.lastChecked,
+      error: context.error,
+      isServerUnreachable: context.isServerUnreachable,
+      refresh: () => {}, // No-op when using context
+      pausePolling: () => {},
+      resumePolling: () => {},
+      isPolling: false,
+    };
+  }
+
+  // No context available, create our own polling
   const [status, setStatus] = useState<DatabaseHealthStatus>(initialStatus);
   const [isConnected, setIsConnected] = useState<boolean>(true);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isServerUnreachable, setIsServerUnreachable] = useState<boolean>(false);
   const [isPolling, setIsPolling] = useState<boolean>(true);
 
   const checkHealth = useCallback(async () => {
+    // Add timeout to prevent hanging when database is unreachable
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
     try {
-      const response = await fetch("/api/health", {
-        cache: "no-store",
-        headers: {
-          "Cache-Control": "no-cache",
-        },
+      // Use Promise.resolve to ensure errors are caught in our try-catch
+      const response = await Promise.resolve(
+        fetch("/api/health", {
+          cache: "no-store",
+          headers: {
+            "Cache-Control": "no-cache",
+          },
+          signal: controller.signal,
+        })
+      ).catch((fetchErr) => {
+        // Re-throw to be caught by outer catch, but clear timeout first
+        clearTimeout(timeoutId);
+        throw fetchErr;
       });
+      
+      clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        throw new Error(`Health check failed: ${response.status}`);
+      // Try to parse the response even if status is not OK (e.g., 503)
+      // The API still returns health data in the body even when unhealthy
+      let data: HealthCheckResponse;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        // If we can't parse the response, treat it as an error
+        throw new Error(`Failed to parse health check response: ${response.status} ${response.statusText}`);
       }
 
-      const data: HealthCheckResponse = await response.json();
-      const newStatus = data.services.database.status;
-      const newConnected = data.services.database.connected;
+      const newStatus = data.services?.database?.status || "unhealthy";
+      const newConnected = data.services?.database?.connected ?? false;
 
-      setLastChecked(new Date(data.timestamp));
-      setError(data.services.database.error || null);
+      setLastChecked(new Date(data.timestamp || new Date().toISOString()));
+      setError(data.services?.database?.error || null);
+      // Server is reachable if we got a response (even if unhealthy)
+      setIsServerUnreachable(false);
 
       // Only update if status actually changed
       setStatus((prevStatus) => {
@@ -70,8 +113,27 @@ export function useDatabaseHealth(options?: {
 
       setIsConnected(newConnected);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Unknown error";
-      setError(errorMessage);
+      // Clear timeout in case of error
+      // Check if this is a server unreachable error (fetch failed completely)
+      const isServerError = err instanceof Error && (
+        err.name === "TypeError" && err.message.includes("fetch") ||
+        err.name === "AbortError" ||
+        err.message.toLowerCase().includes("network") ||
+        err.message.toLowerCase().includes("failed to fetch")
+      );
+      
+      setIsServerUnreachable(isServerError);
+      
+      if (err instanceof Error && err.name === "AbortError") {
+        // Timeout error - server is likely unreachable
+        setError("Server is unreachable - request timed out");
+      } else if (isServerError) {
+        // Server unreachable error takes priority
+        setError("Server is unreachable - unable to connect to the service");
+      } else {
+        const errorMessage = err instanceof Error ? err.message : "Unknown error";
+        setError(errorMessage);
+      }
       setStatus("unhealthy");
       setIsConnected(false);
       setLastChecked(new Date());
@@ -79,14 +141,53 @@ export function useDatabaseHealth(options?: {
   }, [onStatusChange]);
 
   useEffect(() => {
-    // Initial check
-    checkHealth();
+    // Initial check - wrap to prevent unhandled promise rejection
+    checkHealth().catch(() => {
+      // Errors are already handled inside checkHealth
+      // This catch prevents unhandled promise rejection warnings
+    });
+
+    // Listen for online/offline events to detect connection loss immediately
+    const handleOnline = () => {
+      // When connection is restored, check health immediately
+      checkHealth().catch(() => {});
+    };
+
+    const handleOffline = () => {
+      // When connection is lost, immediately mark as unhealthy
+      setStatus("unhealthy");
+      setIsConnected(false);
+      setIsServerUnreachable(true);
+      setError("Network connection lost");
+      setLastChecked(new Date());
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", handleOnline);
+      window.addEventListener("offline", handleOffline);
+    }
 
     // Set up polling interval
+    // Use longer intervals to reduce server load and prevent spam
+    let interval: NodeJS.Timeout | null = null;
     if (isPolling) {
-      const interval = setInterval(checkHealth, pollInterval);
-      return () => clearInterval(interval);
+      interval = setInterval(() => {
+        checkHealth().catch(() => {
+          // Errors are already handled inside checkHealth
+          // This catch prevents unhandled promise rejection warnings
+        });
+      }, pollInterval);
     }
+
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("online", handleOnline);
+        window.removeEventListener("offline", handleOffline);
+      }
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
   }, [checkHealth, pollInterval, isPolling]);
 
   // Expose manual refresh function
@@ -108,6 +209,7 @@ export function useDatabaseHealth(options?: {
     isConnected,
     lastChecked,
     error,
+    isServerUnreachable,
     refresh,
     pausePolling,
     resumePolling,

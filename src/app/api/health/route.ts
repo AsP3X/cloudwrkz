@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { checkDatabaseHealth } from "@/lib/utils/db-health";
+import { checkDatabaseHealth, formatDatabaseError } from "@/lib/utils/db-health";
 
 /**
  * Health check endpoint - publicly accessible
@@ -33,15 +33,18 @@ export async function GET() {
               overallStatus === "degraded" ? 200 : 503,
     });
   } catch (error) {
+    // Format error message to be user-friendly
+    const errorMessage = formatDatabaseError(error);
+    
     return NextResponse.json({
       status: "unhealthy",
       timestamp: new Date().toISOString(),
-      error: error instanceof Error ? error.message : "Unknown error",
+      error: errorMessage,
       services: {
         database: {
           status: "unhealthy",
           connected: false,
-          error: error instanceof Error ? error.message : "Unknown error",
+          error: errorMessage,
         },
       },
     }, {

@@ -5,6 +5,7 @@ import { LoginForm } from "@/components/features/auth/LoginForm";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 import { isDatabaseAccessible } from "@/lib/utils/db-health";
+import { FormBlurWrapper } from "@/components/features/auth/FormBlurWrapper";
 
 type LoginPageProps = {
   searchParams: Promise<{ error?: string; redirect?: string }>;
@@ -54,7 +55,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
             {/* Login Card */}
             <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8">
-              <LoginForm initialError={params.error} />
+              <FormBlurWrapper initialDatabaseAvailable={databaseAvailable} formType="login">
+                <LoginForm initialError={params.error} disabled={!databaseAvailable} />
+              </FormBlurWrapper>
             </div>
 
             {/* Trust Indicators */}

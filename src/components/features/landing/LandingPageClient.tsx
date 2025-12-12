@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState, ReactNode } from "react";
-import { useDatabaseHealth } from "@/lib/hooks/useDatabaseHealth";
 import { OfflineWarning } from "@/components/ui/OfflineWarning";
+import { DatabaseHealthProvider } from "@/components/providers/DatabaseHealthProvider";
+import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
 
 interface LandingPageClientProps {
   children: ReactNode;
@@ -10,21 +11,10 @@ interface LandingPageClientProps {
 }
 
 /**
- * Client wrapper component that monitors database health and updates the page
- * when database status changes without requiring a page refresh.
- * This component also monitors online/offline status and displays a warning banner.
+ * Client wrapper component that monitors online/offline status and displays a warning banner.
+ * Provides a shared database health context so Header and Footer can share the same health check result.
  */
 export function LandingPageClient({ children, initialDatabaseAvailable }: LandingPageClientProps) {
-  const { status } = useDatabaseHealth({
-    pollInterval: 30000, // Check every 30 seconds
-    initialStatus: initialDatabaseAvailable ? "healthy" : "unhealthy",
-    onStatusChange: (newStatus, wasUnhealthy) => {
-      // If database just came back online, log for debugging
-      if (wasUnhealthy && (newStatus === "healthy" || newStatus === "degraded")) {
-        console.log("Database connection restored");
-      }
-    },
-  });
 
   // Monitor online/offline status
   const [isOnline, setIsOnline] = useState<boolean>(() => {
@@ -40,18 +30,15 @@ export function LandingPageClient({ children, initialDatabaseAvailable }: Landin
     if (typeof window !== "undefined" && typeof navigator !== "undefined") {
       const initialOnlineStatus = navigator.onLine;
       setIsOnline(initialOnlineStatus);
-      console.log("Initial online status:", initialOnlineStatus);
     }
 
     // Listen for online/offline events
     const handleOnline = () => {
       setIsOnline(true);
-      console.log("Connection restored - banner should hide");
     };
 
     const handleOffline = () => {
       setIsOnline(false);
-      console.log("Connection lost - banner should show");
     };
 
     window.addEventListener("online", handleOnline);
@@ -86,30 +73,28 @@ export function LandingPageClient({ children, initialDatabaseAvailable }: Landin
     }
   }, [isOnline]);
 
-  // Debug: log when banner should be visible
-  useEffect(() => {
-    console.log("isOnline state:", isOnline, "Banner should be visible:", !isOnline);
-  }, [isOnline]);
 
   return (
-    <>
-      {/* Show offline warning banner at the top when offline */}
-      {!isOnline && (
-        <div 
-          className="fixed top-0 left-0 right-0 z-[110] w-full"
-          style={{ 
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            zIndex: 110,
-            width: '100%'
-          }}
-        >
-          <OfflineWarning />
-        </div>
-      )}
-      {children}
-    </>
+    <ErrorBoundary>
+      <DatabaseHealthProvider initialDatabaseAvailable={initialDatabaseAvailable} pollInterval={30000}>
+        {/* Show offline warning banner at the top when offline */}
+        {!isOnline && (
+          <div 
+            className="fixed top-0 left-0 right-0 z-[110] w-full"
+            style={{ 
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              zIndex: 110,
+              width: '100%'
+            }}
+          >
+            <OfflineWarning />
+          </div>
+        )}
+        {children}
+      </DatabaseHealthProvider>
+    </ErrorBoundary>
   );
 }

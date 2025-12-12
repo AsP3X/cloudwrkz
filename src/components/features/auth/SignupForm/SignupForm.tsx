@@ -10,8 +10,22 @@ import Link from "next/link";
 import { ROUTES } from "@/lib/constants/routes";
 import { registerSchema, type RegisterInput } from "@/lib/validations/auth";
 import { registerUser } from "@/server/actions/auth";
+import { useDatabaseHealth } from "@/lib/hooks/useDatabaseHealth";
 
-export const SignupForm = () => {
+type SignupFormProps = {
+  disabled?: boolean;
+};
+
+export const SignupForm = ({ disabled: initialDisabled = false }: SignupFormProps) => {
+  // Monitor database health in real-time
+  const { status, isServerUnreachable } = useDatabaseHealth({
+    pollInterval: 30000,
+    initialStatus: initialDisabled ? "unhealthy" : "healthy",
+  });
+  
+  // Form is disabled if database/server is unavailable
+  const isDatabaseUnavailable = status === "unhealthy" || status === "loading";
+  const disabled = initialDisabled || isDatabaseUnavailable || isServerUnreachable;
   const router = useRouter();
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
@@ -74,6 +88,7 @@ export const SignupForm = () => {
       onSubmit={handleFormSubmit} 
       className="space-y-6"
       noValidate
+      aria-disabled={disabled}
     >
       {/* Success Message */}
       {successMessage && (
@@ -133,6 +148,7 @@ export const SignupForm = () => {
         placeholder="John Doe"
         error={errors.name?.message}
         required
+        disabled={disabled}
         {...register("name")}
       />
 
@@ -144,6 +160,7 @@ export const SignupForm = () => {
         error={errors.email?.message}
         helperText="We'll never share your email with anyone else."
         required
+        disabled={disabled}
         {...register("email")}
       />
 
@@ -155,6 +172,7 @@ export const SignupForm = () => {
         error={errors.password?.message}
         helperText="Must be at least 8 characters with uppercase, lowercase, and number"
         required
+        disabled={disabled}
         {...register("password")}
       />
 
@@ -165,6 +183,7 @@ export const SignupForm = () => {
         placeholder="••••••••"
         error={errors.confirmPassword?.message}
         required
+        disabled={disabled}
         {...register("confirmPassword")}
       />
 
@@ -175,6 +194,7 @@ export const SignupForm = () => {
             id="agreeToTerms"
             type="checkbox"
             className="w-4 h-4 text-primary-600 dark:text-primary-500 border-neutral-300 dark:border-neutral-700 rounded focus:ring-primary-500 focus:ring-2 bg-white dark:bg-neutral-900"
+            disabled={disabled}
             {...register("agreeToTerms")}
           />
         </div>
@@ -210,7 +230,7 @@ export const SignupForm = () => {
         size="lg"
         className="w-full"
         loading={isSubmitting}
-        disabled={isSubmitting}
+        disabled={isSubmitting || disabled}
       >
         {isSubmitting ? "Creating Account..." : "Create Account"}
       </Button>
@@ -233,6 +253,7 @@ export const SignupForm = () => {
           type="button"
           variant="outline"
           className="w-full"
+          disabled={disabled}
           onClick={() => {
             // TODO: Implement Google OAuth
             console.log("Google signup");
@@ -262,6 +283,7 @@ export const SignupForm = () => {
           type="button"
           variant="outline"
           className="w-full"
+          disabled={disabled}
           onClick={() => {
             // TODO: Implement GitHub OAuth
             console.log("GitHub signup");

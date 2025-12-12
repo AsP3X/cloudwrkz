@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils/cn";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 import { DatabaseWarning } from "@/components/ui/DatabaseWarning";
+import { useDatabaseHealthContextSafe } from "@/components/providers/DatabaseHealthProvider";
 import { useDatabaseHealth } from "@/lib/hooks/useDatabaseHealth";
 
 interface HeaderProps {
@@ -15,14 +16,46 @@ interface HeaderProps {
 }
 
 export const Header = ({ databaseAvailable: initialDatabaseAvailable = true }: HeaderProps) => {
-  // Use client-side health monitoring to detect database status changes
-  const { status } = useDatabaseHealth({
-    pollInterval: 30000, // Check every 30 seconds
+  // Try to use shared health context (if on landing page), otherwise use hook directly
+  const healthContext = useDatabaseHealthContextSafe();
+  const healthData = useDatabaseHealth({
+    pollInterval: 30000,
     initialStatus: initialDatabaseAvailable ? "healthy" : "unhealthy",
   });
+  
+  // Use context if available (landing page), otherwise use hook data (other pages)
+  const status = healthContext?.status ?? healthData.status;
+  const isServerUnreachable = healthContext?.isServerUnreachable ?? healthData.isServerUnreachable;
+  const error = healthContext?.error ?? healthData.error;
+
+  // Monitor online/offline status to show banner immediately when connection is lost
+  const [isOnline, setIsOnline] = React.useState<boolean>(() => {
+    if (typeof window !== "undefined" && typeof navigator !== "undefined") {
+      return navigator.onLine;
+    }
+    return true;
+  });
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined" && typeof navigator !== "undefined") {
+      setIsOnline(navigator.onLine);
+      
+      const handleOnline = () => setIsOnline(true);
+      const handleOffline = () => setIsOnline(false);
+      
+      window.addEventListener("online", handleOnline);
+      window.addEventListener("offline", handleOffline);
+      
+      return () => {
+        window.removeEventListener("online", handleOnline);
+        window.removeEventListener("offline", handleOffline);
+      };
+    }
+  }, []);
 
   // Determine if database is available based on health status
-  const databaseAvailable = status === "healthy" || status === "degraded";
+  // Also check if network is offline - if offline, show banner immediately
+  const databaseAvailable = (status === "healthy" || status === "degraded") && isOnline;
 
   // ALL HOOKS MUST BE CALLED BEFORE ANY CONDITIONAL RETURNS
   // This ensures hooks are called in the same order on every render
@@ -32,15 +65,6 @@ export const Header = ({ databaseAvailable: initialDatabaseAvailable = true }: H
   // Initialize with safe default to avoid hydration mismatch
   // Will be updated after mount when we can safely access DOM
   const [isDark, setIsDark] = React.useState(false);
-  
-  // Monitor online/offline status
-  const [isOnline, setIsOnline] = React.useState<boolean>(() => {
-    // Initialize with navigator.onLine if available, default to true
-    if (typeof window !== "undefined" && typeof navigator !== "undefined") {
-      return navigator.onLine;
-    }
-    return true;
-  });
 
   React.useEffect(() => {
     setMounted(true);
@@ -60,30 +84,6 @@ export const Header = ({ databaseAvailable: initialDatabaseAvailable = true }: H
       });
       return () => observer.disconnect();
     }
-  }, []);
-
-  React.useEffect(() => {
-    // Set initial online status
-    if (typeof window !== "undefined" && typeof navigator !== "undefined") {
-      setIsOnline(navigator.onLine);
-    }
-
-    // Listen for online/offline events
-    const handleOnline = () => {
-      setIsOnline(true);
-    };
-
-    const handleOffline = () => {
-      setIsOnline(false);
-    };
-
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-    };
   }, []);
 
   React.useEffect(() => {
@@ -117,20 +117,26 @@ export const Header = ({ databaseAvailable: initialDatabaseAvailable = true }: H
     };
   }, [mobileMenuOpen]);
 
-  // If database is unavailable, show the warning banner instead of navigation
+  // If database is unavailable or network is offline, show the warning banner instead of navigation
   // This conditional return is now AFTER all hooks have been called
-  if (!databaseAvailable) {
+  // Also show banner if status is "loading" and we're offline (immediate feedback)
+  const shouldShowBanner = !databaseAvailable || !isOnline || (status === "loading" && !isOnline);
+  
+  if (shouldShowBanner) {
+    // When offline, prioritize showing server unreachable message
+    const showServerUnreachable = !isOnline || isServerUnreachable;
     return (
-      <header className="fixed top-0 left-0 right-0 z-[100]">
-        <DatabaseWarning />
+      <header className="fixed top-0 left-0 right-0 z-[100] w-full">
+        <DatabaseWarning 
+          isServerUnreachable={showServerUnreachable} 
+          error={!isOnline ? "Network connection lost" : error} 
+        />
       </header>
     );
   }
 
-  // Hide header when offline (offline banner will be shown instead)
-  if (!isOnline) {
-    return null;
-  }
+  // Note: Offline check is now handled above with databaseAvailable check
+  // This ensures the banner shows immediately when connection is lost
 
   const handleNavClick = () => {
     setMobileMenuOpen(false);

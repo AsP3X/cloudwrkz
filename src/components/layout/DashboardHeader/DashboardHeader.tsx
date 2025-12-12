@@ -8,18 +8,28 @@ import type { CurrentUser } from "@/lib/utils/auth-server";
 import { GlobalSearch } from "@/components/features/search/GlobalSearch";
 import { useSidebar } from "../SidebarContext";
 import { DatabaseWarning } from "@/components/ui/DatabaseWarning";
+import { useDatabaseHealth } from "@/lib/hooks/useDatabaseHealth";
 
 interface DashboardHeaderProps {
   user: CurrentUser;
   databaseAvailable?: boolean;
 }
 
-export const DashboardHeader = ({ user, databaseAvailable = true }: DashboardHeaderProps) => {
+export const DashboardHeader = ({ user, databaseAvailable: initialDatabaseAvailable = true }: DashboardHeaderProps) => {
+  // Use client-side health monitoring to detect database status changes
+  const { status, isServerUnreachable, error } = useDatabaseHealth({
+    pollInterval: 30000, // Check every 30 seconds
+    initialStatus: initialDatabaseAvailable ? "healthy" : "unhealthy",
+  });
+
+  // Determine if database is available based on health status
+  const databaseAvailable = status === "healthy" || status === "degraded";
+
   // If database is unavailable, show the warning banner instead of navigation
   if (!databaseAvailable) {
     return (
       <header className="sticky top-0 z-30">
-        <DatabaseWarning />
+        <DatabaseWarning isServerUnreachable={isServerUnreachable} error={error} />
       </header>
     );
   }

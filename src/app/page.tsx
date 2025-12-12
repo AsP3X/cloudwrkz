@@ -4,7 +4,7 @@ import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { Hero } from "@/components/features/landing/Hero";
 import { SkipToContent } from "@/components/ui/SkipToContent";
-import { getCurrentUser } from "@/lib/utils/auth-server";
+import { getCurrentUser, DatabaseConnectionError } from "@/lib/utils/auth-server";
 import { redirect } from "next/navigation";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { isDatabaseAccessible } from "@/lib/utils/db-health";
@@ -50,20 +50,36 @@ export default async function Home() {
   }
 
   // Only try to get current user if database is available
+  // If database is unavailable, we should still show the landing page gracefully
+  // Don't redirect if database check fails - let the user see the landing page with error banner
   let user = null;
   if (databaseAvailable) {
     try {
       user = await getCurrentUser();
     } catch (error) {
       // If getCurrentUser fails (e.g., database connection lost), treat as no user
-      console.error("Error getting current user:", error);
+      // Don't redirect - show landing page with error banner instead
+      if (error instanceof DatabaseConnectionError) {
+        // Database connection error - mark as unavailable and show banner
+        console.error("Database connection error getting user:", error);
+        databaseAvailable = false;
+      } else {
+        // Other error - log but don't crash
+        console.error("Error getting current user:", error);
+      }
       user = null;
     }
   }
 
-  if (user) {
+  // Only redirect if we successfully got a user AND database is available
+  // This prevents redirects when database is down, which would make the page inaccessible
+  // Never redirect if database is unavailable - always show landing page with error banner
+  if (user && databaseAvailable) {
     redirect("/dashboard");
   }
+  
+  // If database is unavailable, always show landing page (never redirect or crash)
+  // The DatabaseWarning banner will be displayed by the Header component
 
   return (
     <>

@@ -42,6 +42,97 @@ export function isDatabaseConnectionError(error: unknown): boolean {
 }
 
 /**
+ * Format database errors into user-friendly messages
+ * Removes technical details and provides clear, actionable error messages
+ * Prioritizes server unreachable errors over database connection errors
+ */
+export function formatDatabaseError(error: unknown, isServerUnreachable: boolean = false): string {
+  if (!error) {
+    return isServerUnreachable 
+      ? "Server is unreachable - unable to connect to the service"
+      : "Unable to connect to the database";
+  }
+
+  // Handle Prisma-specific errors (these are database errors, not server errors)
+  if (error instanceof Prisma.PrismaClientInitializationError) {
+    const code = error.errorCode;
+    const message = error.message.toLowerCase();
+
+    // Check for specific error codes
+    if (code === "P1001" || message.includes("can't reach database server")) {
+      return "Database server is unreachable. Please check if the database service is running.";
+    }
+    if (code === "P1002" || message.includes("connection timeout")) {
+      return "Database connection timed out. The server may be overloaded or unreachable.";
+    }
+    if (code === "P1003" || message.includes("database") && message.includes("not found")) {
+      return "Database not found. Please verify the database configuration.";
+    }
+    if (code === "P1017" || message.includes("server closed connection")) {
+      return "Database server closed the connection. Please try again.";
+    }
+    if (message.includes("connection refused")) {
+      return "Database connection refused. Please check if the database service is running.";
+    }
+    if (message.includes("authentication failed") || message.includes("password")) {
+      return "Database authentication failed. Please verify the database credentials.";
+    }
+    
+    // Generic Prisma initialization error
+    return "Database connection failed. Please check the database configuration and ensure the service is running.";
+  }
+
+  // Handle generic Error objects
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+
+    // Prioritize server unreachable errors
+    if (isServerUnreachable || 
+        message.includes("failed to fetch") || 
+        message.includes("network error") ||
+        (message.includes("fetch") && (message.includes("failed") || message.includes("network")))) {
+      return "Server is unreachable - unable to connect to the service";
+    }
+
+    // Remove technical details like host:port from error messages
+    if (message.includes("can't reach database server") || message.includes("localhost:5432")) {
+      return "Database server is unreachable. Please check if the database service is running.";
+    }
+    if (message.includes("connection refused")) {
+      return "Database connection refused. Please check if the database service is running.";
+    }
+    if (message.includes("connection timeout") || message.includes("timeout")) {
+      return "Database connection timed out. The server may be overloaded or unreachable.";
+    }
+    if (message.includes("connection closed")) {
+      return "Database connection was closed. Please try again.";
+    }
+    if (message.includes("authentication failed") || message.includes("password")) {
+      return "Database authentication failed. Please verify the database credentials.";
+    }
+    if (message.includes("database") && message.includes("not found")) {
+      return "Database not found. Please verify the database configuration.";
+    }
+    if (message.includes("network") || message.includes("econnrefused")) {
+      return "Network error connecting to database. Please check your network connection and database server status.";
+    }
+
+    // For other errors, provide a generic message without exposing technical details
+    // Log the original error for debugging purposes
+    console.error("Database error:", error);
+    return isServerUnreachable
+      ? "Server is unreachable - unable to connect to the service"
+      : "Unable to connect to the database. Please check the database service status.";
+  }
+
+  // Fallback for unknown error types
+  console.error("Unknown database error:", error);
+  return isServerUnreachable
+    ? "Server is unreachable - unable to connect to the service"
+    : "An unexpected error occurred while connecting to the database.";
+}
+
+/**
  * Check database health and connection status
  */
 export async function checkDatabaseHealth(): Promise<DatabaseHealthStatus> {
@@ -102,11 +193,8 @@ export async function checkDatabaseHealth(): Promise<DatabaseHealthStatus> {
     result.status = "unhealthy";
     result.responseTime = Date.now() - startTime;
     
-    if (error instanceof Error) {
-      result.error = error.message;
-    } else {
-      result.error = "Unknown database error";
-    }
+    // Format error message to be user-friendly
+    result.error = formatDatabaseError(error);
 
     return result;
   }

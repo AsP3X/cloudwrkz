@@ -167,81 +167,123 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
   const fetchHealthData = useCallback(async () => {
     setIsRefreshing(true);
     const startTime = Date.now();
+    // Add timeout to prevent hanging when database is unreachable
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
     try {
       const response = await fetch("/api/health", {
         cache: "no-store",
         headers: {
           "Cache-Control": "no-cache",
         },
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
 
       // Calculate page/server response time
       const pageResponseTime = Date.now() - startTime;
 
-      if (response.ok) {
-        const data = await response.json();
-        const dbData = data.services.database;
+      // Try to parse the response even if status is not OK (e.g., 503)
+      // The API still returns health data in the body even when unhealthy
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        // If we can't parse the response, treat it as an error
+        throw new Error(`Failed to parse health check response: ${response.status} ${response.statusText}`);
+      }
 
-        // Validate and sanitize response time - ensure it's a valid number
-        const newResponseTime = typeof dbData.responseTime === 'number' && 
-                                !isNaN(dbData.responseTime) && 
-                                isFinite(dbData.responseTime) 
-                                ? dbData.responseTime 
-                                : undefined;
-        
-        setDbHealth({
-          status: dbData.status,
-          connected: dbData.connected,
-          responseTime: newResponseTime,
-          error: dbData.error,
-          activeConnections: dbData.activeConnections,
-          maxConnections: dbData.maxConnections,
-          droppedConnections: dbData.droppedConnections,
-          databaseSize: dbData.databaseSize,
-          lastChecked: new Date(dbData.lastChecked),
-        });
+      const dbData = data.services?.database || data.database || {};
+      
+      // Validate and sanitize response time - ensure it's a valid number
+      const newResponseTime = typeof dbData.responseTime === 'number' && 
+                              !isNaN(dbData.responseTime) && 
+                              isFinite(dbData.responseTime) 
+                              ? dbData.responseTime 
+                              : undefined;
+      
+      // Update health status - use the data from the response even if status code is not 200
+      setDbHealth({
+        status: dbData.status || "unhealthy",
+        connected: dbData.connected ?? false,
+        responseTime: newResponseTime,
+        error: dbData.error,
+        activeConnections: dbData.activeConnections,
+        maxConnections: dbData.maxConnections,
+        droppedConnections: dbData.droppedConnections,
+        databaseSize: dbData.databaseSize,
+        lastChecked: dbData.lastChecked ? new Date(dbData.lastChecked) : new Date(),
+      });
 
-        // Update page response time history
-        setPageResponseTimeHistory((prev) => {
+      // Update page response time history
+      setPageResponseTimeHistory((prev) => {
+        const newHistory = [
+          ...prev,
+          {
+            time: new Date().toLocaleTimeString(),
+            timestamp: Date.now(),
+            responseTime: pageResponseTime,
+          },
+        ];
+        // Keep only the most recent entries
+        return newHistory.slice(-MAX_DATA_POINTS);
+      });
+
+      // Update database response time history - only if we have a valid response time
+      if (newResponseTime !== undefined && newResponseTime !== null) {
+        setDatabaseResponseTimeHistory((prev) => {
           const newHistory = [
             ...prev,
             {
               time: new Date().toLocaleTimeString(),
               timestamp: Date.now(),
-              responseTime: pageResponseTime,
+              responseTime: newResponseTime,
             },
           ];
           // Keep only the most recent entries
           return newHistory.slice(-MAX_DATA_POINTS);
         });
-
-        // Update database response time history - only if we have a valid response time
-        if (newResponseTime !== undefined && newResponseTime !== null) {
-          setDatabaseResponseTimeHistory((prev) => {
-            const newHistory = [
-              ...prev,
-              {
-                time: new Date().toLocaleTimeString(),
-                timestamp: Date.now(),
-                responseTime: newResponseTime,
-              },
-            ];
-            // Keep only the most recent entries
-            return newHistory.slice(-MAX_DATA_POINTS);
-          });
-        }
       }
     } catch (err) {
-      console.error("Failed to fetch health data:", err);
+      // Clear timeout in case of error
+      clearTimeout(timeoutId);
+      
       // Calculate page response time even on error
       const pageResponseTime = Date.now() - startTime;
+      
+      // Determine error message - prioritize server unreachable over database errors
+      let errorMessage = "Failed to fetch health data";
+      const isServerError = err instanceof Error && (
+        err.name === "TypeError" && err.message.includes("fetch") ||
+        err.name === "AbortError" ||
+        err.message.toLowerCase().includes("network") ||
+        err.message.toLowerCase().includes("failed to fetch")
+      );
+      
+      if (err instanceof Error) {
+        if (isServerError) {
+          // Server unreachable error takes priority
+          errorMessage = err.name === "AbortError"
+            ? "Server is unreachable - request timed out"
+            : "Server is unreachable - unable to connect to the service";
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      
+      // Only log unexpected errors (not network failures which are expected when DB is down)
+      if (err instanceof Error && err.name !== "AbortError" && err.name !== "TypeError") {
+        console.error("Unexpected error fetching health data:", err);
+      }
       
       // Update status to unhealthy on error
       setDbHealth((prev) => ({
         ...prev,
         status: "unhealthy",
         connected: false,
-        error: err instanceof Error ? err.message : "Failed to fetch health data",
+        error: errorMessage,
         lastChecked: new Date(),
       }));
 
@@ -266,11 +308,19 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
 
   // Fetch health data immediately on mount and then auto-refresh every 30 seconds
   useEffect(() => {
-    // Fetch immediately on first load
-    fetchHealthData();
+    // Fetch immediately on first load - wrap to prevent unhandled promise rejection
+    fetchHealthData().catch(() => {
+      // Errors are already handled inside fetchHealthData
+      // This catch prevents unhandled promise rejection warnings
+    });
     
     // Then set up interval for subsequent fetches
-    const interval = setInterval(fetchHealthData, HEALTH_CHECK_INTERVAL);
+    const interval = setInterval(() => {
+      fetchHealthData().catch(() => {
+        // Errors are already handled inside fetchHealthData
+        // This catch prevents unhandled promise rejection warnings
+      });
+    }, HEALTH_CHECK_INTERVAL);
     return () => clearInterval(interval);
   }, [fetchHealthData]);
 

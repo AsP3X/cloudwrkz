@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { SkipToContent } from "@/components/ui/SkipToContent";
-import { checkDatabaseHealth, isDatabaseAccessible } from "@/lib/utils/db-health";
+import { checkDatabaseHealth, isDatabaseAccessible, formatDatabaseError } from "@/lib/utils/db-health";
 import type { DatabaseHealthStatus } from "@/lib/utils/db-health";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
@@ -29,10 +29,11 @@ export default async function HealthPage() {
   try {
     dbHealth = await checkDatabaseHealth();
   } catch (error) {
+    // Format error message to be user-friendly
     dbHealth = {
       status: "unhealthy",
       connected: false,
-      error: error instanceof Error ? error.message : "Unknown error",
+      error: formatDatabaseError(error),
       lastChecked: new Date(),
     };
   }

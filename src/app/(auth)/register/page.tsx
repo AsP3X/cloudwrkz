@@ -5,6 +5,7 @@ import { SignupForm } from "@/components/features/auth/SignupForm";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 import { isDatabaseAccessible } from "@/lib/utils/db-health";
+import { FormBlurWrapper } from "@/components/features/auth/FormBlurWrapper";
 
 export const dynamic = 'force-dynamic';
 
@@ -48,7 +49,9 @@ export default async function RegisterPage() {
 
             {/* Signup Card */}
             <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8">
-              <SignupForm />
+              <FormBlurWrapper initialDatabaseAvailable={databaseAvailable} formType="register">
+                <SignupForm disabled={!databaseAvailable} />
+              </FormBlurWrapper>
             </div>
 
             {/* Trust Indicators */}

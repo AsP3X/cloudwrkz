@@ -5,6 +5,7 @@ import Link from "next/link";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 import { cn } from "@/lib/utils/cn";
+import { useDatabaseHealthContextSafe } from "@/components/providers/DatabaseHealthProvider";
 
 type HealthStatus = "healthy" | "degraded" | "unhealthy" | "loading";
 
@@ -12,29 +13,39 @@ export const Footer = () => {
   // Use state to ensure year is only set on client to avoid hydration mismatches
   const [currentYear, setCurrentYear] = useState<number | null>(null);
   const [mounted, setMounted] = useState(false);
-  const [healthStatus, setHealthStatus] = useState<HealthStatus>("loading");
+  
+  // Try to use shared health context (if on landing page), otherwise use local state
+  const healthContext = useDatabaseHealthContextSafe();
+  const [localHealthStatus, setLocalHealthStatus] = useState<HealthStatus>("loading");
+  
+  // Only fetch locally if not using context
+  useEffect(() => {
+    if (!healthContext) {
+      const fetchHealthStatus = async () => {
+        try {
+          const response = await fetch("/api/health", {
+            cache: "no-store",
+            headers: { "Cache-Control": "no-cache" },
+          });
+          const data = await response.json();
+          setLocalHealthStatus(data.status || "unhealthy");
+        } catch {
+          setLocalHealthStatus("unhealthy");
+        }
+      };
+      
+      fetchHealthStatus();
+      const interval = setInterval(fetchHealthStatus, 90000);
+      return () => clearInterval(interval);
+    }
+  }, [healthContext]);
+  
+  // Use context status if available, otherwise use local
+  const healthStatus: HealthStatus = healthContext?.status ?? localHealthStatus;
 
   useEffect(() => {
     setMounted(true);
     setCurrentYear(new Date().getFullYear());
-
-    // Fetch health status
-    const fetchHealthStatus = async () => {
-      try {
-        const response = await fetch("/api/health");
-        const data = await response.json();
-        setHealthStatus(data.status || "unhealthy");
-      } catch (error) {
-        console.error("Error fetching health status:", error);
-        setHealthStatus("unhealthy");
-      }
-    };
-
-    fetchHealthStatus();
-
-    // Refresh health status every 30 seconds
-    const interval = setInterval(fetchHealthStatus, 30000);
-    return () => clearInterval(interval);
   }, []);
 
   const footerLinks = {

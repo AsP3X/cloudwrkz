@@ -10,12 +10,23 @@ import Link from "next/link";
 import { ROUTES } from "@/lib/constants/routes";
 import { loginSchema, type LoginInput } from "@/lib/validations/auth";
 import { loginUser } from "@/server/actions/auth";
+import { useDatabaseHealth } from "@/lib/hooks/useDatabaseHealth";
 
 type LoginFormProps = {
   initialError?: string;
+  disabled?: boolean;
 };
 
-export const LoginForm = ({ initialError }: LoginFormProps) => {
+export const LoginForm = ({ initialError, disabled: initialDisabled = false }: LoginFormProps) => {
+  // Monitor database health in real-time
+  const { status, isServerUnreachable } = useDatabaseHealth({
+    pollInterval: 30000,
+    initialStatus: initialDisabled ? "unhealthy" : "healthy",
+  });
+  
+  // Form is disabled if database/server is unavailable
+  const isDatabaseUnavailable = status === "unhealthy" || status === "loading";
+  const disabled = initialDisabled || isDatabaseUnavailable || isServerUnreachable;
   const router = useRouter();
   const [serverError, setServerError] = React.useState<string | null>(
     initialError === "account_not_verified"
@@ -69,6 +80,7 @@ export const LoginForm = ({ initialError }: LoginFormProps) => {
       onSubmit={handleFormSubmit} 
       className="space-y-6"
       noValidate
+      aria-disabled={disabled}
     >
       {/* Server Error Message */}
       {serverError && (
@@ -100,6 +112,7 @@ export const LoginForm = ({ initialError }: LoginFormProps) => {
         error={errors.email?.message}
         required
         autoComplete="email"
+        disabled={disabled}
         {...register("email")}
       />
 
@@ -112,6 +125,7 @@ export const LoginForm = ({ initialError }: LoginFormProps) => {
           error={errors.password?.message}
           required
           autoComplete="current-password"
+          disabled={disabled}
           {...register("password")}
         />
         <div className="mt-2 flex items-center justify-between">
@@ -120,6 +134,7 @@ export const LoginForm = ({ initialError }: LoginFormProps) => {
               id="rememberMe"
               type="checkbox"
               className="w-4 h-4 text-primary-600 dark:text-primary-500 border-neutral-300 dark:border-neutral-700 rounded focus:ring-primary-500 focus:ring-2 bg-white dark:bg-neutral-900"
+              disabled={disabled}
               {...register("rememberMe")}
             />
             <label
@@ -145,7 +160,7 @@ export const LoginForm = ({ initialError }: LoginFormProps) => {
         size="lg"
         className="w-full"
         loading={isSubmitting}
-        disabled={isSubmitting}
+        disabled={isSubmitting || disabled}
       >
         {isSubmitting ? "Signing in..." : "Sign In"}
       </Button>
@@ -168,6 +183,7 @@ export const LoginForm = ({ initialError }: LoginFormProps) => {
           type="button"
           variant="outline"
           className="w-full"
+          disabled={disabled}
           onClick={() => {
             // TODO: Implement Google OAuth
             console.log("Google login");
@@ -197,6 +213,7 @@ export const LoginForm = ({ initialError }: LoginFormProps) => {
           type="button"
           variant="outline"
           className="w-full"
+          disabled={disabled}
           onClick={() => {
             // TODO: Implement GitHub OAuth
             console.log("GitHub login");
