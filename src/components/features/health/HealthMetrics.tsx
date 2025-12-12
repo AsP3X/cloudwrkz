@@ -61,7 +61,7 @@ function MetricCard({
       )}
       {/* Background chart */}
       {backgroundChart && (
-        <div className="absolute inset-0 pointer-events-none z-0" style={{ opacity: 0.35, padding: '24px', height: '100%', width: '100%' }}>
+        <div className="absolute inset-0 pointer-events-none z-0" style={{ opacity: 0.35, height: '100%', width: '100%' }}>
           {backgroundChart}
         </div>
       )}
@@ -351,7 +351,7 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart
                     data={visibleDatabaseData}
-                    margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
+                    margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
                   >
                     <defs>
                       <linearGradient id="colorDatabaseResponseTimeBackground" x1="0" y1="0" x2="0" y2="1">
