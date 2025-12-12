@@ -46,6 +46,8 @@ type TimeEntry = {
     endedAt: Date | null;
     duration: number;
     description: string | null;
+    createdAt: Date;
+    updatedAt: Date;
   }>;
   createdAt: Date;
   updatedAt: Date;
@@ -395,7 +397,11 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
               timeEntryId={entry.id}
               userTimezone={userTimezone}
               entryTimezone={entry.timezone}
-              initialBreaks={entry.breaks || []}
+              initialBreaks={entry.breaks?.map(breakItem => ({
+                ...breakItem,
+                createdAt: breakItem.createdAt || new Date(),
+                updatedAt: breakItem.updatedAt || new Date(),
+              })) || []}
             />
           </div>
         </div>

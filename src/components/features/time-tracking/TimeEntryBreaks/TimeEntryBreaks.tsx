@@ -16,8 +16,8 @@ type Break = {
   endedAt: Date | null;
   duration: number;
   description: string | null;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
 };
 
 interface TimeEntryBreaksProps {

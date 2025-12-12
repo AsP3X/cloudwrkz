@@ -119,8 +119,7 @@ export const Header = ({ databaseAvailable: initialDatabaseAvailable = true }: H
 
   // If database is unavailable or network is offline, show the warning banner instead of navigation
   // This conditional return is now AFTER all hooks have been called
-  // Also show banner if status is "loading" and we're offline (immediate feedback)
-  const shouldShowBanner = !databaseAvailable || !isOnline || (status === "loading" && !isOnline);
+  const shouldShowBanner = !databaseAvailable || !isOnline;
   
   if (shouldShowBanner) {
     // When offline, prioritize showing server unreachable message

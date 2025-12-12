@@ -327,7 +327,7 @@ export async function createTimeEntryWithDuration(
 export async function updateTimeEntry(
   id: string,
   input: UpdateTimeEntryInput
-): Promise<ActionResult> {
+): Promise<ActionResult<any>> {
   try {
     const moduleEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
     if (!moduleEnabled) {

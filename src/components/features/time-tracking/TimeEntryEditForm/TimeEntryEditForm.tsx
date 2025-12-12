@@ -43,6 +43,8 @@ interface TimeEntryEditFormProps {
     endedAt: Date | null;
     duration: number;
     description: string | null;
+    createdAt?: Date;
+    updatedAt?: Date;
   }>;
 }
 
@@ -294,7 +296,11 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting, userT
         timeEntryId={entry.id}
         userTimezone={userTimezone}
         entryTimezone={entryTimezone}
-        initialBreaks={breaks}
+        initialBreaks={breaks?.map(breakItem => ({
+          ...breakItem,
+          createdAt: breakItem.createdAt || new Date(),
+          updatedAt: breakItem.updatedAt || new Date(),
+        }))}
       />
     </div>
     </>

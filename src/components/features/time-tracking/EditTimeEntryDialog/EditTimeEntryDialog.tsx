@@ -15,6 +15,7 @@ type TimeEntry = {
   tags: string[];
   billable: boolean;
   location: string | null;
+  timezone: string | null;
   startedAt: Date;
   stoppedAt: Date | null;
   ticket: {
@@ -22,15 +23,25 @@ type TimeEntry = {
     ticketNumber: string;
     title: string;
   } | null;
+  breaks?: Array<{
+    id: string;
+    startedAt: Date;
+    endedAt: Date | null;
+    duration: number;
+    description: string | null;
+    createdAt?: Date;
+    updatedAt?: Date;
+  }>;
 };
 
 interface EditTimeEntryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   entry: TimeEntry;
+  userTimezone?: string;
 }
 
-export function EditTimeEntryDialog({ open, onOpenChange, entry }: EditTimeEntryDialogProps) {
+export function EditTimeEntryDialog({ open, onOpenChange, entry, userTimezone = "UTC" }: EditTimeEntryDialogProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -71,6 +82,9 @@ export function EditTimeEntryDialog({ open, onOpenChange, entry }: EditTimeEntry
           onSave={handleSave}
           onCancel={() => onOpenChange(false)}
           isSubmitting={isSubmitting}
+          userTimezone={userTimezone}
+          entryTimezone={entry.timezone}
+          breaks={entry.breaks}
         />
       </div>
     </Dialog>

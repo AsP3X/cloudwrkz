@@ -41,6 +41,9 @@ type TimeEntry = {
     startedAt: Date;
     endedAt: Date | null;
     duration: number;
+    description: string | null;
+    createdAt?: Date;
+    updatedAt?: Date;
   }>;
 };
 
@@ -733,6 +736,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
             }
           }}
           entry={editingEntry}
+          userTimezone={userTimezone}
         />
       )}
     </div>
