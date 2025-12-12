@@ -9,6 +9,7 @@ interface UseTimerDurationProps {
   totalDuration: number;
   lastResumedAt: Date | null;
   startedAt: Date;
+  breaks?: Array<{ startedAt: Date; endedAt: Date | null; duration?: number }>;
   updateInterval?: number; // milliseconds, default 1000 (1 second)
 }
 
@@ -17,6 +18,7 @@ export function useTimerDuration({
   totalDuration,
   lastResumedAt,
   startedAt,
+  breaks,
   updateInterval = 1000,
 }: UseTimerDurationProps) {
   // Start with totalDuration to match server render (avoid hydration mismatch)
@@ -35,17 +37,18 @@ export function useTimerDuration({
     if (!mounted) return;
 
     if (status !== "RUNNING") {
-      // For non-running entries, use totalDuration directly
+      // For non-running entries, calculate with breaks
+      const elapsed = calculateElapsedTime({ status, totalDuration, lastResumedAt, startedAt, breaks });
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDuration(totalDuration);
+      setDuration(elapsed);
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setFormatted(formatDuration(totalDuration));
+      setFormatted(formatDuration(elapsed));
       return;
     }
 
     // For running timers, calculate actual elapsed time
     const updateDuration = () => {
-      const elapsed = calculateElapsedTime({ status, totalDuration, lastResumedAt, startedAt });
+      const elapsed = calculateElapsedTime({ status, totalDuration, lastResumedAt, startedAt, breaks });
       setDuration(elapsed);
       setFormatted(formatDuration(elapsed));
     };
@@ -57,7 +60,7 @@ export function useTimerDuration({
     const interval = setInterval(updateDuration, updateInterval);
 
     return () => clearInterval(interval);
-  }, [status, totalDuration, lastResumedAt, startedAt, updateInterval, mounted]);
+  }, [status, totalDuration, lastResumedAt, startedAt, breaks, updateInterval, mounted]);
 
   return {
     duration, // in seconds

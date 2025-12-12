@@ -406,12 +406,40 @@ model TimeEntry {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Relations
+  breaks TimeEntryBreak[]
+
   @@index([userId])
   @@index([status])
   @@index([ticketId])
   @@index([projectId])
   @@index([createdAt])
   @@map("time_entries")
+}
+
+// Time Entry Break model - tracks breaks that should be deducted from total duration
+model TimeEntryBreak {
+  id          String    @id @default(cuid())
+  timeEntryId String
+  timeEntry   TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+
+  // Break timing
+  startedAt DateTime  @default(now()) // When the break started
+  endedAt   DateTime? // When the break ended (null if break is still ongoing)
+
+  // Break duration in seconds (calculated from startedAt to endedAt, or current time if endedAt is null)
+  duration Int @default(0) // Duration in seconds
+
+  // Optional metadata
+  description String? // Optional description/reason for the break
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([timeEntryId])
+  @@index([startedAt])
+  @@map("time_entry_breaks")
 }
 
 // Project model

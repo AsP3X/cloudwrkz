@@ -10,6 +10,7 @@ interface DurationDisplayProps {
     totalDuration: number;
     lastResumedAt: Date | null;
     startedAt: Date;
+    breaks?: Array<{ startedAt: Date; endedAt: Date | null; duration?: number }>;
   };
   className?: string;
 }
@@ -29,8 +30,8 @@ export function DurationDisplay({ entry, className }: DurationDisplayProps) {
     if (!mounted) return;
 
     if (entry.status !== "RUNNING") {
-      // For non-running entries, use totalDuration directly
-      setDuration(entry.totalDuration);
+      // For non-running entries, calculate with breaks
+      setDuration(calculateElapsedTime(entry));
       return;
     }
 
@@ -46,7 +47,7 @@ export function DurationDisplay({ entry, className }: DurationDisplayProps) {
     const interval = setInterval(updateDuration, 1000);
 
     return () => clearInterval(interval);
-  }, [entry.status, entry.totalDuration, entry.lastResumedAt, entry.startedAt, mounted]);
+  }, [entry.status, entry.totalDuration, entry.lastResumedAt, entry.startedAt, entry.breaks, mounted]);
 
   // For running timers, suppress hydration warning since the value will differ between server and client
   // Server renders totalDuration (static), client calculates actual elapsed time (dynamic)

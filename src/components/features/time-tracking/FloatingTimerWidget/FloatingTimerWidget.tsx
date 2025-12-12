@@ -18,6 +18,7 @@ type TimeEntry = {
   startedAt: Date;
   totalDuration: number;
   lastResumedAt: Date | null;
+  breaks?: Array<{ startedAt: Date; endedAt: Date | null; duration?: number }>;
 };
 
 interface FloatingTimerWidgetProps {
@@ -194,7 +195,7 @@ export function FloatingTimerWidget({ activeEntries }: FloatingTimerWidgetProps)
                     <span className={cn("px-2 py-0.5 text-xs rounded-full", getStatusColor(entry.status))}>
                       {getStatusLabel(entry.status)}
                     </span>
-                    <DurationDisplay entry={entry} className="font-mono text-xs text-neutral-600 dark:text-neutral-400" />
+                    <DurationDisplay entry={{ ...entry, breaks: entry.breaks || [] }} className="font-mono text-xs text-neutral-600 dark:text-neutral-400" />
                   </div>
                 </div>
               </div>

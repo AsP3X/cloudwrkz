@@ -35,6 +35,12 @@ type TimeEntry = {
     ticketNumber: string;
     title: string;
   } | null;
+  breaks?: Array<{
+    id: string;
+    startedAt: Date;
+    endedAt: Date | null;
+    duration: number;
+  }>;
 };
 
 interface TimeEntryListProps {
@@ -370,7 +376,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
                   )}
                   <div className="flex flex-wrap items-center gap-2 mb-2">
                     <Badge className={getStatusColor(entry.status)}>{getStatusLabel(entry.status)}</Badge>
-                    <DurationDisplay entry={entry} className="font-mono text-sm text-neutral-700 dark:text-neutral-300" />
+                    <DurationDisplay entry={{ ...entry, breaks: entry.breaks || [] }} className="font-mono text-sm text-neutral-700 dark:text-neutral-300" />
                   </div>
                 </div>
               </div>
@@ -572,7 +578,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
                     <Badge className={getStatusColor(entry.status)}>{getStatusLabel(entry.status)}</Badge>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <DurationDisplay entry={entry} className="font-mono text-sm" />
+                    <DurationDisplay entry={{ ...entry, breaks: entry.breaks || [] }} className="font-mono text-sm" />
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-600 dark:text-neutral-400">
                     {formatDate(entry.startedAt)}

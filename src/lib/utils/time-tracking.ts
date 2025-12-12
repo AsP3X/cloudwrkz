@@ -34,27 +34,55 @@ export function parseDuration(input: string): number {
 }
 
 /**
- * Calculate elapsed time for a time entry
- * Returns total duration + current running time if status is RUNNING
+ * Calculate total break duration in seconds
  */
-export function calculateElapsedTime(entry: {
-  status: TimeEntryStatus;
-  totalDuration: number;
-  lastResumedAt: Date | null;
-  startedAt: Date;
-}): number {
+export function calculateTotalBreakDuration(breaks: Array<{ startedAt: Date; endedAt: Date | null; duration?: number }>): number {
+  const now = new Date();
+  return breaks.reduce((total, breakRecord) => {
+    let breakDuration = breakRecord.duration ?? 0;
+    
+    // If break hasn't ended, calculate current duration
+    if (!breakRecord.endedAt) {
+      breakDuration = Math.floor((now.getTime() - breakRecord.startedAt.getTime()) / 1000);
+    }
+    
+    return total + breakDuration;
+  }, 0);
+}
+
+/**
+ * Calculate elapsed time for a time entry
+ * Returns total duration + current running time if status is RUNNING, minus break durations
+ */
+export function calculateElapsedTime(
+  entry: {
+    status: TimeEntryStatus;
+    totalDuration: number;
+    lastResumedAt: Date | null;
+    startedAt: Date;
+    breaks?: Array<{ startedAt: Date; endedAt: Date | null; duration?: number }>;
+  }
+): number {
+  let baseDuration = entry.totalDuration;
+  
   if (entry.status === "RUNNING" && entry.lastResumedAt) {
     const now = new Date();
     const runningTime = Math.floor((now.getTime() - entry.lastResumedAt.getTime()) / 1000);
-    return entry.totalDuration + runningTime;
+    baseDuration = entry.totalDuration + runningTime;
   } else if (entry.status === "RUNNING" && !entry.lastResumedAt) {
     // Started but never paused
     const now = new Date();
     const runningTime = Math.floor((now.getTime() - entry.startedAt.getTime()) / 1000);
-    return entry.totalDuration + runningTime;
+    baseDuration = entry.totalDuration + runningTime;
   }
   
-  return entry.totalDuration;
+  // Subtract break durations if breaks are provided
+  if (entry.breaks && entry.breaks.length > 0) {
+    const breakDuration = calculateTotalBreakDuration(entry.breaks);
+    baseDuration = Math.max(0, baseDuration - breakDuration);
+  }
+  
+  return baseDuration;
 }
 
 /**

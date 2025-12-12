@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/Textarea";
 import { Button } from "@/components/ui/Button";
 import { updateTimeEntrySchema, type UpdateTimeEntryInput } from "@/lib/validations/time-tracking";
 import { type TimeEntryStatus } from "@prisma/client";
+import { TimeEntryBreaks } from "../TimeEntryBreaks";
 
 type TimeEntry = {
   id: string;
@@ -31,9 +32,17 @@ interface TimeEntryEditFormProps {
   onSave: (data: UpdateTimeEntryInput) => Promise<void>;
   onCancel: () => void;
   isSubmitting: boolean;
+  userTimezone?: string;
+  breaks?: Array<{
+    id: string;
+    startedAt: Date;
+    endedAt: Date | null;
+    duration: number;
+    description: string | null;
+  }>;
 }
 
-export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting }: TimeEntryEditFormProps) {
+export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting, userTimezone = "UTC", breaks = [] }: TimeEntryEditFormProps) {
   const [tags, setTags] = React.useState<string[]>(entry.tags);
   const [tagInput, setTagInput] = React.useState("");
 
@@ -239,6 +248,15 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting }: Tim
         </Button>
       </div>
     </form>
+
+    {/* Breaks Section */}
+    <div className="mt-6 pt-6 border-t border-neutral-200 dark:border-neutral-700">
+      <TimeEntryBreaks
+        timeEntryId={entry.id}
+        userTimezone={userTimezone}
+        initialBreaks={breaks}
+      />
+    </div>
     </>
   );
 }

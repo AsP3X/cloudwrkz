@@ -6,11 +6,12 @@ import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { DurationDisplay } from "../DurationDisplay";
-import { getStatusColor, getStatusLabel, formatDuration, canPause, canResume, canStop } from "@/lib/utils/time-tracking";
+import { getStatusColor, getStatusLabel, formatDuration, canPause, canResume, canStop, calculateTotalBreakDuration } from "@/lib/utils/time-tracking";
 import { formatDateTimeInTimezone } from "@/lib/utils/date";
 import { pauseTimeEntry, resumeTimeEntry, stopTimeEntry, completeTimeEntry, deleteTimeEntry, updateTimeEntry } from "@/server/actions/time-tracking";
 import { type TimeEntryStatus } from "@prisma/client";
 import { TimeEntryEditForm } from "../TimeEntryEditForm";
+import { TimeEntryBreaks } from "../TimeEntryBreaks";
 import { cn } from "@/lib/utils/cn";
 
 type TimeEntry = {
@@ -37,6 +38,13 @@ type TimeEntry = {
     name: string | null;
     email: string;
   };
+  breaks?: Array<{
+    id: string;
+    startedAt: Date;
+    endedAt: Date | null;
+    duration: number;
+    description: string | null;
+  }>;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -270,6 +278,8 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
                 onSave={handleUpdate}
                 onCancel={() => setIsEditing(false)}
                 isSubmitting={processing}
+                userTimezone={userTimezone}
+                breaks={entry.breaks || []}
               />
             ) : (
               <div className="space-y-4">
@@ -304,8 +314,16 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
                 <div>
                   <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">Duration</label>
                   <div className="mt-1">
-                    <DurationDisplay entry={entry} className="font-mono text-lg text-neutral-900 dark:text-neutral-100" />
+                    <DurationDisplay entry={{ ...entry, breaks: entry.breaks || [] }} className="font-mono text-lg text-neutral-900 dark:text-neutral-100" />
                   </div>
+                  {entry.breaks && entry.breaks.length > 0 && (
+                    <div className="mt-2 text-sm sm:text-base text-neutral-600 dark:text-neutral-400">
+                      <span className="font-medium block sm:inline">Breaks deducted:</span>{" "}
+                      <span className="font-mono text-error-600 dark:text-error-400 block sm:inline mt-1 sm:mt-0">
+                        -{formatDuration(calculateTotalBreakDuration(entry.breaks))}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 {entry.tags.length > 0 && (
                   <div>
@@ -345,6 +363,15 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Breaks Card */}
+          <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-4 sm:p-6">
+            <TimeEntryBreaks
+              timeEntryId={entry.id}
+              userTimezone={userTimezone}
+              initialBreaks={entry.breaks || []}
+            />
           </div>
         </div>
 

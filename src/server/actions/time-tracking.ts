@@ -946,6 +946,9 @@ export async function getTimeEntry(id: string) {
             email: true,
           },
         },
+        breaks: {
+          orderBy: { startedAt: "asc" },
+        },
       },
     });
 
@@ -1026,6 +1029,9 @@ export async function getTimeEntries(filters: TimeEntryFilters = {}) {
               title: true,
             },
           },
+          breaks: {
+            orderBy: { startedAt: "asc" },
+          },
         },
       }),
       prisma.timeEntry.count({ where }),
@@ -1078,14 +1084,22 @@ export async function getActiveTimeEntries(userId?: string) {
             title: true,
           },
         },
+        breaks: {
+          orderBy: { startedAt: "asc" },
+        },
       },
     });
 
     // Calculate current elapsed time for each entry
-    return entries.map((entry) => ({
-      ...entry,
-      currentDuration: calculateElapsedTime(entry),
-    }));
+    return entries.map((entry) => {
+      // Fetch breaks for each entry
+      const breaks = entry.breaks || [];
+      return {
+        ...entry,
+        breaks,
+        currentDuration: calculateElapsedTime({ ...entry, breaks }),
+      };
+    });
   } catch (error: any) {
     console.error("Error fetching active time entries:", error);
     return [];
@@ -1331,6 +1345,9 @@ export async function getTimeEntriesForTicket(ticketId: string) {
             title: true,
           },
         },
+        breaks: {
+          orderBy: { startedAt: "asc" },
+        },
       },
     });
 
@@ -1447,5 +1464,279 @@ export async function bulkDeleteTimeEntries(ids: string[]): Promise<ActionResult
       success: false,
       error: error.message || "Failed to delete time entries",
     };
+  }
+}
+
+/**
+ * Add a break to a time entry
+ */
+export async function addBreakToTimeEntry(
+  timeEntryId: string,
+  input: { startedAt?: Date; endedAt?: Date; description?: string }
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
+    if (!moduleEnabled) {
+      return {
+        success: false,
+        error: "Time tracking module is not enabled",
+      };
+    }
+
+    const user = await requireAuth();
+
+    // Verify ownership
+    const entry = await prisma.timeEntry.findUnique({
+      where: { id: timeEntryId },
+      select: { userId: true },
+    });
+
+    if (!entry) {
+      return {
+        success: false,
+        error: "Time entry not found",
+      };
+    }
+
+    if (entry.userId !== user.id) {
+      return {
+        success: false,
+        error: "Unauthorized",
+      };
+    }
+
+    const now = new Date();
+    const breakStartedAt = input.startedAt || now;
+    const breakEndedAt = input.endedAt || null;
+
+    // Calculate duration if break has ended
+    let duration = 0;
+    if (breakEndedAt) {
+      duration = Math.floor((breakEndedAt.getTime() - breakStartedAt.getTime()) / 1000);
+      if (duration < 0) {
+        return {
+          success: false,
+          error: "Break end time must be after start time",
+        };
+      }
+    }
+
+    const breakRecord = await prisma.timeEntryBreak.create({
+      data: {
+        timeEntryId,
+        startedAt: breakStartedAt,
+        endedAt: breakEndedAt,
+        duration,
+        description: input.description?.trim() || null,
+      },
+    });
+
+    revalidatePath("/dashboard/time-tracking");
+    revalidatePath(`/dashboard/time-tracking/${timeEntryId}`);
+    emitTimeTrackingEvent(user.id, "BREAK_ADDED", { timeEntryId, breakId: breakRecord.id });
+    
+    return {
+      success: true,
+      data: { id: breakRecord.id },
+      message: "Break added successfully",
+    };
+  } catch (error: any) {
+    console.error("Error adding break to time entry:", error);
+    return {
+      success: false,
+      error: error.message || "Failed to add break",
+    };
+  }
+}
+
+/**
+ * Update a break
+ */
+export async function updateBreak(
+  breakId: string,
+  input: { startedAt?: Date; endedAt?: Date | null; description?: string }
+): Promise<ActionResult> {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
+    if (!moduleEnabled) {
+      return {
+        success: false,
+        error: "Time tracking module is not enabled",
+      };
+    }
+
+    const user = await requireAuth();
+
+    // Get break with time entry to verify ownership
+    const breakRecord = await prisma.timeEntryBreak.findUnique({
+      where: { id: breakId },
+      include: {
+        timeEntry: {
+          select: { userId: true },
+        },
+      },
+    });
+
+    if (!breakRecord) {
+      return {
+        success: false,
+        error: "Break not found",
+      };
+    }
+
+    if (breakRecord.timeEntry.userId !== user.id) {
+      return {
+        success: false,
+        error: "Unauthorized",
+      };
+    }
+
+    const finalStartedAt = input.startedAt !== undefined ? input.startedAt : breakRecord.startedAt;
+    const finalEndedAt = input.endedAt !== undefined ? input.endedAt : breakRecord.endedAt;
+
+    // Calculate duration
+    let duration = 0;
+    if (finalEndedAt) {
+      duration = Math.floor((finalEndedAt.getTime() - finalStartedAt.getTime()) / 1000);
+      if (duration < 0) {
+        return {
+          success: false,
+          error: "Break end time must be after start time",
+        };
+      }
+    }
+
+    await prisma.timeEntryBreak.update({
+      where: { id: breakId },
+      data: {
+        ...(input.startedAt !== undefined && { startedAt: input.startedAt }),
+        ...(input.endedAt !== undefined && { endedAt: input.endedAt }),
+        ...(input.description !== undefined && { description: input.description?.trim() || null }),
+        duration,
+      },
+    });
+
+    revalidatePath("/dashboard/time-tracking");
+    revalidatePath(`/dashboard/time-tracking/${breakRecord.timeEntryId}`);
+    emitTimeTrackingEvent(user.id, "BREAK_UPDATED", { timeEntryId: breakRecord.timeEntryId, breakId });
+    
+    return {
+      success: true,
+      message: "Break updated successfully",
+    };
+  } catch (error: any) {
+    console.error("Error updating break:", error);
+    return {
+      success: false,
+      error: error.message || "Failed to update break",
+    };
+  }
+}
+
+/**
+ * Delete a break
+ */
+export async function deleteBreak(breakId: string): Promise<ActionResult> {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
+    if (!moduleEnabled) {
+      return {
+        success: false,
+        error: "Time tracking module is not enabled",
+      };
+    }
+
+    const user = await requireAuth();
+
+    // Get break with time entry to verify ownership
+    const breakRecord = await prisma.timeEntryBreak.findUnique({
+      where: { id: breakId },
+      include: {
+        timeEntry: {
+          select: { userId: true },
+        },
+      },
+    });
+
+    if (!breakRecord) {
+      return {
+        success: false,
+        error: "Break not found",
+      };
+    }
+
+    if (breakRecord.timeEntry.userId !== user.id) {
+      return {
+        success: false,
+        error: "Unauthorized",
+      };
+    }
+
+    const timeEntryId = breakRecord.timeEntryId;
+
+    await prisma.timeEntryBreak.delete({
+      where: { id: breakId },
+    });
+
+    revalidatePath("/dashboard/time-tracking");
+    revalidatePath(`/dashboard/time-tracking/${timeEntryId}`);
+    emitTimeTrackingEvent(user.id, "BREAK_DELETED", { timeEntryId, breakId });
+    
+    return {
+      success: true,
+      message: "Break deleted successfully",
+    };
+  } catch (error: any) {
+    console.error("Error deleting break:", error);
+    return {
+      success: false,
+      error: error.message || "Failed to delete break",
+    };
+  }
+}
+
+/**
+ * Get breaks for a time entry
+ */
+export async function getBreaksForTimeEntry(timeEntryId: string) {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
+    if (!moduleEnabled) {
+      return [];
+    }
+
+    const user = await requireAuth();
+
+    // Verify ownership
+    const entry = await prisma.timeEntry.findUnique({
+      where: { id: timeEntryId },
+      select: { userId: true },
+    });
+
+    if (!entry || entry.userId !== user.id) {
+      return [];
+    }
+
+    const breaks = await prisma.timeEntryBreak.findMany({
+      where: { timeEntryId },
+      orderBy: { startedAt: "asc" },
+    });
+
+    // Calculate current duration for ongoing breaks
+    return breaks.map((breakRecord) => {
+      let duration = breakRecord.duration;
+      if (!breakRecord.endedAt) {
+        // Break is still ongoing, calculate current duration
+        const now = new Date();
+        duration = Math.floor((now.getTime() - breakRecord.startedAt.getTime()) / 1000);
+      }
+      return {
+        ...breakRecord,
+        duration,
+      };
+    });
+  } catch (error: any) {
+    console.error("Error fetching breaks for time entry:", error);
+    return [];
   }
 }
