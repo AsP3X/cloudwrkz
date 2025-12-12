@@ -60,8 +60,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         if (dbTheme && dbTheme !== "system") {
           // User has a theme preference in database, use it
           setThemeState(dbTheme);
-          const resolved = dbTheme === "system" ? getSystemTheme() : dbTheme;
-          setEffectiveTheme(resolved);
+          // dbTheme is already "light" or "dark" at this point (not "system")
+          setEffectiveTheme(dbTheme);
           
           // Sync localStorage with database value
           if (typeof window !== "undefined") {
