@@ -65,8 +65,12 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
     sortOrder: sortOrder || "desc",
   };
 
+  // By default, show only unresolved tickets (OPEN, IN_PROGRESS, PENDING)
+  // unless the user explicitly chooses a different status filter.
   if (params.status) {
     filters.status = params.status;
+  } else {
+    filters.status = "UNRESOLVED";
   }
   if (params.createdBy) {
     filters.createdById = params.createdBy;
