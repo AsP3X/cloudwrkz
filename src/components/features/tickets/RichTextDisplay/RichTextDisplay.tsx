@@ -30,7 +30,9 @@ export const RichTextDisplay = ({ content, className, maxHeight }: RichTextDispl
         "prose-blockquote:italic",
         "prose-blockquote:rounded-r",
         "prose-blockquote:border-primary-500",
-        "prose-a:text-primary-600 dark:prose-a:text-primary-400 prose-a:underline",
+        // Links: blue text and pointer cursor
+        "prose-a:text-blue-600 dark:prose-a:text-blue-400 prose-a:underline",
+        "prose-a:cursor-pointer hover:prose-a:underline",
         "prose-img:rounded-lg prose-img:max-w-full prose-img:h-auto",
         "prose-ul:list-disc prose-ol:list-decimal",
         "prose-li:marker:text-neutral-500 dark:prose-li:marker:text-neutral-400",
