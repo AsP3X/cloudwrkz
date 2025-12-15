@@ -698,44 +698,70 @@ export const RichTextEditorToolbar = ({
                   // No selection - insert an empty visible quote block
                   const insertPos = from;
                   
-                  // Use transaction API to insert text node with mark in one operation
-                  editor
-                    .chain()
-                    .focus()
-                    .command(({ tr, dispatch, state }) => {
-                      if (dispatch) {
-                        const { schema } = state;
-                        const newHighlightMark = schema.marks.highlight.create({ color: "#inline-quote" });
-                        
-                        // If we're currently in a quote, first exit it by inserting a space without quote
-                        // and clearing stored marks, then insert the new quote
-                        let actualInsertPos = insertPos;
-                        if (isCurrentlyInQuote) {
-                          // Insert a space to break out of the current quote
-                          const breakSpace = schema.text(' ');
-                          tr.insert(insertPos, breakSpace);
-                          actualInsertPos = insertPos + 1;
+                  if (isCurrentlyInQuote) {
+                    // We're in a quote - exit it first, then insert new quote
+                    editor
+                      .chain()
+                      .focus()
+                      .command(({ tr, dispatch }) => {
+                        if (dispatch) {
                           // Clear stored marks to exit quote mode
                           tr.setStoredMarks([]);
                         }
-                        
-                        // Create text node with highlight mark for the new quote
-                        const textNode = schema.text(' ', [newHighlightMark]);
-                        
-                        // Insert the new quote text node
-                        tr.insert(actualInsertPos, textNode);
-                        
-                        // Set stored marks for future typing in the new quote
-                        tr.setStoredMarks([newHighlightMark]);
-                        
-                        // Set selection after the inserted text
-                        const Selection = state.selection.constructor;
-                        const newSelection = Selection.create(tr.doc, actualInsertPos + 1);
-                        tr.setSelection(newSelection);
-                      }
-                      return true;
-                    })
-                    .run();
+                        return true;
+                      })
+                      .insertContent(' ') // Insert a space without quote to break out
+                      .command(({ tr, dispatch, state }) => {
+                        if (dispatch) {
+                          const { schema } = state;
+                          const newHighlightMark = schema.marks.highlight.create({ color: "#inline-quote" });
+                          const currentPos = tr.selection.from;
+                          
+                          // Create text node with highlight mark for the new quote
+                          const textNode = schema.text(' ', [newHighlightMark]);
+                          
+                          // Insert the new quote text node at current position
+                          tr.insert(currentPos, textNode);
+                          
+                          // Set stored marks for future typing in the new quote
+                          tr.setStoredMarks([newHighlightMark]);
+                          
+                          // Set selection after the inserted quote text
+                          const Selection = state.selection.constructor;
+                          const newSelection = Selection.create(tr.doc, currentPos + 1);
+                          tr.setSelection(newSelection);
+                        }
+                        return true;
+                      })
+                      .run();
+                  } else {
+                    // Not in a quote - just insert new quote
+                    editor
+                      .chain()
+                      .focus()
+                      .command(({ tr, dispatch, state }) => {
+                        if (dispatch) {
+                          const { schema } = state;
+                          const highlightMark = schema.marks.highlight.create({ color: "#inline-quote" });
+                          
+                          // Create text node with highlight mark
+                          const textNode = schema.text(' ', [highlightMark]);
+                          
+                          // Insert the text node
+                          tr.insert(insertPos, textNode);
+                          
+                          // Set stored marks for future typing
+                          tr.setStoredMarks([highlightMark]);
+                          
+                          // Set selection after the inserted text
+                          const Selection = state.selection.constructor;
+                          const newSelection = Selection.create(tr.doc, insertPos + 1);
+                          tr.setSelection(newSelection);
+                        }
+                        return true;
+                      })
+                      .run();
+                  }
                 }
               }}
               isActive={isInlineQuoteActive}
