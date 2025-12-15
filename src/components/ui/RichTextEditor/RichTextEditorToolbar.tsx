@@ -665,8 +665,10 @@ export const RichTextEditorToolbar = ({
                   editor.chain().focus().setHighlight({ color: "#inline-quote" }).run();
                 } else {
                   // No selection - insert an empty visible quote block
-                  // Insert a non-breaking space and apply quote highlight in one transaction
-                  const insertPos = from;
+                  // Insert a visible character with quote highlight
+                  const { from } = editor.state.selection;
+                  
+                  // Try using transaction API to ensure mark is applied correctly
                   editor
                     .chain()
                     .focus()
@@ -675,15 +677,19 @@ export const RichTextEditorToolbar = ({
                         const { schema } = state;
                         const highlightMark = schema.marks.highlight.create({ color: "#inline-quote" });
                         
-                        // Insert non-breaking space with highlight mark
-                        const textNode = schema.text('\u00A0', [highlightMark]);
-                        tr.insert(insertPos, textNode);
+                        // Create text node with highlight mark - use a thin space that will be visible
+                        const textNode = schema.text('\u2009', [highlightMark]); // Thin space (more visible than zero-width)
                         
-                        // Set stored marks so new text typed will also have the quote highlight
+                        // Insert the text node
+                        tr.insert(from, textNode);
+                        
+                        // Set stored marks for future typing
                         tr.setStoredMarks([highlightMark]);
                         
                         // Set selection after the inserted text
-                        tr.setSelection(state.selection.constructor.create(tr.doc, insertPos + 1));
+                        const Selection = state.selection.constructor;
+                        const newSelection = Selection.create(tr.doc, from + 1);
+                        tr.setSelection(newSelection);
                       }
                       return true;
                     })
