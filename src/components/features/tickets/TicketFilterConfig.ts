@@ -54,8 +54,10 @@ export const getTicketFilterConfig = (options: TicketFilterConfigOptions): Filte
       label: "Status",
       type: "select",
       options: [
+        // "UNRESOLVED" is the default logical filter (OPEN, IN_PROGRESS, PENDING)
+        // "ALL" is a special value meaning "no status filter"
         { value: "UNRESOLVED", label: "Unresolved (default)" },
-        { value: "", label: "All Statuses" },
+        { value: "ALL", label: "All Statuses" },
         { value: "OPEN", label: "Open" },
         { value: "IN_PROGRESS", label: "In Progress" },
         { value: "PENDING", label: "Pending" },
