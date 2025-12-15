@@ -680,16 +680,23 @@ export const RichTextEditorToolbar = ({
                 const { from, to } = editor.state.selection;
                 const hasSelection = from !== to;
                 
-                if (isInlineQuoteActive) {
-                  // Remove inline quote highlight
+                // Check if we're currently in a quote (either active or stored marks)
+                const { $from } = editor.state.selection;
+                const marks = $from.marks();
+                const highlightMark = editor.state.schema.marks.highlight;
+                const isCurrentlyInQuote = marks.some(mark => 
+                  mark.type === highlightMark && mark.attrs.color === "#inline-quote"
+                ) || isInlineQuoteActive;
+                
+                if (isInlineQuoteActive && hasSelection) {
+                  // Remove inline quote highlight from selection
                   editor.chain().focus().unsetHighlight().run();
                 } else if (hasSelection) {
                   // Apply inline quote highlight to selected text
                   editor.chain().focus().setHighlight({ color: "#inline-quote" }).run();
                 } else {
                   // No selection - insert an empty visible quote block
-                  // Insert a space character with quote highlight
-                  const { from } = editor.state.selection;
+                  const insertPos = from;
                   
                   // Use transaction API to insert text node with mark in one operation
                   editor
@@ -698,21 +705,32 @@ export const RichTextEditorToolbar = ({
                     .command(({ tr, dispatch, state }) => {
                       if (dispatch) {
                         const { schema } = state;
-                        const highlightMark = schema.marks.highlight.create({ color: "#inline-quote" });
+                        const newHighlightMark = schema.marks.highlight.create({ color: "#inline-quote" });
                         
-                        // Create text node with highlight mark - use regular space for visibility
-                        // The CSS min-width will ensure it's visible even if space collapses
-                        const textNode = schema.text(' ', [highlightMark]);
+                        // If we're currently in a quote, first exit it by inserting a space without quote
+                        // and clearing stored marks, then insert the new quote
+                        let actualInsertPos = insertPos;
+                        if (isCurrentlyInQuote) {
+                          // Insert a space to break out of the current quote
+                          const breakSpace = schema.text(' ');
+                          tr.insert(insertPos, breakSpace);
+                          actualInsertPos = insertPos + 1;
+                          // Clear stored marks to exit quote mode
+                          tr.setStoredMarks([]);
+                        }
                         
-                        // Insert the text node
-                        tr.insert(from, textNode);
+                        // Create text node with highlight mark for the new quote
+                        const textNode = schema.text(' ', [newHighlightMark]);
                         
-                        // Set stored marks for future typing
-                        tr.setStoredMarks([highlightMark]);
+                        // Insert the new quote text node
+                        tr.insert(actualInsertPos, textNode);
+                        
+                        // Set stored marks for future typing in the new quote
+                        tr.setStoredMarks([newHighlightMark]);
                         
                         // Set selection after the inserted text
                         const Selection = state.selection.constructor;
-                        const newSelection = Selection.create(tr.doc, from + 1);
+                        const newSelection = Selection.create(tr.doc, actualInsertPos + 1);
                         tr.setSelection(newSelection);
                       }
                       return true;
