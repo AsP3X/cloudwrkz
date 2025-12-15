@@ -87,18 +87,30 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
 
     return groups;
   }, [results]);
+
   const highlightMatch = (text: string, searchTerm: string) => {
     if (!searchTerm || searchTerm.length < 2) return text;
-    
-    const escapedTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`(${escapedTerm})`, 'gi');
+
+    // Support multi-term queries by highlighting each word independently.
+    const terms = searchTerm
+      .split(/\s+/)
+      .map((t) => t.trim())
+      .filter((t) => t.length >= 2);
+
+    if (terms.length === 0) return text;
+
+    const escapedTerms = terms.map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const regex = new RegExp(`(${escapedTerms.join("|")})`, "gi");
     const parts = text.split(regex);
-    
+
     return parts.map((part, index) => {
-      // Check if this part matches the search term (case-insensitive)
-      if (part.toLowerCase() === searchTerm.toLowerCase()) {
+      const isMatch = terms.some((term) => part.toLowerCase() === term.toLowerCase());
+      if (isMatch) {
         return (
-          <mark key={index} className="bg-yellow-200 dark:bg-yellow-900 text-yellow-900 dark:text-yellow-100 rounded px-0.5">
+          <mark
+            key={index}
+            className="bg-yellow-200 dark:bg-yellow-900 text-yellow-900 dark:text-yellow-100 rounded px-0.5"
+          >
             {part}
           </mark>
         );
