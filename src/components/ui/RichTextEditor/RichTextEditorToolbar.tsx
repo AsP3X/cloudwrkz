@@ -52,6 +52,7 @@ export const RichTextEditorToolbar = ({
   const textColorRef = React.useRef<HTMLDivElement>(null);
   const highlightColorRef = React.useRef<HTMLDivElement>(null);
   const preservedSelectionRef = React.useRef<{ from: number; to: number } | null>(null);
+  const handledInMouseDownRef = React.useRef<boolean>(false);
 
   // Listen to selection changes to update active states
   React.useEffect(() => {
@@ -131,6 +132,7 @@ export const RichTextEditorToolbar = ({
       // Preserve selection before button click to prevent it from being lost
       if (editor) {
         const { from, to } = editor.state.selection;
+        handledInMouseDownRef.current = true; // Mark that we're handling it in mousedown
         if (from !== to) {
           // Store the selection to restore it if needed
           preservedSelectionRef.current = { from, to };
@@ -148,21 +150,42 @@ export const RichTextEditorToolbar = ({
               onClick();
               // Clear the preserved selection
               preservedSelectionRef.current = null;
+              handledInMouseDownRef.current = false;
             }
           });
         } else {
+          // No selection - prevent default to maintain focus
+          e.preventDefault();
           preservedSelectionRef.current = null;
+          // Focus editor first, then execute in next tick to ensure focus is set
+          if (editor && !editor.isDestroyed) {
+            editor.commands.focus();
+            // Use setTimeout to ensure focus is applied before executing
+            setTimeout(() => {
+              if (editor && !editor.isDestroyed) {
+                onClick();
+                handledInMouseDownRef.current = false;
+              }
+            }, 0);
+          }
         }
       }
     };
 
     const handleClick = () => {
-      // Only handle click if selection wasn't already handled in mousedown
+      // Only handle click if it wasn't already handled in mousedown
       // This prevents double execution when mousedown already handled it
-      if (!preservedSelectionRef.current) {
+      if (!handledInMouseDownRef.current) {
+        // Ensure editor is focused before applying formatting
+        if (editor && !editor.isFocused) {
+          editor.commands.focus();
+        }
         // Apply the formatting
         onClick();
       }
+      
+      // Reset the flag for next click
+      handledInMouseDownRef.current = false;
       
       // Refocus editor after clicking button on mobile to keep toolbar visible
       if (isMobile && editor) {
@@ -665,10 +688,10 @@ export const RichTextEditorToolbar = ({
                   editor.chain().focus().setHighlight({ color: "#inline-quote" }).run();
                 } else {
                   // No selection - insert an empty visible quote block
-                  // Insert a visible character with quote highlight
+                  // Insert a space character with quote highlight
                   const { from } = editor.state.selection;
                   
-                  // Try using transaction API to ensure mark is applied correctly
+                  // Use transaction API to insert text node with mark in one operation
                   editor
                     .chain()
                     .focus()
@@ -677,8 +700,9 @@ export const RichTextEditorToolbar = ({
                         const { schema } = state;
                         const highlightMark = schema.marks.highlight.create({ color: "#inline-quote" });
                         
-                        // Create text node with highlight mark - use a thin space that will be visible
-                        const textNode = schema.text('\u2009', [highlightMark]); // Thin space (more visible than zero-width)
+                        // Create text node with highlight mark - use regular space for visibility
+                        // The CSS min-width will ensure it's visible even if space collapses
+                        const textNode = schema.text(' ', [highlightMark]);
                         
                         // Insert the text node
                         tr.insert(from, textNode);
