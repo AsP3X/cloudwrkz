@@ -657,56 +657,36 @@ export const RichTextEditorToolbar = ({
                 const { from, to } = editor.state.selection;
                 const hasSelection = from !== to;
                 
-                if (isBlockquoteActive) {
-                  editor.chain().focus().toggleBlockquote().run();
-                } else if (isInlineQuoteActive) {
+                if (isInlineQuoteActive) {
+                  // Remove inline quote highlight
                   editor.chain().focus().unsetHighlight().run();
                 } else if (hasSelection) {
-                  const selectedText = editor.state.doc.textBetween(from, to);
-                  if (selectedText.trim()) {
-                    const $from = editor.state.doc.resolve(from);
-                    const blockStart = $from.start($from.depth);
-                    const blockEnd = $from.end($from.depth);
-                    const isFullBlock = from === blockStart && to === blockEnd;
-                    const textBefore = editor.state.doc.textBetween(blockStart, from);
-                    const textAfter = editor.state.doc.textBetween(to, blockEnd);
-                    const hasTextAround = (textBefore.trim().length > 0 || textAfter.trim().length > 0);
-                    const entireBlockText = editor.state.doc.textBetween(blockStart, blockEnd);
-                    const isOnlyContentInBlock = entireBlockText.trim() === selectedText.trim();
-                    
-                    if (isFullBlock || (isOnlyContentInBlock && !hasTextAround)) {
-                      const blockquoteNode = editor.schema.nodes.blockquote.create(
-                        {},
-                        editor.schema.nodes.paragraph.create({}, editor.schema.text(selectedText))
-                      );
-                      
-                      editor
-                        .chain()
-                        .focus()
-                        .command(({ tr, dispatch }) => {
-                          if (dispatch) {
-                            if (isFullBlock) {
-                              tr.replaceWith(blockStart, blockEnd, blockquoteNode);
-                            } else {
-                              tr.delete(from, to);
-                              const $newPos = tr.doc.resolve(Math.min(from, tr.doc.content.size));
-                              const insertPos = $newPos.after($newPos.depth);
-                              tr.insert(insertPos, blockquoteNode);
-                            }
-                          }
-                          return true;
-                        })
-                        .run();
-                    } else {
-                      editor.chain().focus().setHighlight({ color: "#inline-quote" }).run();
-                    }
-                  }
+                  // Apply inline quote highlight to selected text
+                  editor.chain().focus().setHighlight({ color: "#inline-quote" }).run();
                 } else {
-                  editor.chain().focus().toggleBlockquote().run();
+                  // No selection - insert an empty visible quote block
+                  // Insert a space character and immediately apply quote highlight
+                  const insertPos = from;
+                  editor
+                    .chain()
+                    .focus()
+                    .insertContent(' ') // Insert a space
+                    .setTextSelection({ from: insertPos, to: insertPos + 1 }) // Select the space
+                    .setHighlight({ color: "#inline-quote" }) // Apply quote highlight
+                    .command(({ tr, dispatch }) => {
+                      if (dispatch) {
+                        // Set stored marks so new text typed will also have the quote highlight
+                        const highlightMark = editor.state.schema.marks.highlight.create({ color: "#inline-quote" });
+                        tr.setStoredMarks([highlightMark]);
+                      }
+                      return true;
+                    })
+                    .setTextSelection(insertPos + 1) // Place cursor after the space
+                    .run();
                 }
               }}
-              isActive={isBlockquoteActive || isInlineQuoteActive}
-              title="Quote / callout"
+              isActive={isInlineQuoteActive}
+              title="Inline quote"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />

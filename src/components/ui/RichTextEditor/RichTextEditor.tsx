@@ -97,6 +97,9 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
         Code,
         Highlight.configure({
           multicolor: true,
+          HTMLAttributes: {
+            class: "highlight",
+          },
         }),
         Color,
         TextStyle,
@@ -116,6 +119,42 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
         const html = editor.getHTML();
         const plainText = extractPlainText(html);
         onChange(html, plainText);
+        
+        // Check if two consecutive spaces were typed while in quote mode
+        const { selection } = editor.state;
+        const { $from } = selection;
+        const pos = $from.pos;
+        
+        // Check if we're at a position with quote highlight
+        const highlightMark = editor.state.schema.marks.highlight;
+        const marks = $from.marks();
+        const isInQuote = marks.some(mark => 
+          mark.type === highlightMark && mark.attrs.color === "#inline-quote"
+        );
+        
+        if (isInQuote && pos >= 2) {
+          // Check if the last two characters before cursor are spaces
+          const lastTwoChars = editor.state.doc.textBetween(pos - 2, pos);
+          if (lastTwoChars === "  ") {
+            // Two consecutive spaces - exit quote mode
+            // This works for: two spaces anywhere, or two spaces after a dot
+            const newPos = pos - 2;
+            editor
+              .chain()
+              .focus()
+              .setTextSelection({ from: pos - 2, to: pos })
+              .deleteSelection()
+              .setTextSelection(newPos)
+              .command(({ tr, dispatch }) => {
+                if (dispatch) {
+                  // Clear stored marks (remove quote highlight)
+                  tr.setStoredMarks([]);
+                }
+                return true;
+              })
+              .run();
+          }
+        }
       },
       editorProps: {
         transformPastedHTML(html) {
