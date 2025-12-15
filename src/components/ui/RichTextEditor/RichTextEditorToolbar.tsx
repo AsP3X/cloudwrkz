@@ -665,23 +665,28 @@ export const RichTextEditorToolbar = ({
                   editor.chain().focus().setHighlight({ color: "#inline-quote" }).run();
                 } else {
                   // No selection - insert an empty visible quote block
-                  // Insert a space character and immediately apply quote highlight
+                  // Insert a non-breaking space and apply quote highlight in one transaction
                   const insertPos = from;
                   editor
                     .chain()
                     .focus()
-                    .insertContent(' ') // Insert a space
-                    .setTextSelection({ from: insertPos, to: insertPos + 1 }) // Select the space
-                    .setHighlight({ color: "#inline-quote" }) // Apply quote highlight
-                    .command(({ tr, dispatch }) => {
+                    .command(({ tr, dispatch, state }) => {
                       if (dispatch) {
+                        const { schema } = state;
+                        const highlightMark = schema.marks.highlight.create({ color: "#inline-quote" });
+                        
+                        // Insert non-breaking space with highlight mark
+                        const textNode = schema.text('\u00A0', [highlightMark]);
+                        tr.insert(insertPos, textNode);
+                        
                         // Set stored marks so new text typed will also have the quote highlight
-                        const highlightMark = editor.state.schema.marks.highlight.create({ color: "#inline-quote" });
                         tr.setStoredMarks([highlightMark]);
+                        
+                        // Set selection after the inserted text
+                        tr.setSelection(state.selection.constructor.create(tr.doc, insertPos + 1));
                       }
                       return true;
                     })
-                    .setTextSelection(insertPos + 1) // Place cursor after the space
                     .run();
                 }
               }}
