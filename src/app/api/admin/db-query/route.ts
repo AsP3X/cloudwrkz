@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { requireRole } from "@/lib/utils/auth-server";
+import { requirePermission } from "@/lib/utils/auth-server";
 
 export async function POST(request: Request) {
   try {
-    await requireRole("ADMIN");
+    await requirePermission("admin.db.view_entries");
 
     const body = await request.json().catch(() => null);
     const query = typeof body?.query === "string" ? body.query.trim() : "";
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     }
 
     // Execute raw query using Prisma. We use $queryRawUnsafe here because the
-    // query text is admin-provided. This endpoint is protected by requireRole("ADMIN")
+    // query text is admin-provided. This endpoint is protected by requirePermission("admin.db.view_entries")
     // and constrained to SELECT-only queries.
     const rows = await prisma.$queryRawUnsafe<any[]>(query);
 

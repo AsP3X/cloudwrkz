@@ -217,17 +217,14 @@ export async function getBannedUserInfo(): Promise<{
 
 /**
  * Require a specific permission - throws error if user doesn't have it
- * Admins always pass permission checks
- * Supports both static permissions and dynamic ticket permissions
+ * Supports both static permissions and dynamic ticket permissions.
+ *
+ * Note: Admins no longer automatically bypass permission checks.
+ * They must have the permission via role defaults or group membership.
  */
 export async function requirePermission(permissionKey: DynamicPermissionKey): Promise<CurrentUser> {
   const user = await requireAuth();
-  
-  // Admins always have all permissions
-  if (user.role === "ADMIN") {
-    return user;
-  }
-  
+
   const hasAccess = await hasPermission(user.id, permissionKey);
   
   if (!hasAccess) {
@@ -239,17 +236,14 @@ export async function requirePermission(permissionKey: DynamicPermissionKey): Pr
 
 /**
  * Require any of the specified permissions - throws error if user doesn't have any
- * Admins always pass permission checks
- * Supports both static permissions and dynamic ticket permissions
+ * Supports both static permissions and dynamic ticket permissions.
+ *
+ * Note: Admins no longer automatically bypass permission checks.
+ * They must have at least one of the permissions via role defaults or group membership.
  */
 export async function requireAnyPermission(...permissionKeys: DynamicPermissionKey[]): Promise<CurrentUser> {
   const user = await requireAuth();
-  
-  // Admins always have all permissions
-  if (user.role === "ADMIN") {
-    return user;
-  }
-  
+
   const hasAccess = await hasAnyPermission(user.id, permissionKeys);
   
   if (!hasAccess) {

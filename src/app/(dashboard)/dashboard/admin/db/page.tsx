@@ -1,12 +1,31 @@
 "use server";
 
-import { requireAuth, requireRole } from "@/lib/utils/auth-server";
+import { requireAuth } from "@/lib/utils/auth-server";
+import { hasPermission } from "@/lib/utils/permissions";
 import { AdminDatabaseConsolePage } from "@/components/features/admin/AdminDatabaseConsole";
 import { prisma } from "@/lib/db/prisma";
+import Link from "next/link";
+import { Button } from "@/components/ui/Button";
+import { ROUTES } from "@/lib/constants/routes";
 
 export default async function AdminDatabasePage() {
   const user = await requireAuth();
-  await requireRole("ADMIN");
+
+  const canViewDb = await hasPermission(user.id, "admin.db.view");
+
+  if (!canViewDb) {
+    return (
+      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8 text-center">
+        <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">Access Denied</h2>
+        <p className="text-neutral-600 dark:text-neutral-400 mb-4">
+          You don&apos;t have permission to access the Database Explorer. Please contact an administrator.
+        </p>
+        <Link href={ROUTES.DASHBOARD}>
+          <Button variant="primary">Back to Dashboard</Button>
+        </Link>
+      </div>
+    );
+  }
 
   // Fetch list of tables from the public schema to show in the overview.
   // This is a simple introspection query and is kept read-only.
