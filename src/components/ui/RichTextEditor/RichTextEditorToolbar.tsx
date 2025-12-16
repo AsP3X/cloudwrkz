@@ -36,69 +36,89 @@ const ToolbarButton: React.FC<ToolbarButtonProps> = ({
   handledInMouseDownRef,
 }) => {
   const handleMouseDown = (e: React.MouseEvent) => {
-    // Preserve selection before button click to prevent it from being lost
-    if (editor) {
-      const { from, to } = editor.state.selection;
-      handledInMouseDownRef.current = true; // Mark that we're handling it in mousedown
-      if (from !== to) {
-        // Store the selection to restore it if needed
-        preservedSelectionRef.current = { from, to };
-        // Prevent default to avoid losing focus/selection
-        // This prevents the browser from moving focus away from the editor
-        e.preventDefault();
-        // Execute the click handler immediately to apply formatting
-        // Use requestAnimationFrame to ensure editor state is ready
-        requestAnimationFrame(() => {
-          if (preservedSelectionRef.current && editor && !editor.isDestroyed) {
-            const { from, to } = preservedSelectionRef.current;
-            // Restore selection before applying formatting
-            editor.commands.setTextSelection({ from, to });
-            // Apply the formatting
-            onClick();
-            // Clear the preserved selection
-            preservedSelectionRef.current = null;
-            handledInMouseDownRef.current = false;
-          }
-        });
-      } else {
-        // No selection - prevent default to maintain focus
-        e.preventDefault();
-        preservedSelectionRef.current = null;
-        // Focus editor first, then execute in next tick to ensure focus is set
-        if (editor && !editor.isDestroyed) {
-          editor.commands.focus();
-          // Use setTimeout to ensure focus is applied before executing
-          setTimeout(() => {
-            if (editor && !editor.isDestroyed) {
-              onClick();
-              handledInMouseDownRef.current = false;
-            }
-          }, 0);
-        }
-      }
+    // Always prevent default to prevent the button from taking focus away from the editor
+    e.preventDefault();
+    
+    if (!editor || editor.isDestroyed) return;
+    
+    // Mark that we're handling it in mousedown to prevent double execution
+    handledInMouseDownRef.current = true;
+    
+    // Preserve the current selection before the button click
+    const { from, to } = editor.state.selection;
+    const hasSelection = from !== to;
+    
+    if (hasSelection) {
+      // Store the selection to restore it
+      preservedSelectionRef.current = { from, to };
+    } else {
+      preservedSelectionRef.current = null;
     }
-  };
-
-  const handleClick = () => {
-    // Only handle click if it wasn't already handled in mousedown
-    // This prevents double execution when mousedown already handled it
-    if (!handledInMouseDownRef.current) {
-      // Ensure editor is focused before applying formatting
-      if (editor && !editor.isFocused) {
+    
+    // Ensure editor is focused
+    if (!editor.isFocused) {
+      editor.commands.focus();
+    }
+    
+    // Execute the formatting command immediately
+    // Use requestAnimationFrame to ensure the editor state is ready
+    requestAnimationFrame(() => {
+      if (!editor || editor.isDestroyed) {
+        handledInMouseDownRef.current = false;
+        return;
+      }
+      
+      // Restore selection if we had one
+      if (preservedSelectionRef.current) {
+        const { from, to } = preservedSelectionRef.current;
+        editor.commands.setTextSelection({ from, to });
+      }
+      
+      // Ensure focus is maintained
+      if (!editor.isFocused) {
         editor.commands.focus();
       }
+      
       // Apply the formatting
       onClick();
-    }
-
-    // Reset the flag for next click
-    handledInMouseDownRef.current = false;
-
-    // Refocus editor after clicking button on mobile to keep toolbar visible
-    if (isMobile && editor) {
+      
+      // Clear preserved selection
+      preservedSelectionRef.current = null;
+      
+      // Reset flag after a short delay to allow click handler to see it was handled
       setTimeout(() => {
-        editor.commands.focus();
-      }, 50);
+        handledInMouseDownRef.current = false;
+      }, 100);
+    });
+  };
+
+  const handleClick = (e: React.MouseEvent) => {
+    // Prevent default to avoid any default button behavior
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Only handle click if it wasn't already handled in mousedown
+    if (handledInMouseDownRef.current) {
+      return;
+    }
+    
+    if (!editor || editor.isDestroyed) return;
+    
+    // Ensure editor is focused before applying formatting
+    if (!editor.isFocused) {
+      editor.commands.focus();
+    }
+    
+    // Apply the formatting
+    onClick();
+    
+    // Refocus editor after clicking button to maintain focus
+    if (editor && !editor.isDestroyed) {
+      requestAnimationFrame(() => {
+        if (editor && !editor.isDestroyed && !editor.isFocused) {
+          editor.commands.focus();
+        }
+      });
     }
   };
 
