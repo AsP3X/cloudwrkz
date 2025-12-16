@@ -360,7 +360,7 @@ export function StatisticsPage({
                   >
                     {userStatusData.map((entry, index) => (
                       <Cell
-                        // eslint-disable-next-line react/no-array-index-key
+                         
                         key={`user-status-${index}`}
                         fill={STATUS_COLORS[entry.name] || COLORS.primary}
                       />
@@ -502,7 +502,7 @@ export function StatisticsPage({
                         ];
                         return (
                           <Cell
-                            // eslint-disable-next-line react/no-array-index-key
+                             
                             key={`ticket-priority-${index}`}
                             fill={colors[index % colors.length]}
                           />

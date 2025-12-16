@@ -145,7 +145,7 @@ export function useTimeTrackingEvents(options: UseTimeTrackingEventsOptions = {}
       return;
     }
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+     
     setConnected(eventSourceRef.current?.readyState === EventSource.OPEN);
   }, [isClient]);
 
