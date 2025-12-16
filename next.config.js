@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  telemetry: {
+    enabled: false,
+  },
   // Configure for reverse proxy setup
   allowedDevOrigins: ['cloudwrkz.corespace.de', 'localhost'],
   experimental: {

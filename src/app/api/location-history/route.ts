@@ -12,20 +12,19 @@ export async function GET(request: Request) {
       return NextResponse.json([], { status: 200 });
     }
 
-    // Look up previously used locations for this user that contain the query.
-    // This naturally stores any addresses that were adjusted (e.g., added
-    // house numbers) when the time entry was saved.
-    const raw = await prisma.timeEntry.findMany({
+    // Look up previously stored, corrected locations for this user that
+    // contain the query. These records are created whenever a time entry
+    // with a location is saved or updated.
+    const raw = await prisma.locationHistory.findMany({
       where: {
         userId: user.id,
-        location: {
-          not: null,
+        address: {
           mode: "insensitive",
           contains: query,
         },
       },
       select: {
-        location: true,
+        address: true,
         updatedAt: true,
       },
       orderBy: {
@@ -34,15 +33,14 @@ export async function GET(request: Request) {
       take: 25,
     });
 
-    // Deduplicate by location string, preserve order by most recently updated
+    // Deduplicate by address string, preserve order by most recently updated
     const seen = new Set<string>();
     const locations: string[] = [];
 
     for (const entry of raw) {
-      if (!entry.location) continue;
-      if (seen.has(entry.location)) continue;
-      seen.add(entry.location);
-      locations.push(entry.location);
+      if (seen.has(entry.address)) continue;
+      seen.add(entry.address);
+      locations.push(entry.address);
     }
 
     const suggestions = locations.slice(0, 10).map((loc, index) => ({

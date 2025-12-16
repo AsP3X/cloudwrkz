@@ -223,6 +223,11 @@ const NAV_SECTIONS = Object.freeze([
         icon: ModulesIcon,
       }),
       Object.freeze({
+        name: "Database Console",
+        href: "/dashboard/admin/db",
+        icon: SettingsIcon,
+      }),
+      Object.freeze({
         name: "System Settings",
         href: "/dashboard/admin/settings",
         icon: SettingsIcon,
