@@ -283,10 +283,25 @@ export const RichTextEditorToolbar = ({
             onClick={() => {
               const selection = preservedSelectionRef.current || editor.state.selection;
               const { from, to } = selection;
-              if (from !== to) {
-                editor.chain().focus().setTextSelection({ from, to }).toggleBold().run();
+              const hasSelection = from !== to;
+              
+              if (hasSelection) {
+                // Apply bold only to selected text (not stored marks for future typing)
+                editor
+                  .chain()
+                  .focus()
+                  .setTextSelection({ from, to })
+                  .toggleBold()
+                  .command(({ tr, dispatch }) => {
+                    if (dispatch) {
+                      // Clear stored marks so bold doesn't continue for future typing
+                      tr.setStoredMarks([]);
+                    }
+                    return true;
+                  })
+                  .run();
               } else {
-                editor.chain().focus().toggleBold().run();
+                // No selection - don't apply bold (bold only works on selected text)
               }
             }}
             isActive={isBoldActive}
@@ -383,10 +398,35 @@ export const RichTextEditorToolbar = ({
                       key={color.name}
                       type="button"
                       onClick={() => {
+                        const { from, to } = editor.state.selection;
+                        const hasSelection = from !== to;
+                        
                         if (color.value) {
-                          editor.chain().focus().setColor(color.value).run();
+                          if (hasSelection) {
+                            // Apply text color only to selected text (not stored marks for future typing)
+                            editor
+                              .chain()
+                              .focus()
+                              .setTextSelection({ from, to })
+                              .setColor(color.value)
+                              .command(({ tr, dispatch }) => {
+                                if (dispatch) {
+                                  // Clear stored marks so text color doesn't continue for future typing
+                                  tr.setStoredMarks([]);
+                                }
+                                return true;
+                              })
+                              .run();
+                          } else {
+                            // No selection - don't apply text color (text color only works on selected text)
+                          }
                         } else {
-                          editor.chain().focus().unsetColor().run();
+                          // Remove text color from selection
+                          if (hasSelection) {
+                            editor.chain().focus().setTextSelection({ from, to }).unsetColor().run();
+                          } else {
+                            editor.chain().focus().unsetColor().run();
+                          }
                         }
                         setTextColorOpen(false);
                       }}
@@ -445,10 +485,25 @@ export const RichTextEditorToolbar = ({
               onClick={() => {
                 const selection = preservedSelectionRef.current || editor.state.selection;
                 const { from, to } = selection;
-                if (from !== to) {
-                  editor.chain().focus().setTextSelection({ from, to }).toggleBold().run();
+                const hasSelection = from !== to;
+                
+                if (hasSelection) {
+                  // Apply bold only to selected text (not stored marks for future typing)
+                  editor
+                    .chain()
+                    .focus()
+                    .setTextSelection({ from, to })
+                    .toggleBold()
+                    .command(({ tr, dispatch }) => {
+                      if (dispatch) {
+                        // Clear stored marks so bold doesn't continue for future typing
+                        tr.setStoredMarks([]);
+                      }
+                      return true;
+                    })
+                    .run();
                 } else {
-                  editor.chain().focus().toggleBold().run();
+                  // No selection - don't apply bold (bold only works on selected text)
                 }
               }}
               isActive={isBoldActive}
@@ -477,10 +532,25 @@ export const RichTextEditorToolbar = ({
               onClick={() => {
                 const selection = preservedSelectionRef.current || editor.state.selection;
                 const { from, to } = selection;
-                if (from !== to) {
-                  editor.chain().focus().setTextSelection({ from, to }).toggleItalic().run();
+                const hasSelection = from !== to;
+                
+                if (hasSelection) {
+                  // Apply italic only to selected text (not stored marks for future typing)
+                  editor
+                    .chain()
+                    .focus()
+                    .setTextSelection({ from, to })
+                    .toggleItalic()
+                    .command(({ tr, dispatch }) => {
+                      if (dispatch) {
+                        // Clear stored marks so italic doesn't continue for future typing
+                        tr.setStoredMarks([]);
+                      }
+                      return true;
+                    })
+                    .run();
                 } else {
-                  editor.chain().focus().toggleItalic().run();
+                  // No selection - don't apply italic (italic only works on selected text)
                 }
               }}
               isActive={isItalicActive}
@@ -553,10 +623,35 @@ export const RichTextEditorToolbar = ({
                   key={color.name}
                   type="button"
                   onClick={() => {
+                    const { from, to } = editor.state.selection;
+                    const hasSelection = from !== to;
+                    
                     if (color.value) {
-                      editor.chain().focus().setColor(color.value).run();
+                      if (hasSelection) {
+                        // Apply text color only to selected text (not stored marks for future typing)
+                        editor
+                          .chain()
+                          .focus()
+                          .setTextSelection({ from, to })
+                          .setColor(color.value)
+                          .command(({ tr, dispatch }) => {
+                            if (dispatch) {
+                              // Clear stored marks so text color doesn't continue for future typing
+                              tr.setStoredMarks([]);
+                            }
+                            return true;
+                          })
+                          .run();
+                      } else {
+                        // No selection - don't apply text color (text color only works on selected text)
+                      }
                     } else {
-                      editor.chain().focus().unsetColor().run();
+                      // Remove text color from selection
+                      if (hasSelection) {
+                        editor.chain().focus().setTextSelection({ from, to }).unsetColor().run();
+                      } else {
+                        editor.chain().focus().unsetColor().run();
+                      }
                     }
                     setTextColorOpen(false);
                   }}
@@ -632,10 +727,36 @@ export const RichTextEditorToolbar = ({
                   key={color.name}
                   type="button"
                   onClick={() => {
+                    const { from, to } = editor.state.selection;
+                    const hasSelection = from !== to;
+                    
                     if (color.value) {
-                      editor.chain().focus().toggleHighlight({ color: color.value }).run();
+                      if (hasSelection) {
+                        // Apply highlight only to selected text (not stored marks for future typing)
+                        editor
+                          .chain()
+                          .focus()
+                          .setTextSelection({ from, to })
+                          .setHighlight({ color: color.value })
+                          .command(({ tr, dispatch }) => {
+                            if (dispatch) {
+                              // Clear stored marks so highlight doesn't continue for future typing
+                              tr.setStoredMarks([]);
+                            }
+                            return true;
+                          })
+                          .run();
+                      } else {
+                        // No selection - don't apply highlight (highlights only work on selected text)
+                        // Optionally, we could show a message, but for now just do nothing
+                      }
                     } else {
-                      editor.chain().focus().unsetHighlight().run();
+                      // Remove highlight from selection
+                      if (hasSelection) {
+                        editor.chain().focus().setTextSelection({ from, to }).unsetHighlight().run();
+                      } else {
+                        editor.chain().focus().unsetHighlight().run();
+                      }
                     }
                     setHighlightColorOpen(false);
                   }}

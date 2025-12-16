@@ -120,23 +120,35 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
         const plainText = extractPlainText(html);
         onChange(html, plainText);
         
-        // Check if two consecutive spaces were typed while in quote mode
+        // Check if two consecutive spaces were typed while in formatting mode
+        // (quote, highlight, bold, italic, or text color)
         const { selection } = editor.state;
         const { $from } = selection;
         const pos = $from.pos;
         
-        // Check if we're at a position with quote highlight
-        const highlightMark = editor.state.schema.marks.highlight;
+        // Check if we're at a position with any formatting marks
         const marks = $from.marks();
-        const isInQuote = marks.some(mark => 
-          mark.type === highlightMark && mark.attrs.color === "#inline-quote"
-        );
+        const schema = editor.state.schema;
+        const highlightMark = schema.marks.highlight;
+        const boldMark = schema.marks.bold;
+        const italicMark = schema.marks.italic;
+        const textStyleMark = schema.marks.textStyle;
         
-        if (isInQuote && pos >= 2) {
+        const highlightMarkInstance = marks.find(mark => mark.type === highlightMark);
+        const isInQuote = highlightMarkInstance && highlightMarkInstance.attrs.color === "#inline-quote";
+        const isInRegularHighlight = highlightMarkInstance && highlightMarkInstance.attrs.color !== "#inline-quote";
+        const isInBold = marks.some(mark => mark.type === boldMark);
+        const isInItalic = marks.some(mark => mark.type === italicMark);
+        const isInTextColor = marks.some(mark => mark.type === textStyleMark && mark.attrs.color);
+        
+        // Check if we're in any formatting mode that should exit on two spaces
+        const isInFormattingMode = isInQuote || isInRegularHighlight || isInBold || isInItalic || isInTextColor;
+        
+        if (isInFormattingMode && pos >= 2) {
           // Check if the last two characters before cursor are spaces
           const lastTwoChars = editor.state.doc.textBetween(pos - 2, pos);
           if (lastTwoChars === "  ") {
-            // Two consecutive spaces - exit quote mode
+            // Two consecutive spaces - exit formatting mode
             // This works for: two spaces anywhere, or two spaces after a dot
             const newPos = pos - 2;
             editor
@@ -147,7 +159,7 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
               .setTextSelection(newPos)
               .command(({ tr, dispatch }) => {
                 if (dispatch) {
-                  // Clear stored marks (remove quote highlight)
+                  // Clear stored marks (remove all formatting)
                   tr.setStoredMarks([]);
                 }
                 return true;
