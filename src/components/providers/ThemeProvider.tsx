@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable react-hooks/set-state-in-effect */
+
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { getUserTheme, updateUserTheme } from "@/server/actions/theme";
 
@@ -44,13 +46,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // Will be updated after mount when we can safely access DOM
   const [effectiveTheme, setEffectiveTheme] = useState<"light" | "dark">("light");
 
-  const [mounted, setMounted] = useState(false);
-
   // Load theme from database and localStorage after mount to prevent hydration mismatch
   useEffect(() => {
-    // Mark as mounted
-    setMounted(true);
-
     // Load theme priority: database (if authenticated) > localStorage > system
     const loadTheme = async () => {
       try {
@@ -129,8 +126,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   // Determine effective theme (resolves "system" to light or dark)
   useEffect(() => {
-    if (!mounted) return;
-
     const resolved = resolveTheme(theme);
     
     // Always verify and apply theme class, even if state matches
@@ -147,16 +142,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
     
     // Update effective theme state
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEffectiveTheme((prev) => {
       if (prev === resolved) return prev;
       return resolved;
     });
-  }, [theme, mounted, resolveTheme]);
+  }, [theme, resolveTheme]);
 
   // Listen to system theme changes when theme is "system"
   useEffect(() => {
-    if (!mounted || theme !== "system" || typeof window === "undefined" || !window.matchMedia) return;
+    if (theme !== "system" || typeof window === "undefined" || !window.matchMedia) return;
 
     let mediaQuery: MediaQueryList;
     try {
@@ -178,7 +172,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       }
       
       // Update effective theme state based on system preference
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setEffectiveTheme((prev) => {
         if (prev === resolved) return prev;
         return resolved;
@@ -188,7 +181,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     // Set up listener
     mediaQuery.addEventListener("change", handleChange);
     return () => mediaQuery.removeEventListener("change", handleChange);
-  }, [theme, mounted]);
+  }, [theme, getSystemTheme]);
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);

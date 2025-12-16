@@ -12,6 +12,128 @@ interface RichTextEditorToolbarProps {
   isMobile?: boolean;
 }
 
+interface ToolbarButtonProps {
+  editor: ReturnType<typeof useEditor> | null;
+  isMobile: boolean;
+  onClick: () => void;
+  isActive?: boolean;
+  disabled?: boolean;
+  children: React.ReactNode;
+  title?: string;
+  preservedSelectionRef: React.MutableRefObject<{ from: number; to: number } | null>;
+  handledInMouseDownRef: React.MutableRefObject<boolean>;
+}
+
+const ToolbarButton: React.FC<ToolbarButtonProps> = ({
+  editor,
+  isMobile,
+  onClick,
+  isActive = false,
+  disabled = false,
+  children,
+  title,
+  preservedSelectionRef,
+  handledInMouseDownRef,
+}) => {
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // Preserve selection before button click to prevent it from being lost
+    if (editor) {
+      const { from, to } = editor.state.selection;
+      handledInMouseDownRef.current = true; // Mark that we're handling it in mousedown
+      if (from !== to) {
+        // Store the selection to restore it if needed
+        preservedSelectionRef.current = { from, to };
+        // Prevent default to avoid losing focus/selection
+        // This prevents the browser from moving focus away from the editor
+        e.preventDefault();
+        // Execute the click handler immediately to apply formatting
+        // Use requestAnimationFrame to ensure editor state is ready
+        requestAnimationFrame(() => {
+          if (preservedSelectionRef.current && editor && !editor.isDestroyed) {
+            const { from, to } = preservedSelectionRef.current;
+            // Restore selection before applying formatting
+            editor.commands.setTextSelection({ from, to });
+            // Apply the formatting
+            onClick();
+            // Clear the preserved selection
+            preservedSelectionRef.current = null;
+            handledInMouseDownRef.current = false;
+          }
+        });
+      } else {
+        // No selection - prevent default to maintain focus
+        e.preventDefault();
+        preservedSelectionRef.current = null;
+        // Focus editor first, then execute in next tick to ensure focus is set
+        if (editor && !editor.isDestroyed) {
+          editor.commands.focus();
+          // Use setTimeout to ensure focus is applied before executing
+          setTimeout(() => {
+            if (editor && !editor.isDestroyed) {
+              onClick();
+              handledInMouseDownRef.current = false;
+            }
+          }, 0);
+        }
+      }
+    }
+  };
+
+  const handleClick = () => {
+    // Only handle click if it wasn't already handled in mousedown
+    // This prevents double execution when mousedown already handled it
+    if (!handledInMouseDownRef.current) {
+      // Ensure editor is focused before applying formatting
+      if (editor && !editor.isFocused) {
+        editor.commands.focus();
+      }
+      // Apply the formatting
+      onClick();
+    }
+
+    // Reset the flag for next click
+    handledInMouseDownRef.current = false;
+
+    // Refocus editor after clicking button on mobile to keep toolbar visible
+    if (isMobile && editor) {
+      setTimeout(() => {
+        editor.commands.focus();
+      }, 50);
+    }
+  };
+
+  // If editor is not ready yet, don't render the toolbar UI
+  if (!editor) {
+    return null;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      onMouseDown={handleMouseDown}
+      disabled={disabled}
+      title={title}
+      className={cn(
+        "rounded-lg transition-all flex-shrink-0",
+        isMobile ? "p-2.5 min-w-[40px] min-h-[40px] flex items-center justify-center" : "p-2",
+        "hover:bg-neutral-100 dark:hover:bg-neutral-700",
+        "disabled:opacity-50 disabled:cursor-not-allowed",
+        "active:scale-95",
+        isMobile
+          ? isActive
+            ? "bg-primary-500 text-white shadow-md"
+            : "bg-transparent"
+          : isActive
+          ? "bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300"
+          : ""
+      )}
+    >
+      {children}
+    </button>
+  );
+};
+
 // Predefined color palettes
 const TEXT_COLORS = [
   { name: "Default", value: null },
@@ -44,8 +166,6 @@ export const RichTextEditorToolbar = ({
   onLinkAdd,
   isMobile = false,
 }: RichTextEditorToolbarProps) => {
-  if (!editor) return null;
-
   const [textColorOpen, setTextColorOpen] = React.useState(false);
   const [highlightColorOpen, setHighlightColorOpen] = React.useState(false);
   const [selectionUpdate, setSelectionUpdate] = React.useState(0);
@@ -93,135 +213,33 @@ export const RichTextEditorToolbar = ({
   }, []);
 
   // Get current formatting states - re-evaluated when selection changes
-  // Check if textStyle is actually active on the current selection
-  const isTextStyleActive = selectionUpdate >= 0 && editor.isActive("textStyle");
-  const textStyleAttrs = editor.getAttributes("textStyle");
-  const currentTextColor = isTextStyleActive && textStyleAttrs.color && textStyleAttrs.color !== "#inline-quote" ? textStyleAttrs.color : null;
+  // All checks are guarded so they are safe when editor is null
+  const isTextStyleActive = !!editor && selectionUpdate >= 0 && editor.isActive("textStyle");
+  const textStyleAttrs = editor ? editor.getAttributes("textStyle") : {};
+  const currentTextColor =
+    isTextStyleActive && textStyleAttrs.color && textStyleAttrs.color !== "#inline-quote"
+      ? textStyleAttrs.color
+      : null;
 
   // Check if highlight is actually active on the current selection
-  const isHighlightActive = selectionUpdate >= 0 && editor.isActive("highlight");
-  const highlightAttrs = editor.getAttributes("highlight");
-  const currentHighlightColor = isHighlightActive && highlightAttrs.color && highlightAttrs.color !== "#inline-quote" ? highlightAttrs.color : null;
+  const isHighlightActive = !!editor && selectionUpdate >= 0 && editor.isActive("highlight");
+  const highlightAttrs = editor ? editor.getAttributes("highlight") : {};
+  const currentHighlightColor =
+    isHighlightActive && highlightAttrs.color && highlightAttrs.color !== "#inline-quote"
+      ? highlightAttrs.color
+      : null;
   
   // Check if inline quote is active (highlight with inline-quote color)
   const isInlineQuoteActive = isHighlightActive && highlightAttrs.color === "#inline-quote";
   
   // Check other formatting states
-  const isBoldActive = selectionUpdate >= 0 && editor.isActive("bold");
-  const isItalicActive = selectionUpdate >= 0 && editor.isActive("italic");
-  const isBlockquoteActive = selectionUpdate >= 0 && editor.isActive("blockquote");
-  const isCodeBlockActive = selectionUpdate >= 0 && editor.isActive("codeBlock");
-  const isLinkActive = selectionUpdate >= 0 && editor.isActive("link");
-  const isBulletListActive = selectionUpdate >= 0 && editor.isActive("bulletList");
-  const isOrderedListActive = selectionUpdate >= 0 && editor.isActive("orderedList");
-
-  const ToolbarButton = ({
-    onClick,
-    isActive = false,
-    disabled = false,
-    children,
-    title,
-  }: {
-    onClick: () => void;
-    isActive?: boolean;
-    disabled?: boolean;
-    children: React.ReactNode;
-    title?: string;
-  }) => {
-    const handleMouseDown = (e: React.MouseEvent) => {
-      // Preserve selection before button click to prevent it from being lost
-      if (editor) {
-        const { from, to } = editor.state.selection;
-        handledInMouseDownRef.current = true; // Mark that we're handling it in mousedown
-        if (from !== to) {
-          // Store the selection to restore it if needed
-          preservedSelectionRef.current = { from, to };
-          // Prevent default to avoid losing focus/selection
-          // This prevents the browser from moving focus away from the editor
-          e.preventDefault();
-          // Execute the click handler immediately to apply formatting
-          // Use requestAnimationFrame to ensure editor state is ready
-          requestAnimationFrame(() => {
-            if (preservedSelectionRef.current && editor && !editor.isDestroyed) {
-              const { from, to } = preservedSelectionRef.current;
-              // Restore selection before applying formatting
-              editor.commands.setTextSelection({ from, to });
-              // Apply the formatting
-              onClick();
-              // Clear the preserved selection
-              preservedSelectionRef.current = null;
-              handledInMouseDownRef.current = false;
-            }
-          });
-        } else {
-          // No selection - prevent default to maintain focus
-          e.preventDefault();
-          preservedSelectionRef.current = null;
-          // Focus editor first, then execute in next tick to ensure focus is set
-          if (editor && !editor.isDestroyed) {
-            editor.commands.focus();
-            // Use setTimeout to ensure focus is applied before executing
-            setTimeout(() => {
-              if (editor && !editor.isDestroyed) {
-                onClick();
-                handledInMouseDownRef.current = false;
-              }
-            }, 0);
-          }
-        }
-      }
-    };
-
-    const handleClick = () => {
-      // Only handle click if it wasn't already handled in mousedown
-      // This prevents double execution when mousedown already handled it
-      if (!handledInMouseDownRef.current) {
-        // Ensure editor is focused before applying formatting
-        if (editor && !editor.isFocused) {
-          editor.commands.focus();
-        }
-        // Apply the formatting
-        onClick();
-      }
-      
-      // Reset the flag for next click
-      handledInMouseDownRef.current = false;
-      
-      // Refocus editor after clicking button on mobile to keep toolbar visible
-      if (isMobile && editor) {
-        setTimeout(() => {
-          editor.commands.focus();
-        }, 50);
-      }
-    };
-
-    return (
-      <button
-        type="button"
-        onClick={handleClick}
-        onMouseDown={handleMouseDown}
-        disabled={disabled}
-        title={title}
-        className={cn(
-          "rounded-lg transition-all flex-shrink-0",
-          isMobile ? "p-2.5 min-w-[40px] min-h-[40px] flex items-center justify-center" : "p-2",
-          "hover:bg-neutral-100 dark:hover:bg-neutral-700",
-          "disabled:opacity-50 disabled:cursor-not-allowed",
-          "active:scale-95",
-          isMobile
-            ? isActive
-              ? "bg-primary-500 text-white shadow-md"
-              : "bg-transparent"
-            : isActive
-            ? "bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300"
-            : ""
-        )}
-      >
-        {children}
-      </button>
-    );
-  };
-
+  const isBoldActive = !!editor && selectionUpdate >= 0 && editor.isActive("bold");
+  const isItalicActive = !!editor && selectionUpdate >= 0 && editor.isActive("italic");
+  const isBlockquoteActive = !!editor && selectionUpdate >= 0 && editor.isActive("blockquote");
+  const isCodeBlockActive = !!editor && selectionUpdate >= 0 && editor.isActive("codeBlock");
+  const isLinkActive = !!editor && selectionUpdate >= 0 && editor.isActive("link");
+  const isBulletListActive = !!editor && selectionUpdate >= 0 && editor.isActive("bulletList");
+  const isOrderedListActive = !!editor && selectionUpdate >= 0 && editor.isActive("orderedList");
 
   if (isMobile) {
     // Mobile layout: Simplified toolbar with only Bold, List, Link, and Color
@@ -232,8 +250,11 @@ export const RichTextEditorToolbar = ({
             "flex items-center bg-neutral-50 dark:bg-neutral-800/50 gap-1 p-2 border-b border-neutral-200 dark:border-neutral-700 rounded-t-lg"
           )}
         >
-          {/* Bold */}
           <ToolbarButton
+            editor={editor}
+            isMobile={true}
+            preservedSelectionRef={preservedSelectionRef}
+            handledInMouseDownRef={handledInMouseDownRef}
             onClick={() => {
               const selection = preservedSelectionRef.current || editor.state.selection;
               const { from, to } = selection;
@@ -281,6 +302,10 @@ export const RichTextEditorToolbar = ({
 
           {/* Link */}
           <ToolbarButton
+            editor={editor}
+            isMobile={true}
+            preservedSelectionRef={preservedSelectionRef}
+            handledInMouseDownRef={handledInMouseDownRef}
             onClick={onLinkAdd || (() => {
               const url = window.prompt("Enter URL:");
               if (url) {
@@ -301,6 +326,10 @@ export const RichTextEditorToolbar = ({
             ref={textColorRef}
           >
             <ToolbarButton
+              editor={editor}
+              isMobile={true}
+              preservedSelectionRef={preservedSelectionRef}
+              handledInMouseDownRef={handledInMouseDownRef}
               onClick={() => setTextColorOpen(!textColorOpen)}
               isActive={!!currentTextColor}
               title="Text color"
@@ -363,6 +392,10 @@ export const RichTextEditorToolbar = ({
   }
 
   // Desktop layout: Original single-row design
+  if (!editor) {
+    return null;
+  }
+
   return (
     <div
       className={cn(
@@ -380,6 +413,10 @@ export const RichTextEditorToolbar = ({
           position="top"
           trigger={
             <ToolbarButton
+              editor={editor}
+              isMobile={false}
+              preservedSelectionRef={preservedSelectionRef}
+              handledInMouseDownRef={handledInMouseDownRef}
               onClick={() => {
                 const selection = preservedSelectionRef.current || editor.state.selection;
                 const { from, to } = selection;
@@ -408,6 +445,10 @@ export const RichTextEditorToolbar = ({
           position="top"
           trigger={
             <ToolbarButton
+              editor={editor}
+              isMobile={false}
+              preservedSelectionRef={preservedSelectionRef}
+              handledInMouseDownRef={handledInMouseDownRef}
               onClick={() => {
                 const selection = preservedSelectionRef.current || editor.state.selection;
                 const { from, to } = selection;
@@ -449,6 +490,10 @@ export const RichTextEditorToolbar = ({
           position="top"
           trigger={
             <ToolbarButton
+              editor={editor}
+              isMobile={false}
+              preservedSelectionRef={preservedSelectionRef}
+              handledInMouseDownRef={handledInMouseDownRef}
               onClick={() => setTextColorOpen(!textColorOpen)}
               isActive={!!currentTextColor}
               title="Text color"
@@ -524,6 +569,10 @@ export const RichTextEditorToolbar = ({
           position="top"
           trigger={
             <ToolbarButton
+              editor={editor}
+              isMobile={false}
+              preservedSelectionRef={preservedSelectionRef}
+              handledInMouseDownRef={handledInMouseDownRef}
               onClick={() => setHighlightColorOpen(!highlightColorOpen)}
               isActive={!!currentHighlightColor && !isInlineQuoteActive}
               title="Highlight color"
@@ -676,6 +725,10 @@ export const RichTextEditorToolbar = ({
           position="top"
           trigger={
             <ToolbarButton
+              editor={editor}
+              isMobile={false}
+              preservedSelectionRef={preservedSelectionRef}
+              handledInMouseDownRef={handledInMouseDownRef}
               onClick={() => {
                 const { from, to } = editor.state.selection;
                 const hasSelection = from !== to;
@@ -782,6 +835,10 @@ export const RichTextEditorToolbar = ({
           position="top"
           trigger={
             <ToolbarButton
+              editor={editor}
+              isMobile={false}
+              preservedSelectionRef={preservedSelectionRef}
+              handledInMouseDownRef={handledInMouseDownRef}
               onClick={() => editor.chain().focus().toggleCodeBlock().run()}
               isActive={isCodeBlockActive}
               title="Code block"
@@ -809,6 +866,10 @@ export const RichTextEditorToolbar = ({
           position="top"
           trigger={
             <ToolbarButton
+              editor={editor}
+              isMobile={false}
+              preservedSelectionRef={preservedSelectionRef}
+              handledInMouseDownRef={handledInMouseDownRef}
               onClick={onLinkAdd || (() => {
                 const url = window.prompt("Enter URL:");
                 if (url) {
@@ -832,6 +893,10 @@ export const RichTextEditorToolbar = ({
           <FloatingTooltip
             trigger={
               <ToolbarButton
+                editor={editor}
+                isMobile={false}
+                preservedSelectionRef={preservedSelectionRef}
+                handledInMouseDownRef={handledInMouseDownRef}
                 onClick={onImageUpload}
                 title="Insert image"
               >
@@ -855,6 +920,10 @@ export const RichTextEditorToolbar = ({
           position="top"
           trigger={
             <ToolbarButton
+              editor={editor}
+              isMobile={false}
+              preservedSelectionRef={preservedSelectionRef}
+              handledInMouseDownRef={handledInMouseDownRef}
               onClick={() => editor.chain().focus().undo().run()}
               disabled={!editor.can().undo()}
               title="Undo last change (Ctrl+Z)"
@@ -874,6 +943,10 @@ export const RichTextEditorToolbar = ({
           position="top"
           trigger={
             <ToolbarButton
+              editor={editor}
+              isMobile={false}
+              preservedSelectionRef={preservedSelectionRef}
+              handledInMouseDownRef={handledInMouseDownRef}
               onClick={() => editor.chain().focus().redo().run()}
               disabled={!editor.can().redo()}
               title="Redo last change (Ctrl+Y)"
