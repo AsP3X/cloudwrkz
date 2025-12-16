@@ -41,7 +41,7 @@ export function useTimerDuration({
       const elapsed = calculateElapsedTime({ status, totalDuration, lastResumedAt, startedAt, breaks });
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setDuration(elapsed);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+       
       setFormatted(formatDuration(elapsed));
       return;
     }

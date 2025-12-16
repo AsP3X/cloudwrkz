@@ -9,6 +9,14 @@ export interface FuzzySearchOptions<T> {
   minMatchCharLength?: number;
   ignoreLocation?: boolean;
   includeScore?: boolean;
+  /**
+   * Enable Fuse.js extended search.
+   *
+   * If not explicitly set, extended search will automatically be enabled
+   * when the query contains multiple whitespace-separated terms so that
+   * all terms can be matched independently (logical AND).
+   */
+  useExtendedSearch?: boolean;
 }
 
 /**
@@ -27,7 +35,20 @@ export function fuzzySearch<T extends Record<string, any>>(
     return items.map((item) => ({ item }));
   }
 
-  const searchTerm = query.trim();
+  const trimmedQuery = query.trim();
+  const queryParts = trimmedQuery.split(/\s+/).filter(Boolean);
+
+  // Automatically enable extended search when there are multiple terms,
+  // unless explicitly overridden via options
+  const useExtendedSearch =
+    options.useExtendedSearch !== undefined ? options.useExtendedSearch : queryParts.length > 1;
+
+  // For extended search, build an AND query where each term must be present.
+  // We use `'term` (exact/contains) syntax for each token and join them with spaces,
+  // which Fuse interprets as logical AND across terms.
+  const searchTerm = useExtendedSearch
+    ? queryParts.map((part) => `'${part}`).join(" ")
+    : trimmedQuery;
 
   // Configure Fuse.js options
   const fuseOptions: IFuseOptions<T> = {
@@ -41,8 +62,8 @@ export function fuzzySearch<T extends Record<string, any>>(
     minMatchCharLength: options.minMatchCharLength ?? 2,
     ignoreLocation: options.ignoreLocation ?? true,
     includeScore: options.includeScore ?? true,
-    // Use extended search for better fuzzy matching
-    useExtendedSearch: false,
+    // Use extended search when we want multi-term AND-style matching
+    useExtendedSearch,
     // Find all matches, not just the first
     findAllMatches: true,
   };

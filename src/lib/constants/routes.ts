@@ -13,6 +13,8 @@ export const ROUTES = {
   ABOUT: "/about",
   CONTACT: "/contact",
   HEALTH: "/health",
+  // Agent routes
+  AGENT_STATISTICS: "/dashboard/statistics",
   // Admin routes
   ADMIN_USERS: "/dashboard/admin/users",
   ADMIN_MODULES: "/dashboard/admin/modules",
@@ -22,6 +24,7 @@ export const ROUTES = {
   ADMIN_SESSIONS: "/dashboard/admin/sessions",
   ADMIN_TICKETS: "/dashboard/admin/tickets",
   ADMIN_PROJECTS: "/dashboard/admin/projects",
+  ADMIN_DB_CONSOLE: "/dashboard/admin/db",
   // Projects
   PROJECTS: "/dashboard/projects",
   // Time tracking

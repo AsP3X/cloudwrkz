@@ -33,26 +33,10 @@ export function useDatabaseHealth(options?: {
     onStatusChange,
   } = options || {};
 
-  // Check if we're within a DatabaseHealthProvider context
-  // If so, use that context instead of creating our own polling
+  // Always read context first – hooks must not be conditional
   const context = useContext(DatabaseHealthContext);
-  
-  // If context exists, return context values (no need to poll)
-  if (context) {
-    return {
-      status: context.status,
-      isConnected: context.isConnected,
-      lastChecked: context.lastChecked,
-      error: context.error,
-      isServerUnreachable: context.isServerUnreachable,
-      refresh: () => {}, // No-op when using context
-      pausePolling: () => {},
-      resumePolling: () => {},
-      isPolling: false,
-    };
-  }
 
-  // No context available, create our own polling
+  // Local polling state is only used when no provider is available
   const [status, setStatus] = useState<DatabaseHealthStatus>(initialStatus);
   const [isConnected, setIsConnected] = useState<boolean>(true);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
@@ -141,6 +125,12 @@ export function useDatabaseHealth(options?: {
   }, [onStatusChange]);
 
   useEffect(() => {
+    // When a provider is present, we rely entirely on its state and
+    // skip local polling logic to avoid duplicate network traffic.
+    if (context) {
+      return;
+    }
+
     // Initial check - wrap to prevent unhandled promise rejection
     checkHealth().catch(() => {
       // Errors are already handled inside checkHealth
@@ -188,21 +178,40 @@ export function useDatabaseHealth(options?: {
         clearInterval(interval);
       }
     };
-  }, [checkHealth, pollInterval, isPolling]);
+  }, [checkHealth, pollInterval, isPolling, context]);
 
   // Expose manual refresh function
   const refresh = useCallback(() => {
     checkHealth();
-  }, [checkHealth]);
+  }, [checkHealth, context]);
 
   // Pause/resume polling
   const pausePolling = useCallback(() => {
+    // Polling is controlled by the provider when context exists
+    if (context) return;
     setIsPolling(false);
-  }, []);
+  }, [context]);
 
   const resumePolling = useCallback(() => {
+    if (context) return;
     setIsPolling(true);
-  }, []);
+  }, [context]);
+
+  // If we have a provider, always prefer its state so callers get a
+  // single, shared source of truth for database health.
+  if (context) {
+    return {
+      status: context.status,
+      isConnected: context.isConnected,
+      lastChecked: context.lastChecked,
+      error: context.error,
+      isServerUnreachable: context.isServerUnreachable,
+      refresh,
+      pausePolling,
+      resumePolling,
+      isPolling: false,
+    };
+  }
 
   return {
     status,

@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/utils/auth-server";
-import { requireRole } from "@/lib/utils/auth-server";
+import { getCurrentUser, requireAnyPermission } from "@/lib/utils/auth-server";
 import { UserPermissionsPage } from "@/components/features/admin/UserPermissions/UserPermissionsPage";
 
 export default async function AdminUserPermissionsPage() {
@@ -10,7 +9,7 @@ export default async function AdminUserPermissionsPage() {
     redirect("/login");
   }
 
-  await requireRole("ADMIN");
+  await requireAnyPermission("admin.permissions.view", "admin.permissions.manage");
 
   return <UserPermissionsPage />;
 }

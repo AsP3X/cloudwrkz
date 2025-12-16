@@ -80,6 +80,7 @@ model User {
   reportedIssues     ProjectIssue[]    @relation("IssueReporter")
   projectNotes       ProjectNote[]     @relation("NoteAuthor")
   unbanRequests      UnbanRequest[]
+  locationHistories  LocationHistory[]
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -441,6 +442,21 @@ model TimeEntryBreak {
   @@index([timeEntryId])
   @@index([startedAt])
   @@map("time_entry_breaks")
+}
+
+// Location history for corrected/adjusted addresses used in time entries
+model LocationHistory {
+  id      String @id @default(cuid())
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  address String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, address])
+  @@index([userId])
+  @@map("location_history")
 }
 
 // Project model

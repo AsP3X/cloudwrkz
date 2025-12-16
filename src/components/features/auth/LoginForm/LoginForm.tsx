@@ -76,8 +76,9 @@ export const LoginForm = ({ initialError, disabled: initialDisabled = false }: L
   };
 
   return (
-    <form 
-      onSubmit={handleFormSubmit} 
+    <form
+      method="post"
+      onSubmit={handleFormSubmit}
       className="space-y-6"
       noValidate
       aria-disabled={disabled}

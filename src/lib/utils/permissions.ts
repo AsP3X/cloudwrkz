@@ -104,12 +104,6 @@ export async function getUserPermissions(userId: string): Promise<Set<string>> {
     return new Set();
   }
 
-  // Admins always have all permissions (including dynamic ones)
-  // For admins, we return all static permissions - dynamic permissions are checked separately
-  if (user.role === "ADMIN") {
-    return new Set(ROLE_PERMISSIONS.ADMIN);
-  }
-
   // Get role-based permissions
   const rolePermissions = new Set<string>(ROLE_PERMISSIONS[user.role] || []);
 

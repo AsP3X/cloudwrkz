@@ -1,27 +1,27 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/utils/auth-server";
-import { requireRole } from "@/lib/utils/auth-server";
-import {
-  getUserStatistics,
-  getTicketStatistics,
-  getSystemStatistics,
-} from "@/server/actions/admin/statistics";
-import { StatisticsPage } from "@/components/features/admin/Statistics/StatisticsPage";
+import { ROUTES } from "@/lib/constants/routes";
+import { getAgentStatistics } from "@/server/actions/agent/statistics";
+import { AgentStatisticsPage } from "@/components/features/agent/AgentStatistics/AgentStatisticsPage";
 import { STATISTICS_TIMEFRAMES, type StatisticsTimeframe } from "@/lib/constants/statistics";
 
-interface AdminStatisticsPageProps {
+export const dynamic = "force-dynamic";
+
+interface AgentStatisticsRoutePageProps {
   searchParams: Promise<{
     timeframe?: string;
     ticketStatus?: string;
   }>;
 }
 
-export default async function AdminStatisticsPage({ searchParams }: AdminStatisticsPageProps) {
+export default async function AgentStatisticsRoutePage({
+  searchParams,
+}: AgentStatisticsRoutePageProps) {
   const user = await getCurrentUser();
   const params = await searchParams;
 
   if (!user) {
-    redirect("/login");
+    redirect(ROUTES.LOGIN);
   }
 
   const allowedTimeframes = STATISTICS_TIMEFRAMES.map((t) => t.value);
@@ -48,20 +48,8 @@ export default async function AdminStatisticsPage({ searchParams }: AdminStatist
     ? (rawTicketStatus as TicketStatusFilter)
     : undefined;
 
-  await requireRole("ADMIN");
+  const stats = await getAgentStatistics({ timeframe, status: ticketStatus });
 
-  const [userStats, ticketStats, systemStats] = await Promise.all([
-    getUserStatistics({ timeframe }),
-    getTicketStatistics({ timeframe, status: ticketStatus }),
-    getSystemStatistics({ timeframe }),
-  ]);
-
-  return (
-    <StatisticsPage
-      userStatistics={userStats}
-      ticketStatistics={ticketStats}
-      systemStatistics={systemStats}
-      timeframe={timeframe}
-    />
-  );
+  return <AgentStatisticsPage stats={stats} timeframe={timeframe} />;
 }
+

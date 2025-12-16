@@ -26,12 +26,6 @@ export function LandingPageClient({ children, initialDatabaseAvailable }: Landin
   });
 
   useEffect(() => {
-    // Set initial online status
-    if (typeof window !== "undefined" && typeof navigator !== "undefined") {
-      const initialOnlineStatus = navigator.onLine;
-      setIsOnline(initialOnlineStatus);
-    }
-
     // Listen for online/offline events
     const handleOnline = () => {
       setIsOnline(true);
@@ -54,22 +48,25 @@ export function LandingPageClient({ children, initialDatabaseAvailable }: Landin
   // When online: Hero has pt-16 (64px) for header
   // When offline: Header is hidden, only need padding for offline banner (~73px)
   useEffect(() => {
-    if (typeof window !== "undefined" && typeof document !== "undefined") {
-      const mainContent = document.getElementById("main-content");
-      if (mainContent) {
-        // Find the Hero section (first section in main-content)
-        const heroSection = mainContent.querySelector("section");
-        if (heroSection) {
-          if (!isOnline) {
-            // When offline: Header is hidden, only need padding for banner (~73px)
-            heroSection.style.paddingTop = "73px";
-            heroSection.style.transition = "padding-top 0.3s ease";
-          } else {
-            // When online: Reset to default (pt-16 = 64px for header)
-            heroSection.style.paddingTop = "";
-          }
-        }
-      }
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      return;
+    }
+
+    const mainContent = document.getElementById("main-content");
+    if (!mainContent) return;
+
+    // Find the Hero section (first section in main-content)
+    const heroSection = mainContent.querySelector("section");
+    if (!heroSection) return;
+
+    if (!isOnline) {
+      // When offline: Header is hidden, only need padding for banner (~73px)
+      heroSection.style.paddingTop = "73px";
+      heroSection.style.transition = "padding-top 0.3s ease";
+    } else {
+      // When online: Reset to default (pt-16 = 64px for header)
+      heroSection.style.paddingTop = "";
+      heroSection.style.transition = "padding-top 0.3s ease";
     }
   }, [isOnline]);
 

@@ -87,18 +87,30 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
 
     return groups;
   }, [results]);
+
   const highlightMatch = (text: string, searchTerm: string) => {
     if (!searchTerm || searchTerm.length < 2) return text;
-    
-    const escapedTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`(${escapedTerm})`, 'gi');
+
+    // Support multi-term queries by highlighting each word independently.
+    const terms = searchTerm
+      .split(/\s+/)
+      .map((t) => t.trim())
+      .filter((t) => t.length >= 2);
+
+    if (terms.length === 0) return text;
+
+    const escapedTerms = terms.map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const regex = new RegExp(`(${escapedTerms.join("|")})`, "gi");
     const parts = text.split(regex);
-    
+
     return parts.map((part, index) => {
-      // Check if this part matches the search term (case-insensitive)
-      if (part.toLowerCase() === searchTerm.toLowerCase()) {
+      const isMatch = terms.some((term) => part.toLowerCase() === term.toLowerCase());
+      if (isMatch) {
         return (
-          <mark key={index} className="bg-yellow-200 dark:bg-yellow-900 text-yellow-900 dark:text-yellow-100 rounded px-0.5">
+          <mark
+            key={index}
+            className="bg-yellow-200 dark:bg-yellow-900 text-yellow-900 dark:text-yellow-100 rounded px-0.5"
+          >
             {part}
           </mark>
         );
@@ -211,6 +223,29 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
             strokeLinejoin="round"
             strokeWidth={2}
             d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+          />
+        </svg>
+      );
+    }
+    if (type === "setting") {
+      return (
+        <svg
+          className="w-5 h-5 text-amber-600 dark:text-amber-400"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+          />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
           />
         </svg>
       );
@@ -330,6 +365,10 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                         >
                           {group.ticket.metadata.code}
                         </Link>
+                      ) : group.ticket.type === "setting" ? (
+                        <span className="text-sm text-neutral-500 dark:text-neutral-400">
+                          Settings
+                        </span>
                       ) : (
                         <span className="text-sm text-neutral-500 dark:text-neutral-400">
                           {group.ticket.id.slice(0, 8)}...
@@ -393,6 +432,10 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                       ) : group.ticket.type === "project" && group.ticket.metadata?.status ? (
                         <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 capitalize">
                           {group.ticket.metadata.status.replace("_", " ").toLowerCase()}
+                        </span>
+                      ) : group.ticket.type === "setting" && group.ticket.metadata?.category ? (
+                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200 capitalize">
+                          {group.ticket.metadata.category}
                         </span>
                       ) : (
                         <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>

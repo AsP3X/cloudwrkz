@@ -54,8 +54,10 @@ export const getTicketFilterConfig = (options: TicketFilterConfigOptions): Filte
       label: "Status",
       type: "select",
       options: [
-        { value: "", label: "All Statuses" },
-        { value: "UNRESOLVED", label: "Unresolved" },
+        // "UNRESOLVED" is the default logical filter (OPEN, IN_PROGRESS, PENDING)
+        // "ALL" is a special value meaning "no status filter"
+        { value: "UNRESOLVED", label: "Unresolved (default)" },
+        { value: "ALL", label: "All Statuses" },
         { value: "OPEN", label: "Open" },
         { value: "IN_PROGRESS", label: "In Progress" },
         { value: "PENDING", label: "Pending" },
@@ -140,7 +142,11 @@ export const getTicketFilterConfig = (options: TicketFilterConfigOptions): Filte
     title: "Filter Tickets",
     description: "Create, edit, and save filter presets to quickly find tickets",
     defaultSort: "createdAt-desc",
-    defaultFilters: {},
+    // Default to unresolved tickets so resolved/closed tickets are hidden
+    // until the user explicitly changes the status filter.
+    defaultFilters: {
+      status: "UNRESOLVED",
+    },
     fields,
     enablePresets: true,
     enableDateFilters: true,

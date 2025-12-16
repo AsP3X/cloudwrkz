@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/utils/auth-server";
+import type { StatisticsTimeframe } from "@/lib/constants/statistics";
 
 export type TimeSeriesData = {
   date: string;
@@ -72,17 +73,44 @@ export type SystemStatistics = {
   };
 };
 
+type TicketStatusFilter =
+  | "OPEN"
+  | "IN_PROGRESS"
+  | "PENDING"
+  | "RESOLVED"
+  | "CLOSED"
+  | "CANCELLED";
+
+type StatisticsOptions = {
+  timeframe?: StatisticsTimeframe;
+  status?: TicketStatusFilter;
+};
+
+function getFromDateForTimeframe(timeframe: StatisticsTimeframe): Date {
+  const now = new Date();
+
+  const daysMap: Record<StatisticsTimeframe, number> = {
+    "7d": 7,
+    "30d": 30,
+    "90d": 90,
+    "180d": 180,
+    "365d": 365,
+  };
+
+  const days = daysMap[timeframe] ?? 30;
+  const from = new Date(now);
+  from.setDate(from.getDate() - days);
+  return from;
+}
+
 /**
  * Get detailed user statistics
  */
-export async function getUserStatistics(): Promise<UserStatistics> {
+export async function getUserStatistics(options?: StatisticsOptions): Promise<UserStatistics> {
   await requireRole("ADMIN");
 
-  const now = new Date();
-  const thirtyDaysAgo = new Date(now);
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const sixMonthsAgo = new Date(now);
-  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+  const timeframe = options?.timeframe ?? "30d";
+  const thirtyDaysAgo = getFromDateForTimeframe(timeframe);
 
   // Get total users
   const totalUsers = await prisma.user.count();
@@ -121,7 +149,7 @@ export async function getUserStatistics(): Promise<UserStatistics> {
     roleMap[group.role as keyof typeof roleMap] = group._count;
   });
 
-  // Get registrations by day (last 30 days)
+  // Get registrations by day (timeframe window)
   const registrations = await prisma.user.findMany({
     where: {
       createdAt: {
@@ -143,7 +171,7 @@ export async function getUserStatistics(): Promise<UserStatistics> {
     .map(([date, count]) => ({ date, count }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  // Get registrations by month (last 6 months)
+  // Get registrations by month (within timeframe window)
   const registrationsByMonthMap = new Map<string, number>();
   registrations.forEach((user) => {
     const date = new Date(user.createdAt);
@@ -167,22 +195,33 @@ export async function getUserStatistics(): Promise<UserStatistics> {
 /**
  * Get detailed ticket statistics
  */
-export async function getTicketStatistics(): Promise<TicketStatistics> {
+export async function getTicketStatistics(options?: StatisticsOptions): Promise<TicketStatistics> {
   await requireRole("ADMIN");
 
-  const now = new Date();
-  const thirtyDaysAgo = new Date(now);
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const sixMonthsAgo = new Date(now);
-  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+  const timeframe = options?.timeframe ?? "30d";
+  const thirtyDaysAgo = getFromDateForTimeframe(timeframe);
+  const statusFilter = options?.status;
 
-  // Get total tickets
-  const totalTickets = await prisma.ticket.count();
+  // Get total tickets (respect timeframe and status filter if provided)
+  const totalTickets = await prisma.ticket.count({
+    where: {
+      createdAt: {
+        gte: thirtyDaysAgo,
+      },
+      ...(statusFilter ? { status: statusFilter } : {}),
+    },
+  });
 
   // Get tickets by status
   const ticketsByStatus = await prisma.ticket.groupBy({
     by: ["status"],
     _count: true,
+    where: {
+      createdAt: {
+        gte: thirtyDaysAgo,
+      },
+      ...(statusFilter ? { status: statusFilter } : {}),
+    },
   });
 
   const statusMap = {
@@ -202,6 +241,12 @@ export async function getTicketStatistics(): Promise<TicketStatistics> {
   const ticketsByPriority = await prisma.ticket.groupBy({
     by: ["priority"],
     _count: true,
+    where: {
+      createdAt: {
+        gte: thirtyDaysAgo,
+      },
+      ...(statusFilter ? { status: statusFilter } : {}),
+    },
   });
 
   const priorityMap = {
@@ -219,6 +264,12 @@ export async function getTicketStatistics(): Promise<TicketStatistics> {
   const ticketsByType = await prisma.ticket.groupBy({
     by: ["type"],
     _count: true,
+    where: {
+      createdAt: {
+        gte: thirtyDaysAgo,
+      },
+      ...(statusFilter ? { status: statusFilter } : {}),
+    },
   });
 
   const typeMap = {
@@ -233,12 +284,13 @@ export async function getTicketStatistics(): Promise<TicketStatistics> {
     typeMap[group.type as keyof typeof typeMap] = group._count;
   });
 
-  // Get tickets created by day (last 30 days)
+  // Get tickets created by day (timeframe window, respect status filter)
   const tickets = await prisma.ticket.findMany({
     where: {
       createdAt: {
         gte: thirtyDaysAgo,
       },
+      ...(statusFilter ? { status: statusFilter } : {}),
     },
     select: {
       createdAt: true,
@@ -287,13 +339,17 @@ export async function getTicketStatistics(): Promise<TicketStatistics> {
     .map(([date, count]) => ({ date, count }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  // Calculate average resolution time
+  // Calculate average resolution time (respect timeframe and status filter)
   const resolvedTicketsWithTime = await prisma.ticket.findMany({
     where: {
       OR: [
         { resolvedAt: { not: null } },
         { closedAt: { not: null } },
       ],
+      createdAt: {
+        gte: thirtyDaysAgo,
+      },
+      ...(statusFilter ? { status: statusFilter } : {}),
     },
     select: {
       createdAt: true,
@@ -333,14 +389,12 @@ export async function getTicketStatistics(): Promise<TicketStatistics> {
 /**
  * Get system statistics
  */
-export async function getSystemStatistics(): Promise<SystemStatistics> {
+export async function getSystemStatistics(options?: StatisticsOptions): Promise<SystemStatistics> {
   await requireRole("ADMIN");
 
+  const timeframe = options?.timeframe ?? "30d";
   const now = new Date();
-  const thirtyDaysAgo = new Date(now);
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const sixtyDaysAgo = new Date(now);
-  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+  const thirtyDaysAgo = getFromDateForTimeframe(timeframe);
 
   const [
     totalUsers,

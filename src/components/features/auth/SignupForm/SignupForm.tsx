@@ -84,8 +84,9 @@ export const SignupForm = ({ disabled: initialDisabled = false }: SignupFormProp
   };
 
   return (
-    <form 
-      onSubmit={handleFormSubmit} 
+    <form
+      method="post"
+      onSubmit={handleFormSubmit}
       className="space-y-6"
       noValidate
       aria-disabled={disabled}

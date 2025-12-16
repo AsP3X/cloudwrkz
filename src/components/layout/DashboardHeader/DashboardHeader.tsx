@@ -25,14 +25,6 @@ export const DashboardHeader = ({ user, databaseAvailable: initialDatabaseAvaila
   // Determine if database is available based on health status
   const databaseAvailable = status === "healthy" || status === "degraded";
 
-  // If database is unavailable, show the warning banner instead of navigation
-  if (!databaseAvailable) {
-    return (
-      <header className="sticky top-0 z-30">
-        <DatabaseWarning isServerUnreachable={isServerUnreachable} error={error} />
-      </header>
-    );
-  }
   const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
@@ -54,6 +46,15 @@ export const DashboardHeader = ({ user, databaseAvailable: initialDatabaseAvaila
       setIsLoggingOut(false);
     }
   };
+
+  // When the database is unavailable, render the warning banner instead of navigation
+  if (!databaseAvailable) {
+    return (
+      <header className="sticky top-0 z-30">
+        <DatabaseWarning isServerUnreachable={isServerUnreachable} error={error} />
+      </header>
+    );
+  }
 
   return (
     <header className="sticky top-0 z-30 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm border-b border-neutral-200/50 dark:border-neutral-800/50 shadow-sm">

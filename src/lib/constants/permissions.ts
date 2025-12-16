@@ -53,11 +53,18 @@ export type PermissionKey =
   | "admin.users.update"
   | "admin.users.delete"
   | "admin.groups.manage"
+  | "admin.permissions.view"
+  | "admin.permissions.manage"
   | "admin.settings.manage"
   | "admin.modules.manage"
   | "admin.sessions.view"
   | "admin.statistics.view"
   | "admin.tickets.manage"
+  | "admin.db.view"
+  | "admin.db.view_entries"
+  | "admin.db.edit_entries"
+  | "admin.db.delete_entries"
+  | "admin.db.query"
   // Module Visibility
   | "modules.tickets.view"
   | "modules.timetracking.view"
@@ -369,6 +376,18 @@ export const PERMISSIONS: PermissionDefinition[] = [
     category: "admin",
   },
   {
+    key: "admin.permissions.view",
+    name: "View Permissions",
+    description: "View user and group permissions (read-only)",
+    category: "admin",
+  },
+  {
+    key: "admin.permissions.manage",
+    name: "Manage Permissions",
+    description: "View and manage user and group permissions",
+    category: "admin",
+  },
+  {
     key: "admin.settings.manage",
     name: "Manage Settings",
     description: "Modify system settings",
@@ -396,6 +415,36 @@ export const PERMISSIONS: PermissionDefinition[] = [
     key: "admin.tickets.manage",
     name: "Manage All Tickets",
     description: "Full ticket management (admin view)",
+    category: "admin",
+  },
+  {
+    key: "admin.db.view",
+    name: "View Database Explorer",
+    description: "Access to the database explorer page",
+    category: "admin",
+  },
+  {
+    key: "admin.db.view_entries",
+    name: "View Database Entries",
+    description: "View entries in database tables",
+    category: "admin",
+  },
+  {
+    key: "admin.db.edit_entries",
+    name: "Edit Database Entries",
+    description: "Edit entries in database tables",
+    category: "admin",
+  },
+  {
+    key: "admin.db.delete_entries",
+    name: "Delete Database Entries",
+    description: "Delete entries from database tables",
+    category: "admin",
+  },
+  {
+    key: "admin.db.query",
+    name: "Execute Database Queries",
+    description: "Execute SQL queries in the database explorer",
     category: "admin",
   },
   // Module Visibility
@@ -445,9 +494,19 @@ export function getPermissionCategories(): string[] {
 
 /**
  * Role-based default permissions
+ *
+ * Note: Admins no longer implicitly get *all* permissions.
+ * - They get this curated default set.
+ * - Additional sensitive permissions (like database explorer access)
+ *   must be granted explicitly via groups.
  */
 export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
-  ADMIN: PERMISSIONS.map((p) => p.key), // Admins have all permissions
+  ADMIN: PERMISSIONS.map((p) => p.key).filter(
+    (key) =>
+      !key.startsWith("admin.db.") &&
+      key !== "admin.permissions.manage" &&
+      key !== "admin.permissions.view"
+  ),
   MODERATOR: [
     // Tickets
     "tickets.view",

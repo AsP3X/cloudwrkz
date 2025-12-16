@@ -337,7 +337,11 @@ export async function getTickets(filters?: {
   const baseFilters: any = {};
 
   // Build base filter conditions (status, priority, type, etc.)
-  if (filters?.status) {
+  //
+  // Special values:
+  // - "UNRESOLVED": maps to OPEN / IN_PROGRESS / PENDING
+  // - "ALL": means "no status filter" and is ignored here
+  if (filters?.status && filters.status !== "ALL") {
     // Handle special "UNRESOLVED" status filter
     if (filters.status === "UNRESOLVED") {
       baseFilters.status = {

@@ -18,9 +18,10 @@ type Group = NonNullable<Awaited<ReturnType<typeof getGroup>>>;
 
 interface GroupDetailPageProps {
   group: Group;
+  canManagePermissions?: boolean;
 }
 
-export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
+export function GroupDetailPage({ group: initialGroup, canManagePermissions = false }: GroupDetailPageProps) {
   const router = useRouter();
   const [group, setGroup] = useState(initialGroup);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -119,9 +120,11 @@ export function GroupDetailPage({ group: initialGroup }: GroupDetailPageProps) {
           )}
         </div>
         <div className="flex gap-2">
-          <Link href={`/dashboard/admin/permissions/groups/${group.id}`}>
-            <Button variant="outline">Manage Permissions</Button>
-          </Link>
+          {canManagePermissions && (
+            <Link href={`/dashboard/admin/permissions/groups/${group.id}`}>
+              <Button variant="outline">Manage Permissions</Button>
+            </Link>
+          )}
           <Button variant="outline" onClick={() => setEditDialogOpen(true)}>
             Edit Group
           </Button>

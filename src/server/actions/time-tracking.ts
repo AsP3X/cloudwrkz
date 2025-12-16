@@ -22,6 +22,37 @@ function emitTimeTrackingEvent(userId: string, type: string, data: any) {
   });
 }
 
+/**
+ * Store a corrected/adjusted location in the user's location history.
+ * This lets us recommend previously used full addresses (including
+ * street numbers) in the autocomplete alongside OpenStreetMap results.
+ */
+async function saveLocationHistory(userId: string, location: string | null | undefined) {
+  const trimmed = location?.trim();
+  if (!trimmed) return;
+
+  try {
+    await prisma.locationHistory.upsert({
+      where: {
+        userId_address: {
+          userId,
+          address: trimmed,
+        },
+      },
+      update: {
+        updatedAt: new Date(),
+      },
+      create: {
+        userId,
+        address: trimmed,
+      },
+    });
+  } catch (error) {
+    // Do not block time entry operations if location history fails
+    console.error("Failed to save location history:", error);
+  }
+}
+
 export type ActionResult<T = void> =
   | { success: true; data?: T; message?: string }
   | { success: false; error: string; fieldErrors?: Record<string, string[]> };
@@ -172,6 +203,9 @@ export async function createTimeEntry(
       },
     });
 
+    // Store corrected/adjusted location for future suggestions
+    await saveLocationHistory(user.id, entry.location);
+
     // Log activity if timer is linked to a ticket
     if (input.ticketId) {
       try {
@@ -285,6 +319,9 @@ export async function createTimeEntryWithDuration(
       },
     });
 
+    // Store corrected/adjusted location for future suggestions
+    await saveLocationHistory(user.id, entry.location);
+
     // Log activity if timer is linked to a ticket
     if (input.ticketId) {
       try {
@@ -349,6 +386,8 @@ export async function updateTimeEntry(
         startedAt: true,
         stoppedAt: true,
         status: true,
+        totalDuration: true,
+        lastResumedAt: true,
       },
     });
 
@@ -399,6 +438,28 @@ export async function updateTimeEntry(
       if (durationSeconds >= 0) {
         calculatedDuration = durationSeconds;
       }
+    } else if (
+      // When updating the start time on a running timer without an explicit stop time,
+      // adjust the stored totalDuration so that the effective elapsed time reflects
+      // the new start time.
+      isTimeUpdated &&
+      !finalStoppedAt &&
+      existing.status === "RUNNING" &&
+      input.startedAt &&
+      // We only adjust totalDuration for timers that have been resumed at least once.
+      // For timers that have never been paused, totalDuration should remain 0 and
+      // elapsed time is derived directly from startedAt.
+      existing.lastResumedAt
+    ) {
+      const deltaSeconds = Math.floor(
+        (input.startedAt.getTime() - existing.startedAt.getTime()) / 1000
+      );
+      const shiftedTotal = (existing.totalDuration ?? 0) - deltaSeconds;
+      if (shiftedTotal >= 0) {
+        calculatedDuration = shiftedTotal;
+      } else {
+        calculatedDuration = 0;
+      }
     }
 
     const updateData: any = {
@@ -424,6 +485,11 @@ export async function updateTimeEntry(
       where: { id },
       data: updateData,
     });
+
+    // If location was updated, persist it in location history for future use
+    if (input.location !== undefined) {
+      await saveLocationHistory(user.id, input.location);
+    }
 
     // Log activity if ticket assignment changed
     if (input.ticketId !== undefined) {

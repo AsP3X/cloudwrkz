@@ -9,7 +9,7 @@ import { fuzzySearch, rankAndLimit } from "@/lib/utils/fuzzy-search";
 import { getUserPermissions } from "@/lib/utils/permissions";
 
 export type SearchResult = {
-  type: "ticket" | "module" | "user" | "comment" | "timeentry" | "project";
+  type: "ticket" | "module" | "user" | "comment" | "timeentry" | "project" | "setting";
   id: string;
   title: string;
   description?: string;
@@ -54,11 +54,12 @@ export async function globalSearch(query: string, limit: number = 10): Promise<S
   let totalCount = 0;
 
   // Distribute limit across different result types
-  // 30% users, 40% tickets, 15% time entries, 15% projects
-  const userLimit = Math.max(1, Math.floor(limit * 0.3));
-  const ticketLimit = Math.max(1, Math.floor(limit * 0.4));
+  // 25% users, 35% tickets, 15% time entries, 15% projects, 10% settings
+  const userLimit = Math.max(1, Math.floor(limit * 0.25));
+  const ticketLimit = Math.max(1, Math.floor(limit * 0.35));
   const timeEntryLimit = Math.max(1, Math.floor(limit * 0.15));
   const projectLimit = Math.max(1, Math.floor(limit * 0.15));
+  const settingsLimit = Math.max(1, Math.floor(limit * 0.1));
 
   // Get user permissions
   const userPermissions = await getUserPermissions(user.id);
@@ -91,6 +92,11 @@ export async function globalSearch(query: string, limit: number = 10): Promise<S
     totalCount += projectResults.length;
     results.push(...projectResults);
   }
+
+  // Search settings that are available to the current user
+  const settingsResults = await searchSettings(searchTerm, user, settingsLimit);
+  totalCount += settingsResults.length;
+  results.push(...settingsResults);
 
   return {
     results: results.slice(0, limit),
@@ -136,6 +142,12 @@ export async function advancedSearch(filters: SearchFilters): Promise<SearchResp
   if (canViewProjects) {
     const projectResults = await searchProjects(searchTerm, user, filters.limit || 100, userPermissions);
     results.push(...projectResults);
+  }
+
+  // Search settings that are available to the current user
+  if (searchTerm) {
+    const settingsResults = await searchSettings(searchTerm, user, filters.limit || 50);
+    results.push(...settingsResults);
   }
 
   return {
@@ -1008,6 +1020,205 @@ async function searchProjects(
       memberCount: project._count.members,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
+    },
+  }));
+}
+
+/**
+ * Search settings that are available to the current user
+ *
+ * This is a virtual search over known settings sections and options.
+ * Results are filtered based on the user's role so that only accessible
+ * settings are returned.
+ */
+async function searchSettings(
+  searchTerm: string,
+  user: Awaited<ReturnType<typeof requireAuth>>,
+  limit: number
+): Promise<SearchResult[]> {
+  if (!searchTerm || searchTerm.trim().length === 0) {
+    return [];
+  }
+
+  const normalizedTerm = searchTerm.trim();
+
+  type AppSetting = {
+    id: string;
+    title: string;
+    description: string;
+    url: string;
+    category: "account" | "preferences" | "privacy" | "security" | "system";
+    roles?: Array<"USER" | "AGENT" | "ADMIN" | "MODERATOR">;
+    keywords: string[];
+  };
+
+  const baseSettings: AppSetting[] = [
+    {
+      id: "account-email",
+      title: "Change Email Address",
+      description: "Update the email address associated with your account.",
+      url: "/dashboard/settings",
+      category: "account",
+      keywords: ["email", "address", "login", "account", "contact"],
+    },
+    {
+      id: "account-password",
+      title: "Change Password",
+      description: "Update your account password and improve your security.",
+      url: "/dashboard/settings",
+      category: "account",
+      keywords: ["password", "security", "login", "credentials"],
+    },
+    {
+      id: "preferences-theme",
+      title: "Appearance & Theme",
+      description: "Switch between light, dark, or system theme.",
+      url: "/dashboard/settings",
+      category: "preferences",
+      keywords: ["theme", "dark mode", "light mode", "appearance", "color"],
+    },
+    {
+      id: "preferences-language",
+      title: "Language",
+      description: "Change the language used in the application interface.",
+      url: "/dashboard/settings",
+      category: "preferences",
+      keywords: ["language", "locale", "translation"],
+    },
+    {
+      id: "preferences-timezone",
+      title: "Time Zone",
+      description: "Set your preferred time zone for displaying dates and times.",
+      url: "/dashboard/settings",
+      category: "preferences",
+      keywords: ["timezone", "time zone", "time", "clock", "dates"],
+    },
+    {
+      id: "preferences-notifications-email",
+      title: "Email Notifications",
+      description: "Control email notifications about important account activity.",
+      url: "/dashboard/settings",
+      category: "preferences",
+      keywords: ["notifications", "email", "alerts", "messages"],
+    },
+    {
+      id: "preferences-notifications-push",
+      title: "Push Notifications",
+      description: "Enable or disable browser push notifications.",
+      url: "/dashboard/settings",
+      category: "preferences",
+      keywords: ["notifications", "push", "browser", "alerts"],
+    },
+    {
+      id: "preferences-notifications-marketing",
+      title: "Marketing Emails",
+      description: "Manage whether you receive product updates and marketing emails.",
+      url: "/dashboard/settings",
+      category: "preferences",
+      keywords: ["marketing", "newsletter", "emails", "announcements"],
+    },
+    {
+      id: "preferences-timer-widget",
+      title: "Timer Widget Display",
+      description: "Choose whether the time tracking widget appears as a dialog or floating widget.",
+      url: "/dashboard/settings",
+      category: "preferences",
+      keywords: ["time tracking", "timer", "widget", "floating", "dialog"],
+    },
+    {
+      id: "privacy-profile-visibility",
+      title: "Profile Visibility",
+      description: "Control who can see your profile in the workspace.",
+      url: "/dashboard/settings",
+      category: "privacy",
+      keywords: ["privacy", "profile", "visibility", "public", "private"],
+    },
+    {
+      id: "privacy-show-email",
+      title: "Show Email Address",
+      description: "Allow or hide your email address on your profile.",
+      url: "/dashboard/settings",
+      category: "privacy",
+      keywords: ["privacy", "email", "profile", "contact"],
+    },
+    {
+      id: "privacy-last-seen",
+      title: "Show Last Seen",
+      description: "Control whether other users can see when you were last active.",
+      url: "/dashboard/settings",
+      category: "privacy",
+      keywords: ["last seen", "online status", "activity", "privacy"],
+    },
+    {
+      id: "security-two-factor",
+      title: "Two-Factor Authentication",
+      description: "Add an extra layer of security to your account with two-factor authentication.",
+      url: "/dashboard/settings",
+      category: "security",
+      keywords: ["2fa", "two factor", "authentication", "security", "login"],
+    },
+    {
+      id: "system-settings",
+      title: "System Settings",
+      description: "View system information, health checks, and database statistics.",
+      url: "/dashboard/admin/settings",
+      category: "system",
+      roles: ["ADMIN"],
+      keywords: ["system", "admin", "settings", "health", "database", "metrics"],
+    },
+    {
+      id: "system-purge-deleted-accounts",
+      title: "Purge Deleted Accounts",
+      description: "Permanently remove user accounts that have been scheduled for deletion.",
+      url: "/dashboard/admin/settings",
+      category: "system",
+      roles: ["ADMIN"],
+      keywords: ["purge", "deleted accounts", "cleanup", "admin"],
+    },
+  ];
+
+  // Filter settings based on user role
+  const availableSettings = baseSettings.filter((setting) => {
+    if (!setting.roles || setting.roles.length === 0) {
+      return true;
+    }
+    return setting.roles.includes(user.role as "USER" | "AGENT" | "ADMIN" | "MODERATOR");
+  });
+
+  if (availableSettings.length === 0) {
+    return [];
+  }
+
+  const searchableSettings = availableSettings.map((setting) => ({
+    ...setting,
+    searchableText: [
+      setting.title,
+      setting.description,
+      setting.keywords.join(" "),
+      setting.category,
+    ].join(" "),
+  }));
+
+  const fuzzyResults = fuzzySearch(searchableSettings, normalizedTerm, {
+    keys: [
+      { name: "title", weight: 0.5 },
+      { name: "description", weight: 0.3 },
+      { name: "searchableText", weight: 0.2 },
+    ],
+    threshold: 0.4,
+    minMatchCharLength: 2,
+  });
+
+  const rankedSettings = rankAndLimit(fuzzyResults, limit);
+
+  return rankedSettings.map((setting) => ({
+    type: "setting" as const,
+    id: setting.id,
+    title: setting.title,
+    description: setting.description,
+    url: setting.url,
+    metadata: {
+      category: setting.category,
     },
   }));
 }

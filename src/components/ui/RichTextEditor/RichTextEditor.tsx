@@ -61,10 +61,29 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
           types: ["heading", "paragraph"],
         }),
         Link.configure({
-          openOnClick: false,
+          // Automatically detect and convert URLs in text and on paste
+          autolink: true,
+          linkOnPaste: true,
+          openOnClick: true,
+          validate: (href) => {
+            if (!href) return false;
+            try {
+              const url = new URL(
+                href,
+                href.startsWith("http") || href.startsWith("mailto:") || href.startsWith("tel:")
+                  ? undefined
+                  : "https://dummy-base.local"
+              );
+              return ["http:", "https:", "mailto:", "tel:"].includes(url.protocol);
+            } catch {
+              return false;
+            }
+          },
           HTMLAttributes: {
             target: "_blank",
             rel: "noopener noreferrer",
+            // Ensure visible styling and pointer cursor inside the editor while typing
+            class: "text-blue-600 dark:text-blue-400 cursor-pointer underline hover:underline",
           },
         }),
         Image.configure({
@@ -78,6 +97,9 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
         Code,
         Highlight.configure({
           multicolor: true,
+          HTMLAttributes: {
+            class: "highlight",
+          },
         }),
         Color,
         TextStyle,
@@ -97,6 +119,42 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
         const html = editor.getHTML();
         const plainText = extractPlainText(html);
         onChange(html, plainText);
+        
+        // Check if two consecutive spaces were typed while in quote mode
+        const { selection } = editor.state;
+        const { $from } = selection;
+        const pos = $from.pos;
+        
+        // Check if we're at a position with quote highlight
+        const highlightMark = editor.state.schema.marks.highlight;
+        const marks = $from.marks();
+        const isInQuote = marks.some(mark => 
+          mark.type === highlightMark && mark.attrs.color === "#inline-quote"
+        );
+        
+        if (isInQuote && pos >= 2) {
+          // Check if the last two characters before cursor are spaces
+          const lastTwoChars = editor.state.doc.textBetween(pos - 2, pos);
+          if (lastTwoChars === "  ") {
+            // Two consecutive spaces - exit quote mode
+            // This works for: two spaces anywhere, or two spaces after a dot
+            const newPos = pos - 2;
+            editor
+              .chain()
+              .focus()
+              .setTextSelection({ from: pos - 2, to: pos })
+              .deleteSelection()
+              .setTextSelection(newPos)
+              .command(({ tr, dispatch }) => {
+                if (dispatch) {
+                  // Clear stored marks (remove quote highlight)
+                  tr.setStoredMarks([]);
+                }
+                return true;
+              })
+              .run();
+          }
+        }
       },
       editorProps: {
         transformPastedHTML(html) {
@@ -124,7 +182,9 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
             "prose-blockquote:italic",
             "prose-blockquote:rounded-r",
             "prose-blockquote:border-primary-500",
-            "prose-a:text-primary-600 dark:prose-a:text-primary-400",
+            // Links: blue text and pointer cursor
+            "prose-a:text-blue-600 dark:prose-a:text-blue-400",
+            "prose-a:cursor-pointer hover:prose-a:underline",
             "prose-ul:list-disc prose-ul:pl-6 prose-ul:my-4",
             "prose-ol:list-decimal prose-ol:pl-6 prose-ol:my-4",
             "prose-li:text-neutral-700 dark:prose-li:text-neutral-300",

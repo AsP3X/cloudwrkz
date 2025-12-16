@@ -150,7 +150,8 @@ type NavSection = {
   readonly defaultExpanded?: boolean;
 };
 
-const NAV_SECTIONS = Object.freeze([
+const getNavSections = (canViewPermissions: boolean, canViewDbConsole: boolean): ReadonlyArray<NavSection> => {
+  const sections: NavSection[] = [
   Object.freeze({
     title: "User Management",
     icon: UsersIcon,
@@ -173,67 +174,108 @@ const NAV_SECTIONS = Object.freeze([
       }),
     ]),
   }),
-  Object.freeze({
-    title: "Permissions",
-    icon: PermissionsIcon,
-    defaultExpanded: true,
-    items: Object.freeze([
-      Object.freeze({
-        name: "Groups",
-        href: "/dashboard/admin/permissions/groups",
-        icon: GroupsIcon,
-      }),
-      Object.freeze({
-        name: "Users",
-        href: "/dashboard/admin/permissions/users",
-        icon: UsersIcon,
-      }),
-    ]),
-  }),
-  Object.freeze({
-    title: "Content & Projects",
-    icon: ProjectsIcon,
-    defaultExpanded: true,
-    items: Object.freeze([
-      Object.freeze({
-        name: "Tickets",
-        href: "/dashboard/admin/tickets",
-        icon: TicketsIcon,
-      }),
-      Object.freeze({
-        name: "Projects",
-        href: "/dashboard/admin/projects",
-        icon: ProjectsIcon,
-      }),
-    ]),
-  }),
-  Object.freeze({
-    title: "System",
-    icon: SettingsIcon,
-    defaultExpanded: true,
-    items: Object.freeze([
-      Object.freeze({
-        name: "Statistics",
-        href: "/dashboard/admin/statistics",
-        icon: StatisticsIcon,
-      }),
-      Object.freeze({
-        name: "Modules",
-        href: "/dashboard/admin/modules",
-        icon: ModulesIcon,
-      }),
-      Object.freeze({
-        name: "System Settings",
-        href: "/dashboard/admin/settings",
-        icon: SettingsIcon,
-      }),
-    ]),
-  }),
-]) as ReadonlyArray<NavSection>;
+  ];
 
-export const AdminSidebar = () => {
+  // Only add Permissions section if user can at least view it
+  if (canViewPermissions) {
+    sections.push(
+      Object.freeze({
+        title: "Permissions",
+        icon: PermissionsIcon,
+        defaultExpanded: true,
+        items: Object.freeze([
+          Object.freeze({
+            name: "Groups",
+            href: "/dashboard/admin/permissions/groups",
+            icon: GroupsIcon,
+          }),
+          Object.freeze({
+            name: "Users",
+            href: "/dashboard/admin/permissions/users",
+            icon: UsersIcon,
+          }),
+        ]),
+      })
+    );
+  }
+
+  sections.push(
+    Object.freeze({
+      title: "Content & Projects",
+      icon: ProjectsIcon,
+      defaultExpanded: true,
+      items: Object.freeze([
+        Object.freeze({
+          name: "Tickets",
+          href: "/dashboard/admin/tickets",
+          icon: TicketsIcon,
+        }),
+        Object.freeze({
+          name: "Projects",
+          href: "/dashboard/admin/projects",
+          icon: ProjectsIcon,
+        }),
+      ]),
+    }),
+  );
+
+  const systemItems: NavItem[] = [
+    Object.freeze({
+      name: "Statistics",
+      href: "/dashboard/admin/statistics",
+      icon: StatisticsIcon,
+    }),
+    Object.freeze({
+      name: "Modules",
+      href: "/dashboard/admin/modules",
+      icon: ModulesIcon,
+    }),
+  ];
+
+  if (canViewDbConsole) {
+    systemItems.push(
+      Object.freeze({
+        name: "Database Console",
+        href: "/dashboard/admin/db",
+        icon: SettingsIcon,
+      })
+    );
+  }
+
+  systemItems.push(
+    Object.freeze({
+      name: "System Settings",
+      href: "/dashboard/admin/settings",
+      icon: SettingsIcon,
+    })
+  );
+
+  sections.push(
+    Object.freeze({
+      title: "System",
+      icon: SettingsIcon,
+      defaultExpanded: true,
+      items: Object.freeze(systemItems),
+    })
+  );
+
+  return Object.freeze(sections) as ReadonlyArray<NavSection>;
+};
+
+interface AdminSidebarProps {
+  canViewPermissions?: boolean;
+  canManagePermissions?: boolean;
+  canViewDbConsole?: boolean;
+}
+
+export const AdminSidebar = ({
+  canViewPermissions = false,
+  canManagePermissions = false,
+  canViewDbConsole = false,
+}: AdminSidebarProps) => {
   const pathname = usePathname();
   const { isMobileOpen, setIsMobileOpen } = useSidebar();
+  const NAV_SECTIONS = getNavSections(canViewPermissions, canViewDbConsole);
 
   return (
     <>

@@ -1181,9 +1181,85 @@ async function runTimeInteractive() {
 }
 
 async function runPermissionInteractive() {
-  clear();
-  notice("Permission Management CLI - Use non-interactive mode: pnpm cli permission <command>", "info");
-  await waitForEnter();
+  const permissionCli = await import("./permission-cli");
+
+  while (true) {
+    clear();
+    header("Permission Management", "Manage permissions and access control");
+
+    const choice = await menu("Select an action:", [
+      {
+        key: "l",
+        label: "📋 List Permissions",
+        description: "View all permissions with optional filters",
+      },
+      {
+        key: "s",
+        label: "🔍 Show Permission Details",
+        description: "View detailed information for a permission",
+      },
+      {
+        key: "g",
+        label: "➕ Grant Permission to Group",
+        description: "Assign a permission to a group",
+      },
+      {
+        key: "r",
+        label: "➖ Revoke Permission from Group",
+        description: "Remove a permission from a group",
+      },
+      {
+        key: "lg",
+        label: "👥 List Group Permissions",
+        description: "View permissions assigned to a group",
+      },
+      {
+        key: "sync",
+        label: "🔄 Sync Permissions",
+        description: "Show how to sync permission definitions",
+      },
+      {
+        key: "b",
+        label: "⬅️  Back to Main Menu",
+        description: "Return to main menu",
+      },
+    ]);
+
+    switch (choice) {
+      case "l":
+        clear();
+        await permissionCli.handleListInteractive();
+        await waitForEnter();
+        break;
+      case "s":
+        clear();
+        await permissionCli.handleShowInteractive();
+        await waitForEnter();
+        break;
+      case "g":
+        clear();
+        await permissionCli.handleGrantInteractive();
+        await waitForEnter();
+        break;
+      case "r":
+        clear();
+        await permissionCli.handleRevokeInteractive();
+        await waitForEnter();
+        break;
+      case "lg":
+        clear();
+        await permissionCli.handleListGroupInteractive();
+        await waitForEnter();
+        break;
+      case "sync":
+        clear();
+        await permissionCli.handleSyncInteractive();
+        await waitForEnter();
+        break;
+      case "b":
+        return;
+    }
+  }
 }
 
 async function runStatsInteractive() {

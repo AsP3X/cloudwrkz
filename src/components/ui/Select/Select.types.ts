@@ -9,6 +9,6 @@ export interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement
   label?: string;
   error?: string;
   helperText?: string;
-  options: SelectOption[];
+  options: readonly SelectOption[];
   placeholder?: string;
 }

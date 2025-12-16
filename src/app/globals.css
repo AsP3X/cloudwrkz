@@ -211,8 +211,40 @@
     font-style: italic !important;
     font-weight: 500 !important;
     border-radius: 0.375rem !important;
-    display: inline !important;
+    display: inline-block !important; /* Changed from inline to inline-block for better visibility */
+    min-width: 2ch !important; /* Ensure empty quotes are visible */
     box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
+    position: relative !important;
+  }
+
+  .prose mark[data-color="#inline-quote"]::before,
+  mark[data-color="#inline-quote"]::before,
+  .ProseMirror mark[data-color="#inline-quote"]::before,
+  .prose span[data-type="inline-quote"]::before,
+  span.inline-quote::before,
+  span[data-type="inline-quote"]::before,
+  .ProseMirror span[data-type="inline-quote"]::before,
+  .ProseMirror span.inline-quote::before {
+    content: '"' !important;
+    font-size: 1.5em !important;
+    line-height: 1 !important;
+    margin-right: 0.25rem !important;
+    opacity: 0.7 !important;
+  }
+
+  .prose mark[data-color="#inline-quote"]::after,
+  mark[data-color="#inline-quote"]::after,
+  .ProseMirror mark[data-color="#inline-quote"]::after,
+  .prose span[data-type="inline-quote"]::after,
+  span.inline-quote::after,
+  span[data-type="inline-quote"]::after,
+  .ProseMirror span[data-type="inline-quote"]::after,
+  .ProseMirror span.inline-quote::after {
+    content: '"' !important;
+    font-size: 1.5em !important;
+    line-height: 1 !important;
+    margin-left: 0.25rem !important;
+    opacity: 0.7 !important;
   }
 
   .dark .prose mark[data-color="#inline-quote"],
@@ -227,6 +259,38 @@
     color: rgb(191 219 254) !important; /* blue-200 - lighter blue text for dark mode */
     border-left-color: rgb(96 165 250) !important; /* blue-400 - brighter blue border for dark mode */
     box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.2) !important;
+    display: inline-block !important; /* Changed from inline to inline-block for better visibility */
+    min-width: 2ch !important; /* Ensure empty quotes are visible */
+  }
+
+  .dark .prose mark[data-color="#inline-quote"]::before,
+  .dark mark[data-color="#inline-quote"]::before,
+  .dark .ProseMirror mark[data-color="#inline-quote"]::before,
+  .dark .prose span[data-type="inline-quote"]::before,
+  .dark span.inline-quote::before,
+  .dark span[data-type="inline-quote"]::before,
+  .dark .ProseMirror span[data-type="inline-quote"]::before,
+  .dark .ProseMirror span.inline-quote::before {
+    content: '"' !important;
+    font-size: 1.5em !important;
+    line-height: 1 !important;
+    margin-right: 0.25rem !important;
+    opacity: 0.7 !important;
+  }
+
+  .dark .prose mark[data-color="#inline-quote"]::after,
+  .dark mark[data-color="#inline-quote"]::after,
+  .dark .ProseMirror mark[data-color="#inline-quote"]::after,
+  .dark .prose span[data-type="inline-quote"]::after,
+  .dark span.inline-quote::after,
+  .dark span[data-type="inline-quote"]::after,
+  .dark .ProseMirror span[data-type="inline-quote"]::after,
+  .dark .ProseMirror span.inline-quote::after {
+    content: '"' !important;
+    font-size: 1.5em !important;
+    line-height: 1 !important;
+    margin-left: 0.25rem !important;
+    opacity: 0.7 !important;
   }
 
   /* List styling for rich text editor and display */

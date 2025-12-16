@@ -64,6 +64,28 @@ export default async function DashboardLayout({
   // Use AdminSidebar for admins, DashboardSidebar for others
   const isAdmin = user.role === "ADMIN";
   
+  // Get user permissions to check module visibility (only if database is available)
+  let userPermissions = new Set<string>();
+  if (databaseAvailable) {
+    try {
+      userPermissions = await getUserPermissions(user.id);
+    } catch (error) {
+      console.error("Error getting user permissions:", error);
+      userPermissions = new Set<string>();
+    }
+  }
+  
+  // Check if admin can view/manage permissions section (only if database is available)
+  const canViewPermissions =
+    isAdmin &&
+    databaseAvailable &&
+    (userPermissions.has("admin.permissions.view") ||
+      userPermissions.has("admin.permissions.manage"));
+  const canManagePermissions =
+    isAdmin && databaseAvailable && userPermissions.has("admin.permissions.manage");
+  const canViewDbConsole =
+    isAdmin && databaseAvailable && userPermissions.has("admin.db.view");
+  
   // Get enabled modules for sidebar (only if database is available)
   let modules: Awaited<ReturnType<typeof getAllModules>> = [];
   if (databaseAvailable) {
@@ -76,17 +98,6 @@ export default async function DashboardLayout({
   }
   // Sort modules by key to ensure consistent order between server and client
   const sortedModules = [...modules].sort((a, b) => a.key.localeCompare(b.key));
-  
-  // Get user permissions to check module visibility (only if database is available)
-  let userPermissions = new Set<string>();
-  if (databaseAvailable) {
-    try {
-      userPermissions = await getUserPermissions(user.id);
-    } catch (error) {
-      console.error("Error getting user permissions:", error);
-      userPermissions = new Set<string>();
-    }
-  }
   
   // Map module keys to permission keys
   const modulePermissionMap: Record<string, string> = {
@@ -138,7 +149,11 @@ export default async function DashboardLayout({
           <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-primary-100 dark:bg-primary-950 rounded-full mix-blend-multiply filter blur-3xl opacity-5 dark:opacity-2" />
         </div>
         {isAdmin ? (
-          <AdminSidebarWrapper />
+          <AdminSidebarWrapper
+            canViewPermissions={canViewPermissions}
+            canManagePermissions={canManagePermissions}
+            canViewDbConsole={canViewDbConsole}
+          />
         ) : (
           <DashboardSidebar enabledModuleKeys={enabledModuleKeys} userRole={user.role} />
         )}

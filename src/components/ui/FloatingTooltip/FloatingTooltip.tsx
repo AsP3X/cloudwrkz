@@ -14,6 +14,8 @@ export interface FloatingTooltipProps {
   onOpenChange?: (open: boolean) => void;
   /** Position of the tooltip relative to trigger */
   position?: "top" | "bottom" | "left" | "right" | "top-right" | "top-left" | "bottom-right" | "bottom-left";
+  /** How the tooltip is triggered: click (default) or hover */
+  triggerMode?: "click" | "hover";
   /** Additional className for the tooltip container */
   className?: string;
   /** Additional className for the tooltip content */
@@ -26,6 +28,7 @@ export const FloatingTooltip: React.FC<FloatingTooltipProps> = ({
   open: controlledOpen,
   onOpenChange,
   position = "bottom",
+  triggerMode = "click",
   className,
   contentClassName,
 }) => {
@@ -123,9 +126,9 @@ export const FloatingTooltip: React.FC<FloatingTooltipProps> = ({
     });
   }, [isOpen, position, setIsOpen]);
 
-  // Handle click outside
+  // Handle click outside (click trigger only)
   React.useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || triggerMode !== "click") return;
 
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -161,7 +164,7 @@ export const FloatingTooltip: React.FC<FloatingTooltipProps> = ({
         document.removeEventListener("keydown", handleEscape);
       }
     };
-  }, [isOpen]);
+  }, [isOpen, triggerMode]);
 
   // Handle scroll and resize
   React.useEffect(() => {
@@ -242,7 +245,20 @@ export const FloatingTooltip: React.FC<FloatingTooltipProps> = ({
     };
   }, [isOpen, position]);
 
+  const handleMouseEnter = () => {
+    if (triggerMode === "hover") {
+      setIsOpen(true);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (triggerMode === "hover") {
+      setIsOpen(false);
+    }
+  };
+
   const handleTriggerClick = (e: React.MouseEvent) => {
+    if (triggerMode !== "click") return;
     e.stopPropagation();
     setIsOpen(!isOpen);
   };
@@ -250,19 +266,29 @@ export const FloatingTooltip: React.FC<FloatingTooltipProps> = ({
   return (
     <div className={cn("relative inline-block", className)}>
       {/* Trigger */}
-      <div ref={triggerRef} onClick={handleTriggerClick} className="cursor-pointer">
+      <div
+        ref={triggerRef}
+        onClick={triggerMode === "click" ? handleTriggerClick : undefined}
+        onMouseEnter={triggerMode === "hover" ? handleMouseEnter : undefined}
+        onMouseLeave={triggerMode === "hover" ? handleMouseLeave : undefined}
+        onFocus={triggerMode === "hover" ? handleMouseEnter : undefined}
+        onBlur={triggerMode === "hover" ? handleMouseLeave : undefined}
+        className="cursor-pointer"
+      >
         {trigger}
       </div>
 
       {/* Tooltip */}
       {isOpen && (
         <>
-          {/* Backdrop for mobile/click outside */}
-          <div
-            className="fixed inset-0 z-40 bg-transparent"
-            onClick={() => setIsOpen(false)}
-            aria-hidden="true"
-          />
+          {/* Backdrop for mobile/click outside (click trigger only) */}
+          {triggerMode === "click" && (
+            <div
+              className="fixed inset-0 z-40 bg-transparent"
+              onClick={() => setIsOpen(false)}
+              aria-hidden="true"
+            />
+          )}
           
           {/* Tooltip content */}
           <div

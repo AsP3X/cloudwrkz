@@ -11,6 +11,7 @@ import { updateTimeEntrySchema, type UpdateTimeEntryInput } from "@/lib/validati
 import { type TimeEntryStatus } from "@prisma/client";
 import { TimeEntryBreaks } from "../TimeEntryBreaks";
 import { COMMON_TIMEZONES } from "@/lib/constants/timezones";
+import { LocationAutocompleteInput } from "@/components/ui/LocationAutocompleteInput";
 
 type TimeEntry = {
   id: string;
@@ -139,11 +140,18 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting, userT
         <label htmlFor="location" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
           Location
         </label>
-        <Input
-          id="location"
-          {...register("location")}
-          error={errors.location?.message}
-          placeholder="Optional location/address"
+        <Controller
+          name="location"
+          control={control}
+          render={({ field }) => (
+            <LocationAutocompleteInput
+              id="location"
+              value={field.value ?? ""}
+              onChange={(val) => field.onChange(val)}
+              error={errors.location?.message}
+              placeholder="Optional location/address"
+            />
+          )}
         />
       </div>
 
