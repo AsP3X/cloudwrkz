@@ -14,6 +14,8 @@ const inter = Inter({
   display: "swap",
 });
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: APP_CONFIG.name,
   description: APP_CONFIG.description,

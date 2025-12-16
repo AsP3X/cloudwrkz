@@ -176,14 +176,23 @@ export function LocationAutocompleteInput({
   const handleSelect = (suggestion: LocationSuggestion) => {
     const typed = query.trim();
     const label = buildSuggestionLabel(suggestion);
+    const typedLower = typed.toLowerCase();
+    const labelLower = label.toLowerCase();
 
-    const hasNumberInQuery = /\d/.test(typed);
-    const hasNumberInLabel = /\d/.test(label);
+    let newValue: string;
 
-    // If the user typed a house number but the suggestion label does not
-    // include any number (typical for street-level or area-level results),
-    // prefer keeping the user's full input so we don't lose the house number.
-    const newValue = hasNumberInQuery && !hasNumberInLabel ? typed : label;
+    if (!typed) {
+      // No manual input – just use the suggestion label.
+      newValue = label;
+    } else if (labelLower.startsWith(typedLower) && label.length > typed.length) {
+      // User typed a prefix and the suggestion completes it.
+      newValue = label;
+    } else {
+      // In all other cases, favor what the user actually typed so that any
+      // corrections (e.g., house numbers, apartment details) are preserved.
+      newValue = typed;
+    }
+
     setQuery(newValue);
     setIsOpen(false);
     setSuggestions([]);

@@ -83,6 +83,8 @@ export default async function DashboardLayout({
       userPermissions.has("admin.permissions.manage"));
   const canManagePermissions =
     isAdmin && databaseAvailable && userPermissions.has("admin.permissions.manage");
+  const canViewDbConsole =
+    isAdmin && databaseAvailable && userPermissions.has("admin.db.view");
   
   // Get enabled modules for sidebar (only if database is available)
   let modules: Awaited<ReturnType<typeof getAllModules>> = [];
@@ -150,6 +152,7 @@ export default async function DashboardLayout({
           <AdminSidebarWrapper
             canViewPermissions={canViewPermissions}
             canManagePermissions={canManagePermissions}
+            canViewDbConsole={canViewDbConsole}
           />
         ) : (
           <DashboardSidebar enabledModuleKeys={enabledModuleKeys} userRole={user.role} />
