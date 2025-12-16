@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Button } from "@/components/ui/Button";
+import { Dialog } from "@/components/ui/Dialog";
 import type { CurrentUser } from "@/lib/utils/auth-server";
 
 type RowsResult = {
@@ -12,15 +13,31 @@ type RowsResult = {
 interface AdminDatabaseConsolePageProps {
   user: CurrentUser;
   tables: string[];
+  canEditEntries?: boolean;
+  canDeleteEntries?: boolean;
 }
 
-export function AdminDatabaseConsolePage({ user, tables }: AdminDatabaseConsolePageProps) {
+export function AdminDatabaseConsolePage({
+  user,
+  tables,
+  canEditEntries = false,
+  canDeleteEntries = false,
+}: AdminDatabaseConsolePageProps) {
   const [selectedTable, setSelectedTable] = React.useState<string | null>(null);
   const [result, setResult] = React.useState<RowsResult | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
   const [searchText, setSearchText] = React.useState<string>("");
   const [rowLimit, setRowLimit] = React.useState<number>(100);
+  const [isEditOpen, setIsEditOpen] = React.useState(false);
+  const [editRowIndex, setEditRowIndex] = React.useState<number | null>(null);
+  const [editJson, setEditJson] = React.useState<string>("");
+  const [originalJson, setOriginalJson] = React.useState<string>("");
+  const [isSavingEdit, setIsSavingEdit] = React.useState(false);
+  const [editError, setEditError] = React.useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = React.useState(false);
+  const [deleteError, setDeleteError] = React.useState<string | null>(null);
+  const [isConfirmOpen, setIsConfirmOpen] = React.useState(false);
 
   const loadTable = async (table: string, opts?: { search?: string; limit?: number }) => {
     setSelectedTable(table);
@@ -64,6 +81,113 @@ export function AdminDatabaseConsolePage({ user, tables }: AdminDatabaseConsoleP
       setResult(null);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const openEditDialog = (rowIndex: number) => {
+    if (!result) return;
+    setEditRowIndex(rowIndex);
+    const row = result.rows[rowIndex];
+    const json = JSON.stringify(row, null, 2);
+    setEditJson(json);
+    setOriginalJson(json);
+    setEditError(null);
+    setIsEditOpen(true);
+  };
+
+  const handlePrepareSave = () => {
+    // Validate JSON before showing confirmation dialog
+    try {
+      JSON.parse(editJson);
+    } catch {
+      setEditError("Invalid JSON. Please fix the row data.");
+      return;
+    }
+    setEditError(null);
+    setIsConfirmOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!result || selectedTable == null || editRowIndex == null) return;
+
+    setIsSavingEdit(true);
+    setEditError(null);
+    try {
+      let parsed: any;
+      try {
+        parsed = JSON.parse(editJson);
+      } catch {
+        setEditError("Invalid JSON. Please fix the row data.");
+        return;
+      }
+
+      const originalRow = result.rows[editRowIndex] as any;
+      const idValue = originalRow.id ?? originalRow.ID ?? originalRow.Id;
+      if (idValue === undefined || idValue === null) {
+        setEditError("Cannot edit this row because no 'id' column was found.");
+        return;
+      }
+
+      const response = await fetch("/api/admin/db-row", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          table: selectedTable,
+          idColumn: "id",
+          idValue,
+          data: parsed,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        setEditError(data.error || "Failed to update row");
+        return;
+      }
+
+      setIsEditOpen(false);
+      setEditRowIndex(null);
+      await loadTable(selectedTable, { limit: rowLimit });
+    } catch (err: any) {
+      setEditError(err.message || "Failed to update row");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleDeleteRow = async (rowIndex: number) => {
+    if (!result || selectedTable == null) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      const row = result.rows[rowIndex] as any;
+      const idValue = row.id ?? row.ID ?? row.Id;
+      if (idValue === undefined || idValue === null) {
+        setDeleteError("Cannot delete this row because no 'id' column was found.");
+        return;
+      }
+
+      const response = await fetch("/api/admin/db-row", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          table: selectedTable,
+          idColumn: "id",
+          idValue,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        setDeleteError(data.error || "Failed to delete row");
+        return;
+      }
+
+      await loadTable(selectedTable, { limit: rowLimit });
+    } catch (err: any) {
+      setDeleteError(err.message || "Failed to delete row");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -381,6 +505,18 @@ export function AdminDatabaseConsolePage({ user, tables }: AdminDatabaseConsoleP
                         {col}
                       </th>
                     ))}
+                    {(canEditEntries || canDeleteEntries) && (
+                      <th
+                        className="
+                          px-4 py-3 text-right text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider
+                          sticky right-0 z-10
+                          bg-neutral-50 dark:bg-neutral-900
+                          shadow-[inset_1px_0_0_rgba(226,232,240,1)] dark:shadow-[inset_1px_0_0_rgba(31,41,55,1)]
+                        "
+                      >
+                        Actions
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
@@ -397,6 +533,60 @@ export function AdminDatabaseConsolePage({ user, tables }: AdminDatabaseConsoleP
                           {formatCell((row as any)[col])}
                         </td>
                       ))}
+                      {(canEditEntries || canDeleteEntries) && (
+                        <td
+                          className="
+                            px-4 py-4 text-right whitespace-nowrap
+                            sticky right-0 z-10
+                            bg-white dark:bg-neutral-900
+                            shadow-[inset_1px_0_0_rgba(226,232,240,1)] dark:shadow-[inset_1px_0_0_rgba(31,41,55,1)]
+                          "
+                        >
+                          <div className="inline-flex items-center gap-2">
+                            {canEditEntries && (
+                              <button
+                                type="button"
+                                onClick={() => openEditDialog(idx)}
+                                className="
+                                  inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium
+                                  transition-all duration-200
+                                  bg-neutral-100 text-neutral-700 hover:bg-neutral-200
+                                  dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700
+                                  disabled:opacity-50 disabled:cursor-not-allowed
+                                  focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900
+                                "
+                              >
+                                Edit
+                              </button>
+                            )}
+                            {canDeleteEntries && (
+                              <button
+                                type="button"
+                                disabled={isDeleting}
+                                onClick={() => {
+                                  if (
+                                    window.confirm(
+                                      "Are you sure you want to delete this row? This action cannot be undone.",
+                                    )
+                                  ) {
+                                    void handleDeleteRow(idx);
+                                  }
+                                }}
+                                className="
+                                  inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium
+                                  transition-all duration-200
+                                  bg-neutral-100 text-neutral-700 hover:bg-neutral-200
+                                  dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700
+                                  disabled:opacity-50 disabled:cursor-not-allowed
+                                  focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900
+                                "
+                              >
+                                {isDeleting ? "Deleting..." : "Delete"}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -405,6 +595,125 @@ export function AdminDatabaseConsolePage({ user, tables }: AdminDatabaseConsoleP
           )}
         </div>
       </div>
+
+      {/* Edit Row Dialog */}
+      {canEditEntries && (
+        <Dialog
+          open={isEditOpen}
+          onOpenChange={(open) => {
+            setIsEditOpen(open);
+            if (!open) {
+              setEditRowIndex(null);
+              setEditError(null);
+            }
+          }}
+          title="Edit Row"
+          description={
+            selectedTable
+              ? `Edit JSON representation of the row in "${selectedTable}". Only tables with an "id" column are editable.`
+              : "Edit JSON representation of the row."
+          }
+        >
+          <div className="p-6 space-y-4">
+            {editError && (
+              <div className="p-3 rounded-lg bg-error-50 dark:bg-error-900/20 border border-error-200 dark:border-error-800 text-sm text-error-700 dark:text-error-300">
+                {editError}
+              </div>
+            )}
+            <textarea
+              className="w-full h-64 px-3 py-2 rounded-lg border-2 border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 text-xs font-mono text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-none"
+              value={editJson}
+              onChange={(e) => setEditJson(e.target.value)}
+              spellCheck={false}
+            />
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                Changes are applied directly to the database. Please double-check before saving.
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setIsEditOpen(false);
+                    setEditRowIndex(null);
+                    setEditError(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handlePrepareSave}
+                  disabled={isSavingEdit}
+                >
+                  {isSavingEdit ? "Saving..." : "Save"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Dialog>
+      )}
+
+      {/* Confirm Save Dialog */}
+      {canEditEntries && (
+        <Dialog
+          open={isConfirmOpen}
+          onOpenChange={(open) => {
+            setIsConfirmOpen(open);
+          }}
+          title="Confirm Changes"
+          description="Are you sure you want to apply the following changes to this row?"
+        >
+          <div className="p-6 space-y-4">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                Old version
+              </p>
+              <div className="w-full max-h-40 overflow-auto px-3 py-2 rounded-lg border-2 border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 text-xs font-mono text-neutral-900 dark:text-neutral-100 whitespace-pre">
+                {renderDiffLines(originalJson, editJson, "old")}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                New version
+              </p>
+              <div className="w-full max-h-40 overflow-auto px-3 py-2 rounded-lg border-2 border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 text-xs font-mono text-neutral-900 dark:text-neutral-100 whitespace-pre">
+                {renderDiffLines(originalJson, editJson, "new")}
+              </div>
+            </div>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              Are you sure you want to change the old version into the new version shown above?
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsConfirmOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={isSavingEdit}
+                onClick={async () => {
+                  setIsConfirmOpen(false);
+                  await handleSaveEdit();
+                }}
+              >
+                {isSavingEdit ? "Saving..." : "Yes, apply changes"}
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      )}
+
+      {/* Delete error banner */}
+      {deleteError && (
+        <div className="mt-4 p-3 rounded-lg bg-error-50 dark:bg-error-900/20 border border-error-200 dark:border-error-800 text-sm text-error-700 dark:text-error-300">
+          {deleteError}
+        </div>
+      )}
     </div>
   );
 }
@@ -420,5 +729,41 @@ function formatCell(value: unknown): string {
     }
   }
   return String(value);
+}
+
+type DiffMode = "old" | "new";
+
+function renderDiffLines(oldText: string, newText: string, mode: DiffMode) {
+  const oldLines = oldText.split("\n");
+  const newLines = newText.split("\n");
+  const maxLen = Math.max(oldLines.length, newLines.length);
+
+  const elements: JSX.Element[] = [];
+
+  for (let i = 0; i < maxLen; i++) {
+    const oldLine = oldLines[i] ?? "";
+    const newLine = newLines[i] ?? "";
+    const isChanged = oldLine !== newLine;
+
+    const lineText = mode === "old" ? oldLine : newLine;
+
+    elements.push(
+      <div
+        key={`${mode}-${i}`}
+        className={
+          "whitespace-pre-wrap" +
+          (isChanged
+            ? mode === "old"
+              ? " bg-error-100/70 dark:bg-error-900/40"
+              : " bg-success-100/70 dark:bg-success-900/40"
+            : "")
+        }
+      >
+        {lineText || "\u00A0"}
+      </div>,
+    );
+  }
+
+  return elements;
 }
 

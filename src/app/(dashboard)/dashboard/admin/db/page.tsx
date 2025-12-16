@@ -11,7 +11,11 @@ import { ROUTES } from "@/lib/constants/routes";
 export default async function AdminDatabasePage() {
   const user = await requireAuth();
 
-  const canViewDb = await hasPermission(user.id, "admin.db.view");
+  const [canViewDb, canEditEntries, canDeleteEntries] = await Promise.all([
+    hasPermission(user.id, "admin.db.view"),
+    hasPermission(user.id, "admin.db.edit_entries"),
+    hasPermission(user.id, "admin.db.delete_entries"),
+  ]);
 
   if (!canViewDb) {
     return (
@@ -37,7 +41,14 @@ export default async function AdminDatabasePage() {
     ? tablesRaw.map((t) => t.table_name).filter(Boolean)
     : [];
 
-  return <AdminDatabaseConsolePage user={user} tables={tables} />;
+  return (
+    <AdminDatabaseConsolePage
+      user={user}
+      tables={tables}
+      canEditEntries={canEditEntries}
+      canDeleteEntries={canDeleteEntries}
+    />
+  );
 }
 
 
