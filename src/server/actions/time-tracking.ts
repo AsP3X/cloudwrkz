@@ -349,6 +349,8 @@ export async function updateTimeEntry(
         startedAt: true,
         stoppedAt: true,
         status: true,
+        totalDuration: true,
+        lastResumedAt: true,
       },
     });
 
@@ -398,6 +400,28 @@ export async function updateTimeEntry(
       // Only update if duration is non-negative
       if (durationSeconds >= 0) {
         calculatedDuration = durationSeconds;
+      }
+    } else if (
+      // When updating the start time on a running timer without an explicit stop time,
+      // adjust the stored totalDuration so that the effective elapsed time reflects
+      // the new start time.
+      isTimeUpdated &&
+      !finalStoppedAt &&
+      existing.status === "RUNNING" &&
+      input.startedAt &&
+      // We only adjust totalDuration for timers that have been resumed at least once.
+      // For timers that have never been paused, totalDuration should remain 0 and
+      // elapsed time is derived directly from startedAt.
+      existing.lastResumedAt
+    ) {
+      const deltaSeconds = Math.floor(
+        (input.startedAt.getTime() - existing.startedAt.getTime()) / 1000
+      );
+      const shiftedTotal = (existing.totalDuration ?? 0) - deltaSeconds;
+      if (shiftedTotal >= 0) {
+        calculatedDuration = shiftedTotal;
+      } else {
+        calculatedDuration = 0;
       }
     }
 

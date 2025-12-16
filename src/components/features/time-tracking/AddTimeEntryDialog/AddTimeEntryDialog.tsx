@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/Textarea";
 import { addTimeEntrySchema, type AddTimeEntryInput } from "@/lib/validations/time-tracking";
 import { createTimeEntryWithDuration } from "@/server/actions/time-tracking";
 import { useRouter } from "next/navigation";
+import { LocationAutocompleteInput } from "@/components/ui/LocationAutocompleteInput";
 
 interface AddTimeEntryDialogProps {
   open: boolean;
@@ -152,11 +153,18 @@ export function AddTimeEntryDialog({ open, onOpenChange }: AddTimeEntryDialogPro
           error={errors.description?.message}
         />
 
-        <Input
-          label="Location"
-          placeholder="Optional location/address"
-          {...register("location")}
-          error={errors.location?.message}
+        <Controller
+          name="location"
+          control={control}
+          render={({ field }) => (
+            <LocationAutocompleteInput
+              label="Location"
+              placeholder="Optional location/address"
+              value={field.value ?? ""}
+              onChange={(val) => field.onChange(val)}
+              error={errors.location?.message}
+            />
+          )}
         />
 
         <div>

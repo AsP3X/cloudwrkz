@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/Textarea";
 import { createTimeEntrySchema, type CreateTimeEntryInput } from "@/lib/validations/time-tracking";
 import { createTimeEntry } from "@/server/actions/time-tracking";
 import { useRouter } from "next/navigation";
+import { LocationAutocompleteInput } from "@/components/ui/LocationAutocompleteInput";
 
 interface StartTimerDialogProps {
   open: boolean;
@@ -27,6 +28,7 @@ export function StartTimerDialog({ open, onOpenChange }: StartTimerDialogProps) 
     handleSubmit,
     formState: { errors, isSubmitting },
     reset,
+    control,
   } = useForm<CreateTimeEntryInput>({
     resolver: zodResolver(createTimeEntrySchema),
     defaultValues: {
@@ -109,11 +111,18 @@ export function StartTimerDialog({ open, onOpenChange }: StartTimerDialogProps) 
           error={errors.description?.message}
         />
 
-        <Input
-          label="Location"
-          placeholder="Optional location/address"
-          {...register("location")}
-          error={errors.location?.message}
+        <Controller
+          name="location"
+          control={control}
+          render={({ field }) => (
+            <LocationAutocompleteInput
+              label="Location"
+              placeholder="Optional location/address"
+              value={field.value ?? ""}
+              onChange={(val) => field.onChange(val)}
+              error={errors.location?.message}
+            />
+          )}
         />
 
         <div>
