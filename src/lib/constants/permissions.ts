@@ -53,6 +53,8 @@ export type PermissionKey =
   | "admin.users.update"
   | "admin.users.delete"
   | "admin.groups.manage"
+  | "admin.permissions.view"
+  | "admin.permissions.manage"
   | "admin.settings.manage"
   | "admin.modules.manage"
   | "admin.sessions.view"
@@ -374,6 +376,18 @@ export const PERMISSIONS: PermissionDefinition[] = [
     category: "admin",
   },
   {
+    key: "admin.permissions.view",
+    name: "View Permissions",
+    description: "View user and group permissions (read-only)",
+    category: "admin",
+  },
+  {
+    key: "admin.permissions.manage",
+    name: "Manage Permissions",
+    description: "View and manage user and group permissions",
+    category: "admin",
+  },
+  {
     key: "admin.settings.manage",
     name: "Manage Settings",
     description: "Modify system settings",
@@ -488,7 +502,10 @@ export function getPermissionCategories(): string[] {
  */
 export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
   ADMIN: PERMISSIONS.map((p) => p.key).filter(
-    (key) => !key.startsWith("admin.db.")
+    (key) =>
+      !key.startsWith("admin.db.") &&
+      key !== "admin.permissions.manage" &&
+      key !== "admin.permissions.view"
   ),
   MODERATOR: [
     // Tickets

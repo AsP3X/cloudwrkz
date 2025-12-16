@@ -150,7 +150,8 @@ type NavSection = {
   readonly defaultExpanded?: boolean;
 };
 
-const NAV_SECTIONS = Object.freeze([
+const getNavSections = (canViewPermissions: boolean): ReadonlyArray<NavSection> => {
+  const sections: NavSection[] = [
   Object.freeze({
     title: "User Management",
     icon: UsersIcon,
@@ -173,24 +174,33 @@ const NAV_SECTIONS = Object.freeze([
       }),
     ]),
   }),
-  Object.freeze({
-    title: "Permissions",
-    icon: PermissionsIcon,
-    defaultExpanded: true,
-    items: Object.freeze([
+  ];
+
+  // Only add Permissions section if user can at least view it
+  if (canViewPermissions) {
+    sections.push(
       Object.freeze({
-        name: "Groups",
-        href: "/dashboard/admin/permissions/groups",
-        icon: GroupsIcon,
-      }),
-      Object.freeze({
-        name: "Users",
-        href: "/dashboard/admin/permissions/users",
-        icon: UsersIcon,
-      }),
-    ]),
-  }),
-  Object.freeze({
+        title: "Permissions",
+        icon: PermissionsIcon,
+        defaultExpanded: true,
+        items: Object.freeze([
+          Object.freeze({
+            name: "Groups",
+            href: "/dashboard/admin/permissions/groups",
+            icon: GroupsIcon,
+          }),
+          Object.freeze({
+            name: "Users",
+            href: "/dashboard/admin/permissions/users",
+            icon: UsersIcon,
+          }),
+        ]),
+      })
+    );
+  }
+
+  sections.push(
+    Object.freeze({
     title: "Content & Projects",
     icon: ProjectsIcon,
     defaultExpanded: true,
@@ -233,12 +243,24 @@ const NAV_SECTIONS = Object.freeze([
         icon: SettingsIcon,
       }),
     ]),
-  }),
-]) as ReadonlyArray<NavSection>;
+  })
+  );
 
-export const AdminSidebar = () => {
+  return Object.freeze(sections) as ReadonlyArray<NavSection>;
+};
+
+interface AdminSidebarProps {
+  canViewPermissions?: boolean;
+  canManagePermissions?: boolean;
+}
+
+export const AdminSidebar = ({
+  canViewPermissions = false,
+  canManagePermissions = false,
+}: AdminSidebarProps) => {
   const pathname = usePathname();
   const { isMobileOpen, setIsMobileOpen } = useSidebar();
+  const NAV_SECTIONS = getNavSections(canViewPermissions);
 
   return (
     <>

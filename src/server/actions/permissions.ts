@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db/prisma";
-import { requireRole } from "@/lib/utils/auth-server";
+import { requirePermission, requireAnyPermission } from "@/lib/utils/auth-server";
 import { PERMISSIONS } from "@/lib/constants/permissions";
 import { parseTicketPermissionKey, isDynamicTicketPermission } from "@/lib/utils/permissions";
 
@@ -9,7 +9,7 @@ import { parseTicketPermissionKey, isDynamicTicketPermission } from "@/lib/utils
  * Get all available permissions
  */
 export async function getPermissions() {
-  await requireRole("ADMIN");
+  await requireAnyPermission("admin.permissions.view", "admin.permissions.manage");
 
   return prisma.permission.findMany({
     orderBy: [
@@ -23,7 +23,7 @@ export async function getPermissions() {
  * Get permissions by category
  */
 export async function getPermissionsByCategory(category: string) {
-  await requireRole("ADMIN");
+  await requireAnyPermission("admin.permissions.view", "admin.permissions.manage");
 
   return prisma.permission.findMany({
     where: { category },
@@ -35,7 +35,7 @@ export async function getPermissionsByCategory(category: string) {
  * Get all permission categories
  */
 export async function getPermissionCategories() {
-  await requireRole("ADMIN");
+  await requireAnyPermission("admin.permissions.view", "admin.permissions.manage");
 
   const categories = await prisma.permission.findMany({
     select: { category: true },
@@ -50,7 +50,7 @@ export async function getPermissionCategories() {
  * Get permissions for a specific group
  */
 export async function getGroupPermissions(groupId: string) {
-  await requireRole("ADMIN");
+  await requireAnyPermission("admin.permissions.view", "admin.permissions.manage");
 
   const groupPermissions = await prisma.groupPermission.findMany({
     where: { groupId },
@@ -71,7 +71,7 @@ export async function getGroupPermissions(groupId: string) {
  * Get dynamic ticket permissions for a specific group
  */
 export async function getGroupDynamicTicketPermissions(groupId: string) {
-  await requireRole("ADMIN");
+  await requireAnyPermission("admin.permissions.view", "admin.permissions.manage");
 
   const groupPermissions = await prisma.groupPermission.findMany({
     where: { groupId },
@@ -100,7 +100,7 @@ export async function getGroupDynamicTicketPermissions(groupId: string) {
  * This should be run once to populate the permissions table
  */
 export async function seedPermissions() {
-  await requireRole("ADMIN");
+  await requirePermission("admin.permissions.manage");
 
   const results = {
     created: 0,

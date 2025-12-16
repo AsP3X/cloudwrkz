@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/utils/auth-server";
-import { requireRole } from "@/lib/utils/auth-server";
+import { getCurrentUser, requireAnyPermission } from "@/lib/utils/auth-server";
 import { getGroups } from "@/server/actions/groups";
 import { GroupPermissionsListPage } from "@/components/features/admin/GroupManagement/GroupPermissionsListPage";
 
@@ -23,7 +22,7 @@ export default async function AdminGroupPermissionsListPage({ searchParams }: Gr
     redirect("/login");
   }
 
-  await requireRole("ADMIN");
+  await requireAnyPermission("admin.permissions.view", "admin.permissions.manage");
 
   const params = await searchParams;
   const groups = await getGroups();
