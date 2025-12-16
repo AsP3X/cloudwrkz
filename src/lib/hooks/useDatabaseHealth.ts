@@ -182,11 +182,6 @@ export function useDatabaseHealth(options?: {
 
   // Expose manual refresh function
   const refresh = useCallback(() => {
-    // When using context, defer to provider's refresh if available
-    if (context && context.refresh) {
-      context.refresh();
-      return;
-    }
     checkHealth();
   }, [checkHealth, context]);
 

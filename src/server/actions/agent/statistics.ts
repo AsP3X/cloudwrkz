@@ -185,7 +185,6 @@ export async function getAgentStatistics(
   };
 
   ticketsByStatus.forEach((group) => {
-    // @ts-expect-error - Prisma enum is compatible with our keys
     statusMap[group.status] = group._count;
   });
 
@@ -197,7 +196,6 @@ export async function getAgentStatistics(
   };
 
   ticketsByPriority.forEach((group) => {
-    // @ts-expect-error - Prisma enum is compatible with our keys
     priorityMap[group.priority] = group._count;
   });
 
@@ -210,7 +208,6 @@ export async function getAgentStatistics(
   };
 
   ticketsByType.forEach((group) => {
-    // @ts-expect-error - Prisma enum is compatible with our keys
     typeMap[group.type] = group._count;
   });
 

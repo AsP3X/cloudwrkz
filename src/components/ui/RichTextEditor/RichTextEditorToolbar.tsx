@@ -242,6 +242,11 @@ export const RichTextEditorToolbar = ({
   const isOrderedListActive = !!editor && selectionUpdate >= 0 && editor.isActive("orderedList");
 
   if (isMobile) {
+    // On mobile, don't render the toolbar until the editor is ready
+    if (!editor) {
+      return null;
+    }
+
     // Mobile layout: Simplified toolbar with only Bold, List, Link, and Color
     return (
       <>
@@ -779,10 +784,6 @@ export const RichTextEditorToolbar = ({
                           // Set stored marks for future typing in the new quote
                           tr.setStoredMarks([newHighlightMark]);
                           
-                          // Set selection after the inserted quote text
-                          const Selection = state.selection.constructor;
-                          const newSelection = Selection.create(tr.doc, currentPos + 1);
-                          tr.setSelection(newSelection);
                         }
                         return true;
                       })
@@ -806,10 +807,6 @@ export const RichTextEditorToolbar = ({
                           // Set stored marks for future typing
                           tr.setStoredMarks([highlightMark]);
                           
-                          // Set selection after the inserted text
-                          const Selection = state.selection.constructor;
-                          const newSelection = Selection.create(tr.doc, insertPos + 1);
-                          tr.setSelection(newSelection);
                         }
                         return true;
                       })
