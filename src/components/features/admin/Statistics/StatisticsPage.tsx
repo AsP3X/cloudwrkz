@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   BarChart,
   Bar,
@@ -21,6 +22,8 @@ import type {
   getTicketStatistics,
   getSystemStatistics,
 } from "@/server/actions/admin/statistics";
+import { Select } from "@/components/ui/Select";
+import { STATISTICS_TIMEFRAMES, type StatisticsTimeframe } from "@/lib/constants/statistics";
 
 type UserStatistics = Awaited<ReturnType<typeof getUserStatistics>>;
 type TicketStatistics = Awaited<ReturnType<typeof getTicketStatistics>>;
@@ -30,6 +33,7 @@ interface StatisticsPageProps {
   userStatistics: UserStatistics;
   ticketStatistics: TicketStatistics;
   systemStatistics: SystemStatistics;
+  timeframe: StatisticsTimeframe;
 }
 
 const COLORS = {
@@ -96,11 +100,58 @@ function StatCard({ label, value, helperText, tone = "default" }: StatCardProps)
   );
 }
 
+const TICKET_STATUS_FILTER_OPTIONS = [
+  { value: "ALL", label: "All statuses" },
+  { value: "OPEN", label: "Open" },
+  { value: "IN_PROGRESS", label: "In Progress" },
+  { value: "PENDING", label: "Pending" },
+  { value: "RESOLVED", label: "Resolved" },
+  { value: "CLOSED", label: "Closed" },
+  { value: "CANCELLED", label: "Cancelled" },
+] as const;
+
 export function StatisticsPage({
   userStatistics,
   ticketStatistics,
   systemStatistics,
+  timeframe,
 }: StatisticsPageProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+
+  const currentTicketStatusFilter =
+    (searchParams.get("ticketStatus") as (typeof TICKET_STATUS_FILTER_OPTIONS)[number]["value"] | null) ??
+    "ALL";
+
+  const timeframeConfig =
+    STATISTICS_TIMEFRAMES.find((t) => t.value === timeframe) ?? STATISTICS_TIMEFRAMES[1];
+
+  const handleTimeframeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = event.target.value as StatisticsTimeframe;
+    const params = new URLSearchParams(searchParams.toString());
+
+    if (value === "30d") {
+      params.delete("timeframe");
+    } else {
+      params.set("timeframe", value);
+    }
+
+    router.push(`${pathname}?${params.toString()}`);
+  };
+
+  const handleTicketStatusFilterChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = event.target.value as (typeof TICKET_STATUS_FILTER_OPTIONS)[number]["value"];
+    const params = new URLSearchParams(searchParams.toString());
+
+    if (value === "ALL") {
+      params.delete("ticketStatus");
+    } else {
+      params.set("ticketStatus", value);
+    }
+
+    router.push(`${pathname}?${params.toString()}`);
+  };
   // Derived metrics
   const resolvedCount =
     ticketStatistics.byStatus.RESOLVED +
@@ -133,10 +184,19 @@ export function StatisticsPage({
   );
 
   const ticketStatusData = Object.entries(ticketStatistics.byStatus).map(
-    ([name, value]) => ({
-      name: name.replace("_", " "),
+    ([status, value]) => ({
+      status,
+      name: status.replace("_", " "),
       value,
     })
+  );
+
+  const filteredTicketStatusData = React.useMemo(
+    () =>
+      currentTicketStatusFilter === "ALL"
+        ? ticketStatusData
+        : ticketStatusData.filter((item) => item.status === currentTicketStatusFilter),
+    [currentTicketStatusFilter, ticketStatusData]
   );
 
   const ticketPriorityData = Object.entries(ticketStatistics.byPriority).map(
@@ -198,6 +258,24 @@ export function StatisticsPage({
             High-level overview of users, tickets, and system health.
           </p>
         </div>
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
+          <div className="w-full sm:w-44">
+            <Select
+              label="Timeframe"
+              options={STATISTICS_TIMEFRAMES}
+              value={timeframe}
+              onChange={handleTimeframeChange}
+            />
+          </div>
+          <div className="w-full sm:w-44">
+            <Select
+              label="Ticket filter"
+              options={TICKET_STATUS_FILTER_OPTIONS}
+              value={currentTicketStatusFilter}
+              onChange={handleTicketStatusFilterChange}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Top-level KPIs */}
@@ -216,7 +294,7 @@ export function StatisticsPage({
             value={formatInteger(systemStatistics.totalUsers)}
             helperText={`${
               systemStatistics.growthRate.users >= 0 ? "↑" : "↓"
-            } ${formatDecimal(Math.abs(systemStatistics.growthRate.users))}% last 30 days`}
+            } ${formatDecimal(Math.abs(systemStatistics.growthRate.users))}% vs previous period`}
             tone={
               systemStatistics.growthRate.users >= 0 ? "positive" : "negative"
             }
@@ -228,7 +306,7 @@ export function StatisticsPage({
               systemStatistics.growthRate.tickets >= 0 ? "↑" : "↓"
             } ${formatDecimal(
               Math.abs(systemStatistics.growthRate.tickets)
-            )}% last 30 days`}
+            )}% vs previous period`}
             tone={
               systemStatistics.growthRate.tickets >= 0 ? "positive" : "negative"
             }
@@ -335,7 +413,7 @@ export function StatisticsPage({
         {/* User Registrations Over Time */}
         <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-4 sm:p-6">
           <h3 className="text-base sm:text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-3 sm:mb-4">
-            Registrations (last 30 days)
+            Registrations ({timeframeConfig.label.toLowerCase()})
           </h3>
           <div className="h-64 sm:h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -383,7 +461,7 @@ export function StatisticsPage({
             </h3>
             <div className="h-64 sm:h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={ticketStatusData}>
+                <BarChart data={filteredTicketStatusData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" />
                   <YAxis />
@@ -459,7 +537,7 @@ export function StatisticsPage({
         {/* Ticket Activity Over Time */}
         <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-4 sm:p-6">
           <h3 className="text-base sm:text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-3 sm:mb-4">
-            Ticket activity (last 30 days)
+            Ticket activity ({timeframeConfig.label.toLowerCase()})
           </h3>
           <div className="h-64 sm:h-72">
             <ResponsiveContainer width="100%" height="100%">

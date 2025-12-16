@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireAnyRole } from "@/lib/utils/auth-server";
 import { isModuleEnabled } from "../modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
+import type { StatisticsTimeframe } from "@/lib/constants/statistics";
 
 export type AgentTicketStatistics = {
   totalAssigned: number;
@@ -45,12 +46,47 @@ export type AgentStatistics = {
   time: AgentTimeStatistics;
 };
 
-export async function getAgentStatistics(): Promise<AgentStatistics> {
+type AgentStatisticsOptions = {
+  timeframe?: StatisticsTimeframe;
+  status?: AgentTicketStatusFilter;
+};
+
+type AgentTicketStatusFilter =
+  | "OPEN"
+  | "IN_PROGRESS"
+  | "PENDING"
+  | "RESOLVED"
+  | "CLOSED"
+  | "CANCELLED";
+
+function getFromDateForTimeframe(timeframe: StatisticsTimeframe): Date {
+  const now = new Date();
+
+  const daysMap: Record<StatisticsTimeframe, number> = {
+    "7d": 7,
+    "30d": 30,
+    "90d": 90,
+    "180d": 180,
+    "365d": 365,
+  };
+
+  const days = daysMap[timeframe] ?? 30;
+  const from = new Date(now);
+  from.setDate(from.getDate() - days);
+  return from;
+}
+
+export async function getAgentStatistics(
+  options?: AgentStatisticsOptions
+): Promise<AgentStatistics> {
   const user = await requireAnyRole("AGENT", "ADMIN", "MODERATOR", "USER");
 
   const now = new Date();
-  const thirtyDaysAgo = new Date(now);
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const timeframe = options?.timeframe ?? "30d";
+  const ticketFromDate = getFromDateForTimeframe(timeframe);
+  const statusFilter = options?.status;
+  const thirtyDaysAgoForTime = new Date(now);
+  thirtyDaysAgoForTime.setDate(thirtyDaysAgoForTime.getDate() - 30);
   const sevenDaysAgo = new Date(now);
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
@@ -66,6 +102,10 @@ export async function getAgentStatistics(): Promise<AgentStatistics> {
     prisma.ticket.count({
       where: {
         assignedToId: user.id,
+        createdAt: {
+          gte: ticketFromDate,
+        },
+        ...(statusFilter ? { status: statusFilter } : {}),
       },
     }),
     prisma.ticket.groupBy({
@@ -73,6 +113,10 @@ export async function getAgentStatistics(): Promise<AgentStatistics> {
       _count: true,
       where: {
         assignedToId: user.id,
+        createdAt: {
+          gte: ticketFromDate,
+        },
+        ...(statusFilter ? { status: statusFilter } : {}),
       },
     }),
     prisma.ticket.groupBy({
@@ -80,6 +124,10 @@ export async function getAgentStatistics(): Promise<AgentStatistics> {
       _count: true,
       where: {
         assignedToId: user.id,
+        createdAt: {
+          gte: ticketFromDate,
+        },
+        ...(statusFilter ? { status: statusFilter } : {}),
       },
     }),
     prisma.ticket.groupBy({
@@ -87,14 +135,19 @@ export async function getAgentStatistics(): Promise<AgentStatistics> {
       _count: true,
       where: {
         assignedToId: user.id,
+        createdAt: {
+          gte: ticketFromDate,
+        },
+        ...(statusFilter ? { status: statusFilter } : {}),
       },
     }),
     prisma.ticket.findMany({
       where: {
         assignedToId: user.id,
         createdAt: {
-          gte: thirtyDaysAgo,
+          gte: ticketFromDate,
         },
+        ...(statusFilter ? { status: statusFilter } : {}),
       },
       select: {
         createdAt: true,
@@ -109,6 +162,10 @@ export async function getAgentStatistics(): Promise<AgentStatistics> {
           { resolvedAt: { not: null } },
           { closedAt: { not: null } },
         ],
+        createdAt: {
+          gte: ticketFromDate,
+        },
+        ...(statusFilter ? { status: statusFilter } : {}),
       },
       select: {
         createdAt: true,
@@ -245,7 +302,7 @@ export async function getAgentStatistics(): Promise<AgentStatistics> {
       where: {
         userId: user.id,
         createdAt: {
-          gte: thirtyDaysAgo,
+          gte: thirtyDaysAgoForTime,
         },
       },
     }),
