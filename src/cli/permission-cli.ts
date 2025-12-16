@@ -28,6 +28,7 @@ import {
   sectionHeader,
   displayKeyValue,
   notice,
+  paginatedSelect,
 } from "./prompts";
 import chalk from "chalk";
 
@@ -418,4 +419,292 @@ async function handleListGroup() {
 
 async function handleSync() {
   notice("Permission sync functionality - use seed-permissions script: pnpm db:seed-permissions", "info");
+}
+
+// Interactive versions
+
+export async function handleListInteractive() {
+  try {
+    header("List Permissions", "View all permissions with optional filters");
+
+    const useFilters = await confirm("Would you like to filter by category/module?", false);
+
+    const flags: string[] = ["list"];
+
+    if (useFilters) {
+      const filterChoice = await select("Choose filter type:", ["category", "module", "both"], [
+        "By category",
+        "By module",
+        "By category and module",
+      ]);
+
+      if (filterChoice === "category" || filterChoice === "both") {
+        const category = await prompt("Enter category to filter by (e.g. tickets, projects, admin):", {
+          required: true,
+        });
+        flags.push(`--category=${category}`);
+      }
+
+      if (filterChoice === "module" || filterChoice === "both") {
+        const moduleKey = await prompt("Enter module key to filter by (e.g. tickets, projects, timetracking):", {
+          required: true,
+        });
+        flags.push(`--module=${moduleKey}`);
+      }
+    }
+
+    commandArgs.length = 0;
+    commandArgs.push(...flags);
+
+    await handleList();
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleShowInteractive() {
+  try {
+    header("Show Permission Details", "View detailed information for a permission");
+
+    const spinner = createSpinner("Loading permissions...");
+    spinner.start();
+
+    const permissions = await prisma.permission.findMany({
+      orderBy: [{ category: "asc" }, { key: "asc" }],
+    });
+
+    spinner.succeed(`Loaded ${permissions.length} permission(s)`);
+
+    if (permissions.length === 0) {
+      notice("No permissions found. Run the seed-permissions script first.", "warning");
+      return;
+    }
+
+    const selected = await paginatedSelect(
+      "Select a permission to view:",
+      permissions,
+      (p, index) => `${index + 1}. [${p.category}] ${p.name} (${p.key})`
+    );
+
+    if (!selected) {
+      notice("No permission selected.", "warning");
+      return;
+    }
+
+    commandArgs.length = 0;
+    commandArgs.push("show", selected.key);
+
+    await handleShow();
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleGrantInteractive() {
+  try {
+    header("Grant Permission to Group", "Assign a permission to a group");
+
+    const spinner = createSpinner("Loading groups and permissions...");
+    spinner.start();
+
+    const [groups, permissions] = await Promise.all([
+      prisma.group.findMany({
+        orderBy: { name: "asc" },
+      }),
+      prisma.permission.findMany({
+        orderBy: [{ category: "asc" }, { key: "asc" }],
+      }),
+    ]);
+
+    spinner.succeed("Loaded groups and permissions");
+
+    if (groups.length === 0) {
+      notice("No groups found. Create a group first using the Group Management CLI.", "warning");
+      return;
+    }
+
+    if (permissions.length === 0) {
+      notice("No permissions found. Run the seed-permissions script first.", "warning");
+      return;
+    }
+
+    const group = await paginatedSelect(
+      "Select a group:",
+      groups,
+      (g, index) => `${index + 1}. ${g.name}${g.description ? ` - ${g.description}` : ""}`
+    );
+
+    if (!group) {
+      notice("No group selected.", "warning");
+      return;
+    }
+
+    const permission = await paginatedSelect(
+      "Select a permission to grant:",
+      permissions,
+      (p, index) => `${index + 1}. [${p.category}] ${p.name} (${p.key})`
+    );
+
+    if (!permission) {
+      notice("No permission selected.", "warning");
+      return;
+    }
+
+    const confirmed = await confirm(
+      `Grant permission "${permission.key}" to group "${group.name}"?`,
+      true
+    );
+
+    if (!confirmed) {
+      notice("Permission grant cancelled.", "info");
+      return;
+    }
+
+    commandArgs.length = 0;
+    commandArgs.push("grant", group.name, permission.key);
+
+    await handleGrant();
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleRevokeInteractive() {
+  try {
+    header("Revoke Permission from Group", "Remove a permission from a group");
+
+    const spinner = createSpinner("Loading groups...");
+    spinner.start();
+
+    const groups = await prisma.group.findMany({
+      orderBy: { name: "asc" },
+    });
+
+    spinner.succeed(`Loaded ${groups.length} group(s)`);
+
+    if (groups.length === 0) {
+      notice("No groups found. Create a group first using the Group Management CLI.", "warning");
+      return;
+    }
+
+    const group = await paginatedSelect(
+      "Select a group:",
+      groups,
+      (g, index) => `${index + 1}. ${g.name}${g.description ? ` - ${g.description}` : ""}`
+    );
+
+    if (!group) {
+      notice("No group selected.", "warning");
+      return;
+    }
+
+    const permSpinner = createSpinner("Loading group permissions...");
+    permSpinner.start();
+
+    const groupPermissions = await prisma.groupPermission.findMany({
+      where: { groupId: group.id },
+      include: {
+        permission: true,
+      },
+      orderBy: {
+        permission: {
+          category: "asc",
+        },
+      },
+    });
+
+    permSpinner.succeed(`Loaded ${groupPermissions.length} permission(s)`);
+
+    if (groupPermissions.length === 0) {
+      notice(`Group "${group.name}" has no permissions to revoke.`, "info");
+      return;
+    }
+
+    const selected = await paginatedSelect(
+      "Select a permission to revoke:",
+      groupPermissions,
+      (gp, index) =>
+        `${index + 1}. [${gp.permission.category}] ${gp.permission.name} (${gp.permission.key})`
+    );
+
+    if (!selected) {
+      notice("No permission selected.", "warning");
+      return;
+    }
+
+    const confirmed = await confirm(
+      `Revoke permission "${selected.permission.key}" from group "${group.name}"?`,
+      true
+    );
+
+    if (!confirmed) {
+      notice("Permission revoke cancelled.", "info");
+      return;
+    }
+
+    commandArgs.length = 0;
+    commandArgs.push("revoke", group.name, selected.permission.key);
+
+    await handleRevoke();
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleListGroupInteractive() {
+  try {
+    header("List Group Permissions", "View permissions assigned to a group");
+
+    const spinner = createSpinner("Loading groups...");
+    spinner.start();
+
+    const groups = await prisma.group.findMany({
+      orderBy: { name: "asc" },
+    });
+
+    spinner.succeed(`Loaded ${groups.length} group(s)`);
+
+    if (groups.length === 0) {
+      notice("No groups found. Create a group first using the Group Management CLI.", "warning");
+      return;
+    }
+
+    const group = await paginatedSelect(
+      "Select a group:",
+      groups,
+      (g, index) => `${index + 1}. ${g.name}${g.description ? ` - ${g.description}` : ""}`
+    );
+
+    if (!group) {
+      notice("No group selected.", "warning");
+      return;
+    }
+
+    commandArgs.length = 0;
+    commandArgs.push("list-group", group.name);
+
+    await handleListGroup();
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleSyncInteractive() {
+  try {
+    header("Sync Permissions", "Sync permission definitions into the database");
+
+    const confirmed = await confirm(
+      "This will not automatically seed permissions, but will show you the recommended seeding command. Continue?",
+      true
+    );
+
+    if (!confirmed) {
+      notice("Permission sync cancelled.", "info");
+      return;
+    }
+
+    await handleSync();
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
 }
