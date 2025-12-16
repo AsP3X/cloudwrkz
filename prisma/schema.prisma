@@ -495,7 +495,6 @@ model Project {
   tickets          Ticket[]
   timeEntries      TimeEntry[]
   milestones       Milestone[]
-  tasks            Task[]
   risks            ProjectRisk[]
   issues           ProjectIssue[]
   notes            ProjectNote[]
@@ -601,8 +600,6 @@ enum TaskPriority {
 // Project Task
 model Task {
   id           String  @id @default(cuid())
-  projectId    String
-  project      Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   parentTaskId String? // For hierarchical tasks
   parentTask   Task?   @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
   subtasks     Task[]  @relation("TaskHierarchy")
@@ -641,7 +638,6 @@ model Task {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([projectId])
   @@index([parentTaskId])
   @@index([assignedToId])
   @@index([status])

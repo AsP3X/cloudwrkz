@@ -121,6 +121,12 @@ const NAV_SECTIONS = Object.freeze([
         moduleKey: "tickets",
       }),
       Object.freeze({
+        name: "Tasks",
+        href: "/dashboard/tasks",
+        icon: TicketsIcon,
+        moduleKey: "tasks",
+      }),
+      Object.freeze({
         name: "Projects",
         href: "/dashboard/projects",
         icon: ProjectsIcon,

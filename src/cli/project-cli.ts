@@ -211,7 +211,6 @@ async function handleList() {
         _count: {
           select: {
             members: true,
-            tasks: true,
             tickets: true,
           },
         },
@@ -229,8 +228,8 @@ async function handleList() {
     separator();
 
     const table = createTable(
-      ["#", "Code", "Name", "Status", "Priority", "Members", "Tasks", "Tickets"],
-      { colWidths: [4, 12, 25, 12, 10, 8, 8, 8] }
+      ["#", "Code", "Name", "Status", "Priority", "Members", "Tickets"],
+      { colWidths: [4, 12, 25, 12, 10, 8, 8] }
     );
 
     projects.forEach((p, index) => {
@@ -241,7 +240,6 @@ async function handleList() {
         p.status,
         p.priority,
         p._count.members.toString(),
-        p._count.tasks.toString(),
         p._count.tickets.toString(),
       ]);
     });
@@ -345,7 +343,6 @@ async function handleShow() {
         _count: {
           select: {
             members: true,
-            tasks: true,
             tickets: true,
             milestones: true,
             risks: true,
@@ -377,7 +374,6 @@ async function handleShow() {
     separator();
     sectionHeader("Statistics");
     displayKeyValue("Members", fullProject._count.members.toString());
-    displayKeyValue("Tasks", fullProject._count.tasks.toString());
     displayKeyValue("Tickets", fullProject._count.tickets.toString());
     displayKeyValue("Milestones", fullProject._count.milestones.toString());
     displayKeyValue("Risks", fullProject._count.risks.toString());

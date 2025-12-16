@@ -382,7 +382,7 @@ export function ProjectPlanningTab({ project }: ProjectPlanningTabProps) {
                 return result;
               }
             : async (data) => {
-                const result = await createTask(project.id, data);
+                const result = await createTask(data);
                 if (result.success) {
                   router.refresh();
                   loadData();

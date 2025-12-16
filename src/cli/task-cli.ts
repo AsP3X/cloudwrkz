@@ -147,7 +147,11 @@ async function handleList() {
     const tasks = await prisma.task.findMany({
       where,
       include: {
-        project: { select: { code: true, name: true } },
+        milestone: {
+          include: {
+            project: { select: { code: true, name: true } },
+          },
+        },
         assignedTo: { select: { email: true, name: true } },
       },
       orderBy: { createdAt: "desc" },
@@ -172,7 +176,7 @@ async function handleList() {
       table.push([
         t.id.substring(0, 8) + "...",
         t.title.substring(0, 28),
-        t.project.code,
+        t.milestone?.project?.code || "-",
         t.status,
         t.assignedTo?.email || "-",
         t.dueDate?.toLocaleDateString() || "-",
@@ -200,7 +204,11 @@ async function handleShow() {
     const task = await prisma.task.findUnique({
       where: { id: taskId },
       include: {
-        project: { select: { code: true, name: true } },
+        milestone: {
+          include: {
+            project: { select: { code: true, name: true } },
+          },
+        },
         assignedTo: { select: { email: true, name: true } },
       },
     });
@@ -217,7 +225,7 @@ async function handleShow() {
     displayKeyValue("ID", task.id);
     displayKeyValue("Title", task.title);
     displayKeyValue("Description", task.description || "-");
-    displayKeyValue("Project", `${task.project.code} - ${task.project.name}`);
+    displayKeyValue("Project", task.milestone?.project ? `${task.milestone.project.code} - ${task.milestone.project.name}` : "-");
     displayKeyValue("Status", task.status);
     displayKeyValue("Priority", task.priority);
     displayKeyValue("Assignee", task.assignedTo ? `${task.assignedTo.email}${task.assignedTo.name ? ` (${task.assignedTo.name})` : ""}` : "-");
@@ -248,19 +256,25 @@ async function handleCreate() {
   spinner.start();
 
   try {
-    const project = await prisma.project.findFirst({
-      where: { OR: [{ code: projectCode }, { id: projectCode }] },
-      select: { id: true },
+    // Find a milestone for the project (tasks are linked to projects via milestones)
+    const milestone = await prisma.milestone.findFirst({
+      where: {
+        project: {
+          OR: [{ code: projectCode }, { id: projectCode }],
+        },
+      },
+      select: { id: true, project: { select: { code: true } } },
+      orderBy: { createdAt: "desc" },
     });
 
-    if (!project) {
-      spinner.fail("Project not found");
-      error(`Project "${projectCode}" not found`);
+    if (!milestone) {
+      spinner.fail("No milestone found");
+      error(`No milestone found for project "${projectCode}". Tasks must be associated with a milestone.`);
       process.exit(1);
     }
 
     const data: any = {
-      projectId: project.id,
+      milestoneId: milestone.id,
       title: title.trim(),
       description: description?.trim() || null,
     };
@@ -279,16 +293,17 @@ async function handleCreate() {
 
     const task = await prisma.task.create({
       data,
-      select: {
-        id: true,
-        title: true,
-        project: { select: { code: true } },
-        status: true,
+      include: {
+        milestone: {
+          include: {
+            project: { select: { code: true } },
+          },
+        },
       },
     });
 
     spinner.succeed("Task created");
-    console.log(`\n✅ Task "${task.title}" has been created in project ${task.project.code}.`);
+    console.log(`\n✅ Task "${task.title}" has been created in project ${task.milestone?.project?.code || projectCode}.`);
   } catch (err) {
     spinner.fail("Failed to create task");
     error(err instanceof Error ? err.message : String(err));

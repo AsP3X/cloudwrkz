@@ -124,9 +124,13 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
     },
   });
 
-  // Get tasks
+  // Get tasks (through milestones)
   const tasks = await prisma.task.findMany({
-    where: { projectId },
+    where: {
+      milestone: {
+        projectId,
+      },
+    },
     select: {
       id: true,
       status: true,

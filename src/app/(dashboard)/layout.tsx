@@ -104,6 +104,7 @@ export default async function DashboardLayout({
     [MODULE_KEYS.TICKETS]: "modules.tickets.view",
     [MODULE_KEYS.TIMETRACKING]: "modules.timetracking.view",
     [MODULE_KEYS.PROJECTS]: "modules.projects.view",
+    [MODULE_KEYS.TASKS]: "modules.tasks.view",
   };
   
   // Filter modules based on:
@@ -118,6 +119,20 @@ export default async function DashboardLayout({
       // For non-admins, check if they have permission to view this module
       const permissionKey = modulePermissionMap[m.key];
       if (!permissionKey) return true; // If no permission mapping, allow (backward compatibility)
+      
+      // Special handling for TASKS: also check for task-related permissions
+      // If user has any task permission (tasks.view, tasks.create, etc.), they can see the module
+      if (m.key === MODULE_KEYS.TASKS) {
+        const hasModulePermission = userPermissions.has(permissionKey as any);
+        const hasTaskPermission = 
+          userPermissions.has("tasks.view" as any) ||
+          userPermissions.has("tasks.create" as any) ||
+          userPermissions.has("tasks.update" as any) ||
+          userPermissions.has("tasks.delete" as any);
+        
+        return hasModulePermission || hasTaskPermission;
+      }
+      
       return userPermissions.has(permissionKey as any);
     })
     .map((m: typeof modules[0]) => m.key)
