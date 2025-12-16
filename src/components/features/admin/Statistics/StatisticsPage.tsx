@@ -39,7 +39,7 @@ const COLORS = {
   warning: "#f59e0b",
   error: "#ef4444",
   info: "#06b6d4",
-};
+} as const;
 
 const STATUS_COLORS: Record<string, string> = {
   ACTIVE: COLORS.success,
@@ -53,278 +53,470 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELLED: COLORS.error,
 };
 
+// Locale-stable number formatting (avoids hydration mismatch)
+const integerFormatter = new Intl.NumberFormat("en-US");
+
+function formatInteger(value: number) {
+  return integerFormatter.format(value);
+}
+
+function formatDecimal(value: number, fractionDigits = 1) {
+  return value.toFixed(fractionDigits);
+}
+
+interface StatCardProps {
+  label: string;
+  value: string;
+  helperText?: string;
+  tone?: "default" | "positive" | "negative";
+}
+
+function StatCard({ label, value, helperText, tone = "default" }: StatCardProps) {
+  const toneClass =
+    tone === "positive"
+      ? "text-success-600"
+      : tone === "negative"
+      ? "text-error-600"
+      : "text-neutral-500 dark:text-neutral-500";
+
+  return (
+    <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-4 sm:p-5">
+      <p className="text-xs sm:text-sm font-medium text-neutral-600 dark:text-neutral-400">
+        {label}
+      </p>
+      <p className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-neutral-100 mt-1.5">
+        {value}
+      </p>
+      {helperText && (
+        <p className={`mt-1 text-xs sm:text-sm ${toneClass}`}>
+          {helperText}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function StatisticsPage({
   userStatistics,
   ticketStatistics,
   systemStatistics,
 }: StatisticsPageProps) {
+  // Derived metrics
+  const resolvedCount =
+    ticketStatistics.byStatus.RESOLVED +
+    ticketStatistics.byStatus.CLOSED +
+    ticketStatistics.byStatus.CANCELLED;
+
+  const ticketClosureRate =
+    ticketStatistics.total > 0
+      ? (resolvedCount / ticketStatistics.total) * 100
+      : 0;
+
+  const ticketsPerUser =
+    userStatistics.total > 0
+      ? ticketStatistics.total / userStatistics.total
+      : 0;
+
   // Prepare data for charts
-  const userStatusData = Object.entries(userStatistics.byStatus).map(([name, value]) => ({
-    name,
-    value,
-  }));
+  const userStatusData = Object.entries(userStatistics.byStatus).map(
+    ([name, value]) => ({
+      name,
+      value,
+    })
+  );
 
-  const userRoleData = Object.entries(userStatistics.byRole).map(([name, value]) => ({
-    name,
-    value,
-  }));
+  const userRoleData = Object.entries(userStatistics.byRole).map(
+    ([name, value]) => ({
+      name,
+      value,
+    })
+  );
 
-  const ticketStatusData = Object.entries(ticketStatistics.byStatus).map(([name, value]) => ({
-    name: name.replace("_", " "),
-    value,
-  }));
+  const ticketStatusData = Object.entries(ticketStatistics.byStatus).map(
+    ([name, value]) => ({
+      name: name.replace("_", " "),
+      value,
+    })
+  );
 
-  const ticketPriorityData = Object.entries(ticketStatistics.byPriority).map(([name, value]) => ({
-    name,
-    value,
-  }));
+  const ticketPriorityData = Object.entries(ticketStatistics.byPriority).map(
+    ([name, value]) => ({
+      name,
+      value,
+    })
+  );
 
-  const ticketTypeData = Object.entries(ticketStatistics.byType).map(([name, value]) => ({
-    name,
-    value,
-  }));
+  const ticketTypeData = Object.entries(ticketStatistics.byType).map(
+    ([name, value]) => ({
+      name,
+      value,
+    })
+  );
 
   // Merge ticket activity data for comparison chart
   const ticketActivityData = React.useMemo(() => {
-    const dateMap = new Map<string, { date: string; created: number; resolved: number }>();
-    
+    const dateMap = new Map<
+      string,
+      { date: string; created: number; resolved: number }
+    >();
+
     ticketStatistics.createdByDay.forEach((item) => {
-      dateMap.set(item.date, { date: item.date, created: item.count, resolved: 0 });
+      dateMap.set(item.date, {
+        date: item.date,
+        created: item.count,
+        resolved: 0,
+      });
     });
-    
+
     ticketStatistics.resolvedByDay.forEach((item) => {
       const existing = dateMap.get(item.date);
       if (existing) {
         existing.resolved = item.count;
       } else {
-        dateMap.set(item.date, { date: item.date, created: 0, resolved: item.count });
+        dateMap.set(item.date, {
+          date: item.date,
+          created: 0,
+          resolved: item.count,
+        });
       }
     });
-    
-    return Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+
+    return Array.from(dateMap.values()).sort((a, b) =>
+      a.date.localeCompare(b.date)
+    );
   }, [ticketStatistics.createdByDay, ticketStatistics.resolvedByDay]);
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100">Statistics</h1>
-        <p className="text-neutral-600 dark:text-neutral-400 mt-1">
-          Comprehensive system analytics and metrics
-        </p>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-neutral-100">
+            System statistics
+          </h1>
+          <p className="text-sm sm:text-base text-neutral-600 dark:text-neutral-400 mt-1">
+            High-level overview of users, tickets, and system health.
+          </p>
+        </div>
       </div>
 
-      {/* System Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
-          <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Total Users</p>
-          <p className="text-3xl font-bold text-neutral-900 dark:text-neutral-100 mt-2">
-            {systemStatistics.totalUsers.toLocaleString()}
-          </p>
-          <p className={`text-sm mt-1 ${systemStatistics.growthRate.users >= 0 ? "text-success-600" : "text-error-600"}`}>
-            {systemStatistics.growthRate.users >= 0 ? "↑" : "↓"} {Math.abs(systemStatistics.growthRate.users)}% growth
-          </p>
+      {/* Top-level KPIs */}
+      <section aria-labelledby="system-overview-heading" className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2
+            id="system-overview-heading"
+            className="text-sm font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400"
+          >
+            System overview
+          </h2>
         </div>
-        <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
-          <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Total Tickets</p>
-          <p className="text-3xl font-bold text-neutral-900 dark:text-neutral-100 mt-2">
-            {systemStatistics.totalTickets.toLocaleString()}
-          </p>
-          <p className={`text-sm mt-1 ${systemStatistics.growthRate.tickets >= 0 ? "text-success-600" : "text-error-600"}`}>
-            {systemStatistics.growthRate.tickets >= 0 ? "↑" : "↓"} {Math.abs(systemStatistics.growthRate.tickets)}% growth
-          </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <StatCard
+            label="Total users"
+            value={formatInteger(systemStatistics.totalUsers)}
+            helperText={`${
+              systemStatistics.growthRate.users >= 0 ? "↑" : "↓"
+            } ${formatDecimal(Math.abs(systemStatistics.growthRate.users))}% last 30 days`}
+            tone={
+              systemStatistics.growthRate.users >= 0 ? "positive" : "negative"
+            }
+          />
+          <StatCard
+            label="Total tickets"
+            value={formatInteger(systemStatistics.totalTickets)}
+            helperText={`${
+              systemStatistics.growthRate.tickets >= 0 ? "↑" : "↓"
+            } ${formatDecimal(
+              Math.abs(systemStatistics.growthRate.tickets)
+            )}% last 30 days`}
+            tone={
+              systemStatistics.growthRate.tickets >= 0 ? "positive" : "negative"
+            }
+          />
+          <StatCard
+            label="Active sessions"
+            value={formatInteger(systemStatistics.activeSessions)}
+            helperText="Currently logged in"
+          />
+          <StatCard
+            label="Avg. resolution time"
+            value={`${formatDecimal(ticketStatistics.averageResolutionTime)}h`}
+            helperText="Across all resolved tickets"
+          />
         </div>
-        <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
-          <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Active Sessions</p>
-          <p className="text-3xl font-bold text-neutral-900 dark:text-neutral-100 mt-2">
-            {systemStatistics.activeSessions.toLocaleString()}
-          </p>
-          <p className="text-sm text-neutral-500 dark:text-neutral-500 mt-1">Currently logged in</p>
-        </div>
-        <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
-          <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Avg Resolution Time</p>
-          <p className="text-3xl font-bold text-neutral-900 dark:text-neutral-100 mt-2">
-            {ticketStatistics.averageResolutionTime.toLocaleString()}h
-          </p>
-          <p className="text-sm text-neutral-500 dark:text-neutral-500 mt-1">Ticket resolution</p>
-        </div>
-      </div>
+      </section>
 
       {/* User Statistics */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Users by Status */}
-        <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
-          <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">
-            Users by Status
+      <section aria-labelledby="user-overview-heading" className="space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <h2
+            id="user-overview-heading"
+            className="text-sm font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400"
+          >
+            User overview
           </h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={userStatusData}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={({ name, percent = 0 }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                outerRadius={80}
-                fill="#8884d8"
-                dataKey="value"
-              >
-                {userStatusData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.name] || COLORS.primary} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
+          <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-500">
+            {formatInteger(userStatistics.total)} total users
+          </p>
         </div>
 
-        {/* Users by Role */}
-        <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
-          <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">
-            Users by Role
-          </h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={userRoleData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="value" fill={COLORS.primary} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Users by Status */}
+          <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
+            <h3 className="text-base sm:text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-3 sm:mb-4">
+              Users by status
+            </h3>
+            <div className="h-64 sm:h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={userStatusData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    // Disable slice labels to prevent overlap on small charts
+                    label={false}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {userStatusData.map((entry, index) => (
+                      <Cell
+                        // eslint-disable-next-line react/no-array-index-key
+                        key={`user-status-${index}`}
+                        fill={STATUS_COLORS[entry.name] || COLORS.primary}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:text-sm">
+              {userStatusData.map((entry) => (
+                <div
+                  key={entry.name}
+                  className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300"
+                >
+                  <span
+                    className="h-2 w-2 rounded-full"
+                    style={{ backgroundColor: STATUS_COLORS[entry.name] || COLORS.primary }}
+                  />
+                  <span className="truncate">
+                    {entry.name}
+                    <span className="ml-1 text-neutral-400 dark:text-neutral-500">
+                      ({entry.value})
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
 
-      {/* User Registrations Over Time */}
-      <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
-        <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">
-          User Registrations (Last 30 Days)
-        </h2>
-        <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={userStatistics.registrationsByDay}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="date" />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Line type="monotone" dataKey="count" stroke={COLORS.primary} name="Registrations" />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
+          {/* Users by Role */}
+          <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
+            <h3 className="text-base sm:text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-3 sm:mb-4">
+              Users by role
+            </h3>
+            <div className="h-64 sm:h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={userRoleData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="value" fill={COLORS.primary} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+
+        {/* User Registrations Over Time */}
+        <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-4 sm:p-6">
+          <h3 className="text-base sm:text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-3 sm:mb-4">
+            Registrations (last 30 days)
+          </h3>
+          <div className="h-64 sm:h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={userStatistics.registrationsByDay}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey="count"
+                  stroke={COLORS.primary}
+                  name="Registrations"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </section>
 
       {/* Ticket Statistics */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Tickets by Status */}
-        <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
-          <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">
-            Tickets by Status
+      <section aria-labelledby="ticket-overview-heading" className="space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <h2
+            id="ticket-overview-heading"
+            className="text-sm font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400"
+          >
+            Ticket overview
           </h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={ticketStatusData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="value" fill={COLORS.secondary} />
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="flex flex-wrap gap-2 text-xs sm:text-sm text-neutral-500 dark:text-neutral-500">
+            <span>{formatInteger(ticketStatistics.total)} total tickets</span>
+            <span className="hidden xs:inline">•</span>
+            <span>{formatDecimal(ticketClosureRate)}% closed / resolved</span>
+            <span className="hidden sm:inline">•</span>
+            <span>{formatDecimal(ticketsPerUser)} tickets per user</span>
+          </div>
         </div>
 
-        {/* Tickets by Priority */}
-        <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
-          <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">
-            Tickets by Priority
-          </h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={ticketPriorityData}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={({ name, percent = 0 }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                outerRadius={80}
-                fill="#8884d8"
-                dataKey="value"
-              >
-                {ticketPriorityData.map((entry, index) => {
-                  const colors = [COLORS.success, COLORS.warning, COLORS.error, COLORS.info];
-                  return <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />;
-                })}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Tickets by Status */}
+          <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
+            <h3 className="text-base sm:text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-3 sm:mb-4">
+              Tickets by status
+            </h3>
+            <div className="h-64 sm:h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={ticketStatusData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="value" fill={COLORS.secondary} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Tickets by Priority & Type */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-4 sm:p-6">
+              <h3 className="text-base sm:text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-3 sm:mb-4">
+                Tickets by priority
+              </h3>
+              <div className="h-64 sm:h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={ticketPriorityData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent = 0 }) =>
+                        `${name}: ${(percent * 100).toFixed(0)}%`
+                      }
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {ticketPriorityData.map((entry, index) => {
+                        const colors = [
+                          COLORS.success,
+                          COLORS.warning,
+                          COLORS.error,
+                          COLORS.info,
+                        ];
+                        return (
+                          <Cell
+                            // eslint-disable-next-line react/no-array-index-key
+                            key={`ticket-priority-${index}`}
+                            fill={colors[index % colors.length]}
+                          />
+                        );
+                      })}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-4 sm:p-6">
+              <h3 className="text-base sm:text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-3 sm:mb-4">
+                Tickets by type
+              </h3>
+              <div className="h-64 sm:h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={ticketTypeData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis />
+                    <Tooltip />
+                    <Bar dataKey="value" fill={COLORS.info} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
 
-      {/* Tickets by Type */}
-      <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
-        <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">
-          Tickets by Type
-        </h2>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={ticketTypeData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" />
-            <YAxis />
-            <Tooltip />
-            <Bar dataKey="value" fill={COLORS.info} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Ticket Activity Over Time */}
-      <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
-        <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">
-          Ticket Activity (Last 30 Days)
-        </h2>
-        <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={ticketActivityData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="date" />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Line
-              type="monotone"
-              dataKey="created"
-              stroke={COLORS.primary}
-              name="Created"
-              strokeWidth={2}
-            />
-            <Line
-              type="monotone"
-              dataKey="resolved"
-              stroke={COLORS.success}
-              name="Resolved"
-              strokeWidth={2}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
+        {/* Ticket Activity Over Time */}
+        <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-4 sm:p-6">
+          <h3 className="text-base sm:text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-3 sm:mb-4">
+            Ticket activity (last 30 days)
+          </h3>
+          <div className="h-64 sm:h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={ticketActivityData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey="created"
+                  stroke={COLORS.primary}
+                  name="Created"
+                  strokeWidth={2}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="resolved"
+                  stroke={COLORS.success}
+                  name="Resolved"
+                  strokeWidth={2}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </section>
 
       {/* Additional System Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
-          <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Total Groups</p>
-          <p className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-2">
-            {systemStatistics.totalGroups.toLocaleString()}
-          </p>
+      <section aria-labelledby="system-detail-heading" className="space-y-3">
+        <h2
+          id="system-detail-heading"
+          className="text-sm font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400"
+        >
+          System detail
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard
+            label="Total groups"
+            value={formatInteger(systemStatistics.totalGroups)}
+          />
+          <StatCard
+            label="Total comments"
+            value={formatInteger(systemStatistics.totalComments)}
+          />
+          <StatCard
+            label="Enabled modules"
+            value={formatInteger(systemStatistics.enabledModules)}
+            helperText={`of ${formatInteger(systemStatistics.totalModules)} total`}
+          />
+          <StatCard
+            label="Group memberships"
+            value={formatInteger(systemStatistics.totalGroupMemberships)}
+          />
         </div>
-        <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
-          <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Total Comments</p>
-          <p className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-2">
-            {systemStatistics.totalComments.toLocaleString()}
-          </p>
-        </div>
-        <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
-          <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Group Memberships</p>
-          <p className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-2">
-            {systemStatistics.totalGroupMemberships.toLocaleString()}
-          </p>
-        </div>
-      </div>
+      </section>
     </div>
   );
 }
