@@ -68,7 +68,8 @@ export type PermissionKey =
   // Module Visibility
   | "modules.tickets.view"
   | "modules.timetracking.view"
-  | "modules.projects.view";
+  | "modules.projects.view"
+  | "modules.tasks.view";
 
 export interface PermissionDefinition {
   key: PermissionKey;
@@ -263,28 +264,28 @@ export const PERMISSIONS: PermissionDefinition[] = [
     name: "View Tasks",
     description: "View tasks in accessible projects",
     category: "tasks",
-    module: "projects",
+    module: "tasks",
   },
   {
     key: "tasks.create",
     name: "Create Tasks",
     description: "Create new tasks",
     category: "tasks",
-    module: "projects",
+    module: "tasks",
   },
   {
     key: "tasks.update",
     name: "Update Tasks",
     description: "Update existing tasks",
     category: "tasks",
-    module: "projects",
+    module: "tasks",
   },
   {
     key: "tasks.delete",
     name: "Delete Tasks",
     description: "Delete tasks",
     category: "tasks",
-    module: "projects",
+    module: "tasks",
   },
   // Issues
   {
@@ -469,6 +470,13 @@ export const PERMISSIONS: PermissionDefinition[] = [
     category: "modules",
     module: "projects",
   },
+  {
+    key: "modules.tasks.view",
+    name: "View Tasks Module",
+    description: "Access to the Tasks module in navigation and dashboard",
+    category: "modules",
+    module: "tasks",
+  },
 ];
 
 /**
@@ -561,6 +569,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     "modules.tickets.view",
     "modules.timetracking.view",
     "modules.projects.view",
+    "modules.tasks.view",
   ],
   AGENT: [
     // Tickets
@@ -584,6 +593,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     "modules.tickets.view",
     "modules.timetracking.view",
     "modules.projects.view",
+    "modules.tasks.view",
   ],
   USER: [
     // Default users have no permissions - they must be added to groups to get permissions

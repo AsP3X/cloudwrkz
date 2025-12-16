@@ -84,214 +84,291 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage }: StandaloneTas
     }
   };
 
-  return (
-    <div className="space-y-4">
+  // Separate active and completed tasks
+  const activeTasks = tasks.filter((task) => task.status !== "COMPLETED");
+  const completedTasks = tasks.filter((task) => task.status === "COMPLETED");
 
-      {tasks.length > 0 && viewMode === "card" && (
-        <div className="divide-y divide-neutral-200 dark:divide-neutral-800">
-          {tasks.map((task) => (
-            <div key={task.id} className="py-3 sm:py-4">
-              <div className="flex items-start gap-3">
-                {canManage && (
-                  <button
-                    type="button"
-                    onClick={() => handleToggleComplete(task)}
-                    className={cn(
-                      "mt-1 w-4 h-4 rounded border flex items-center justify-center text-[10px]",
-                      task.status === "COMPLETED"
-                        ? "bg-primary-600 border-primary-600 text-white"
-                        : "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-transparent"
-                    )}
-                    aria-label={
-                      task.status === "COMPLETED" ? "Mark task as in progress" : "Mark task as completed"
-                    }
-                  >
-                    ✓
-                  </button>
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2 mb-1">
-                    <p className="font-medium text-sm text-neutral-900 dark:text-neutral-100">
-                      {task.title}
-                    </p>
-                    <Badge className={cn(getStatusColor(task.status), "text-[10px] px-2 py-0.5")}>
-                      {task.status.replace("_", " ")}
-                    </Badge>
-                    <Badge className={cn(getPriorityColor(task.priority), "text-[10px] px-2 py-0.5")}>
-                      {task.priority}
-                    </Badge>
-                  </div>
-                  {task.description && (
-                    <p className="text-xs text-neutral-600 dark:text-neutral-400 line-clamp-2 mb-1.5">
-                      {task.description}
-                    </p>
-                  )}
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-neutral-500 dark:text-neutral-400">
-                    {task.ticket && (
-                      <Link
-                        href={`/dashboard/tickets/${task.ticket.id}`}
-                        className="hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
-                      >
-                        {task.ticket.ticketNumber}
-                      </Link>
-                    )}
-                    {task.assignedTo && (
-                      <span>
-                        Assigned to{" "}
-                        <span className="text-neutral-800 dark:text-neutral-200">
-                          {formatUserName(task.assignedTo)}
-                        </span>
-                      </span>
-                    )}
-                    {task.dueDate && (
-                      <span>
-                        Due{" "}
-                        <span className="text-neutral-800 dark:text-neutral-200">
-                          {formatDate(task.dueDate)}
-                        </span>
-                      </span>
-                    )}
-                    {typeof task.estimatedHours === "number" && (
-                      <span>Est. {task.estimatedHours.toFixed(1)}h</span>
-                    )}
-                    {typeof task.actualHours === "number" && (
-                      <span>Actual {task.actualHours.toFixed(1)}h</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
+  const renderTaskCard = (task: StandaloneTask) => (
+    <div key={task.id} className="p-3 sm:p-4">
+      <div className="flex items-start gap-3">
+        {canManage && (
+          <button
+            type="button"
+            onClick={() => handleToggleComplete(task)}
+            className={cn(
+              "mt-1 w-4 h-4 rounded border flex items-center justify-center text-[10px]",
+              task.status === "COMPLETED"
+                ? "bg-primary-600 border-primary-600 text-white"
+                : "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-transparent"
+            )}
+            aria-label={
+              task.status === "COMPLETED" ? "Mark task as in progress" : "Mark task as completed"
+            }
+          >
+            ✓
+          </button>
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-2 mb-1">
+            <Link
+              href={`/dashboard/tasks/${task.id}`}
+              className="font-medium text-sm text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+            >
+              {task.title}
+            </Link>
+            <Badge className={cn(getStatusColor(task.status), "text-[10px] px-2 py-0.5")}>
+              {task.status.replace("_", " ")}
+            </Badge>
+            <Badge className={cn(getPriorityColor(task.priority), "text-[10px] px-2 py-0.5")}>
+              {task.priority}
+            </Badge>
+          </div>
+          {task.description && (
+            <p className="text-xs text-neutral-600 dark:text-neutral-400 line-clamp-2 mb-1.5">
+              {task.description}
+            </p>
+          )}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+            {task.ticket && (
+              <Link
+                href={`/dashboard/tickets/${task.ticket.id}`}
+                className="hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+              >
+                {task.ticket.ticketNumber}
+              </Link>
+            )}
+            {task.assignedTo && (
+              <span>
+                Assigned to{" "}
+                <span className="text-neutral-800 dark:text-neutral-200">
+                  {formatUserName(task.assignedTo)}
+                </span>
+              </span>
+            )}
+            {task.dueDate && (
+              <span>
+                Due{" "}
+                <span className="text-neutral-800 dark:text-neutral-200">
+                  {formatDate(task.dueDate)}
+                </span>
+              </span>
+            )}
+            {typeof task.estimatedHours === "number" && (
+              <span>Est. {task.estimatedHours.toFixed(1)}h</span>
+            )}
+            {typeof task.actualHours === "number" && (
+              <span>Actual {task.actualHours.toFixed(1)}h</span>
+            )}
+          </div>
         </div>
-      )}
-
-      {tasks.length > 0 && viewMode === "table" && (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 dark:border-neutral-800">
-          <table className="w-full text-sm">
-            <thead className="bg-neutral-50 dark:bg-neutral-900/60">
-              <tr>
-                {canManage && (
-                  <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-600 dark:text-neutral-300 w-8">
-                    Done
-                  </th>
-                )}
-                <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-600 dark:text-neutral-300">
-                  Title
-                </th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-600 dark:text-neutral-300 hidden md:table-cell">
-                  Ticket
-                </th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-600 dark:text-neutral-300">
-                  Status
-                </th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-600 dark:text-neutral-300">
-                  Priority
-                </th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-600 dark:text-neutral-300 hidden md:table-cell">
-                  Assigned To
-                </th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-600 dark:text-neutral-300 hidden lg:table-cell">
-                  Due
-                </th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-600 dark:text-neutral-300 hidden lg:table-cell">
-                  Est / Actual
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-              {tasks.map((task) => (
-                <tr key={task.id} className="bg-white dark:bg-neutral-900">
-                  {canManage && (
-                    <td className="px-4 py-2 align-middle">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleComplete(task)}
-                        className={cn(
-                          "w-4 h-4 rounded border flex items-center justify-center text-[10px]",
-                          task.status === "COMPLETED"
-                            ? "bg-primary-600 border-primary-600 text-white"
-                            : "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-transparent"
-                        )}
-                        aria-label={
-                          task.status === "COMPLETED"
-                            ? "Mark task as in progress"
-                            : "Mark task as completed"
-                        }
-                      >
-                        ✓
-                      </button>
-                    </td>
-                  )}
-                  <td className="px-4 py-2 align-middle">
-                    <div className="max-w-xs">
-                      <div className="font-medium text-neutral-900 dark:text-neutral-100">
-                        {task.title}
-                      </div>
-                      {task.description && (
-                        <div className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-1">
-                          {task.description}
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-2 align-middle hidden md:table-cell">
-                    {task.ticket ? (
-                      <Link
-                        href={`/dashboard/tickets/${task.ticket.id}`}
-                        className="text-sm text-neutral-800 dark:text-neutral-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
-                      >
-                        {task.ticket.ticketNumber}
-                      </Link>
-                    ) : (
-                      <span className="text-xs text-neutral-400 dark:text-neutral-500">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2 align-middle">
-                    <Badge className={cn(getStatusColor(task.status), "text-[11px]")}>
-                      {task.status.replace("_", " ")}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-2 align-middle">
-                    <Badge className={cn(getPriorityColor(task.priority), "text-[11px]")}>
-                      {task.priority}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-2 align-middle hidden md:table-cell">
-                    {task.assignedTo ? (
-                      <span className="text-sm text-neutral-800 dark:text-neutral-200">
-                        {formatUserName(task.assignedTo)}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-neutral-400 dark:text-neutral-500">Unassigned</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2 align-middle hidden lg:table-cell">
-                    {task.dueDate ? (
-                      <span className="text-sm text-neutral-800 dark:text-neutral-200">
-                        {formatDate(task.dueDate)}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-neutral-400 dark:text-neutral-500">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2 align-middle hidden lg:table-cell">
-                    <div className="text-xs text-neutral-700 dark:text-neutral-300 space-y-0.5">
-                      {typeof task.estimatedHours === "number" && (
-                        <div>Est. {task.estimatedHours.toFixed(1)}h</div>
-                      )}
-                      {typeof task.actualHours === "number" && (
-                        <div>Act. {task.actualHours.toFixed(1)}h</div>
-                      )}
-                      {typeof task.estimatedHours !== "number" &&
-                        typeof task.actualHours !== "number" && <>—</>}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      </div>
     </div>
+  );
+
+  const renderTaskRow = (task: StandaloneTask) => (
+    <tr key={task.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors">
+      {canManage && (
+        <td className="px-6 py-4 whitespace-nowrap w-12">
+          <button
+            type="button"
+            onClick={() => handleToggleComplete(task)}
+            className={cn(
+              "w-4 h-4 rounded border flex items-center justify-center text-[10px]",
+              task.status === "COMPLETED"
+                ? "bg-primary-600 border-primary-600 text-white"
+                : "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-transparent"
+            )}
+            aria-label={
+              task.status === "COMPLETED"
+                ? "Mark task as in progress"
+                : "Mark task as completed"
+            }
+          >
+            ✓
+          </button>
+        </td>
+      )}
+      <td className="px-6 py-4">
+        <Link
+          href={`/dashboard/tasks/${task.id}`}
+          className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400"
+        >
+          <div className="max-w-md">
+            <div className="truncate">{task.title}</div>
+            {task.description && (
+              <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 line-clamp-1">
+                {task.description}
+              </div>
+            )}
+          </div>
+        </Link>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap hidden md:table-cell">
+        {task.ticket ? (
+          <Link
+            href={`/dashboard/tickets/${task.ticket.id}`}
+            className="text-sm font-mono font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
+          >
+            {task.ticket.ticketNumber}
+          </Link>
+        ) : (
+          <span className="text-xs text-neutral-400 dark:text-neutral-400">—</span>
+        )}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <Badge className={getStatusColor(task.status)}>{task.status.replace("_", " ")}</Badge>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <Badge className={getPriorityColor(task.priority)}>{task.priority}</Badge>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap hidden md:table-cell">
+        {task.assignedTo ? (
+          <div className="text-sm text-neutral-700 dark:text-neutral-300">
+            {formatUserName(task.assignedTo)}
+          </div>
+        ) : (
+          <span className="text-xs text-neutral-400 dark:text-neutral-400">Unassigned</span>
+        )}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap hidden lg:table-cell">
+        {task.dueDate ? (
+          <div className="text-sm text-neutral-600 dark:text-neutral-400">
+            {formatDate(task.dueDate)}
+          </div>
+        ) : (
+          <span className="text-xs text-neutral-400 dark:text-neutral-400">—</span>
+        )}
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap hidden lg:table-cell">
+        {typeof task.estimatedHours === "number" || typeof task.actualHours === "number" ? (
+          <div className="text-sm text-neutral-600 dark:text-neutral-400">
+            {typeof task.estimatedHours === "number" && (
+              <div>Est. {task.estimatedHours.toFixed(1)}h</div>
+            )}
+            {typeof task.actualHours === "number" && (
+              <div className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
+                Act. {task.actualHours.toFixed(1)}h
+              </div>
+            )}
+          </div>
+        ) : (
+          <span className="text-xs text-neutral-400 dark:text-neutral-400">—</span>
+        )}
+      </td>
+    </tr>
+  );
+
+  return (
+    <>
+      {/* Active Tasks */}
+      {activeTasks.length > 0 && (
+        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+          {viewMode === "card" && (
+            <div className="divide-y divide-neutral-200 dark:divide-neutral-700">
+              {activeTasks.map(renderTaskCard)}
+            </div>
+          )}
+
+          {viewMode === "table" && (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-neutral-50 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700">
+                  <tr>
+                    {canManage && (
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider w-12">
+                        Done
+                      </th>
+                    )}
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                      Title
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden md:table-cell">
+                      Ticket
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                      Priority
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden md:table-cell">
+                      Assigned To
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden lg:table-cell">
+                      Due
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden lg:table-cell">
+                      Est / Actual
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-200 dark:divide-neutral-700">
+                  {activeTasks.map(renderTaskRow)}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Completed Tasks */}
+      {completedTasks.length > 0 && (
+        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden mt-6">
+          <div className="px-6 py-4 border-b border-neutral-200 dark:border-neutral-700">
+            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+              Completed Tasks
+            </h2>
+            <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+              {completedTasks.length} {completedTasks.length === 1 ? "task" : "tasks"} completed
+            </p>
+          </div>
+          {viewMode === "card" && (
+            <div className="divide-y divide-neutral-200 dark:divide-neutral-700">
+              {completedTasks.map(renderTaskCard)}
+            </div>
+          )}
+
+          {viewMode === "table" && (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-neutral-50 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700">
+                  <tr>
+                    {canManage && (
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider w-12">
+                        Done
+                      </th>
+                    )}
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                      Title
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden md:table-cell">
+                      Ticket
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                      Priority
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden md:table-cell">
+                      Assigned To
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden lg:table-cell">
+                      Due
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden lg:table-cell">
+                      Est / Actual
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-200 dark:divide-neutral-700">
+                  {completedTasks.map(renderTaskRow)}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </>
   );
 };

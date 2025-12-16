@@ -47,6 +47,41 @@ export async function getPermissionCategories() {
 }
 
 /**
+ * Get all unique modules from permissions
+ */
+export async function getPermissionModules() {
+  await requireAnyPermission("admin.permissions.view", "admin.permissions.manage");
+
+  const modules = await prisma.permission.findMany({
+    select: { module: true },
+    distinct: ["module"],
+    where: {
+      module: {
+        not: null,
+      },
+    },
+    orderBy: { module: "asc" },
+  });
+
+  return modules.map((m) => m.module).filter((m): m is string => m !== null);
+}
+
+/**
+ * Get permissions by module
+ */
+export async function getPermissionsByModule(module: string) {
+  await requireAnyPermission("admin.permissions.view", "admin.permissions.manage");
+
+  return prisma.permission.findMany({
+    where: { module },
+    orderBy: [
+      { category: "asc" },
+      { name: "asc" },
+    ],
+  });
+}
+
+/**
  * Get permissions for a specific group
  */
 export async function getGroupPermissions(groupId: string) {

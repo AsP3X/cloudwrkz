@@ -732,3 +732,113 @@ export async function getAllTasks() {
     actualHours: task.ticketId ? hoursByTicket.get(task.ticketId) || 0 : null,
   }));
 }
+
+/**
+ * Get a single task by ID with all related data.
+ * Tasks are completely independent of projects.
+ */
+export async function getTask(id: string) {
+  const user = await requireAuth();
+
+  const task = await prisma.task.findUnique({
+    where: { id },
+    include: {
+      assignedTo: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          status: true,
+        },
+      },
+      parentTask: {
+        select: {
+          id: true,
+          title: true,
+          status: true,
+        },
+      },
+      milestone: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      ticket: {
+        select: {
+          id: true,
+          ticketNumber: true,
+          title: true,
+        },
+      },
+      dependencies: {
+        include: {
+          dependsOnTask: {
+            select: {
+              id: true,
+              title: true,
+              status: true,
+            },
+          },
+        },
+      },
+      subtasks: {
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          priority: true,
+        },
+        orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+      },
+      _count: {
+        select: {
+          subtasks: true,
+        },
+      },
+    },
+  });
+
+  if (!task) {
+    return null;
+  }
+
+  // Check if tasks module is enabled
+  const moduleEnabled = await isModuleEnabled(MODULE_KEYS.TASKS);
+  if (!moduleEnabled) {
+    return null;
+  }
+
+  // Check permissions - tasks are independent, so we check general task permissions
+  // Admins, agents, and moderators can always view
+  const { hasPermission } = await import("@/lib/utils/permissions");
+  if (
+    user.role !== "ADMIN" &&
+    user.role !== "AGENT" &&
+    user.role !== "MODERATOR" &&
+    !(await hasPermission(user.id, "tasks.view"))
+  ) {
+    return null;
+  }
+
+  // Calculate actual hours from time entries if task is linked to a ticket
+  let actualHours: number | null = null;
+  if (task.ticketId) {
+    const timeEntries = await prisma.timeEntry.findMany({
+      where: {
+        ticketId: task.ticketId,
+        status: "COMPLETED",
+      },
+      select: {
+        totalDuration: true,
+      },
+    });
+
+    actualHours = timeEntries.reduce((sum, entry) => sum + entry.totalDuration / 3600, 0) || null;
+  }
+
+  return {
+    ...task,
+    actualHours,
+  };
+}

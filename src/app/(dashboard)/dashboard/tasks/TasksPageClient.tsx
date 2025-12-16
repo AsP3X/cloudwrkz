@@ -49,12 +49,19 @@ export function TasksPageClient({ initialTasks, canManage, userRole }: TasksPage
   }, []);
 
   React.useEffect(() => {
-    let filtered = [...initialTasks];
+    // Separate completed tasks - they always show in their own section
+    const completedTasks = initialTasks.filter((task) => task.status === "COMPLETED");
+    const activeTasks = initialTasks.filter((task) => task.status !== "COMPLETED");
 
-    // Filter by status only (tasks are independent, no project filtering)
-    if (statusFilter !== "all") {
-      filtered = filtered.filter((task) => task.status === statusFilter);
+    // Filter active tasks by status filter
+    let filteredActive = activeTasks;
+    if (statusFilter !== "all" && statusFilter !== "COMPLETED") {
+      filteredActive = activeTasks.filter((task) => task.status === statusFilter);
     }
+
+    // Always include all completed tasks in a separate section
+    // Combine filtered active tasks with all completed tasks
+    const filtered = [...filteredActive, ...completedTasks];
 
     setFilteredTasks(filtered);
   }, [initialTasks, statusFilter]);
@@ -111,13 +118,19 @@ export function TasksPageClient({ initialTasks, canManage, userRole }: TasksPage
             </select>
           </div>
           <div className="ml-auto text-sm text-neutral-600 dark:text-neutral-400">
-            {filteredTasks.length} {filteredTasks.length === 1 ? "task" : "tasks"}
+            {filteredTasks.filter((t) => t.status !== "COMPLETED").length}{" "}
+            {filteredTasks.filter((t) => t.status !== "COMPLETED").length === 1 ? "task" : "tasks"}
+            {filteredTasks.filter((t) => t.status === "COMPLETED").length > 0 && (
+              <span className="ml-2">
+                ({filteredTasks.filter((t) => t.status === "COMPLETED").length} completed)
+              </span>
+            )}
           </div>
         </div>
       </div>
 
       {/* Task List */}
-      {filteredTasks.length === 0 ? (
+      {initialTasks.length === 0 ? (
         <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-12 text-center">
           <svg
             className="w-16 h-16 text-neutral-300 dark:text-neutral-700 mx-auto mb-4"
@@ -141,7 +154,7 @@ export function TasksPageClient({ initialTasks, canManage, userRole }: TasksPage
           )}
         </div>
       ) : (
-        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
+        <>
           {isReady ? (
             <StandaloneTaskList
               tasks={filteredTasks}
@@ -149,9 +162,11 @@ export function TasksPageClient({ initialTasks, canManage, userRole }: TasksPage
               canManage={canManage}
             />
           ) : (
-            <div className="text-sm text-neutral-500 dark:text-neutral-400">Loading...</div>
+            <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-12 text-center">
+              <div className="text-sm text-neutral-500 dark:text-neutral-400">Loading...</div>
+            </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );
