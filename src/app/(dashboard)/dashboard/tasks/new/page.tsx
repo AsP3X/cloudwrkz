@@ -6,6 +6,7 @@ import { MODULE_KEYS } from "@/lib/constants/modules";
 import { TaskForm } from "@/components/features/tasks/TaskForm";
 import { getAllUsers } from "@/server/actions/users";
 import { getTickets } from "@/server/actions/tickets";
+import { hasPermission } from "@/lib/utils/permissions";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 
@@ -33,8 +34,15 @@ export default async function NewTaskPage() {
     );
   }
 
-  // Get users for assignment dropdown
-  const users = await getAllUsers();
+  // Check if user has permission to assign tasks
+  const canAssign = 
+    user.role === "ADMIN" || 
+    user.role === "AGENT" || 
+    user.role === "MODERATOR" ||
+    await hasPermission(user.id, "tasks.assign");
+
+  // Get users for assignment dropdown (only if user can assign)
+  const users = canAssign ? await getAllUsers() : [];
 
   // Get recent tickets for linking (optional - tasks are independent)
   // Limit to recent tickets to keep the dropdown manageable
@@ -84,7 +92,7 @@ export default async function NewTaskPage() {
 
       {/* Form Card */}
       <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
-        <TaskForm users={users} tickets={recentTickets} />
+        <TaskForm users={users} tickets={recentTickets} canAssign={canAssign} />
       </div>
     </div>
   );

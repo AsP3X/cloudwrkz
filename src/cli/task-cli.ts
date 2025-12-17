@@ -420,6 +420,8 @@ async function handleAssign() {
       where: { id: task.id },
       data: { assignedToId: user.id },
       select: {
+        id: true,
+        taskNumber: true,
         title: true,
         assignedTo: { select: { email: true } },
       },
@@ -459,6 +461,8 @@ async function handleComplete() {
         completedDate: new Date(),
       },
       select: {
+        id: true,
+        taskNumber: true,
         title: true,
         status: true,
       },

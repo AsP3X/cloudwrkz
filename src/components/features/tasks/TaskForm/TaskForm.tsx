@@ -38,9 +38,10 @@ interface TaskFormProps {
     ticketNumber: string;
     title: string;
   }>;
+  canAssign?: boolean;
 }
 
-export const TaskForm = ({ users = [], tickets = [] }: TaskFormProps) => {
+export const TaskForm = ({ users = [], tickets = [], canAssign = false }: TaskFormProps) => {
   const router = useRouter();
   const [serverError, setServerError] = React.useState<string | null>(null);
 
@@ -224,9 +225,9 @@ export const TaskForm = ({ users = [], tickets = [] }: TaskFormProps) => {
       </div>
 
       {/* Assigned To and Ticket Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Assigned To Field */}
-        {users.length > 0 && (
+      <div className={`grid grid-cols-1 ${canAssign && users.length > 0 && tickets.length > 0 ? 'md:grid-cols-2' : ''} gap-6`}>
+        {/* Assigned To Field - only show if user has assign permission */}
+        {canAssign && users.length > 0 && (
           <Select
             label="Assign To"
             options={userOptions}

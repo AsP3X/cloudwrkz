@@ -37,6 +37,7 @@ export type PermissionKey =
   | "tasks.create"
   | "tasks.update"
   | "tasks.delete"
+  | "tasks.assign"
   // Issues
   | "issues.view"
   | "issues.create"
@@ -284,6 +285,13 @@ export const PERMISSIONS: PermissionDefinition[] = [
     key: "tasks.delete",
     name: "Delete Tasks",
     description: "Delete tasks",
+    category: "tasks",
+    module: "tasks",
+  },
+  {
+    key: "tasks.assign",
+    name: "Assign Tasks",
+    description: "Assign tasks to other users",
     category: "tasks",
     module: "tasks",
   },
@@ -549,6 +557,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     "tasks.create",
     "tasks.update",
     "tasks.delete",
+    "tasks.assign",
     // Issues
     "issues.view",
     "issues.create",
@@ -589,6 +598,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     "tasks.view",
     "tasks.create",
     "tasks.update",
+    "tasks.assign",
     // Module Visibility
     "modules.tickets.view",
     "modules.timetracking.view",

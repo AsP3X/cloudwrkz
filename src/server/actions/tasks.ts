@@ -134,8 +134,26 @@ export async function createTask(
     if (input.description !== undefined && input.description !== null) {
       taskData.description = input.description.trim() || null;
     }
+    
+    // Handle assignment: auto-assign to creator if not specified, or validate assignment to others
     if (input.assignedToId !== undefined && input.assignedToId !== null) {
+      // If assigning to someone other than the creator, validate they're in the same group
+      // (unless user is ADMIN, AGENT, or MODERATOR who can assign to anyone)
+      if (input.assignedToId !== user.id && user.role !== "ADMIN" && user.role !== "AGENT" && user.role !== "MODERATOR") {
+        const { areUsersInSameGroup } = await import("@/lib/utils/permissions");
+        const inSameGroup = await areUsersInSameGroup(user.id, input.assignedToId);
+        if (!inSameGroup) {
+          return {
+            success: false,
+            error: "You can only assign tasks to users in your group. Please contact an administrator if you need to assign to someone else.",
+            fieldErrors: { assignedToId: ["You can only assign tasks to users in your group"] },
+          };
+        }
+      }
       taskData.assignedToId = input.assignedToId;
+    } else {
+      // Auto-assign to creator if no assignment specified
+      taskData.assignedToId = user.id;
     }
     if (input.estimatedHours !== undefined && input.estimatedHours !== null) {
       taskData.estimatedHours = input.estimatedHours;
@@ -332,7 +350,7 @@ export async function updateTask(
 
     const task = await prisma.task.findUnique({
       where: { id: taskId },
-      select: { parentTaskId: true },
+      select: { parentTaskId: true, assignedToId: true },
     });
 
     if (!task) {
@@ -355,6 +373,16 @@ export async function updateTask(
         success: false,
         error: "You don't have permission to update this task",
       };
+    }
+
+    // Only the assigned user can update the task (unless ADMIN/AGENT/MODERATOR)
+    if (user.role !== "ADMIN" && user.role !== "AGENT" && user.role !== "MODERATOR") {
+      if (!task.assignedToId || task.assignedToId !== user.id) {
+        return {
+          success: false,
+          error: "You can only update tasks assigned to you",
+        };
+      }
     }
 
     // Prevent circular parent references
@@ -393,6 +421,28 @@ export async function updateTask(
         error: "Due date must be after start date",
         fieldErrors: { dueDate: ["Due date must be after start date"] },
       };
+    }
+
+    // Validate assignment change if provided
+    if (input.assignedToId !== undefined && input.assignedToId !== task.assignedToId) {
+      // If assigning to someone other than the current user, validate they're in the same group
+      // (unless user is ADMIN, AGENT, or MODERATOR who can assign to anyone)
+      if (
+        input.assignedToId !== user.id &&
+        user.role !== "ADMIN" &&
+        user.role !== "AGENT" &&
+        user.role !== "MODERATOR"
+      ) {
+        const { areUsersInSameGroup } = await import("@/lib/utils/permissions");
+        const inSameGroup = await areUsersInSameGroup(user.id, input.assignedToId);
+        if (!inSameGroup) {
+          return {
+            success: false,
+            error: "You can only assign tasks to users in your group. Please contact an administrator if you need to assign to someone else.",
+            fieldErrors: { assignedToId: ["You can only assign tasks to users in your group"] },
+          };
+        }
+      }
     }
 
     const updateData: any = {};
@@ -521,7 +571,7 @@ export async function deleteTask(taskId: string): Promise<ActionResult> {
 
     const task = await prisma.task.findUnique({
       where: { id: taskId },
-      select: { id: true },
+      select: { id: true, assignedToId: true },
     });
 
     if (!task) {
@@ -544,6 +594,16 @@ export async function deleteTask(taskId: string): Promise<ActionResult> {
         success: false,
         error: "You don't have permission to delete this task",
       };
+    }
+
+    // Only the assigned user can delete the task (unless ADMIN/AGENT/MODERATOR)
+    if (user.role !== "ADMIN" && user.role !== "AGENT" && user.role !== "MODERATOR") {
+      if (!task.assignedToId || task.assignedToId !== user.id) {
+        return {
+          success: false,
+          error: "You can only delete tasks assigned to you",
+        };
+      }
     }
 
     await prisma.task.delete({
@@ -575,9 +635,10 @@ export async function getProjectTasks(projectId: string) {
 /**
  * Get all tasks that are linked to a specific ticket.
  * Tasks are independent of projects.
+ * Only shows tasks assigned to the current user (unless ADMIN/AGENT/MODERATOR).
  */
 export async function getTicketTasks(ticketId: string) {
-  await requireAuth();
+  const user = await requireAuth();
 
   // Ensure ticket exists
   const ticket = await prisma.ticket.findUnique({
@@ -591,9 +652,16 @@ export async function getTicketTasks(ticketId: string) {
     return [];
   }
 
-  // Get all tasks linked to this ticket (tasks are independent of projects)
+  // Only show tasks assigned to the current user
+  // Admins, agents, and moderators can see all tasks
+  const whereClause: any = { ticketId };
+  if (user.role !== "ADMIN" && user.role !== "AGENT" && user.role !== "MODERATOR") {
+    whereClause.assignedToId = user.id;
+  }
+
+  // Get tasks linked to this ticket (tasks are independent of projects)
   const tasks = await prisma.task.findMany({
-    where: { ticketId },
+    where: whereClause,
     include: {
       assignedTo: {
         select: {
@@ -672,13 +740,21 @@ export async function getTicketTasks(ticketId: string) {
  * Get all tasks that the user can view.
  * Tasks are completely independent of projects.
  * This is used for the standalone tasks page.
+ * Only shows tasks assigned to the current user (unless ADMIN/AGENT/MODERATOR).
  */
 export async function getAllTasks() {
-  await requireAuth();
+  const user = await requireAuth();
 
-  // Tasks are independent - get all tasks, no project filtering
+  // Only show tasks assigned to the current user
+  // Admins, agents, and moderators can see all tasks
+  const whereClause: any = {};
+  if (user.role !== "ADMIN" && user.role !== "AGENT" && user.role !== "MODERATOR") {
+    whereClause.assignedToId = user.id;
+  }
+
+  // Tasks are independent - get tasks filtered by assignment
   const tasks = await prisma.task.findMany({
-    where: {},
+    where: whereClause,
     include: {
       assignedTo: {
         select: {
@@ -846,6 +922,13 @@ export async function getTask(id: string) {
     !(await hasPermission(user.id, "tasks.view"))
   ) {
     return null;
+  }
+
+  // Only the assigned user can view the task (unless ADMIN/AGENT/MODERATOR)
+  if (user.role !== "ADMIN" && user.role !== "AGENT" && user.role !== "MODERATOR") {
+    if (!task.assignedToId || task.assignedToId !== user.id) {
+      return null;
+    }
   }
 
   // Calculate actual hours from time entries if task is linked to a ticket
