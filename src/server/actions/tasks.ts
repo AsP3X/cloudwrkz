@@ -6,6 +6,56 @@ import { revalidatePath } from "next/cache";
 import { isModuleEnabled } from "./modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 
+/**
+ * Check if an agent has access to a ticket
+ * Agents have access if:
+ * - Ticket is assigned to them directly
+ * - Ticket is assigned to a group they're a member of
+ * - They created the ticket
+ */
+async function agentHasTicketAccess(agentId: string, ticketId: string): Promise<boolean> {
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: ticketId },
+    select: {
+      id: true,
+      createdById: true,
+      assignedToId: true,
+      assignedToGroupId: true,
+    },
+  });
+
+  if (!ticket) {
+    return false;
+  }
+
+  // Creator always has access
+  if (ticket.createdById === agentId) {
+    return true;
+  }
+
+  // Assigned directly
+  if (ticket.assignedToId === agentId) {
+    return true;
+  }
+
+  // Assigned to a group the agent is in
+  if (ticket.assignedToGroupId) {
+    const membership = await prisma.groupMembership.findUnique({
+      where: {
+        userId_groupId: {
+          userId: agentId,
+          groupId: ticket.assignedToGroupId,
+        },
+      },
+    });
+    if (membership) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export type TaskStatus = "NOT_STARTED" | "IN_PROGRESS" | "BLOCKED" | "COMPLETED" | "CANCELLED";
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 export type TaskDependencyType = "FINISH_TO_START" | "START_TO_START" | "FINISH_TO_FINISH" | "START_TO_FINISH";
@@ -350,7 +400,7 @@ export async function updateTask(
 
     const task = await prisma.task.findUnique({
       where: { id: taskId },
-      select: { parentTaskId: true, assignedToId: true },
+      select: { parentTaskId: true, assignedToId: true, ticketId: true },
     });
 
     if (!task) {
@@ -361,7 +411,7 @@ export async function updateTask(
     }
 
     // Tasks are independent - check task permissions, not project permissions
-    // Admins, agents, and moderators can always update
+    // Admins and moderators can always update
     const { hasPermission } = await import("@/lib/utils/permissions");
     if (
       user.role !== "ADMIN" &&
@@ -375,8 +425,33 @@ export async function updateTask(
       };
     }
 
-    // Only the assigned user can update the task (unless ADMIN/AGENT/MODERATOR)
-    if (user.role !== "ADMIN" && user.role !== "AGENT" && user.role !== "MODERATOR") {
+    // Check access based on role
+    if (user.role === "ADMIN" || user.role === "MODERATOR") {
+      // Admins and moderators can update all tasks
+    } else if (user.role === "AGENT") {
+      // Agents can update tasks if:
+      // 1. Task is assigned to them, OR
+      // 2. Task is linked to a ticket they have access to
+      if (task.assignedToId === user.id) {
+        // Assigned to agent - allow update
+      } else if (task.ticketId) {
+        // Check if agent has access to the ticket
+        const hasAccess = await agentHasTicketAccess(user.id, task.ticketId);
+        if (!hasAccess) {
+          return {
+            success: false,
+            error: "You can only update tasks assigned to you or tasks linked to tickets you have access to",
+          };
+        }
+      } else {
+        // Task not assigned and not linked to ticket - deny update
+        return {
+          success: false,
+          error: "You can only update tasks assigned to you or tasks linked to tickets you have access to",
+        };
+      }
+    } else {
+      // Regular users can only update tasks assigned to them
       if (!task.assignedToId || task.assignedToId !== user.id) {
         return {
           success: false,
@@ -571,7 +646,7 @@ export async function deleteTask(taskId: string): Promise<ActionResult> {
 
     const task = await prisma.task.findUnique({
       where: { id: taskId },
-      select: { id: true, assignedToId: true },
+      select: { id: true, assignedToId: true, ticketId: true },
     });
 
     if (!task) {
@@ -582,7 +657,7 @@ export async function deleteTask(taskId: string): Promise<ActionResult> {
     }
 
     // Tasks are independent - check task permissions, not project permissions
-    // Admins, agents, and moderators can always delete
+    // Admins and moderators can always delete
     const { hasPermission } = await import("@/lib/utils/permissions");
     if (
       user.role !== "ADMIN" &&
@@ -596,8 +671,33 @@ export async function deleteTask(taskId: string): Promise<ActionResult> {
       };
     }
 
-    // Only the assigned user can delete the task (unless ADMIN/AGENT/MODERATOR)
-    if (user.role !== "ADMIN" && user.role !== "AGENT" && user.role !== "MODERATOR") {
+    // Check access based on role
+    if (user.role === "ADMIN" || user.role === "MODERATOR") {
+      // Admins and moderators can delete all tasks
+    } else if (user.role === "AGENT") {
+      // Agents can delete tasks if:
+      // 1. Task is assigned to them, OR
+      // 2. Task is linked to a ticket they have access to
+      if (task.assignedToId === user.id) {
+        // Assigned to agent - allow delete
+      } else if (task.ticketId) {
+        // Check if agent has access to the ticket
+        const hasAccess = await agentHasTicketAccess(user.id, task.ticketId);
+        if (!hasAccess) {
+          return {
+            success: false,
+            error: "You can only delete tasks assigned to you or tasks linked to tickets you have access to",
+          };
+        }
+      } else {
+        // Task not assigned and not linked to ticket - deny delete
+        return {
+          success: false,
+          error: "You can only delete tasks assigned to you or tasks linked to tickets you have access to",
+        };
+      }
+    } else {
+      // Regular users can only delete tasks assigned to them
       if (!task.assignedToId || task.assignedToId !== user.id) {
         return {
           success: false,
@@ -635,7 +735,8 @@ export async function getProjectTasks(projectId: string) {
 /**
  * Get all tasks that are linked to a specific ticket.
  * Tasks are independent of projects.
- * Only shows tasks assigned to the current user (unless ADMIN/AGENT/MODERATOR).
+ * Only shows tasks assigned to the current user (unless ADMIN/MODERATOR).
+ * For AGENTs: only shows tasks if they have access to the ticket.
  */
 export async function getTicketTasks(ticketId: string) {
   const user = await requireAuth();
@@ -652,10 +753,25 @@ export async function getTicketTasks(ticketId: string) {
     return [];
   }
 
-  // Only show tasks assigned to the current user
-  // Admins, agents, and moderators can see all tasks
+  // For AGENTs, check if they have access to the ticket first
+  if (user.role === "AGENT") {
+    const hasAccess = await agentHasTicketAccess(user.id, ticketId);
+    if (!hasAccess) {
+      return [];
+    }
+    // Agent has access to ticket - show all tasks for this ticket
+  }
+
+  // Build where clause based on user role
   const whereClause: any = { ticketId };
-  if (user.role !== "ADMIN" && user.role !== "AGENT" && user.role !== "MODERATOR") {
+  if (user.role === "ADMIN" || user.role === "MODERATOR") {
+    // Admins and moderators can see all tasks for the ticket
+    // No additional filter needed
+  } else if (user.role === "AGENT") {
+    // Agent has access to ticket - show all tasks (already checked above)
+    // No additional filter needed
+  } else {
+    // Regular users can only see tasks assigned to them
     whereClause.assignedToId = user.id;
   }
 
@@ -740,15 +856,27 @@ export async function getTicketTasks(ticketId: string) {
  * Get all tasks that the user can view.
  * Tasks are completely independent of projects.
  * This is used for the standalone tasks page.
- * Only shows tasks assigned to the current user (unless ADMIN/AGENT/MODERATOR).
+ * Only shows tasks assigned to the current user (unless ADMIN/MODERATOR).
+ * For AGENTs: shows tasks assigned to them OR linked to tickets they have access to.
  */
 export async function getAllTasks() {
   const user = await requireAuth();
 
-  // Only show tasks assigned to the current user
-  // Admins, agents, and moderators can see all tasks
+  // Build where clause based on user role
   const whereClause: any = {};
-  if (user.role !== "ADMIN" && user.role !== "AGENT" && user.role !== "MODERATOR") {
+  
+  if (user.role === "ADMIN" || user.role === "MODERATOR") {
+    // Admins and moderators can see all tasks
+    // No filter needed
+  } else if (user.role === "AGENT") {
+    // Agents can see tasks assigned to them OR tasks linked to tickets they have access to
+    // We'll filter by assignment first, then filter by ticket access in memory
+    whereClause.OR = [
+      { assignedToId: user.id },
+      { ticketId: { not: null } }, // Tasks with tickets (we'll check access in memory)
+    ];
+  } else {
+    // Regular users can only see tasks assigned to them
     whereClause.assignedToId = user.id;
   }
 
@@ -830,7 +958,27 @@ export async function getAllTasks() {
     }
   }
 
-  return tasks.map((task) => ({
+  // For AGENTs, filter tasks to only show those assigned to them OR linked to tickets they have access to
+  let filteredTasks = tasks;
+  if (user.role === "AGENT") {
+    const taskAccessChecks = await Promise.all(
+      tasks.map(async (task) => {
+        // If assigned to agent, always show
+        if (task.assignedToId === user.id) {
+          return true;
+        }
+        // If linked to a ticket, check if agent has access to that ticket
+        if (task.ticketId) {
+          return await agentHasTicketAccess(user.id, task.ticketId);
+        }
+        // Task not assigned and not linked to ticket - don't show
+        return false;
+      })
+    );
+    filteredTasks = tasks.filter((_, index) => taskAccessChecks[index]);
+  }
+
+  return filteredTasks.map((task) => ({
     ...task,
     actualHours: task.ticketId ? hoursByTicket.get(task.ticketId) || 0 : null,
   }));
@@ -924,8 +1072,27 @@ export async function getTask(id: string) {
     return null;
   }
 
-  // Only the assigned user can view the task (unless ADMIN/AGENT/MODERATOR)
-  if (user.role !== "ADMIN" && user.role !== "AGENT" && user.role !== "MODERATOR") {
+  // Check access based on role
+  if (user.role === "ADMIN" || user.role === "MODERATOR") {
+    // Admins and moderators can view all tasks
+  } else if (user.role === "AGENT") {
+    // Agents can view tasks if:
+    // 1. Task is assigned to them, OR
+    // 2. Task is linked to a ticket they have access to
+    if (task.assignedToId === user.id) {
+      // Assigned to agent - allow access
+    } else if (task.ticketId) {
+      // Check if agent has access to the ticket
+      const hasAccess = await agentHasTicketAccess(user.id, task.ticketId);
+      if (!hasAccess) {
+        return null;
+      }
+    } else {
+      // Task not assigned and not linked to ticket - deny access
+      return null;
+    }
+  } else {
+    // Regular users can only view tasks assigned to them
     if (!task.assignedToId || task.assignedToId !== user.id) {
       return null;
     }
