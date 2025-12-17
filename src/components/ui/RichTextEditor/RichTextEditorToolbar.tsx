@@ -376,7 +376,7 @@ export const RichTextEditorToolbar = ({
             >
               <div className="relative">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                 </svg>
                 {currentTextColor && (
                   <div
@@ -573,117 +573,123 @@ export const RichTextEditorToolbar = ({
         </FloatingTooltip>
       </div>
 
-      {/* Text Color */}
+      {/* Text Color and Highlight Color */}
       <div
         className={cn(
-          "relative border-r border-neutral-300 dark:border-neutral-600 pr-2 mr-2"
+          "flex items-center border-r border-neutral-300 dark:border-neutral-600 gap-1 pr-2 mr-2"
         )}
-        ref={textColorRef}
       >
-        <FloatingTooltip
-          triggerMode="hover"
-          position="top"
-          trigger={
-            <ToolbarButton
-              editor={editor}
-              isMobile={false}
-              preservedSelectionRef={preservedSelectionRef}
-              handledInMouseDownRef={handledInMouseDownRef}
-              onClick={() => setTextColorOpen(!textColorOpen)}
-              isActive={!!currentTextColor}
-              title="Text color"
-            >
-              <div className="relative">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
-                </svg>
-                {currentTextColor && (
-                  <div
-                    className="absolute bottom-0 right-0 w-2 h-2 rounded-full border border-white dark:border-neutral-800"
-                    style={{ backgroundColor: currentTextColor }}
-                  />
-                )}
-              </div>
-            </ToolbarButton>
-          }
+        {/* Text Color */}
+        <div
+          className={cn(
+            "relative"
+          )}
+          ref={textColorRef}
         >
-          <div className="px-3 py-1.5 text-xs text-neutral-800 dark:text-neutral-100">
-            Text color
-          </div>
-        </FloatingTooltip>
-        {textColorOpen && (
-          <div
-            className={cn(
-              "absolute bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg p-2 min-w-[180px] z-50 top-full left-0 mt-1"
-            )}
+          <FloatingTooltip
+            triggerMode="hover"
+            position="top"
+            trigger={
+              <ToolbarButton
+                editor={editor}
+                isMobile={false}
+                preservedSelectionRef={preservedSelectionRef}
+                handledInMouseDownRef={handledInMouseDownRef}
+                onClick={() => setTextColorOpen(!textColorOpen)}
+                isActive={!!currentTextColor}
+                title="Text color"
+              >
+                <div className="relative">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                  {currentTextColor && (
+                    <div
+                      className="absolute bottom-0 right-0 w-2 h-2 rounded-full border border-white dark:border-neutral-800"
+                      style={{ backgroundColor: currentTextColor }}
+                    />
+                  )}
+                </div>
+              </ToolbarButton>
+            }
           >
-            <div className="grid grid-cols-4 gap-2">
-              {TEXT_COLORS.map((color) => (
-                <button
-                  key={color.name}
-                  type="button"
-                  onClick={() => {
-                    const { from, to } = editor.state.selection;
-                    const hasSelection = from !== to;
-                    
-                    if (color.value) {
-                      if (hasSelection) {
-                        // Apply text color only to selected text (not stored marks for future typing)
-                        editor
-                          .chain()
-                          .focus()
-                          .setTextSelection({ from, to })
-                          .setColor(color.value)
-                          .command(({ tr, dispatch }) => {
-                            if (dispatch) {
-                              // Clear stored marks so text color doesn't continue for future typing
-                              tr.setStoredMarks([]);
-                            }
-                            return true;
-                          })
-                          .run();
-                      } else {
-                        // No selection - don't apply text color (text color only works on selected text)
-                      }
-                    } else {
-                      // Remove text color from selection
-                      if (hasSelection) {
-                        editor.chain().focus().setTextSelection({ from, to }).unsetColor().run();
-                      } else {
-                        editor.chain().focus().unsetColor().run();
-                      }
-                    }
-                    setTextColorOpen(false);
-                  }}
-                  className={cn(
-                    "w-8 h-8 rounded border-2 transition-all hover:scale-110",
-                    color.value === null
-                      ? "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 flex items-center justify-center"
-                      : "border-transparent",
-                    currentTextColor === color.value && "ring-2 ring-primary-500 ring-offset-1"
-                  )}
-                  style={color.value ? { backgroundColor: color.value } : undefined}
-                  title={color.name}
-                >
-                  {color.value === null && (
-                    <svg className="w-4 h-4 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  )}
-                </button>
-              ))}
+            <div className="px-3 py-1.5 text-xs text-neutral-800 dark:text-neutral-100">
+              Text color
             </div>
-          </div>
-        )}
-      </div>
+          </FloatingTooltip>
+          {textColorOpen && (
+            <div
+              className={cn(
+                "absolute bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg p-2 min-w-[180px] z-50 top-full left-0 mt-1"
+              )}
+            >
+              <div className="grid grid-cols-4 gap-2">
+                {TEXT_COLORS.map((color) => (
+                  <button
+                    key={color.name}
+                    type="button"
+                    onClick={() => {
+                      const { from, to } = editor.state.selection;
+                      const hasSelection = from !== to;
+                      
+                      if (color.value) {
+                        if (hasSelection) {
+                          // Apply text color only to selected text (not stored marks for future typing)
+                          editor
+                            .chain()
+                            .focus()
+                            .setTextSelection({ from, to })
+                            .setColor(color.value)
+                            .command(({ tr, dispatch }) => {
+                              if (dispatch) {
+                                // Clear stored marks so text color doesn't continue for future typing
+                                tr.setStoredMarks([]);
+                              }
+                              return true;
+                            })
+                            .run();
+                        } else {
+                          // No selection - don't apply text color (text color only works on selected text)
+                        }
+                      } else {
+                        // Remove text color from selection
+                        if (hasSelection) {
+                          editor.chain().focus().setTextSelection({ from, to }).unsetColor().run();
+                        } else {
+                          editor.chain().focus().unsetColor().run();
+                        }
+                      }
+                      setTextColorOpen(false);
+                    }}
+                    className={cn(
+                      "w-8 h-8 rounded border-2 transition-all hover:scale-110",
+                      color.value === null
+                        ? "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 flex items-center justify-center"
+                        : "border-transparent",
+                      currentTextColor === color.value && "ring-2 ring-primary-500 ring-offset-1"
+                    )}
+                    style={color.value ? { backgroundColor: color.value } : undefined}
+                    title={color.name}
+                  >
+                    {color.value === null && (
+                      <svg className="w-4 h-4 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
 
-      {/* Highlight Color */}
-      <div
-        className={cn(
-          "relative border-r border-neutral-300 dark:border-neutral-600 pr-2 mr-2"
-        )}
-        ref={highlightColorRef}
-      >
+        {/* Highlight Color */}
+        <div
+          className={cn(
+            "relative"
+          )}
+          ref={highlightColorRef}
+        >
         <FloatingTooltip
           triggerMode="hover"
           position="top"
@@ -699,7 +705,7 @@ export const RichTextEditorToolbar = ({
             >
               <div className="relative">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
                 </svg>
                 {currentHighlightColor && (
                   <div
@@ -780,6 +786,7 @@ export const RichTextEditorToolbar = ({
             </div>
           </div>
         )}
+        </div>
       </div>
 
       {/* Lists */}
