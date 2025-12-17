@@ -600,6 +600,7 @@ enum TaskPriority {
 // Project Task
 model Task {
   id           String  @id @default(cuid())
+  taskNumber   String? @unique // e.g., #TSK-000001
   parentTaskId String? // For hierarchical tasks
   parentTask   Task?   @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
   subtasks     Task[]  @relation("TaskHierarchy")
@@ -644,6 +645,7 @@ model Task {
   @@index([priority])
   @@index([milestoneId])
   @@index([ticketId])
+  @@index([taskNumber])
   @@map("tasks")
 }
 

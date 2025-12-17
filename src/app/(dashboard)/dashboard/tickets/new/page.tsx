@@ -9,6 +9,7 @@ import { getGroups } from "@/server/actions/groups";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { TipsTooltip } from "@/components/features/tickets/TipsTooltip";
+import { hasPermission } from "@/lib/utils/permissions";
 
 export default async function NewTicketPage() {
   const user = await getCurrentUser();
@@ -29,6 +30,25 @@ export default async function NewTicketPage() {
         </p>
         <Link href={ROUTES.DASHBOARD}>
           <Button variant="primary">Back to Dashboard</Button>
+        </Link>
+      </div>
+    );
+  }
+
+  // Check if user has permission to create tickets
+  const canCreateTicket = await hasPermission(user.id, "tickets.create");
+
+  if (!canCreateTicket) {
+    return (
+      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8 text-center">
+        <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">
+          Insufficient Permissions
+        </h2>
+        <p className="text-neutral-600 dark:text-neutral-400 mb-4">
+          You don&apos;t have permission to create tickets. Please contact an administrator if you believe this is a mistake.
+        </p>
+        <Link href="/dashboard/tickets">
+          <Button variant="primary">Back to Tickets</Button>
         </Link>
       </div>
     );

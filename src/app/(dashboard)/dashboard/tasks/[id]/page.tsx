@@ -260,6 +260,18 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
           <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
             <h3 className="text-lg font-bold text-neutral-900 dark:text-neutral-100 mb-4">Task Information</h3>
             <div className="space-y-4">
+              {/* Task Number */}
+              {task.taskNumber && (
+                <div>
+                  <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
+                    Task Number
+                  </label>
+                  <p className="text-sm font-mono text-neutral-900 dark:text-neutral-100">
+                    {task.taskNumber}
+                  </p>
+                </div>
+              )}
+
               {/* Status */}
               <div>
                 <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">

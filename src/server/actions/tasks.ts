@@ -156,6 +156,33 @@ export async function createTask(
       taskData.ticketId = input.ticketId;
     }
 
+    // Generate sequential task number in the format #TSK-000001
+    const existingTasks = await prisma.task.findMany({
+      where: {
+        taskNumber: {
+          startsWith: "#TSK-",
+        },
+      },
+      select: {
+        taskNumber: true,
+      },
+      orderBy: {
+        taskNumber: "desc",
+      },
+      take: 1,
+    });
+
+    let nextSequence = 1;
+    if (existingTasks.length > 0 && existingTasks[0].taskNumber) {
+      const match = existingTasks[0].taskNumber.match(/^#TSK-(\d+)$/);
+      if (match) {
+        nextSequence = parseInt(match[1], 10) + 1;
+      }
+    }
+
+    const padded = nextSequence.toString().padStart(6, "0");
+    taskData.taskNumber = `#TSK-${padded}`;
+
     const task = await prisma.task.create({
       data: taskData,
     });

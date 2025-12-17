@@ -5,12 +5,12 @@
  * 
  * Usage:
  *   pnpm cli task list [--project=PROJECT] [--status=STATUS] [--assignee=EMAIL]
- *   pnpm cli task show <id>
+ *   pnpm cli task show <id|number>
  *   pnpm cli task create <project> <title> [--description=DESC] [--assignee=EMAIL] [--due-date=DATE]
- *   pnpm cli task update <id> [--status=STATUS] [--assignee=EMAIL] [--due-date=DATE]
- *   pnpm cli task assign <id> <user>
- *   pnpm cli task complete <id>
- *   pnpm cli task delete <id>
+ *   pnpm cli task update <id|number> [--status=STATUS] [--assignee=EMAIL] [--due-date=DATE]
+ *   pnpm cli task assign <id|number> <user>
+ *   pnpm cli task complete <id|number>
+ *   pnpm cli task delete <id|number>
  */
 
 import { prisma } from "../lib/db/prisma";
@@ -115,6 +115,26 @@ function parseArgs(args: string[]): { [key: string]: string | boolean } {
   return parsed;
 }
 
+async function resolveTask(selection: string) {
+  const task = await prisma.task.findFirst({
+    where: {
+      OR: [{ id: selection }, { taskNumber: selection }],
+    },
+    select: {
+      id: true,
+      taskNumber: true,
+      title: true,
+    },
+  });
+
+  if (!task) {
+    console.error(`Task not found: ${selection}`);
+    process.exit(1);
+  }
+
+  return task;
+}
+
 async function handleList() {
   const parsed = parseArgs(commandArgs.slice(1));
   const projectCode = parsed.project as string | undefined;
@@ -168,13 +188,13 @@ async function handleList() {
     separator();
 
     const table = createTable(
-      ["ID", "Title", "Project", "Status", "Assignee", "Due Date"],
-      { colWidths: [12, 30, 15, 15, 25, 15] }
+      ["Number", "Title", "Project", "Status", "Assignee", "Due Date"],
+      { colWidths: [14, 30, 15, 15, 25, 15] }
     );
 
     tasks.forEach((t) => {
       table.push([
-        t.id.substring(0, 8) + "...",
+        t.taskNumber || `${t.id.substring(0, 8)}...`,
         t.title.substring(0, 28),
         t.milestone?.project?.code || "-",
         t.status,
@@ -192,17 +212,18 @@ async function handleList() {
 
 async function handleShow() {
   if (commandArgs.length < 2) {
-    console.error("Usage: show <id>");
+    console.error("Usage: show <id|number>");
     process.exit(1);
   }
 
-  const taskId = commandArgs[1];
+  const selection = commandArgs[1];
   const spinner = createSpinner("Loading task details...");
   spinner.start();
 
   try {
+    const resolved = await resolveTask(selection);
     const task = await prisma.task.findUnique({
-      where: { id: taskId },
+      where: { id: resolved.id },
       include: {
         milestone: {
           include: {
@@ -216,13 +237,14 @@ async function handleShow() {
     spinner.succeed("Task details loaded");
 
     if (!task) {
-      error(`Task with ID ${taskId} not found`);
+      error(`Task not found: ${selection}`);
       process.exit(1);
     }
 
     separator();
     sectionHeader("Task Details");
     displayKeyValue("ID", task.id);
+    displayKeyValue("Number", task.taskNumber || "(not set)");
     displayKeyValue("Title", task.title);
     displayKeyValue("Description", task.description || "-");
     displayKeyValue("Project", task.milestone?.project ? `${task.milestone.project.code} - ${task.milestone.project.name}` : "-");
@@ -303,7 +325,11 @@ async function handleCreate() {
     });
 
     spinner.succeed("Task created");
-    console.log(`\n✅ Task "${task.title}" has been created in project ${task.milestone?.project?.code || projectCode}.`);
+    console.log(
+      `\n✅ Task "${task.title}" (${task.taskNumber || task.id.substring(0, 8) + "..."}) has been created in project ${
+        task.milestone?.project?.code || projectCode
+      }.`
+    );
   } catch (err) {
     spinner.fail("Failed to create task");
     error(err instanceof Error ? err.message : String(err));
@@ -317,13 +343,15 @@ async function handleUpdate() {
     process.exit(1);
   }
 
-  const taskId = commandArgs[1];
+  const selection = commandArgs[1];
   const parsed = parseArgs(commandArgs.slice(2));
 
   const spinner = createSpinner("Updating task...");
   spinner.start();
 
   try {
+    const task = await resolveTask(selection);
+
     const updateData: any = {};
     if (parsed.status) updateData.status = parsed.status;
     if (parsed.assignee) {
@@ -344,7 +372,7 @@ async function handleUpdate() {
     }
 
     const updated = await prisma.task.update({
-      where: { id: taskId },
+      where: { id: task.id },
       data: updateData,
       select: {
         id: true,
@@ -364,17 +392,19 @@ async function handleUpdate() {
 
 async function handleAssign() {
   if (commandArgs.length < 3) {
-    console.error("Usage: assign <id> <user>");
+    console.error("Usage: assign <id|number> <user>");
     process.exit(1);
   }
 
-  const taskId = commandArgs[1];
+  const selection = commandArgs[1];
   const userEmail = commandArgs[2];
 
   const spinner = createSpinner("Assigning task...");
   spinner.start();
 
   try {
+    const task = await resolveTask(selection);
+
     const user = await prisma.user.findUnique({
       where: { email: userEmail },
       select: { id: true },
@@ -386,8 +416,8 @@ async function handleAssign() {
       process.exit(1);
     }
 
-    const task = await prisma.task.update({
-      where: { id: taskId },
+    const updated = await prisma.task.update({
+      where: { id: task.id },
       data: { assignedToId: user.id },
       select: {
         title: true,
@@ -396,7 +426,11 @@ async function handleAssign() {
     });
 
     spinner.succeed("Task assigned");
-    console.log(`\n✅ Task "${task.title}" has been assigned to ${task.assignedTo?.email}.`);
+    console.log(
+      `\n✅ Task "${updated.title}" (${updated.taskNumber || updated.id.substring(0, 8) + "..."}) has been assigned to ${
+        updated.assignedTo?.email
+      }.`
+    );
   } catch (err) {
     spinner.fail("Failed to assign task");
     error(err instanceof Error ? err.message : String(err));
@@ -406,18 +440,20 @@ async function handleAssign() {
 
 async function handleComplete() {
   if (commandArgs.length < 2) {
-    console.error("Usage: complete <id>");
+    console.error("Usage: complete <id|number>");
     process.exit(1);
   }
 
-  const taskId = commandArgs[1];
+  const selection = commandArgs[1];
 
   const spinner = createSpinner("Completing task...");
   spinner.start();
 
   try {
-    const task = await prisma.task.update({
-      where: { id: taskId },
+    const task = await resolveTask(selection);
+
+    const updated = await prisma.task.update({
+      where: { id: task.id },
       data: {
         status: "COMPLETED",
         completedDate: new Date(),
@@ -429,7 +465,9 @@ async function handleComplete() {
     });
 
     spinner.succeed("Task completed");
-    console.log(`\n✅ Task "${task.title}" has been marked as completed.`);
+    console.log(
+      `\n✅ Task "${updated.title}" (${updated.taskNumber || updated.id.substring(0, 8) + "..."}) has been marked as completed.`
+    );
   } catch (err) {
     spinner.fail("Failed to complete task");
     error(err instanceof Error ? err.message : String(err));
@@ -439,14 +477,15 @@ async function handleComplete() {
 
 async function handleDelete() {
   if (commandArgs.length < 2) {
-    console.error("Usage: delete <id>");
+    console.error("Usage: delete <id|number>");
     process.exit(1);
   }
 
-  const taskId = commandArgs[1];
+  const selection = commandArgs[1];
+  const task = await resolveTask(selection);
 
   const confirmed = await confirm(
-    `⚠️  WARNING: Delete task? This cannot be undone.`,
+    `⚠️  WARNING: Delete task "${task.taskNumber || task.id.substring(0, 8) + "..."}"? This cannot be undone.`,
     false
   );
 
@@ -460,11 +499,11 @@ async function handleDelete() {
 
   try {
     await prisma.task.delete({
-      where: { id: taskId },
+      where: { id: task.id },
     });
 
     spinner.succeed("Task deleted");
-    console.log(`\n✅ Task has been deleted.`);
+    console.log(`\n✅ Task "${task.taskNumber || task.id.substring(0, 8) + "..."}" has been deleted.`);
   } catch (err) {
     spinner.fail("Failed to delete task");
     error(err instanceof Error ? err.message : String(err));

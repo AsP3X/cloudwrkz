@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 
 type StandaloneTask = {
   id: string;
+  taskNumber?: string | null;
   title: string;
   description: string | null;
   status: string;
@@ -194,7 +195,14 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage }: StandaloneTas
           className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400"
         >
           <div className="max-w-md">
-            <div className="truncate">{task.title}</div>
+            <div className="truncate">
+              {task.taskNumber && (
+                <span className="font-mono text-xs text-neutral-500 dark:text-neutral-400 mr-2">
+                  {task.taskNumber}
+                </span>
+              )}
+              {task.title}
+            </div>
             {task.description && (
               <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 line-clamp-1">
                 {task.description}
