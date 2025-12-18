@@ -1304,7 +1304,7 @@ async function searchTasks(
             ticketNumber: task.ticket?.ticketNumber,
             ticketTitle: task.ticket?.title,
             assignedTo: task.assignedTo ? formatUserName(task.assignedTo) : undefined,
-            subtaskCount: task.subtasks?.length ?? 0,
+            subtaskCount: matchingSubtasks.length,
             createdAt: task.createdAt,
             updatedAt: task.updatedAt,
           },

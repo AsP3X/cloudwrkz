@@ -13,7 +13,8 @@ import { getAgents } from "@/server/actions/users";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/utils/cn";
 import { RichTextDisplay } from "@/components/features/tickets/RichTextDisplay";
-import { SubtasksSection } from "@/components/features/tasks/SubtasksSection/SubtasksSection";
+import { TaskDetailHeader } from "./TaskDetailHeader";
+import { TaskDetailContent } from "./TaskDetailContent";
 
 interface TaskDetailPageProps {
   params: Promise<{ id: string }>;
@@ -124,67 +125,28 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
 
   const canEdit = isAgent || await hasPermission(user.id, "tasks.update");
 
+  const hasSubtasks = (task.subtasks || []).length > 0;
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-          <Link href="/dashboard/tasks">
-            <Button variant="outline" size="sm" className="w-full sm:w-auto">
-              <svg
-                className="w-4 h-4 mr-2"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 19l-7-7 7-7"
-                />
-              </svg>
-              Back to Tasks
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">{task.title}</h1>
-            <p className="text-sm sm:text-base text-neutral-600 dark:text-neutral-400">
-              Created {formatDateTime(task.createdAt)}
-            </p>
-          </div>
-        </div>
-        {/* Edit Button for Agents, Admins, and Moderators */}
-        {canEdit && (
-          <div className="flex flex-wrap items-center gap-2">
-            <Link href={`/dashboard/tasks/${task.id}/edit`}>
-              <Button variant="primary" size="sm" className="w-full sm:w-auto">
-                <svg
-                  className="w-4 h-4 mr-2"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                  />
-                </svg>
-                Edit Task
-              </Button>
-            </Link>
-          </div>
-        )}
-      </div>
+      <TaskDetailHeader
+        taskId={task.id}
+        taskTitle={task.title}
+        createdAt={task.createdAt}
+        canEdit={canEdit}
+        hasSubtasks={hasSubtasks}
+        description={task.description}
+        descriptionHtml={(task as any).descriptionHtml}
+        parentTaskId={task.parentTask?.id}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Task Description */}
+          {/* Task Description - Desktop only */}
           {(task as any).descriptionHtml || task.description ? (
-            <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
+            <div className="hidden sm:block bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
               <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">Description</h2>
               <RichTextDisplay
                 content={(task as any).descriptionHtml || task.description || ""}
@@ -194,7 +156,7 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
 
           {/* Subtasks Section (card/table view under description) */}
           <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
-            <SubtasksSection
+            <TaskDetailContent
               parentTaskId={task.id}
               subtasks={(task.subtasks || []).map((subtask) => ({
                 id: subtask.id,

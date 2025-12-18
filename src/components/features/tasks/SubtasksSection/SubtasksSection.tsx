@@ -9,6 +9,7 @@ import { formatDate } from "@/lib/utils/date";
 import { formatUserName } from "@/lib/utils/users";
 import { useRouter } from "next/navigation";
 import { createSubtask, updateTask } from "@/server/actions/tasks";
+import Link from "next/link";
 
 type Subtask = {
   id: string;
@@ -27,6 +28,8 @@ interface SubtasksSectionProps {
   parentTaskId: string;
   subtasks: Subtask[];
   canManage: boolean;
+  viewMode?: TaskViewMode;
+  onViewChange?: (mode: TaskViewMode) => void;
 }
 
 const getStatusColor = (status: string) => {
@@ -60,16 +63,30 @@ const getPriorityColor = (priority?: string) => {
   }
 };
 
-export const SubtasksSection = ({ parentTaskId, subtasks, canManage }: SubtasksSectionProps) => {
+export const SubtasksSection = ({ parentTaskId, subtasks, canManage, viewMode: externalViewMode, onViewChange: externalOnViewChange }: SubtasksSectionProps) => {
   const router = useRouter();
-  const [viewMode, setViewMode] = React.useState<TaskViewMode>("table");
+  const [internalViewMode, setInternalViewMode] = React.useState<TaskViewMode>("table");
+  const [mounted, setMounted] = React.useState(false);
   const [isCreating, setIsCreating] = React.useState(false);
   const [createError, setCreateError] = React.useState<string | null>(null);
   const [newTitle, setNewTitle] = React.useState("");
   const [newPriority, setNewPriority] = React.useState<"LOW" | "MEDIUM" | "HIGH" | "URGENT">("MEDIUM");
 
+  // Mark as mounted after hydration
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Use external view mode if provided, otherwise use internal state
+  // Both start with "table" to ensure consistent server/client rendering
+  const viewMode = externalViewMode ?? internalViewMode;
+  
   const handleViewChange = (mode: TaskViewMode) => {
-    setViewMode(mode);
+    if (externalOnViewChange) {
+      externalOnViewChange(mode);
+    } else {
+      setInternalViewMode(mode);
+    }
   };
 
   const handleQuickCreate = async () => {
@@ -114,55 +131,54 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage }: SubtasksS
   const hasSubtasks = subtasks.length > 0;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 sm:space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h2 className="text-lg sm:text-xl font-bold text-neutral-900 dark:text-neutral-100">
+        <h2 className="text-xl sm:text-xl font-bold text-neutral-900 dark:text-neutral-100">
           Subtasks
         </h2>
-        {hasSubtasks && (
-          <TaskViewToggle currentView={viewMode} onViewChange={handleViewChange} />
+        {hasSubtasks && mounted && (
+          <div className="hidden sm:block">
+            <TaskViewToggle currentView={viewMode} onViewChange={handleViewChange} />
+          </div>
         )}
       </div>
 
       {canManage && (
-        <div className="rounded-lg border border-dashed border-neutral-200 dark:border-neutral-700 bg-neutral-50/60 dark:bg-neutral-900/40 p-3 sm:p-4">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <div className="flex-1 flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  className="flex-1 rounded-md border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder="Add a quick subtask (e.g. 'Draft outline', 'Review implementation')"
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
-                  disabled={isCreating}
-                />
-                <select
-                  className="rounded-md border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-2 text-xs text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  value={newPriority}
-                  onChange={(e) => setNewPriority(e.target.value as any)}
-                  disabled={isCreating}
-                >
-                  <option value="LOW">Low</option>
-                  <option value="MEDIUM">Medium</option>
-                  <option value="HIGH">High</option>
-                  <option value="URGENT">Urgent</option>
-                </select>
-              </div>
-              {createError && (
-                <p className="text-xs text-error-600 dark:text-error-400">{createError}</p>
-              )}
-            </div>
-            <div className="flex-shrink-0">
+        <div className="rounded-lg bg-neutral-50/60 dark:bg-neutral-900/40 p-3 sm:p-4">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                className="flex-1 rounded-md border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2.5 sm:py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                placeholder="Add a quick subtask (e.g. 'Draft outline', 'Review implementation')"
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                disabled={isCreating}
+              />
+              <select
+                className="hidden sm:block rounded-md border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-xs text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                value={newPriority}
+                onChange={(e) => setNewPriority(e.target.value as any)}
+                disabled={isCreating}
+              >
+                <option value="LOW">Low</option>
+                <option value="MEDIUM">Medium</option>
+                <option value="HIGH">High</option>
+                <option value="URGENT">Urgent</option>
+              </select>
               <Button
                 variant="primary"
                 size="sm"
                 onClick={handleQuickCreate}
                 disabled={isCreating || !newTitle.trim()}
+                className="flex-shrink-0"
               >
-                {isCreating ? "Creating..." : "Add Subtask"}
+                {isCreating ? "Creating..." : "Add"}
               </Button>
             </div>
+            {createError && (
+              <p className="text-xs text-error-600 dark:text-error-400">{createError}</p>
+            )}
           </div>
         </div>
       )}
@@ -174,19 +190,19 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage }: SubtasksS
       )}
 
       {hasSubtasks && viewMode === "card" && (
-        <div className="divide-y divide-neutral-200 dark:divide-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+        <div className="space-y-3 sm:divide-y sm:divide-neutral-200 sm:dark:divide-neutral-800 sm:space-y-0 rounded-lg border-2 sm:border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm sm:shadow-none">
           {subtasks.map((task) => (
-            <div key={task.id} className="py-3 sm:py-4 px-3 sm:px-4">
-              <div className="flex items-start gap-3">
+            <div key={task.id} className="py-4 sm:py-4 px-4 sm:px-4 sm:first:pt-4 sm:last:pb-4">
+              <div className="flex items-start gap-3 sm:gap-3">
                 {canManage && (
                   <button
                     type="button"
                     onClick={() => handleToggleComplete(task)}
                     className={cn(
-                      "mt-1 w-4 h-4 rounded border flex items-center justify-center text-[10px]",
+                      "mt-1 sm:mt-1 w-7 h-7 sm:w-4 sm:h-4 rounded-md sm:rounded border-2 sm:border flex items-center justify-center text-base sm:text-[10px] flex-shrink-0 transition-all active:scale-95",
                       task.status === "COMPLETED"
-                        ? "bg-primary-600 border-primary-600 text-white"
-                        : "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-transparent"
+                        ? "bg-primary-600 border-primary-600 text-white shadow-sm"
+                        : "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-transparent hover:border-primary-400 dark:hover:border-primary-500"
                     )}
                     aria-label={
                       task.status === "COMPLETED" ? "Mark subtask as in progress" : "Mark subtask as completed"
@@ -196,37 +212,50 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage }: SubtasksS
                   </button>
                 )}
                 <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2 mb-1">
-                    <span className="font-medium text-sm text-neutral-900 dark:text-neutral-100">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-2 mb-2 sm:mb-1">
+                    <Link
+                      href={`/dashboard/tasks/${task.id}`}
+                      className={cn(
+                        "font-semibold text-base sm:text-sm text-neutral-900 dark:text-neutral-100 break-words leading-snug hover:text-primary-600 dark:hover:text-primary-400 transition-colors cursor-pointer",
+                        task.status === "COMPLETED" && "line-through opacity-60"
+                      )}
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {task.title}
-                    </span>
-                    <Badge className={cn(getStatusColor(task.status), "text-[10px] px-2 py-0.5")}>
+                    </Link>
+                    <Badge className={cn(getStatusColor(task.status), "text-xs sm:text-[10px] px-2.5 py-1 sm:px-2 sm:py-0.5 flex-shrink-0 font-medium")}>
                       {task.status.replace("_", " ")}
                     </Badge>
                     {task.priority && (
-                      <Badge className={cn(getPriorityColor(task.priority), "text-[10px] px-2 py-0.5")}>
+                      <Badge className={cn(getPriorityColor(task.priority), "text-xs sm:text-[10px] px-2.5 py-1 sm:px-2 sm:py-0.5 flex-shrink-0 font-medium")}>
                         {task.priority}
                       </Badge>
                     )}
                   </div>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-neutral-500 dark:text-neutral-400">
-                    {task.assignedTo && (
-                      <span>
-                        Assigned to{" "}
-                        <span className="text-neutral-800 dark:text-neutral-200">
-                          {formatUserName(task.assignedTo)}
-                        </span>
-                      </span>
-                    )}
-                    {task.dueDate && (
-                      <span>
-                        Due{" "}
-                        <span className="text-neutral-800 dark:text-neutral-200">
-                          {formatDate(task.dueDate)}
-                        </span>
-                      </span>
-                    )}
-                  </div>
+                  {(task.assignedTo || task.dueDate) && (
+                    <div className="flex flex-wrap items-center gap-x-3 sm:gap-x-4 gap-y-1 sm:gap-y-1 text-sm sm:text-[11px] text-neutral-600 dark:text-neutral-400">
+                      {task.assignedTo && (
+                        <div className="flex items-center gap-1.5">
+                          <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                          <span className="font-medium text-neutral-800 dark:text-neutral-200">
+                            {formatUserName(task.assignedTo)}
+                          </span>
+                        </div>
+                      )}
+                      {task.dueDate && (
+                        <div className="flex items-center gap-1.5">
+                          <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <span className="font-medium text-neutral-800 dark:text-neutral-200">
+                            {formatDate(task.dueDate)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -235,28 +264,100 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage }: SubtasksS
       )}
 
       {hasSubtasks && viewMode === "table" && (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
-          <table className="w-full text-sm">
+        <>
+          {/* Mobile: Card view */}
+          <div className="sm:hidden space-y-3">
+            {subtasks.map((task) => (
+              <div key={task.id} className="py-4 px-4 rounded-lg border-2 border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm">
+                <div className="flex items-start gap-3">
+                  {canManage && (
+                    <button
+                      type="button"
+                      onClick={() => handleToggleComplete(task)}
+                      className={cn(
+                        "mt-1 w-7 h-7 rounded-md border-2 flex items-center justify-center text-base flex-shrink-0 transition-all active:scale-95",
+                        task.status === "COMPLETED"
+                          ? "bg-primary-600 border-primary-600 text-white shadow-sm"
+                          : "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-transparent hover:border-primary-400 dark:hover:border-primary-500"
+                      )}
+                      aria-label={
+                        task.status === "COMPLETED" ? "Mark subtask as in progress" : "Mark subtask as completed"
+                      }
+                    >
+                      ✓
+                    </button>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <Link
+                        href={`/dashboard/tasks/${task.id}`}
+                        className={cn(
+                          "font-semibold text-base text-neutral-900 dark:text-neutral-100 break-words leading-snug hover:text-primary-600 dark:hover:text-primary-400 transition-colors cursor-pointer",
+                          task.status === "COMPLETED" && "line-through opacity-60"
+                        )}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {task.title}
+                      </Link>
+                      <Badge className={cn(getStatusColor(task.status), "text-xs px-2.5 py-1 flex-shrink-0 font-medium")}>
+                        {task.status.replace("_", " ")}
+                      </Badge>
+                      <Badge className={cn(getPriorityColor(task.priority), "text-xs px-2.5 py-1 flex-shrink-0 font-medium")}>
+                        {task.priority ?? "MEDIUM"}
+                      </Badge>
+                    </div>
+                    {(task.assignedTo || task.dueDate) && (
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-neutral-600 dark:text-neutral-400">
+                        {task.assignedTo && (
+                          <div className="flex items-center gap-1.5">
+                            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                            </svg>
+                            <span className="font-medium text-neutral-800 dark:text-neutral-200">
+                              {formatUserName(task.assignedTo)}
+                            </span>
+                          </div>
+                        )}
+                        {task.dueDate && (
+                          <div className="flex items-center gap-1.5">
+                            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <span className="font-medium text-neutral-800 dark:text-neutral-200">
+                              {formatDate(task.dueDate)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          {/* Desktop: Table view */}
+          <div className="hidden sm:block overflow-x-auto rounded-lg border-2 sm:border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm sm:shadow-none">
+            <table className="w-full text-base sm:text-sm">
             <thead className="bg-neutral-50 dark:bg-neutral-900/60">
               <tr>
                 {canManage && (
-                  <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-600 dark:text-neutral-300 w-8">
+                  <th className="px-3 sm:px-4 py-3 sm:py-2 text-left text-sm sm:text-xs font-semibold text-neutral-600 dark:text-neutral-300 w-10 sm:w-8">
                     Done
                   </th>
                 )}
-                <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-600 dark:text-neutral-300">
+                <th className="px-3 sm:px-4 py-3 sm:py-2 text-left text-sm sm:text-xs font-semibold text-neutral-600 dark:text-neutral-300">
                   Title
                 </th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-600 dark:text-neutral-300">
+                <th className="px-3 sm:px-4 py-3 sm:py-2 text-left text-sm sm:text-xs font-semibold text-neutral-600 dark:text-neutral-300">
                   Status
                 </th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-600 dark:text-neutral-300">
+                <th className="px-3 sm:px-4 py-3 sm:py-2 text-left text-sm sm:text-xs font-semibold text-neutral-600 dark:text-neutral-300">
                   Priority
                 </th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-600 dark:text-neutral-300 hidden md:table-cell">
+                <th className="px-3 sm:px-4 py-3 sm:py-2 text-left text-sm sm:text-xs font-semibold text-neutral-600 dark:text-neutral-300 hidden md:table-cell">
                   Assigned To
                 </th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-600 dark:text-neutral-300 hidden lg:table-cell">
+                <th className="px-3 sm:px-4 py-3 sm:py-2 text-left text-sm sm:text-xs font-semibold text-neutral-600 dark:text-neutral-300 hidden lg:table-cell">
                   Due
                 </th>
               </tr>
@@ -265,12 +366,12 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage }: SubtasksS
               {subtasks.map((task) => (
                 <tr key={task.id} className="bg-white dark:bg-neutral-900">
                   {canManage && (
-                    <td className="px-4 py-2 align-middle">
+                    <td className="px-3 sm:px-4 py-3 sm:py-2 align-middle">
                       <button
                         type="button"
                         onClick={() => handleToggleComplete(task)}
                         className={cn(
-                          "w-4 h-4 rounded border flex items-center justify-center text-[10px]",
+                          "w-6 h-6 sm:w-4 sm:h-4 rounded border-2 sm:border flex items-center justify-center text-sm sm:text-[10px]",
                           task.status === "COMPLETED"
                             ? "bg-primary-600 border-primary-600 text-white"
                             : "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-transparent"
@@ -285,24 +386,28 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage }: SubtasksS
                       </button>
                     </td>
                   )}
-                  <td className="px-4 py-2 align-middle">
+                  <td className="px-3 sm:px-4 py-3 sm:py-2 align-middle">
                     <div className="max-w-xs">
-                      <div className="font-medium text-neutral-900 dark:text-neutral-100">
+                      <Link
+                        href={`/dashboard/tasks/${task.id}`}
+                        className="font-semibold text-base sm:text-sm text-neutral-900 dark:text-neutral-100 break-words hover:text-primary-600 dark:hover:text-primary-400 transition-colors cursor-pointer"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         {task.title}
-                      </div>
+                      </Link>
                     </div>
                   </td>
-                  <td className="px-4 py-2 align-middle">
-                    <Badge className={cn(getStatusColor(task.status), "text-[11px]")}>
+                  <td className="px-3 sm:px-4 py-3 sm:py-2 align-middle">
+                    <Badge className={cn(getStatusColor(task.status), "text-xs sm:text-[11px] px-2.5 py-1 sm:px-2 sm:py-0.5 font-medium")}>
                       {task.status.replace("_", " ")}
                     </Badge>
                   </td>
-                  <td className="px-4 py-2 align-middle">
-                    <Badge className={cn(getPriorityColor(task.priority), "text-[11px]")}>
+                  <td className="px-3 sm:px-4 py-3 sm:py-2 align-middle">
+                    <Badge className={cn(getPriorityColor(task.priority), "text-xs sm:text-[11px] px-2.5 py-1 sm:px-2 sm:py-0.5 font-medium")}>
                       {task.priority ?? "MEDIUM"}
                     </Badge>
                   </td>
-                  <td className="px-4 py-2 align-middle hidden md:table-cell">
+                  <td className="px-3 sm:px-4 py-3 sm:py-2 align-middle hidden md:table-cell">
                     {task.assignedTo ? (
                       <span className="text-sm text-neutral-800 dark:text-neutral-200">
                         {formatUserName(task.assignedTo)}
@@ -311,7 +416,7 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage }: SubtasksS
                       <span className="text-xs text-neutral-400 dark:text-neutral-500">Unassigned</span>
                     )}
                   </td>
-                  <td className="px-4 py-2 align-middle hidden lg:table-cell">
+                  <td className="px-3 sm:px-4 py-3 sm:py-2 align-middle hidden lg:table-cell">
                     {task.dueDate ? (
                       <span className="text-sm text-neutral-800 dark:text-neutral-200">
                         {formatDate(task.dueDate)}
@@ -324,7 +429,8 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage }: SubtasksS
               ))}
             </tbody>
           </table>
-        </div>
+          </div>
+        </>
       )}
     </div>
   );
