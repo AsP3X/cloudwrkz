@@ -159,6 +159,23 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
         </svg>
       );
     }
+    if (type === "task") {
+      return (
+        <svg
+          className="w-5 h-5 text-indigo-600 dark:text-indigo-400"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M9 5H7a2 2 0 00-2 2v11a2 2 0 002 2h10a2 2 0 002-2V9a2 2 0 00-2-2h-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 5v4h6"
+          />
+        </svg>
+      );
+    }
     if (type === "user") {
       return (
         <svg
@@ -350,6 +367,13 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                         >
                           {group.ticket.metadata.ticketNumber}
                         </Link>
+                      ) : group.ticket.type === "task" && group.ticket.metadata?.taskNumber ? (
+                        <Link
+                          href={group.ticket.url}
+                          className="text-sm font-mono font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300"
+                        >
+                          {group.ticket.metadata.taskNumber}
+                        </Link>
                       ) : group.ticket.type === "user" && group.ticket.metadata?.email ? (
                         <span className="text-sm text-neutral-500 dark:text-neutral-400">
                           {group.ticket.metadata.email}
@@ -421,6 +445,14 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                         >
                           {group.ticket.metadata.status.replace("_", " ")}
                         </span>
+                      ) : group.ticket.type === "task" && group.ticket.metadata?.status ? (
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(
+                            group.ticket.metadata.status
+                          )}`}
+                        >
+                          {group.ticket.metadata.status.replace("_", " ")}
+                        </span>
                       ) : group.ticket.type === "user" && group.ticket.metadata?.role ? (
                         <span className="px-2 py-1 rounded-full text-xs font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 capitalize">
                           {group.ticket.metadata.role.toLowerCase()}
@@ -459,6 +491,14 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                             : "bg-neutral-100 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-200"
                         }`}>
                           {group.ticket.metadata.status}
+                        </span>
+                      ) : group.ticket.type === "task" && group.ticket.metadata?.priority ? (
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(
+                            group.ticket.metadata.priority
+                          )}`}
+                        >
+                          {group.ticket.metadata.priority}
                         </span>
                       ) : group.ticket.type === "timeentry" && group.ticket.metadata?.totalDuration ? (
                         <span className="text-xs text-neutral-600 dark:text-neutral-400">
@@ -499,6 +539,14 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                             <span className="text-xs text-neutral-400 dark:text-neutral-500">Unassigned</span>
                           )}
                         </div>
+                      ) : group.ticket.type === "task" && group.ticket.metadata ? (
+                        <div className="text-sm text-neutral-700 dark:text-neutral-300">
+                          {group.ticket.metadata.assignedTo ? (
+                            group.ticket.metadata.assignedTo
+                          ) : (
+                            <span className="text-xs text-neutral-400 dark:text-neutral-500">Unassigned</span>
+                          )}
+                        </div>
                       ) : group.ticket.type === "timeentry" && group.ticket.metadata?.user ? (
                         <div className="text-sm text-neutral-700 dark:text-neutral-300">
                           {group.ticket.metadata.user}
@@ -520,6 +568,10 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                         <div className="text-sm text-neutral-600 dark:text-neutral-400">
                           {formatDate(group.ticket.metadata.createdAt)}
                         </div>
+                      ) : group.ticket.type === "task" && group.ticket.metadata?.createdAt ? (
+                        <div className="text-sm text-neutral-600 dark:text-neutral-400">
+                          {formatDate(group.ticket.metadata.createdAt)}
+                        </div>
                       ) : group.ticket.type === "timeentry" && group.ticket.metadata?.startedAt ? (
                         <div className="text-sm text-neutral-600 dark:text-neutral-400">
                           {formatDate(group.ticket.metadata.startedAt)}
@@ -534,6 +586,10 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap hidden xl:table-cell">
                       {group.ticket.type === "ticket" && group.ticket.metadata?.updatedAt ? (
+                        <div className="text-sm text-neutral-600 dark:text-neutral-400">
+                          {formatDateTime(group.ticket.metadata.updatedAt)}
+                        </div>
+                      ) : group.ticket.type === "task" && group.ticket.metadata?.updatedAt ? (
                         <div className="text-sm text-neutral-600 dark:text-neutral-400">
                           {formatDateTime(group.ticket.metadata.updatedAt)}
                         </div>

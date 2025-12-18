@@ -9,7 +9,7 @@ import { fuzzySearch, rankAndLimit } from "@/lib/utils/fuzzy-search";
 import { getUserPermissions } from "@/lib/utils/permissions";
 
 export type SearchResult = {
-  type: "ticket" | "module" | "user" | "comment" | "timeentry" | "project" | "setting";
+  type: "ticket" | "module" | "user" | "comment" | "timeentry" | "project" | "setting" | "task";
   id: string;
   title: string;
   description?: string;
@@ -54,12 +54,13 @@ export async function globalSearch(query: string, limit: number = 10): Promise<S
   let totalCount = 0;
 
   // Distribute limit across different result types
-  // 25% users, 35% tickets, 15% time entries, 15% projects, 10% settings
-  const userLimit = Math.max(1, Math.floor(limit * 0.25));
-  const ticketLimit = Math.max(1, Math.floor(limit * 0.35));
+  // 20% users, 30% tickets, 20% tasks, 15% time entries, 10% projects, 5% settings
+  const userLimit = Math.max(1, Math.floor(limit * 0.2));
+  const ticketLimit = Math.max(1, Math.floor(limit * 0.3));
+  const taskLimit = Math.max(1, Math.floor(limit * 0.2));
   const timeEntryLimit = Math.max(1, Math.floor(limit * 0.15));
-  const projectLimit = Math.max(1, Math.floor(limit * 0.15));
-  const settingsLimit = Math.max(1, Math.floor(limit * 0.1));
+  const projectLimit = Math.max(1, Math.floor(limit * 0.1));
+  const settingsLimit = Math.max(1, Math.floor(limit * 0.05));
 
   // Get user permissions
   const userPermissions = await getUserPermissions(user.id);
@@ -75,6 +76,14 @@ export async function globalSearch(query: string, limit: number = 10): Promise<S
     const ticketResults = await searchTickets(searchTerm, user, ticketLimit, userPermissions);
     totalCount += ticketResults.length;
     results.push(...ticketResults);
+  }
+
+  // Search tasks (task module)
+  const canViewTasks = await canUserViewModule(user.id, MODULE_KEYS.TASKS);
+  if (canViewTasks) {
+    const taskResults = await searchTasks(searchTerm, user, taskLimit, userPermissions);
+    totalCount += taskResults.length;
+    results.push(...taskResults);
   }
 
   // Search time entries if user can view time tracking module
@@ -142,6 +151,13 @@ export async function advancedSearch(filters: SearchFilters): Promise<SearchResp
   if (canViewProjects) {
     const projectResults = await searchProjects(searchTerm, user, filters.limit || 100, userPermissions);
     results.push(...projectResults);
+  }
+
+  // Search tasks if user can view tasks module
+  const canViewTasks = await canUserViewModule(user.id, MODULE_KEYS.TASKS);
+  if (canViewTasks && searchTerm) {
+    const taskResults = await searchTasks(searchTerm, user, filters.limit || 100, userPermissions);
+    results.push(...taskResults);
   }
 
   // Search settings that are available to the current user
@@ -867,6 +883,312 @@ async function searchTimeEntries(
       updatedAt: entry.updatedAt,
     },
   }));
+}
+
+/**
+ * Search tasks (including subtasks) by title and description with fuzzy matching.
+ * Respects task visibility rules similar to the tasks module:
+ * - Admins/Moderators: all tasks
+ * - Agents: tasks assigned to them, or tasks linked to tickets they have access to
+ * - Regular users: tasks assigned to them
+ */
+async function searchTasks(
+  searchTerm: string,
+  user: Awaited<ReturnType<typeof requireAuth>>,
+  limit: number,
+  userPermissions: Set<string>
+): Promise<SearchResult[]> {
+  const where: any = {};
+
+  // Determine base visibility
+  const isAdminOrModerator = user.role === "ADMIN" || user.role === "MODERATOR";
+
+  if (!isAdminOrModerator && user.role !== "AGENT") {
+    // Regular users can only see tasks assigned to them
+    where.assignedToId = user.id;
+  } else if (user.role === "AGENT") {
+    // Agents: tasks assigned to them OR tasks linked to tickets they have access to
+    // First collect tickets they have access to (same rules as agentHasTicketAccess)
+    const memberships = await prisma.groupMembership.findMany({
+      where: { userId: user.id },
+      select: { groupId: true },
+    });
+    const agentGroupIds = memberships.map((m) => m.groupId);
+
+    const accessibleTickets = await prisma.ticket.findMany({
+      where: {
+        OR: [
+          { createdById: user.id },
+          { assignedToId: user.id },
+          ...(agentGroupIds.length > 0
+            ? [{ assignedToGroupId: { in: agentGroupIds } }]
+            : []),
+        ],
+      },
+      select: { id: true },
+    });
+
+    const accessibleTicketIds = accessibleTickets.map((t) => t.id);
+
+    where.OR = [
+      { assignedToId: user.id },
+      ...(accessibleTicketIds.length > 0
+        ? [{ ticketId: { in: accessibleTicketIds } }]
+        : []),
+    ];
+  }
+  // Admins/Moderators: no extra filter, see all tasks
+
+  // Fetch more candidates for fuzzy search (3x the limit, or at least 50)
+  const candidateLimit = Math.max(limit * 3, 50);
+
+  const tasks = await prisma.task.findMany({
+    where,
+    select: {
+      id: true,
+      taskNumber: true,
+      title: true,
+      description: true,
+      descriptionPlain: true,
+      status: true,
+      priority: true,
+      createdAt: true,
+      updatedAt: true,
+      parentTaskId: true,
+      parentTask: {
+        select: {
+          id: true,
+          title: true,
+        },
+      },
+      assignedToId: true,
+      assignedTo: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      ticketId: true,
+      ticket: {
+        select: {
+          id: true,
+          ticketNumber: true,
+          title: true,
+        },
+      },
+      subtasks: {
+        select: {
+          id: true,
+          title: true,
+          descriptionPlain: true,
+          status: true,
+        },
+      },
+    },
+    orderBy: {
+      updatedAt: "desc",
+    },
+    take: candidateLimit,
+  });
+
+  // If no search term, return recent tasks (top N)
+  if (!searchTerm || searchTerm.trim().length === 0) {
+    return tasks.slice(0, limit).map((task) => ({
+      type: "task" as const,
+      id: task.id,
+      title: task.title,
+      description: task.descriptionPlain || task.description || undefined,
+      url: `/dashboard/tasks/${task.id}`,
+      metadata: {
+        taskNumber: task.taskNumber,
+        status: task.status,
+        priority: task.priority,
+        parentTaskTitle: task.parentTask?.title,
+        ticketNumber: task.ticket?.ticketNumber,
+        ticketTitle: task.ticket?.title,
+        assignedTo: task.assignedTo ? formatUserName(task.assignedTo) : undefined,
+        createdAt: task.createdAt,
+        updatedAt: task.updatedAt,
+      },
+    }));
+  }
+
+  const trimmed = searchTerm.trim();
+
+  // Prepare tasks for fuzzy search on title and description
+  const tasksForFuzzy = tasks.map((task) => ({
+    ...task,
+    searchableText: [
+      task.title,
+      task.description || "",
+      task.descriptionPlain || "",
+      task.taskNumber || "",
+      task.ticket?.ticketNumber || "",
+      task.ticket?.title || "",
+      task.parentTask?.title || "",
+    ].join(" "),
+  }));
+
+  const taskFuzzyResults = fuzzySearch(
+    tasksForFuzzy,
+    trimmed,
+    {
+      keys: [
+        { name: "title", weight: 0.5 },
+        { name: "description", weight: 0.25 },
+        { name: "descriptionPlain", weight: 0.25 },
+      ],
+      threshold: 0.4,
+      minMatchCharLength: 2,
+    }
+  );
+
+  // Build a flat list of subtasks for independent search (like comments)
+  const allSubtasksWithParent: Array<{
+    id: string;
+    title: string;
+    descriptionPlain: string;
+    status: string;
+    parentTaskId: string;
+    task: typeof tasks[0];
+  }> = [];
+
+  tasks.forEach((task) => {
+    task.subtasks.forEach((subtask) => {
+      allSubtasksWithParent.push({
+        id: subtask.id,
+        title: subtask.title,
+        descriptionPlain: subtask.descriptionPlain || "",
+        status: subtask.status,
+        parentTaskId: task.id,
+        task,
+      });
+    });
+  });
+
+  const subtaskFuzzyResults = fuzzySearch(
+    allSubtasksWithParent,
+    trimmed,
+    {
+      keys: [
+        { name: "title", weight: 0.6 },
+        { name: "descriptionPlain", weight: 0.4 },
+      ],
+      threshold: 0.4,
+      minMatchCharLength: 2,
+    }
+  );
+
+  // Determine which tasks matched either directly or via subtasks
+  const matchedTaskIds = new Set<string>();
+
+  taskFuzzyResults.forEach((result) => {
+    if (result.score !== undefined && result.score < 0.5) {
+      matchedTaskIds.add(result.item.id);
+    }
+  });
+
+  const topMatchingSubtasks = rankAndLimit(subtaskFuzzyResults, limit * 2);
+  topMatchingSubtasks.forEach((item) => {
+    matchedTaskIds.add(item.parentTaskId);
+  });
+
+  const taskMap = new Map(tasks.map((t) => [t.id, t]));
+
+  // Score tasks by best match (task title/description vs subtasks)
+  const combinedResults: Array<{
+    task: typeof tasks[0];
+    score: number;
+    matchedViaSubtasks: boolean;
+  }> = [];
+
+  matchedTaskIds.forEach((taskId) => {
+    const task = taskMap.get(taskId);
+    if (!task) return;
+
+    const taskMatch = taskFuzzyResults.find((r) => r.item.id === taskId);
+    const taskScore = taskMatch?.score ?? 1;
+
+    const subtaskMatches = subtaskFuzzyResults.filter((r) => r.item.parentTaskId === taskId);
+    const bestSubtaskScore = subtaskMatches.length > 0
+      ? Math.min(...subtaskMatches.map((r) => r.score ?? 1))
+      : 1;
+
+    const bestScore = Math.min(taskScore, bestSubtaskScore);
+    const matchedViaSubtasks = subtaskMatches.length > 0 && taskScore >= 0.5;
+
+    combinedResults.push({
+      task,
+      score: bestScore,
+      matchedViaSubtasks,
+    });
+  });
+
+  combinedResults.sort((a, b) => a.score - b.score);
+  const topTasks = combinedResults.slice(0, limit).map((r) => r.task);
+
+  const results: SearchResult[] = [];
+  const processedTaskIds = new Set<string>();
+
+  topTasks.forEach((task) => {
+    processedTaskIds.add(task.id);
+
+    const taskMatch = taskFuzzyResults.find((r) => r.item.id === task.id);
+    const matchedViaFields =
+      taskMatch !== undefined &&
+      taskMatch.score !== undefined &&
+      taskMatch.score < 0.5;
+
+    const taskSubtaskMatches = subtaskFuzzyResults
+      .filter((r) => r.item.parentTaskId === task.id)
+      .sort((a, b) => (a.score ?? 1) - (b.score ?? 1))
+      .slice(0, 5);
+
+    const matchingSubtasks = taskSubtaskMatches.map((r) => r.item);
+
+    if (matchedViaFields || matchingSubtasks.length > 0) {
+      results.push({
+        type: "task" as const,
+        id: task.id,
+        title: task.title,
+        description: matchedViaFields
+          ? task.descriptionPlain || task.description || undefined
+          : undefined,
+        url: `/dashboard/tasks/${task.id}`,
+        metadata: {
+          taskNumber: task.taskNumber,
+          status: task.status,
+          priority: task.priority,
+          parentTaskTitle: task.parentTask?.title,
+          ticketNumber: task.ticket?.ticketNumber,
+          ticketTitle: task.ticket?.title,
+          assignedTo: task.assignedTo ? formatUserName(task.assignedTo) : undefined,
+          subtaskCount: task.subtasks.length,
+          createdAt: task.createdAt,
+          updatedAt: task.updatedAt,
+        },
+      });
+
+      matchingSubtasks.forEach((subtask) => {
+        results.push({
+          type: "task" as const,
+          id: subtask.id,
+          title: subtask.title,
+          description: subtask.descriptionPlain || undefined,
+          url: `/dashboard/tasks/${subtask.id}`,
+          metadata: {
+            isSubtask: true,
+            parentTaskId: task.id,
+            parentTaskTitle: task.title,
+            status: subtask.status,
+          },
+        });
+      });
+    }
+  });
+
+  return results;
 }
 
 /**

@@ -220,6 +220,23 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
         </svg>
       );
     }
+    if (type === "task") {
+      return (
+        <svg
+          className="w-5 h-5 text-indigo-600 dark:text-indigo-400"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M9 5H7a2 2 0 00-2 2v11a2 2 0 002 2h10a2 2 0 002-2V9a2 2 0 00-2-2h-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 5v4h6"
+          />
+        </svg>
+      );
+    }
     if (type === "user") {
       return (
         <svg
