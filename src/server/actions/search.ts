@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db/prisma";
+import { Prisma } from "@prisma/client";
 import { requireAuth } from "@/lib/utils/auth-server";
 import { formatUserName } from "@/lib/utils/users";
 import { canUserViewModule } from "./modules";
@@ -54,12 +55,13 @@ export async function globalSearch(query: string, limit: number = 10): Promise<S
   let totalCount = 0;
 
   // Distribute limit across different result types
-  // 20% users, 30% tickets, 20% tasks, 15% time entries, 10% projects, 5% settings
-  const userLimit = Math.max(1, Math.floor(limit * 0.2));
+  // Priority order: User, Tickets, Task, Timer, Other
+  // 25% users, 30% tickets, 20% tasks, 15% time entries, 10% other (projects + settings)
+  const userLimit = Math.max(1, Math.floor(limit * 0.25));
   const ticketLimit = Math.max(1, Math.floor(limit * 0.3));
   const taskLimit = Math.max(1, Math.floor(limit * 0.2));
   const timeEntryLimit = Math.max(1, Math.floor(limit * 0.15));
-  const projectLimit = Math.max(1, Math.floor(limit * 0.1));
+  const projectLimit = Math.max(1, Math.floor(limit * 0.05));
   const settingsLimit = Math.max(1, Math.floor(limit * 0.05));
 
   // Get user permissions
@@ -939,8 +941,106 @@ async function searchTasks(
   }
   // Admins/Moderators: no extra filter, see all tasks
 
-  // Fetch more candidates for fuzzy search (3x the limit, or at least 50)
-  const candidateLimit = Math.max(limit * 3, 50);
+  // Use PostgreSQL full-text search for initial filtering if search term is provided
+  let taskIdsFromTextSearch: string[] = [];
+  
+  if (searchTerm && searchTerm.trim().length >= 2) {
+    // Build permission filter conditions
+    const permissionConditions: string[] = [];
+    if (!isAdminOrModerator && user.role !== "AGENT") {
+      permissionConditions.push(`"assignedToId" = '${user.id.replace(/'/g, "''")}'`);
+    } else if (user.role === "AGENT") {
+      const memberships = await prisma.groupMembership.findMany({
+        where: { userId: user.id },
+        select: { groupId: true },
+      });
+      const agentGroupIds = memberships.map((m) => m.groupId);
+      
+      const accessibleTickets = await prisma.ticket.findMany({
+        where: {
+          OR: [
+            { createdById: user.id },
+            { assignedToId: user.id },
+            ...(agentGroupIds.length > 0
+              ? [{ assignedToGroupId: { in: agentGroupIds } }]
+              : []),
+          ],
+        },
+        select: { id: true },
+      });
+      const accessibleTicketIds = accessibleTickets.map((t) => t.id);
+      
+      permissionConditions.push(`"assignedToId" = '${user.id.replace(/'/g, "''")}'`);
+      if (accessibleTicketIds.length > 0) {
+        const ticketIds = accessibleTicketIds.map(id => `'${id.replace(/'/g, "''")}'`).join(',');
+        permissionConditions.push(`"ticketId" = ANY(ARRAY[${ticketIds}]::text[])`);
+      }
+    }
+    
+    const permissionFilter = permissionConditions.length > 0 
+      ? `AND (${permissionConditions.join(' OR ')})`
+      : '';
+    
+    const sanitizedSearchTerm = searchTerm.trim().replace(/'/g, "''"); // Escape single quotes for SQL
+    const searchLimit = Math.min(limit * 5, 500);
+    
+    // Use full-text search to get matching task IDs (uses GIN index)
+    // Use Prisma.sql for safe parameterization
+    const textSearchQuery = Prisma.sql`
+      SELECT id
+      FROM tasks
+      WHERE to_tsvector('english', 
+        COALESCE(title, '') || ' ' || 
+        COALESCE("descriptionPlain", '') || ' ' || 
+        COALESCE("taskNumber", '')
+      ) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
+      ${permissionFilter ? Prisma.raw(permissionFilter) : Prisma.sql``}
+      ORDER BY ts_rank(
+        to_tsvector('english', 
+          COALESCE(title, '') || ' ' || 
+          COALESCE("descriptionPlain", '') || ' ' || 
+          COALESCE("taskNumber", '')
+        ),
+        plainto_tsquery('english', ${sanitizedSearchTerm})
+      ) DESC
+      LIMIT ${searchLimit}
+    `;
+    
+    const textSearchResults = await prisma.$queryRaw<Array<{ id: string }>>(textSearchQuery);
+    
+    taskIdsFromTextSearch = textSearchResults.map(r => r.id);
+    
+    // Also check subtasks for matches
+    if (taskIdsFromTextSearch.length === 0 || taskIdsFromTextSearch.length < limit) {
+      const subtaskLimit = limit * 2;
+      const subtaskSearchQuery = Prisma.sql`
+        SELECT DISTINCT "parentTaskId" as id
+        FROM tasks
+        WHERE "parentTaskId" IS NOT NULL
+        AND to_tsvector('english', 
+          COALESCE(title, '') || ' ' || 
+          COALESCE("descriptionPlain", '')
+        ) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
+        ${permissionFilter ? Prisma.raw(permissionFilter) : Prisma.sql``}
+        LIMIT ${subtaskLimit}
+      `;
+      
+      const subtaskSearchResults = await prisma.$queryRaw<Array<{ id: string }>>(subtaskSearchQuery);
+      
+      const subtaskParentIds = subtaskSearchResults.map(r => r.id);
+      taskIdsFromTextSearch = [...new Set([...taskIdsFromTextSearch, ...subtaskParentIds])];
+      
+      if (taskIdsFromTextSearch.length === 0) {
+        return []; // No matches found
+      }
+    }
+    
+    // Add text search filter to where clause
+    where.id = { in: taskIdsFromTextSearch };
+  }
+  
+  // Reduced candidate limit - we're already filtering at database level
+  const candidateLimit = searchTerm ? Math.min(limit * 2, 200) : Math.min(limit * 2, 100);
 
   const tasks = await prisma.task.findMany({
     where,
@@ -977,14 +1077,8 @@ async function searchTasks(
           title: true,
         },
       },
-      subtasks: {
-        select: {
-          id: true,
-          title: true,
-          descriptionPlain: true,
-          status: true,
-        },
-      },
+      // Only load subtasks if we're searching (they'll be loaded separately if needed)
+      subtasks: undefined, // Load subtasks separately only when needed
     },
     orderBy: {
       updatedAt: "desc",
@@ -1016,7 +1110,83 @@ async function searchTasks(
 
   const trimmed = searchTerm.trim();
 
+  // Load subtasks separately only if we have a search term
+  let subtaskFuzzyResults: Array<{ item: { id: string; title: string; descriptionPlain: string; status: string; parentTaskId: string; task: typeof tasks[0] }; score?: number }> = [];
+  
+  if (searchTerm && searchTerm.trim().length >= 2 && tasks.length > 0) {
+    // Get task IDs we already have
+    const taskIds = tasks.map(t => t.id);
+    
+    // Load matching subtasks using full-text search
+    const sanitizedSearchTerm = searchTerm.trim().replace(/'/g, "''"); // Escape single quotes for SQL
+    const subtaskLimit = limit * 3;
+    const subtaskSearchQuery = Prisma.sql`
+      SELECT 
+        id,
+        title,
+        COALESCE("descriptionPlain", '') as "descriptionPlain",
+        status,
+        "parentTaskId"
+      FROM tasks
+      WHERE "parentTaskId" IS NOT NULL
+      AND "parentTaskId" = ANY(${taskIds}::text[])
+      AND to_tsvector('english', 
+        COALESCE(title, '') || ' ' || 
+        COALESCE("descriptionPlain", '')
+      ) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
+      ORDER BY ts_rank(
+        to_tsvector('english', 
+          COALESCE(title, '') || ' ' || 
+          COALESCE("descriptionPlain", '')
+        ),
+        plainto_tsquery('english', ${sanitizedSearchTerm})
+      ) DESC
+      LIMIT ${subtaskLimit}
+    `;
+    
+    const matchingSubtasks = await prisma.$queryRaw<Array<{
+      id: string;
+      title: string;
+      descriptionPlain: string;
+      status: string;
+      parentTaskId: string;
+    }>>(subtaskSearchQuery);
+    
+    // Map subtasks to parent tasks we already loaded
+    const taskMap = new Map(tasks.map(t => [t.id, t]));
+    const allSubtasksWithParent = matchingSubtasks
+      .map(subtask => {
+        const parentTask = taskMap.get(subtask.parentTaskId);
+        if (!parentTask) return null;
+        
+        return {
+          id: subtask.id,
+          title: subtask.title,
+          descriptionPlain: subtask.descriptionPlain || "",
+          status: subtask.status,
+          parentTaskId: subtask.parentTaskId,
+          task: parentTask,
+        };
+      })
+      .filter((s): s is NonNullable<typeof s> => s !== null);
+    
+    // Apply fuzzy search for final ranking
+    subtaskFuzzyResults = fuzzySearch(
+      allSubtasksWithParent,
+      trimmed,
+      {
+        keys: [
+          { name: "title", weight: 0.6 },
+          { name: "descriptionPlain", weight: 0.4 },
+        ],
+        threshold: 0.4,
+        minMatchCharLength: 2,
+      }
+    );
+  }
+
   // Prepare tasks for fuzzy search on title and description
+  // Since we already filtered at database level, this is mainly for ranking
   const tasksForFuzzy = tasks.map((task) => ({
     ...task,
     searchableText: [
@@ -1038,42 +1208,6 @@ async function searchTasks(
         { name: "title", weight: 0.5 },
         { name: "description", weight: 0.25 },
         { name: "descriptionPlain", weight: 0.25 },
-      ],
-      threshold: 0.4,
-      minMatchCharLength: 2,
-    }
-  );
-
-  // Build a flat list of subtasks for independent search (like comments)
-  const allSubtasksWithParent: Array<{
-    id: string;
-    title: string;
-    descriptionPlain: string;
-    status: string;
-    parentTaskId: string;
-    task: typeof tasks[0];
-  }> = [];
-
-  tasks.forEach((task) => {
-    task.subtasks.forEach((subtask) => {
-      allSubtasksWithParent.push({
-        id: subtask.id,
-        title: subtask.title,
-        descriptionPlain: subtask.descriptionPlain || "",
-        status: subtask.status,
-        parentTaskId: task.id,
-        task,
-      });
-    });
-  });
-
-  const subtaskFuzzyResults = fuzzySearch(
-    allSubtasksWithParent,
-    trimmed,
-    {
-      keys: [
-        { name: "title", weight: 0.6 },
-        { name: "descriptionPlain", weight: 0.4 },
       ],
       threshold: 0.4,
       minMatchCharLength: 2,
@@ -1167,7 +1301,7 @@ async function searchTasks(
             ticketNumber: task.ticket?.ticketNumber,
             ticketTitle: task.ticket?.title,
             assignedTo: task.assignedTo ? formatUserName(task.assignedTo) : undefined,
-            subtaskCount: task.subtasks.length,
+            subtaskCount: task.subtasks?.length ?? 0,
             createdAt: task.createdAt,
             updatedAt: task.updatedAt,
           },
@@ -1623,8 +1757,104 @@ async function searchTickets(
   }
   // ADMIN/MODERATOR with view_all permission can see all tickets (no filter)
 
-  // Fetch more candidates for fuzzy search (3x the limit, or at least 100 to ensure we get enough comments)
-  const candidateLimit = Math.max(limit * 3, 100);
+  // Use PostgreSQL full-text search for initial filtering if search term is provided
+  // This is much faster than loading all tickets and filtering in memory
+  let ticketIdsFromTextSearch: string[] = [];
+  
+  if (searchTerm && searchTerm.trim().length >= 2) {
+    // Build permission filter conditions
+    const permissionConditions: string[] = [];
+    if (!canViewAllTickets) {
+      if (dynamicTicketIds.length > 0) {
+        const ids = dynamicTicketIds.map(id => `'${id.replace(/'/g, "''")}'`).join(',');
+        permissionConditions.push(`id = ANY(ARRAY[${ids}]::text[])`);
+      }
+      if (user.role === "AGENT") {
+        const memberships = await prisma.groupMembership.findMany({
+          where: { userId: user.id },
+          select: { groupId: true },
+        });
+        const agentGroupIds = memberships.map((m) => m.groupId);
+        permissionConditions.push(`"assignedToId" = '${user.id.replace(/'/g, "''")}'`);
+        if (agentGroupIds.length > 0) {
+          const groupIds = agentGroupIds.map(id => `'${id.replace(/'/g, "''")}'`).join(',');
+          permissionConditions.push(`"assignedToGroupId" = ANY(ARRAY[${groupIds}]::text[])`);
+        }
+      } else if (user.role === "USER") {
+        permissionConditions.push(`"createdById" = '${user.id.replace(/'/g, "''")}'`);
+      }
+    }
+    
+    const permissionFilter = permissionConditions.length > 0 
+      ? `AND (${permissionConditions.join(' OR ')})`
+      : '';
+    
+    const sanitizedSearchTerm = searchTerm.trim().replace(/'/g, "''"); // Escape single quotes for SQL
+    const searchLimit = Math.min(limit * 5, 500);
+    
+    // Build permission filter SQL fragment
+    const permissionFilterSql = permissionConditions.length > 0 
+      ? `AND (${permissionConditions.join(' OR ')})`
+      : '';
+    
+    // Use full-text search to get matching ticket IDs (uses GIN index)
+    const textSearchQuery = Prisma.sql`
+      SELECT id
+      FROM tickets
+      WHERE to_tsvector('english', 
+        COALESCE(title, '') || ' ' || 
+        COALESCE("descriptionPlain", '') || ' ' || 
+        COALESCE("ticketNumber", '')
+      ) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
+      ${permissionFilterSql ? Prisma.raw(permissionFilterSql) : Prisma.sql``}
+      ORDER BY ts_rank(
+        to_tsvector('english', 
+          COALESCE(title, '') || ' ' || 
+          COALESCE("descriptionPlain", '') || ' ' || 
+          COALESCE("ticketNumber", '')
+        ),
+        plainto_tsquery('english', ${sanitizedSearchTerm})
+      ) DESC
+      LIMIT ${searchLimit}
+    `;
+    
+    const textSearchResults = await prisma.$queryRaw<Array<{ id: string }>>(textSearchQuery);
+    
+    ticketIdsFromTextSearch = textSearchResults.map(r => r.id);
+    
+    // If no results from ticket text search, check comments
+    if (ticketIdsFromTextSearch.length === 0) {
+      const commentLimit = limit * 2;
+      const commentSearchQuery = user.role === "USER" 
+        ? Prisma.sql`
+          SELECT DISTINCT "ticketId"
+          FROM ticket_comments
+          WHERE to_tsvector('english', COALESCE("contentPlain", content, '')) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
+          AND "isAgentOnly" = false
+          LIMIT ${commentLimit}
+        `
+        : Prisma.sql`
+          SELECT DISTINCT "ticketId"
+          FROM ticket_comments
+          WHERE to_tsvector('english', COALESCE("contentPlain", content, '')) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
+          LIMIT ${commentLimit}
+        `;
+      
+      const commentSearchResults = await prisma.$queryRaw<Array<{ ticketId: string }>>(commentSearchQuery);
+      
+      ticketIdsFromTextSearch = commentSearchResults.map(r => r.ticketId);
+      
+      if (ticketIdsFromTextSearch.length === 0) {
+        return []; // No matches found
+      }
+    }
+    
+    // Add text search filter to where clause
+    where.id = { in: ticketIdsFromTextSearch };
+  }
+  
+  // Reduced candidate limit - we're already filtering at database level
+  const candidateLimit = searchTerm ? Math.min(limit * 2, 200) : Math.min(limit * 2, 100);
   
   const tickets = await prisma.ticket.findMany({
     where,
@@ -1633,6 +1863,7 @@ async function searchTickets(
       ticketNumber: true,
       title: true,
       description: true,
+      descriptionPlain: true,
       status: true,
       priority: true,
       type: true,
@@ -1664,24 +1895,9 @@ async function searchTickets(
           description: true,
         },
       },
-      comments: {
-        where: user.role === "USER"
-          ? { isAgentOnly: false }
-          : undefined,
-        select: {
-          id: true,
-          content: true,
-          createdAt: true,
-          isAgentOnly: true,
-          userId: true,
-          authorName: true,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-        // Get all comments for fuzzy search, not just recent ones
-        take: 50,
-      },
+      // Only load comments if we're searching and we need them for fuzzy matching
+      // Comments matching the search term are loaded separately via full-text search
+      comments: undefined, // Load comments separately only when needed
       _count: {
         select: {
           comments: true,
@@ -1694,71 +1910,120 @@ async function searchTickets(
     take: candidateLimit,
   });
 
-  // Collect all comments with their ticket info for independent search
-  // Flatten structure for Fuse.js compatibility
-  const allCommentsWithTickets: Array<{
-    id: string;
-    content: string;
-    createdAt: Date;
-    isAgentOnly: boolean;
-    ticketId: string;
-    ticket: typeof tickets[0];
-  }> = [];
+  // Load comments separately only if we have a search term
+  let ticketsMatchedViaComments = new Set<string>();
+  let commentFuzzyResults: Array<{ item: { id: string; content: string; createdAt: Date; isAgentOnly: boolean; ticketId: string; ticket: typeof tickets[0] }; score?: number }> = [];
   
-  tickets.forEach((ticket) => {
-    ticket.comments.forEach((comment) => {
-      allCommentsWithTickets.push({
-        id: comment.id,
-        content: comment.content,
-        createdAt: comment.createdAt,
-        isAgentOnly: comment.isAgentOnly,
-        ticketId: ticket.id,
-        ticket,
-      });
+  if (searchTerm && searchTerm.trim().length >= 2 && tickets.length > 0) {
+    // Get ticket IDs we already have
+    const ticketIds = tickets.map(t => t.id);
+    
+    // Load matching comments using full-text search (much faster than loading all comments)
+    const sanitizedSearchTerm = searchTerm.trim().replace(/'/g, "''"); // Escape single quotes for SQL
+    const commentLimit = limit * 3;
+    const commentSearchQuery = user.role === "USER"
+      ? Prisma.sql`
+        SELECT 
+          c.id,
+          COALESCE(c."contentPlain", c.content, '') as content,
+          c."createdAt",
+          c."isAgentOnly",
+          c."ticketId"
+        FROM ticket_comments c
+        WHERE to_tsvector('english', COALESCE(c."contentPlain", c.content, '')) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
+        AND c."isAgentOnly" = false
+        AND c."ticketId" = ANY(${ticketIds}::text[])
+        ORDER BY ts_rank(
+          to_tsvector('english', COALESCE(c."contentPlain", c.content, '')),
+          plainto_tsquery('english', ${sanitizedSearchTerm})
+        ) DESC
+        LIMIT ${commentLimit}
+      `
+      : Prisma.sql`
+        SELECT 
+          c.id,
+          COALESCE(c."contentPlain", c.content, '') as content,
+          c."createdAt",
+          c."isAgentOnly",
+          c."ticketId"
+        FROM ticket_comments c
+        WHERE to_tsvector('english', COALESCE(c."contentPlain", c.content, '')) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
+        AND c."ticketId" = ANY(${ticketIds}::text[])
+        ORDER BY ts_rank(
+          to_tsvector('english', COALESCE(c."contentPlain", c.content, '')),
+          plainto_tsquery('english', ${sanitizedSearchTerm})
+        ) DESC
+        LIMIT ${commentLimit}
+      `;
+    
+    const matchingComments = await prisma.$queryRaw<Array<{
+      id: string;
+      content: string;
+      createdAt: Date;
+      isAgentOnly: boolean;
+      ticketId: string;
+    }>>(commentSearchQuery);
+    
+    // Map comments to tickets we already loaded
+    const ticketMap = new Map(tickets.map(t => [t.id, t]));
+    const allCommentsWithTickets = matchingComments
+      .map(comment => {
+        const ticket = ticketMap.get(comment.ticketId);
+        if (!ticket) return null;
+        
+        return {
+          id: comment.id,
+          content: comment.content,
+          createdAt: comment.createdAt,
+          isAgentOnly: comment.isAgentOnly,
+          ticketId: comment.ticketId,
+          ticket,
+        };
+      })
+      .filter((c): c is NonNullable<typeof c> => c !== null);
+    
+    // Apply fuzzy search for final ranking (database already filtered, just rank)
+    commentFuzzyResults = fuzzySearch(
+      allCommentsWithTickets,
+      searchTerm,
+      {
+        keys: [{ name: "content", weight: 1 }],
+        threshold: 0.4,
+        minMatchCharLength: 2,
+      }
+    );
+    
+    // Get tickets that matched via comments
+    const topMatchingComments = rankAndLimit(commentFuzzyResults, limit * 2);
+    topMatchingComments.forEach((item) => {
+      ticketsMatchedViaComments.add(item.ticketId);
     });
-  });
-
-  // Search comments independently with fuzzy matching
-  const commentFuzzyResults = fuzzySearch(
-    allCommentsWithTickets,
-    searchTerm,
-    {
-      keys: [{ name: "content", weight: 1 }],
-      threshold: 0.4,
-      minMatchCharLength: 2,
-    }
-  );
-
-  // Get tickets that matched via comments (even if they didn't match other fields)
-  const ticketsMatchedViaComments = new Set<string>();
-  const topMatchingComments = rankAndLimit(commentFuzzyResults, limit * 2);
-  topMatchingComments.forEach((item) => {
-    ticketsMatchedViaComments.add(item.ticketId);
-  });
+  }
 
   // Prepare tickets for fuzzy search on ticket fields
-  // Include tags in the searchable text for fuzzy matching
+  // Since we already filtered at database level, this is mainly for ranking
   const ticketsForFuzzy = tickets.map((ticket) => ({
     ...ticket,
     searchableText: [
       ticket.title,
-      ticket.description || "",
+      ticket.description || ticket.descriptionPlain || "",
       ticket.ticketNumber,
-      ...ticket.tags, // Include tags as separate items for better matching
+      ...ticket.tags,
     ].join(" "),
-    tagsString: ticket.tags.join(" "), // Also keep tags as a separate field
+    tagsString: ticket.tags.join(" "),
   }));
 
-  // Apply fuzzy search on ticket fields (title, description, ticketNumber, tags)
+  // Apply fuzzy search on ticket fields for ranking (database already filtered)
   const ticketFuzzyResults = fuzzySearch(
     ticketsForFuzzy,
-    searchTerm,
+    searchTerm || "",
     {
       keys: [
         { name: "title", weight: 0.4 },
         { name: "description", weight: 0.3 },
+        { name: "descriptionPlain", weight: 0.3 },
         { name: "ticketNumber", weight: 0.2 },
-        { name: "tagsString", weight: 0.1 }, // Search tags with fuzzy matching
+        { name: "tagsString", weight: 0.1 },
       ],
       threshold: 0.4,
       minMatchCharLength: 2,
