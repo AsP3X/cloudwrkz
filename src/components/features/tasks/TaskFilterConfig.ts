@@ -87,7 +87,8 @@ export const getTaskFilterConfig = (): FilterConfig => {
       priority: "ALL",
       assignee: "all",
       link: "all",
-      kind: "all",
+      // By default, hide subtasks from the overview
+      kind: "root",
       sort: "createdAt-desc",
     },
     fields,

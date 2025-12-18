@@ -56,7 +56,8 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     priority: params.priority,
     assignee: (params.assignee as any) || undefined,
     link: (params.link as any) || undefined,
-    kind: (params.kind as any) || undefined,
+    // By default, hide subtasks from the overview unless explicitly requested
+    kind: (params.kind as any) || "root",
     sort: params.sort,
   });
 
