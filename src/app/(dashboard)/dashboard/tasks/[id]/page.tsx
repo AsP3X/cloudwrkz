@@ -13,6 +13,7 @@ import { getAgents } from "@/server/actions/users";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/utils/cn";
 import { RichTextDisplay } from "@/components/features/tickets/RichTextDisplay";
+import { SubtasksSection } from "@/components/features/tasks/SubtasksSection/SubtasksSection";
 
 interface TaskDetailPageProps {
   params: Promise<{ id: string }>;
@@ -191,39 +192,22 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
             </div>
           ) : null}
 
-          {/* Subtasks */}
-          {task.subtasks && task.subtasks.length > 0 && (
-            <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
-              <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">
-                Subtasks ({task.subtasks.length})
-              </h2>
-              <div className="space-y-2">
-                {task.subtasks.map((subtask) => (
-                  <Link
-                    key={subtask.id}
-                    href={`/dashboard/tasks/${subtask.id}`}
-                    className="block p-3 rounded-lg border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <span className="font-medium text-neutral-900 dark:text-neutral-100">
-                          {subtask.title}
-                        </span>
-                        <Badge className={cn(getStatusColor(subtask.status), "text-xs")}>
-                          {subtask.status.replace("_", " ")}
-                        </Badge>
-                        {subtask.priority && (
-                          <Badge className={cn(getPriorityColor(subtask.priority), "text-xs")}>
-                            {subtask.priority}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Subtasks Section (card/table view under description) */}
+          <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
+            <SubtasksSection
+              parentTaskId={task.id}
+              subtasks={(task.subtasks || []).map((subtask) => ({
+                id: subtask.id,
+                title: subtask.title,
+                status: subtask.status,
+                priority: subtask.priority,
+                // these fields are optional for now; can be expanded later
+                dueDate: (subtask as any).dueDate ?? null,
+                assignedTo: (subtask as any).assignedTo ?? null,
+              }))}
+              canManage={canEdit}
+            />
+          </div>
 
           {/* Dependencies */}
           {task.dependencies && task.dependencies.length > 0 && (

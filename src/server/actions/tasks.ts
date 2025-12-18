@@ -399,6 +399,54 @@ export async function createTicketTask(
   }
 }
 
+/**
+ * Convenience helper for creating a subtask attached to a specific parent task.
+ *
+ * This delegates to createTask and ensures the parent exists.
+ */
+export async function createSubtask(
+  parentTaskId: string,
+  input: Omit<TaskInput, "parentTaskId" | "ticketId" | "milestoneId">
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    // Reuse the same permission/module checks as createTask
+    const parent = await prisma.task.findUnique({
+      where: { id: parentTaskId },
+      select: { id: true, ticketId: true, milestoneId: true },
+    });
+
+    if (!parent) {
+      return {
+        success: false,
+        error: "Parent task not found",
+      };
+    }
+
+    const result = await createTask({
+      ...input,
+      parentTaskId,
+      ticketId: parent.ticketId ?? undefined,
+      milestoneId: parent.milestoneId ?? undefined,
+    });
+
+    if (result.success) {
+      // Revalidate both the standalone tasks page and the parent detail page
+      revalidatePath(`/dashboard/tasks/${parentTaskId}`);
+      if (parent.ticketId) {
+        revalidatePath(`/dashboard/tickets/${parent.ticketId}`);
+      }
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Error creating subtask:", error);
+    return {
+      success: false,
+      error: "Failed to create subtask. Please try again.",
+    };
+  }
+}
+
 export async function updateTask(
   taskId: string,
   input: TaskUpdateInput
