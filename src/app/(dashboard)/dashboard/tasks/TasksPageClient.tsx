@@ -5,6 +5,7 @@ import Link from "next/link";
 import { TaskViewToggle, getInitialTaskViewMode, TaskViewMode, saveTaskViewMode } from "@/components/features/tasks/TaskViewToggle";
 import { StandaloneTaskList } from "@/components/features/tasks/StandaloneTaskList";
 import { Button } from "@/components/ui/Button";
+import { TaskFilterButton } from "@/components/features/tasks/TaskFilterButton";
 
 type Task = {
   id: string;
@@ -17,6 +18,10 @@ type Task = {
   completedDate: Date | null;
   estimatedHours: number | null;
   actualHours: number | null;
+  parentTask?: {
+    id: string;
+    title: string;
+  } | null;
   assignedTo: {
     id: string;
     name: string | null;
@@ -30,16 +35,14 @@ type Task = {
 };
 
 interface TasksPageClientProps {
-  initialTasks: Task[];
+  tasks: Task[];
   canManage: boolean;
   userRole: string;
 }
 
-export function TasksPageClient({ initialTasks, canManage, userRole }: TasksPageClientProps) {
+export function TasksPageClient({ tasks, canManage, userRole }: TasksPageClientProps) {
   const [viewMode, setViewMode] = React.useState<TaskViewMode>("table");
   const [isReady, setIsReady] = React.useState(false);
-  const [filteredTasks, setFilteredTasks] = React.useState<Task[]>(initialTasks);
-  const [statusFilter, setStatusFilter] = React.useState<string>("all");
 
   React.useLayoutEffect(() => {
     // Sync from localStorage on mount to avoid hydration mismatch
@@ -47,24 +50,6 @@ export function TasksPageClient({ initialTasks, canManage, userRole }: TasksPage
     setViewMode(initial);
     setIsReady(true);
   }, []);
-
-  React.useEffect(() => {
-    // Separate completed tasks - they always show in their own section
-    const completedTasks = initialTasks.filter((task) => task.status === "COMPLETED");
-    const activeTasks = initialTasks.filter((task) => task.status !== "COMPLETED");
-
-    // Filter active tasks by status filter
-    let filteredActive = activeTasks;
-    if (statusFilter !== "all" && statusFilter !== "COMPLETED") {
-      filteredActive = activeTasks.filter((task) => task.status === statusFilter);
-    }
-
-    // Always include all completed tasks in a separate section
-    // Combine filtered active tasks with all completed tasks
-    const filtered = [...filteredActive, ...completedTasks];
-
-    setFilteredTasks(filtered);
-  }, [initialTasks, statusFilter]);
 
   const handleViewChange = (mode: TaskViewMode) => {
     setViewMode(mode);
@@ -89,6 +74,7 @@ export function TasksPageClient({ initialTasks, canManage, userRole }: TasksPage
           {isReady && (
             <TaskViewToggle currentView={viewMode} onViewChange={handleViewChange} />
           )}
+          <TaskFilterButton />
           {canManage && (
             <Link href="/dashboard/tasks/new">
               <Button variant="primary">Create</Button>
@@ -97,40 +83,8 @@ export function TasksPageClient({ initialTasks, canManage, userRole }: TasksPage
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-4">
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-              Status:
-            </label>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="rounded-md border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-1.5 text-sm text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
-            >
-              <option value="all">All</option>
-              <option value="NOT_STARTED">Not Started</option>
-              <option value="IN_PROGRESS">In Progress</option>
-              <option value="BLOCKED">Blocked</option>
-              <option value="COMPLETED">Completed</option>
-              <option value="CANCELLED">Cancelled</option>
-            </select>
-          </div>
-          <div className="ml-auto text-sm text-neutral-600 dark:text-neutral-400">
-            {filteredTasks.filter((t) => t.status !== "COMPLETED").length}{" "}
-            {filteredTasks.filter((t) => t.status !== "COMPLETED").length === 1 ? "task" : "tasks"}
-            {filteredTasks.filter((t) => t.status === "COMPLETED").length > 0 && (
-              <span className="ml-2">
-                ({filteredTasks.filter((t) => t.status === "COMPLETED").length} completed)
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* Task List */}
-      {initialTasks.length === 0 ? (
+      {tasks.length === 0 ? (
         <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-12 text-center">
           <svg
             className="w-16 h-16 text-neutral-300 dark:text-neutral-700 mx-auto mb-4"
@@ -156,11 +110,18 @@ export function TasksPageClient({ initialTasks, canManage, userRole }: TasksPage
       ) : (
         <>
           {isReady ? (
-            <StandaloneTaskList
-              tasks={filteredTasks}
-              viewMode={viewMode}
-              canManage={canManage}
-            />
+            <>
+              <div className="flex items-center justify-between mb-3 text-sm text-neutral-600 dark:text-neutral-400">
+                <span>
+                  Showing {tasks.length} task{tasks.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+              <StandaloneTaskList
+                tasks={tasks}
+                viewMode={viewMode}
+                canManage={canManage}
+              />
+            </>
           ) : (
             <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-12 text-center">
               <div className="text-sm text-neutral-500 dark:text-neutral-400">Loading...</div>

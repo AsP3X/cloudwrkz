@@ -22,6 +22,10 @@ type StandaloneTask = {
   completedDate: Date | null;
   estimatedHours: number | null;
   actualHours: number | null;
+  parentTask?: {
+    id: string;
+    title: string;
+  } | null;
   assignedTo: {
     id: string;
     name: string | null;
@@ -130,6 +134,17 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage }: StandaloneTas
             </p>
           )}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+            {task.parentTask && (
+              <span>
+                Subtask of{" "}
+                <Link
+                  href={`/dashboard/tasks/${task.parentTask.id}`}
+                  className="text-neutral-800 dark:text-neutral-200 hover:text-primary-600 dark:hover:text-primary-400"
+                >
+                  {task.parentTask.title}
+                </Link>
+              </span>
+            )}
             {task.ticket && (
               <Link
                 href={`/dashboard/tickets/${task.ticket.id}`}
@@ -218,6 +233,13 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage }: StandaloneTas
             className="text-sm font-mono font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
           >
             {task.ticket.ticketNumber}
+          </Link>
+        ) : task.parentTask ? (
+          <Link
+            href={`/dashboard/tasks/${task.parentTask.id}`}
+            className="text-xs text-neutral-600 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400"
+          >
+            Subtask of {task.parentTask.title}
           </Link>
         ) : (
           <span className="text-xs text-neutral-400 dark:text-neutral-400">—</span>

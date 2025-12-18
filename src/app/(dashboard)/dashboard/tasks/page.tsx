@@ -5,6 +5,8 @@ import { canUserViewModule } from "@/server/actions/modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { getAllTasks } from "@/server/actions/tasks";
 import { hasPermission } from "@/lib/utils/permissions";
+import { TaskFilterButton } from "@/components/features/tasks/TaskFilterButton";
+import { TaskFilterLoader } from "@/components/features/tasks/TaskFilterLoader";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { TasksPageClient } from "./TasksPageClient";
@@ -13,8 +15,20 @@ import { TasksPageClient } from "./TasksPageClient";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function TasksPage() {
+interface TasksPageProps {
+  searchParams: Promise<{
+    status?: string;
+    priority?: string;
+    assignee?: string;
+    link?: string;
+    kind?: string;
+    sort?: string;
+  }>;
+}
+
+export default async function TasksPage({ searchParams }: TasksPageProps) {
   const user = await getCurrentUser();
+  const params = await searchParams;
 
   if (!user || (user.role !== "USER" && user.role !== "AGENT" && user.role !== "ADMIN" && user.role !== "MODERATOR")) {
     redirect(ROUTES.LOGIN);
@@ -36,8 +50,15 @@ export default async function TasksPage() {
     );
   }
 
-  // Get all tasks
-  const tasks = await getAllTasks();
+  // Build filters from search params
+  const tasks = await getAllTasks({
+    status: params.status,
+    priority: params.priority,
+    assignee: (params.assignee as any) || undefined,
+    link: (params.link as any) || undefined,
+    kind: (params.kind as any) || undefined,
+    sort: params.sort,
+  });
 
   // Check if user can create tasks (tasks module permission)
   // Tasks are completely independent of projects
@@ -48,10 +69,14 @@ export default async function TasksPage() {
     await hasPermission(user.id, "tasks.create");
 
   return (
-    <TasksPageClient
-      initialTasks={tasks as any}
-      canManage={canCreateTasks}
-      userRole={user.role}
-    />
+    <>
+      {/* Auto-load last used task filters */}
+      <TaskFilterLoader />
+      <TasksPageClient
+        tasks={tasks as any}
+        canManage={canCreateTasks}
+        userRole={user.role}
+      />
+    </>
   );
 }

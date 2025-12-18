@@ -923,7 +923,14 @@ export async function getTicketTasks(ticketId: string) {
  * Only shows tasks assigned to the current user (unless ADMIN/MODERATOR).
  * For AGENTs: shows tasks assigned to them OR linked to tickets they have access to.
  */
-export async function getAllTasks() {
+export async function getAllTasks(filters?: {
+  status?: string;
+  priority?: string;
+  assignee?: "all" | "me" | "unassigned";
+  link?: "all" | "withTicket" | "withoutTicket";
+  kind?: "all" | "root" | "subtask";
+  sort?: string; // e.g. "createdAt-desc", "dueDate-asc"
+}) {
   const user = await requireAuth();
 
   // Build where clause based on user role
@@ -944,7 +951,26 @@ export async function getAllTasks() {
     whereClause.assignedToId = user.id;
   }
 
-  // Tasks are independent - get tasks filtered by assignment
+  // Apply basic attribute filters
+  if (filters?.status && filters.status !== "ALL") {
+    whereClause.status = filters.status;
+  }
+  if (filters?.priority && filters.priority !== "ALL") {
+    whereClause.priority = filters.priority;
+  }
+
+  // Handle assignee filter
+  if (filters?.assignee === "me") {
+    whereClause.assignedToId = user.id;
+  } else if (filters?.assignee === "unassigned") {
+    whereClause.assignedToId = null;
+  }
+
+  // Determine sort order
+  const sortParam = filters?.sort || "createdAt-desc";
+  const [sortBy, sortOrder] = sortParam.split("-") as ["createdAt" | "dueDate", "asc" | "desc"];
+
+  // Tasks are independent - get tasks filtered by assignment and filters
   const tasks = await prisma.task.findMany({
     where: whereClause,
     include: {
@@ -998,7 +1024,17 @@ export async function getAllTasks() {
         },
       },
     },
-    orderBy: [{ order: "asc" }, { createdAt: "desc" }],
+    orderBy:
+      sortBy === "dueDate"
+        ? [
+            { order: "asc" },
+            { dueDate: sortOrder === "asc" ? "asc" : "desc" },
+            { createdAt: "desc" },
+          ]
+        : [
+            { order: "asc" },
+            { createdAt: sortOrder === "asc" ? "asc" : "desc" },
+          ],
   });
 
   // Calculate actual hours from time entries
@@ -1041,6 +1077,19 @@ export async function getAllTasks() {
     );
     filteredTasks = tasks.filter((_, index) => taskAccessChecks[index]);
   }
+
+  // Apply link/kind filters in memory (useful even after permission filtering)
+  filteredTasks = filteredTasks.filter((task) => {
+    // Link filter
+    if (filters?.link === "withTicket" && !task.ticketId) return false;
+    if (filters?.link === "withoutTicket" && task.ticketId) return false;
+
+    // Kind filter
+    if (filters?.kind === "root" && task.parentTaskId) return false;
+    if (filters?.kind === "subtask" && !task.parentTaskId) return false;
+
+    return true;
+  });
 
   return filteredTasks.map((task) => ({
     ...task,
