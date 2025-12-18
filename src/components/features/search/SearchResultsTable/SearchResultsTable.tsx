@@ -402,10 +402,13 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                         <span className="text-sm text-neutral-500 dark:text-neutral-400">
                           {group.ticket.metadata.email}
                         </span>
-                      ) : group.ticket.type === "timeentry" ? (
-                        <span className="text-sm text-neutral-500 dark:text-neutral-400">
-                          {group.ticket.id.slice(0, 8)}...
-                        </span>
+                      ) : group.ticket.type === "timeentry" && group.ticket.metadata?.timerNumber ? (
+                        <Link
+                          href={group.ticket.url}
+                          className="text-sm font-mono font-semibold text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300"
+                        >
+                          {group.ticket.metadata.timerNumber}
+                        </Link>
                       ) : group.ticket.type === "project" && group.ticket.metadata?.code ? (
                         <Link
                           href={group.ticket.url}

@@ -145,12 +145,13 @@ export async function createTimeEntry(
     // Generate name if not provided
     let name = input.name?.trim();
     if (!name) {
-      // Find the highest sequence number for TMR- prefix
+      // Find the highest sequence number for #TMR- or TMR- prefix
       const existingTimers = await prisma.timeEntry.findMany({
         where: {
-          name: {
-            startsWith: "TMR-",
-          },
+          OR: [
+            { name: { startsWith: "#TMR-" } },
+            { name: { startsWith: "TMR-" } },
+          ],
         },
         select: {
           name: true,
@@ -262,12 +263,13 @@ export async function createTimeEntryWithDuration(
     // Generate name if not provided
     let name = input.name?.trim();
     if (!name) {
-      // Find the highest sequence number for TMR- prefix
+      // Find the highest sequence number for #TMR- or TMR- prefix
       const existingTimers = await prisma.timeEntry.findMany({
         where: {
-          name: {
-            startsWith: "TMR-",
-          },
+          OR: [
+            { name: { startsWith: "#TMR-" } },
+            { name: { startsWith: "TMR-" } },
+          ],
         },
         select: {
           name: true,

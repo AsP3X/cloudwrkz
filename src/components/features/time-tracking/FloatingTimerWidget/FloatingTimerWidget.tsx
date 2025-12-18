@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Dialog } from "@/components/ui/Dialog";
 import { DurationDisplay } from "../DurationDisplay";
-import { getStatusColor, getStatusLabel } from "@/lib/utils/time-tracking";
+import { getStatusColor, getStatusLabel, formatTimerNumber } from "@/lib/utils/time-tracking";
 import { pauseTimeEntry, resumeTimeEntry, stopTimeEntry } from "@/server/actions/time-tracking";
 import { type TimeEntryStatus } from "@prisma/client";
 import { cn } from "@/lib/utils/cn";
@@ -189,7 +189,7 @@ export function FloatingTimerWidget({ activeEntries }: FloatingTimerWidgetProps)
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-sm text-neutral-900 dark:text-neutral-100 truncate">
-                    {entry.name}
+                    {formatTimerNumber(entry.name)}
                   </div>
                   <div className="flex items-center gap-2 mt-1">
                     <span className={cn("px-2 py-0.5 text-xs rounded-full", getStatusColor(entry.status))}>

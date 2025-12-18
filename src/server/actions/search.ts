@@ -8,6 +8,7 @@ import { canUserViewModule } from "./modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { fuzzySearch, rankAndLimit } from "@/lib/utils/fuzzy-search";
 import { getUserPermissions } from "@/lib/utils/permissions";
+import { formatTimerNumber } from "@/lib/utils/time-tracking";
 
 export type SearchResult = {
   type: "ticket" | "module" | "user" | "comment" | "timeentry" | "project" | "setting" | "task";
@@ -813,6 +814,7 @@ async function searchTimeEntries(
       description: entry.description || undefined,
       url: `/dashboard/time-tracking/${entry.id}`,
       metadata: {
+        timerNumber: formatTimerNumber(entry.name, entry.id), // Timer number in TMR-000000 format (6 digits)
         status: entry.status,
         tags: entry.tags,
         location: entry.location,
@@ -869,6 +871,7 @@ async function searchTimeEntries(
     description: entry.description || undefined,
     url: `/dashboard/time-tracking/${entry.id}`,
     metadata: {
+      timerNumber: formatTimerNumber(entry.name, entry.id), // Timer number in TMR-000000 format (6 digits)
       status: entry.status,
       tags: entry.tags,
       location: entry.location,

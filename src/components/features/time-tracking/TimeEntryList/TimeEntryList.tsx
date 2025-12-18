@@ -9,7 +9,7 @@ import { TimeEntryBulkActionsToolbar } from "../TimeEntryBulkActionsToolbar";
 import { TimeEntryBulkDeleteDialog } from "../TimeEntryBulkDeleteDialog";
 import { TimeEntryBulkTagDialog } from "../TimeEntryBulkTagDialog";
 import { useTimeEntryView } from "../TimeEntryViewContext";
-import { getStatusColor, getStatusLabel, canPause, canResume, canStop } from "@/lib/utils/time-tracking";
+import { getStatusColor, getStatusLabel, canPause, canResume, canStop, formatTimerNumber } from "@/lib/utils/time-tracking";
 import { formatDateTimeInTimezone } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
 import { pauseTimeEntry, resumeTimeEntry, stopTimeEntry, deleteTimeEntry, bulkUpdateTimeEntries, bulkDeleteTimeEntries } from "@/server/actions/time-tracking";
@@ -366,14 +366,14 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
                   }}
                   onClick={(e) => e.stopPropagation()}
                   className="w-4 h-4 mt-1 text-primary-600 bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 cursor-pointer flex-shrink-0"
-                  aria-label={`Select ${entry.name}`}
+                  aria-label={`Select ${formatTimerNumber(entry.name)}`}
                 />
                 <div className="flex-1 min-w-0">
                   <Link 
                     href={`/dashboard/time-tracking/${entry.id}`}
                     className="block font-semibold text-base text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400 mb-1"
                   >
-                    {entry.name}
+                    {formatTimerNumber(entry.name)}
                   </Link>
                   {entry.description && (
                     <div className="text-sm text-neutral-600 dark:text-neutral-400 mb-2 line-clamp-2">
@@ -571,7 +571,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
                       className="font-medium text-sm text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400"
                     >
                       <div className="max-w-md">
-                        <div className="truncate">{entry.name}</div>
+                        <div className="truncate">{formatTimerNumber(entry.name)}</div>
                         {entry.description && (
                           <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 line-clamp-1">
                             {entry.description}

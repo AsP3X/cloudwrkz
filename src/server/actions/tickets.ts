@@ -235,14 +235,33 @@ export async function createTicket(input: TicketInput): Promise<ActionResult<{ i
     if (input.createTimer) {
       const timeTrackingEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
       if (timeTrackingEnabled) {
-        // Count existing timers for this ticket to determine the number
-        const existingTimerCount = await prisma.timeEntry.count({
+        // Generate a proper TMR number for the timer
+        // Find the highest sequence number for #TMR- or TMR- prefix
+        const { parseTimerNumber, generateTimerNumber } = await import("@/lib/utils/time-tracking");
+        const existingTimers = await prisma.timeEntry.findMany({
           where: {
-            ticketId: ticket.id,
+            OR: [
+              { name: { startsWith: "#TMR-" } },
+              { name: { startsWith: "TMR-" } },
+            ],
           },
+          select: {
+            name: true,
+          },
+          orderBy: {
+            name: "desc",
+          },
+          take: 1,
         });
-        const timerNumber = existingTimerCount + 1;
-        const timerName = `${ticket.ticketNumber} - ${ticket.title} - ${timerNumber}`;
+
+        let nextSequence = 1;
+        if (existingTimers.length > 0) {
+          const parsed = parseTimerNumber(existingTimers[0].name);
+          if (parsed) {
+            nextSequence = parsed.sequence + 1;
+          }
+        }
+        const timerName = generateTimerNumber(nextSequence);
         // Create timer for the current user (the one creating the ticket)
         await createTimeEntry({
           name: timerName,

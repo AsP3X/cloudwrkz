@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { DurationDisplay } from "../DurationDisplay";
-import { getStatusColor, getStatusLabel, formatDuration, canPause, canResume, canStop, calculateTotalBreakDuration } from "@/lib/utils/time-tracking";
+import { getStatusColor, getStatusLabel, formatDuration, canPause, canResume, canStop, calculateTotalBreakDuration, formatTimerNumber } from "@/lib/utils/time-tracking";
 import { formatDateTimeInTimezone } from "@/lib/utils/date";
 import { getTimezoneLabel } from "@/lib/constants/timezones";
 import { pauseTimeEntry, resumeTimeEntry, stopTimeEntry, completeTimeEntry, deleteTimeEntry, updateTimeEntry } from "@/server/actions/time-tracking";
@@ -214,7 +214,7 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">{entry.name}</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">{formatTimerNumber(entry.name)}</h1>
             <p className="text-sm sm:text-base text-neutral-600 dark:text-neutral-400">
               Created {formatDate(entry.createdAt)}
             </p>
@@ -311,7 +311,7 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
               <div className="space-y-4">
                 <div>
                   <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">Name</label>
-                  <p className="mt-1 text-neutral-900 dark:text-neutral-100">{entry.name}</p>
+                  <p className="mt-1 text-neutral-900 dark:text-neutral-100">{formatTimerNumber(entry.name)}</p>
                 </div>
                 {entry.description && (
                   <div>
