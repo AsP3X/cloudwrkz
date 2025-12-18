@@ -1130,6 +1130,7 @@ async function searchTasks(
 
   const results: SearchResult[] = [];
   const processedTaskIds = new Set<string>();
+  const addedTaskIds = new Set<string>();
 
   topTasks.forEach((task) => {
     processedTaskIds.add(task.id);
@@ -1148,42 +1149,50 @@ async function searchTasks(
     const matchingSubtasks = taskSubtaskMatches.map((r) => r.item);
 
     if (matchedViaFields || matchingSubtasks.length > 0) {
-      results.push({
-        type: "task" as const,
-        id: task.id,
-        title: task.title,
-        description: matchedViaFields
-          ? task.descriptionPlain || task.description || undefined
-          : undefined,
-        url: `/dashboard/tasks/${task.id}`,
-        metadata: {
-          taskNumber: task.taskNumber,
-          status: task.status,
-          priority: task.priority,
-          parentTaskTitle: task.parentTask?.title,
-          ticketNumber: task.ticket?.ticketNumber,
-          ticketTitle: task.ticket?.title,
-          assignedTo: task.assignedTo ? formatUserName(task.assignedTo) : undefined,
-          subtaskCount: task.subtasks.length,
-          createdAt: task.createdAt,
-          updatedAt: task.updatedAt,
-        },
-      });
-
-      matchingSubtasks.forEach((subtask) => {
+      // Parent task result
+      if (!addedTaskIds.has(task.id)) {
         results.push({
           type: "task" as const,
-          id: subtask.id,
-          title: subtask.title,
-          description: subtask.descriptionPlain || undefined,
-          url: `/dashboard/tasks/${subtask.id}`,
+          id: task.id,
+          title: task.title,
+          description: matchedViaFields
+            ? task.descriptionPlain || task.description || undefined
+            : undefined,
+          url: `/dashboard/tasks/${task.id}`,
           metadata: {
-            isSubtask: true,
-            parentTaskId: task.id,
-            parentTaskTitle: task.title,
-            status: subtask.status,
+            taskNumber: task.taskNumber,
+            status: task.status,
+            priority: task.priority,
+            parentTaskTitle: task.parentTask?.title,
+            ticketNumber: task.ticket?.ticketNumber,
+            ticketTitle: task.ticket?.title,
+            assignedTo: task.assignedTo ? formatUserName(task.assignedTo) : undefined,
+            subtaskCount: task.subtasks.length,
+            createdAt: task.createdAt,
+            updatedAt: task.updatedAt,
           },
         });
+        addedTaskIds.add(task.id);
+      }
+
+      // Subtask "comment-style" results
+      matchingSubtasks.forEach((subtask) => {
+        if (!addedTaskIds.has(subtask.id)) {
+          results.push({
+            type: "task" as const,
+            id: subtask.id,
+            title: subtask.title,
+            description: subtask.descriptionPlain || undefined,
+            url: `/dashboard/tasks/${subtask.id}`,
+            metadata: {
+              isSubtask: true,
+              parentTaskId: task.id,
+              parentTaskTitle: task.title,
+              status: subtask.status,
+            },
+          });
+          addedTaskIds.add(subtask.id);
+        }
       });
     }
   });
