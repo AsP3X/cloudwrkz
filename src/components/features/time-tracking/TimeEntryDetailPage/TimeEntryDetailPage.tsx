@@ -305,6 +305,7 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
                 onCancel={() => setIsEditing(false)}
                 isSubmitting={processing}
                 userTimezone={userTimezone}
+                entryTimezone={entry.timezone}
                 breaks={entry.breaks || []}
               />
             ) : (

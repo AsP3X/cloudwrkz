@@ -729,6 +729,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
       )}
       {editingEntry && (
         <EditTimeEntryDialog
+          key={editingEntry.id}
           open={!!editingEntry}
           onOpenChange={(open) => {
             if (!open) {
