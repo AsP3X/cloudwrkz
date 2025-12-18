@@ -1664,17 +1664,44 @@ async function searchSettings(
     ].join(" "),
   }));
 
-  const fuzzyResults = fuzzySearch(searchableSettings, normalizedTerm, {
-    keys: [
-      { name: "title", weight: 0.5 },
-      { name: "description", weight: 0.3 },
-      { name: "searchableText", weight: 0.2 },
-    ],
-    threshold: 0.4,
-    minMatchCharLength: 2,
+  // First, check for word matches (case-insensitive) in title, description, or keywords
+  // This prevents substring matches like "test" matching "settings"
+  const lowerTerm = normalizedTerm.toLowerCase();
+  const termWords = lowerTerm.split(/\s+/).filter(Boolean);
+  const exactMatches = searchableSettings.filter((setting) => {
+    const titleLower = setting.title.toLowerCase();
+    const descLower = setting.description.toLowerCase();
+    const keywordsLower = setting.keywords.join(" ").toLowerCase();
+    const allText = `${titleLower} ${descLower} ${keywordsLower}`;
+    
+    // Check if all search terms appear as whole words (word boundary match)
+    return termWords.every((term) => {
+      // Use word boundary regex to match whole words only
+      const wordBoundaryRegex = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+      return wordBoundaryRegex.test(allText);
+    });
   });
 
-  const rankedSettings = rankAndLimit(fuzzyResults, limit);
+  // If we have exact matches, use those; otherwise use fuzzy search with stricter threshold
+  let rankedSettings: typeof searchableSettings;
+  if (exactMatches.length > 0) {
+    rankedSettings = exactMatches.slice(0, limit);
+  } else {
+    // Use fuzzy search with stricter threshold for settings (0.3 instead of 0.4)
+    const fuzzyResults = fuzzySearch(searchableSettings, normalizedTerm, {
+      keys: [
+        { name: "title", weight: 0.5 },
+        { name: "description", weight: 0.3 },
+        { name: "searchableText", weight: 0.2 },
+      ],
+      threshold: 0.3, // Stricter threshold for settings
+      minMatchCharLength: 2,
+    });
+
+    // Filter out results with poor scores (score > 0.3 means not a good match)
+    const goodMatches = fuzzyResults.filter((result) => (result.score ?? 1) <= 0.3);
+    rankedSettings = rankAndLimit(goodMatches, limit);
+  }
 
   return rankedSettings.map((setting) => ({
     type: "setting" as const,

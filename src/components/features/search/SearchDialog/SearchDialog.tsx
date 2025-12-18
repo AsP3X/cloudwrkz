@@ -80,9 +80,9 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
       return;
     }
 
-    if (e.key === "Enter" && selectedIndex >= 0 && results[selectedIndex]) {
+    if (e.key === "Enter" && selectedIndex >= 0 && visibleItems[selectedIndex]) {
       e.preventDefault();
-      handleResultClick(results[selectedIndex]);
+      handleResultClick(visibleItems[selectedIndex]);
       return;
     }
 
@@ -95,18 +95,24 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
       return;
     }
 
-    if (results.length === 0) {
+    if (visibleItems.length === 0) {
       return;
     }
 
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
-        setSelectedIndex((prev) => (prev < results.length - 1 ? prev + 1 : prev));
+        setSelectedIndex((prev) => {
+          if (prev === -1) return 0; // Start from first item
+          return prev < visibleItems.length - 1 ? prev + 1 : prev;
+        });
         break;
       case "ArrowUp":
         e.preventDefault();
-        setSelectedIndex((prev) => (prev > 0 ? prev - 1 : -1));
+        setSelectedIndex((prev) => {
+          if (prev === -1) return visibleItems.length - 1; // Start from last item
+          return prev > 0 ? prev - 1 : -1;
+        });
         break;
     }
   };
@@ -186,6 +192,27 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
 
     return groups;
   }, [results]);
+
+  // Create a flat list of visible items in display order for navigation
+  const visibleItems = React.useMemo(() => {
+    const items: SearchResult[] = [];
+    groupedResults.forEach((group) => {
+      // Always add the main item (ticket/task/user/etc.)
+      items.push(group.ticket);
+      // Add comments/subtasks only if the parent is expanded
+      if ((group.ticket.type === "ticket" || group.ticket.type === "task") && expandedTickets.has(group.ticket.id)) {
+        items.push(...group.comments);
+      }
+    });
+    return items;
+  }, [groupedResults, expandedTickets]);
+
+  // Reset selection if the currently selected item is no longer visible
+  useEffect(() => {
+    if (selectedIndex >= visibleItems.length) {
+      setSelectedIndex(-1);
+    }
+  }, [visibleItems.length, selectedIndex]);
 
   const handleClear = () => {
     setQuery("");
@@ -545,7 +572,8 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                         const isTask = group.ticket.type === "task";
                         const hasComments = group.comments.length > 0;
                         const isExpanded = expandedTickets.has(group.ticket.id);
-                        const ticketIndex = results.findIndex((r) => r.id === group.ticket.id && r.type === group.ticket.type);
+                        // Check if this ticket/task is selected in the visible items list
+                        const isTicketSelected = selectedIndex >= 0 && visibleItems[selectedIndex]?.id === group.ticket.id && visibleItems[selectedIndex]?.type === group.ticket.type;
 
                         return (
                           <div key={`group-${group.ticket.type}-${group.ticket.id}`}>
@@ -554,7 +582,7 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                               onClick={() => handleResultClick(group.ticket)}
                               className={cn(
                                 "w-full text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors cursor-pointer",
-                                selectedIndex === ticketIndex && "bg-primary-50 dark:bg-primary-950",
+                                isTicketSelected && "bg-primary-50 dark:bg-primary-950",
                                 "px-4 py-4"
                               )}
                             >
@@ -683,15 +711,16 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                                 )}
                               >
                                 {group.comments.map((comment, commentIndex) => {
-                                  const commentResultIndex = results.findIndex((r) => r.id === comment.id && r.type === comment.type);
                                   const isSubtask = comment.metadata?.isSubtask;
+                                  // Check if this comment/subtask is selected in the visible items list
+                                  const isCommentSelected = selectedIndex >= 0 && visibleItems[selectedIndex]?.id === comment.id && visibleItems[selectedIndex]?.type === comment.type;
                                   return (
                                     <button
                                       key={`${isSubtask ? "subtask" : "comment"}-${comment.id}`}
                                       onClick={() => handleResultClick(comment)}
                                       className={cn(
                                         "w-full text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all duration-300 ease-in-out",
-                                        selectedIndex === commentResultIndex && "bg-primary-50 dark:bg-primary-950",
+                                        isCommentSelected && "bg-primary-50 dark:bg-primary-950",
                                         "px-4 py-2 pl-12",
                                         isExpanded 
                                           ? "opacity-100 translate-y-0" 
