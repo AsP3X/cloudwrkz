@@ -131,17 +131,32 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
     });
   };
 
-  // Group results by ticket
+  // Group results by ticket/task
   const groupedResults = React.useMemo(() => {
     const groups: Array<{ ticket: SearchResult; comments: SearchResult[] }> = [];
     const ticketMap = new Map<string, SearchResult>();
+    const taskMap = new Map<string, SearchResult>();
     const commentMap = new Map<string, SearchResult[]>();
+    const subtaskMap = new Map<string, SearchResult[]>();
 
     results.forEach((result) => {
       if (result.type === "ticket") {
         ticketMap.set(result.id, result);
         if (!commentMap.has(result.id)) {
           commentMap.set(result.id, []);
+        }
+      } else if (result.type === "task") {
+        // Check if this is a subtask
+        if (result.metadata?.isSubtask && result.metadata?.parentTaskId) {
+          const subtasks = subtaskMap.get(result.metadata.parentTaskId) || [];
+          subtasks.push(result);
+          subtaskMap.set(result.metadata.parentTaskId, subtasks);
+        } else {
+          // Parent task
+          taskMap.set(result.id, result);
+          if (!subtaskMap.has(result.id)) {
+            subtaskMap.set(result.id, []);
+          }
         }
       } else if (result.type === "comment" && result.parentTicketId) {
         const comments = commentMap.get(result.parentTicketId) || [];
@@ -158,6 +173,14 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
       groups.push({
         ticket,
         comments: commentMap.get(ticket.id) || [],
+      });
+    });
+
+    // Add tasks with their subtasks (displayed like comments)
+    taskMap.forEach((task) => {
+      groups.push({
+        ticket: task,
+        comments: subtaskMap.get(task.id) || [],
       });
     });
 
@@ -519,6 +542,7 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                     <div className="divide-y divide-neutral-200 dark:divide-neutral-800">
                       {groupedResults.map((group, groupIndex) => {
                         const isTicket = group.ticket.type === "ticket";
+                        const isTask = group.ticket.type === "task";
                         const hasComments = group.comments.length > 0;
                         const isExpanded = expandedTickets.has(group.ticket.id);
                         const ticketIndex = results.findIndex((r) => r.id === group.ticket.id && r.type === group.ticket.type);
@@ -536,11 +560,11 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                             >
                               <div className="flex items-start gap-4">
                                 <div className="mt-0.5 flex-shrink-0 flex items-center gap-2">
-                                  {isTicket && hasComments && (
+                                  {(isTicket || isTask) && hasComments && (
                                     <button
                                       onClick={(e) => toggleTicketExpansion(group.ticket.id, e)}
                                       className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors"
-                                      aria-label={isExpanded ? "Collapse comments" : "Expand comments"}
+                                      aria-label={isExpanded ? `Collapse ${isTask ? "subtasks" : "comments"}` : `Expand ${isTask ? "subtasks" : "comments"}`}
                                       type="button"
                                     >
                                       <svg
@@ -573,6 +597,11 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                                         {group.ticket.metadata.ticketNumber}
                                       </span>
                                     )}
+                                    {group.ticket.type === "task" && (
+                                      <span className="text-xs text-neutral-500 dark:text-neutral-400 font-mono flex-shrink-0">
+                                        {group.ticket.metadata?.taskNumber || group.ticket.id.slice(0, 8) + "..."}
+                                      </span>
+                                    )}
                                     {group.ticket.type === "user" && group.ticket.metadata?.email && group.ticket.title !== group.ticket.metadata.email && (
                                       <span className="text-xs text-neutral-500 dark:text-neutral-400 flex-shrink-0 truncate max-w-[120px]">
                                         {group.ticket.metadata.email}
@@ -588,9 +617,9 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                                         {group.ticket.metadata.code}
                                       </span>
                                     )}
-                                    {isTicket && hasComments && (
+                                    {(isTicket || group.ticket.type === "task") && hasComments && (
                                       <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                                        ({group.comments.length} comment{group.comments.length !== 1 ? "s" : ""})
+                                        ({group.comments.length} {group.ticket.type === "task" ? "subtask" : "comment"}{group.comments.length !== 1 ? "s" : ""})
                                       </span>
                                     )}
                                   </div>
@@ -645,8 +674,8 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                               </div>
                             </div>
 
-                            {/* Comments */}
-                            {isTicket && hasComments && (
+                            {/* Comments / Subtasks */}
+                            {(isTicket || isTask) && hasComments && (
                               <div
                                 className={cn(
                                   "overflow-hidden transition-all duration-300 ease-in-out",
@@ -655,9 +684,10 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                               >
                                 {group.comments.map((comment, commentIndex) => {
                                   const commentResultIndex = results.findIndex((r) => r.id === comment.id && r.type === comment.type);
+                                  const isSubtask = comment.metadata?.isSubtask;
                                   return (
                                     <button
-                                      key={`comment-${comment.id}`}
+                                      key={`${isSubtask ? "subtask" : "comment"}-${comment.id}`}
                                       onClick={() => handleResultClick(comment)}
                                       className={cn(
                                         "w-full text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all duration-300 ease-in-out",
@@ -676,7 +706,9 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                                         <div className="flex-1 min-w-0">
                                           <div className="flex items-center gap-2 mb-1">
                                             <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">
-                                              Comment in {comment.metadata?.ticketNumber}:
+                                              {isSubtask 
+                                                ? `Subtask in ${comment.metadata?.parentTaskTitle || "task"}:`
+                                                : `Comment in ${comment.metadata?.ticketNumber}:`}
                                             </span>
                                           </div>
                                           <p className="text-sm text-neutral-700 dark:text-neutral-300">

@@ -55,17 +55,32 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
     }
   };
 
-  // Group results by ticket
+  // Group results by ticket/task
   const groupedResults = React.useMemo(() => {
     const groups: Array<{ ticket: SearchResult; comments: SearchResult[] }> = [];
     const ticketMap = new Map<string, SearchResult>();
+    const taskMap = new Map<string, SearchResult>();
     const commentMap = new Map<string, SearchResult[]>();
+    const subtaskMap = new Map<string, SearchResult[]>();
 
     results.forEach((result) => {
       if (result.type === "ticket") {
         ticketMap.set(result.id, result);
         if (!commentMap.has(result.id)) {
           commentMap.set(result.id, []);
+        }
+      } else if (result.type === "task") {
+        // Check if this is a subtask
+        if (result.metadata?.isSubtask && result.metadata?.parentTaskId) {
+          const subtasks = subtaskMap.get(result.metadata.parentTaskId) || [];
+          subtasks.push(result);
+          subtaskMap.set(result.metadata.parentTaskId, subtasks);
+        } else {
+          // Parent task
+          taskMap.set(result.id, result);
+          if (!subtaskMap.has(result.id)) {
+            subtaskMap.set(result.id, []);
+          }
         }
       } else if (result.type === "comment" && result.parentTicketId) {
         const comments = commentMap.get(result.parentTicketId) || [];
@@ -82,6 +97,14 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
       groups.push({
         ticket,
         comments: commentMap.get(ticket.id) || [],
+      });
+    });
+
+    // Add tasks with their subtasks (displayed like comments)
+    taskMap.forEach((task) => {
+      groups.push({
+        ticket: task,
+        comments: subtaskMap.get(task.id) || [],
       });
     });
 
@@ -322,6 +345,7 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
           <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
             {groupedResults.map((group) => {
               const isTicket = group.ticket.type === "ticket";
+              const isTask = group.ticket.type === "task";
               const hasComments = group.comments.length > 0;
               const isExpanded = expandedTickets.has(group.ticket.id);
               const shouldShowComments = visibleComments.has(group.ticket.id);
@@ -332,11 +356,11 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                   <tr className="hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors border-b border-neutral-200 dark:border-neutral-800">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
-                        {isTicket && hasComments && (
+                        {(isTicket || isTask) && hasComments && (
                           <button
                             onClick={() => toggleTicketExpansion(group.ticket.id)}
                             className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors"
-                            aria-label={isExpanded ? "Collapse comments" : "Expand comments"}
+                            aria-label={isExpanded ? `Collapse ${isTask ? "subtasks" : "comments"}` : `Expand ${isTask ? "subtasks" : "comments"}`}
                           >
                             <svg
                               className={cn(
@@ -367,12 +391,12 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                         >
                           {group.ticket.metadata.ticketNumber}
                         </Link>
-                      ) : group.ticket.type === "task" && group.ticket.metadata?.taskNumber ? (
+                      ) : group.ticket.type === "task" ? (
                         <Link
                           href={group.ticket.url}
                           className="text-sm font-mono font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300"
                         >
-                          {group.ticket.metadata.taskNumber}
+                          {group.ticket.metadata?.taskNumber || group.ticket.id.slice(0, 8) + "..."}
                         </Link>
                       ) : group.ticket.type === "user" && group.ticket.metadata?.email ? (
                         <span className="text-sm text-neutral-500 dark:text-neutral-400">
@@ -428,9 +452,9 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                               {group.ticket.metadata.ticketCount || 0} tickets • {group.ticket.metadata.timeEntryCount || 0} time entries • {group.ticket.metadata.memberCount || 0} members
                             </div>
                           )}
-                          {isTicket && hasComments && (
+                          {(isTicket || isTask) && hasComments && (
                             <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                              ({group.comments.length} comment{group.comments.length !== 1 ? "s" : ""})
+                              ({group.comments.length} {isTask ? "subtask" : "comment"}{group.comments.length !== 1 ? "s" : ""})
                             </div>
                           )}
                         </div>
@@ -599,16 +623,17 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                     </td>
                   </tr>
 
-                  {/* Comments */}
-                  {isTicket && hasComments && shouldShowComments && (
+                  {/* Comments / Subtasks */}
+                  {(isTicket || isTask) && hasComments && shouldShowComments && (
                     <>
                       {group.comments.map((comment, commentIndex) => {
-                        // Staggered delay for each comment
+                        // Staggered delay for each comment/subtask
                         const commentDelay = commentIndex * 30;
+                        const isSubtask = comment.metadata?.isSubtask;
                         
                         return (
                           <tr
-                            key={`comment-${comment.id}`}
+                            key={`${isSubtask ? "subtask" : "comment"}-${comment.id}`}
                             className={cn(
                               "bg-neutral-50/50 dark:bg-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-800",
                               isExpanded 
@@ -631,14 +656,21 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                             </div>
                           </td>
                           <td className="px-6 py-2 whitespace-nowrap">
-                            {comment.metadata?.ticketNumber && (
+                            {isSubtask && comment.metadata?.parentTaskTitle ? (
+                              <Link
+                                href={comment.url}
+                                className="text-xs font-mono text-neutral-500 dark:text-neutral-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                              >
+                                {group.ticket.metadata?.taskNumber || "Task"}
+                              </Link>
+                            ) : comment.metadata?.ticketNumber ? (
                               <Link
                                 href={comment.url}
                                 className="text-xs font-mono text-neutral-500 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400"
                               >
                                 {comment.metadata.ticketNumber}
                               </Link>
-                            )}
+                            ) : null}
                           </td>
                           <td className="px-6 py-2">
                             <Link
@@ -647,14 +679,26 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                             >
                               <div className="max-w-md">
                                 <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
-                                  Comment in {comment.metadata?.ticketTitle}:
+                                  {isSubtask
+                                    ? `Subtask in ${comment.metadata?.parentTaskTitle || "task"}:`
+                                    : `Comment in ${comment.metadata?.ticketTitle}:`}
                                 </div>
                                 <div className="truncate">{highlightMatch(comment.title, searchQuery)}</div>
                               </div>
                             </Link>
                           </td>
                           <td className="px-6 py-2 whitespace-nowrap">
-                            <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
+                            {isSubtask && comment.metadata?.status ? (
+                              <span
+                                className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(
+                                  comment.metadata.status
+                                )}`}
+                              >
+                                {comment.metadata.status.replace("_", " ")}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
+                            )}
                           </td>
                           <td className="px-6 py-2 whitespace-nowrap">
                             <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
