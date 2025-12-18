@@ -5,6 +5,7 @@ import { requireAuth, requireAnyPermission } from "@/lib/utils/auth-server";
 import { revalidatePath } from "next/cache";
 import { isModuleEnabled } from "./modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
+import { sanitizeHtml, extractPlainText } from "@/lib/utils/rich-text";
 
 /**
  * Check if an agent has access to a ticket
@@ -180,9 +181,16 @@ export async function createTask(
       order: input.order ?? 0,
     };
 
-    // Only add optional fields if they have values (not undefined)
+    // Process description similar to tickets: store sanitized HTML and plain text
     if (input.description !== undefined && input.description !== null) {
-      taskData.description = input.description.trim() || null;
+      const rawHtml = input.description;
+      const descriptionHtml = rawHtml ? sanitizeHtml(rawHtml) : null;
+      const descriptionPlain = descriptionHtml ? extractPlainText(descriptionHtml) : null;
+
+      // Keep legacy description field in sync with plain text for backward compatibility
+      taskData.description = descriptionPlain;
+      taskData.descriptionHtml = descriptionHtml;
+      taskData.descriptionPlain = descriptionPlain;
     }
     
     // Handle assignment: auto-assign to creator if not specified, or validate assignment to others
@@ -522,7 +530,15 @@ export async function updateTask(
 
     const updateData: any = {};
     if (input.title !== undefined) updateData.title = input.title.trim();
-    if (input.description !== undefined) updateData.description = input.description?.trim();
+    if (input.description !== undefined) {
+      const rawHtml = input.description;
+      const descriptionHtml = rawHtml ? sanitizeHtml(rawHtml) : null;
+      const descriptionPlain = descriptionHtml ? extractPlainText(descriptionHtml) : null;
+
+      updateData.description = descriptionPlain;
+      updateData.descriptionHtml = descriptionHtml;
+      updateData.descriptionPlain = descriptionPlain;
+    }
     if (input.status !== undefined) updateData.status = input.status;
     if (input.priority !== undefined) updateData.priority = input.priority;
     if (input.assignedToId !== undefined) updateData.assignedToId = input.assignedToId;

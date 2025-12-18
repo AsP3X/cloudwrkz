@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { getAgents } from "@/server/actions/users";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/utils/cn";
+import { RichTextDisplay } from "@/components/features/tickets/RichTextDisplay";
 
 interface TaskDetailPageProps {
   params: Promise<{ id: string }>;
@@ -181,14 +182,14 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
           {/* Task Description */}
-          {task.description && (
+          {(task as any).descriptionHtml || task.description ? (
             <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
               <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">Description</h2>
-              <div className="prose prose-sm max-w-none">
-                <p className="text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap">{task.description}</p>
-              </div>
+              <RichTextDisplay
+                content={(task as any).descriptionHtml || task.description || ""}
+              />
             </div>
-          )}
+          ) : null}
 
           {/* Subtasks */}
           {task.subtasks && task.subtasks.length > 0 && (

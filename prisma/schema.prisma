@@ -605,10 +605,12 @@ model Task {
   parentTask   Task?   @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
   subtasks     Task[]  @relation("TaskHierarchy")
 
-  title       String
-  description String?
-  status      TaskStatus   @default(NOT_STARTED)
-  priority    TaskPriority @default(MEDIUM)
+  title            String
+  description      String? // Legacy plain text field (will be migrated)
+  descriptionHtml  String? // Rich text HTML (sanitized)
+  descriptionPlain String? // Plain text version for search/indexing
+  status           TaskStatus   @default(NOT_STARTED)
+  priority         TaskPriority @default(MEDIUM)
 
   // Assignment
   assignedToId String?
