@@ -182,9 +182,6 @@ export const Footer = () => {
           >
             © {currentYear} {APP_CONFIG.name}. All rights reserved.
           </p>
-          <p className="text-neutral-400 dark:text-neutral-500 text-sm mt-4 sm:mt-0">
-            Built with ❤️ using Next.js 15
-          </p>
         </div>
       </div>
     </footer>

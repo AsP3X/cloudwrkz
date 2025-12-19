@@ -39,7 +39,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           ref={ref}
           id={inputId}
           className={cn(
-            "w-full px-4 py-3 rounded-lg border-2 transition-all duration-200",
+            "w-full px-4 py-3 rounded-lg border transition-all duration-200",
             // Base colors (light mode)
             "bg-white text-neutral-900 border-neutral-200",
             "placeholder:text-neutral-400",
@@ -47,9 +47,9 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
             "dark:bg-neutral-900 dark:text-neutral-100 dark:border-neutral-800",
             "dark:placeholder:text-neutral-500",
             // Focus states
-            "focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2",
+            "focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
             "focus:border-primary-500",
-            "dark:focus:ring-offset-neutral-900 dark:focus:border-primary-400",
+            "dark:focus:border-primary-400",
             // Hover states
             "hover:border-neutral-300 dark:hover:border-neutral-700",
             // Disabled states

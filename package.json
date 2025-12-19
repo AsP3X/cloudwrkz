@@ -76,6 +76,14 @@
   "pnpm": {
     "overrides": {
       "glob": ">=10.5.0"
-    }
+    },
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "esbuild",
+      "prisma",
+      "sharp",
+      "unrs-resolver"
+    ]
   }
 }
