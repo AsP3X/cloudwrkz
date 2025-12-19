@@ -84,6 +84,7 @@ export async function canUserViewModule(userId: string, moduleKey: ModuleKey): P
     [MODULE_KEYS.TICKETS]: "modules.tickets.view",
     [MODULE_KEYS.TIMETRACKING]: "modules.timetracking.view",
     [MODULE_KEYS.PROJECTS]: "modules.projects.view",
+    [MODULE_KEYS.TASKS]: "modules.tasks.view",
   };
 
   const permissionKey = modulePermissionMap[moduleKey];
@@ -94,6 +95,20 @@ export async function canUserViewModule(userId: string, moduleKey: ModuleKey): P
 
   // Check if user has permission to view this module
   const userPermissions = await getUserPermissions(userId);
+  
+  // Special handling for TASKS: also check for task-related permissions
+  // If user has any task permission (tasks.view, tasks.create, etc.), they can see the module
+  if (moduleKey === MODULE_KEYS.TASKS) {
+    const hasModulePermission = userPermissions.has(permissionKey as any);
+    const hasTaskPermission = 
+      userPermissions.has("tasks.view" as any) ||
+      userPermissions.has("tasks.create" as any) ||
+      userPermissions.has("tasks.update" as any) ||
+      userPermissions.has("tasks.delete" as any);
+    
+    return hasModulePermission || hasTaskPermission;
+  }
+  
   return userPermissions.has(permissionKey as any);
 }
 
@@ -103,24 +118,18 @@ export async function canUserViewModule(userId: string, moduleKey: ModuleKey): P
  * Only returns modules that are defined in MODULE_CONFIG
  */
 export async function getAllModules() {
+  // Always (re)initialize modules to ensure new MODULE_CONFIG entries
+  // are created in the database and deprecated ones are cleaned up.
+  await initializeModules();
+
   const allModules = await prisma.module.findMany({
     orderBy: { name: "asc" },
   });
-
-  // Auto-initialize if no modules exist
-  if (allModules.length === 0) {
-    await initializeModules();
-    const initializedModules = await prisma.module.findMany({
-      orderBy: { name: "asc" },
-    });
-    // Filter to only return modules in MODULE_CONFIG
-    const validModuleKeys = new Set(Object.keys(MODULE_CONFIG));
-    return initializedModules.filter((module) => validModuleKeys.has(module.key));
-  }
-
-  // Filter to only return modules that are defined in MODULE_CONFIG
-  const validModuleKeys = new Set(Object.keys(MODULE_CONFIG));
-  return allModules.filter((module) => validModuleKeys.has(module.key));
+  
+  // Return all modules from the database. Since initializeModules keeps
+  // the table in sync with MODULE_CONFIG (and cleans up deprecated keys),
+  // this will naturally include any newly added modules like tasks.
+  return allModules;
 }
 
 /**

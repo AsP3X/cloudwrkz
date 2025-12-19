@@ -36,69 +36,89 @@ const ToolbarButton: React.FC<ToolbarButtonProps> = ({
   handledInMouseDownRef,
 }) => {
   const handleMouseDown = (e: React.MouseEvent) => {
-    // Preserve selection before button click to prevent it from being lost
-    if (editor) {
-      const { from, to } = editor.state.selection;
-      handledInMouseDownRef.current = true; // Mark that we're handling it in mousedown
-      if (from !== to) {
-        // Store the selection to restore it if needed
-        preservedSelectionRef.current = { from, to };
-        // Prevent default to avoid losing focus/selection
-        // This prevents the browser from moving focus away from the editor
-        e.preventDefault();
-        // Execute the click handler immediately to apply formatting
-        // Use requestAnimationFrame to ensure editor state is ready
-        requestAnimationFrame(() => {
-          if (preservedSelectionRef.current && editor && !editor.isDestroyed) {
-            const { from, to } = preservedSelectionRef.current;
-            // Restore selection before applying formatting
-            editor.commands.setTextSelection({ from, to });
-            // Apply the formatting
-            onClick();
-            // Clear the preserved selection
-            preservedSelectionRef.current = null;
-            handledInMouseDownRef.current = false;
-          }
-        });
-      } else {
-        // No selection - prevent default to maintain focus
-        e.preventDefault();
-        preservedSelectionRef.current = null;
-        // Focus editor first, then execute in next tick to ensure focus is set
-        if (editor && !editor.isDestroyed) {
-          editor.commands.focus();
-          // Use setTimeout to ensure focus is applied before executing
-          setTimeout(() => {
-            if (editor && !editor.isDestroyed) {
-              onClick();
-              handledInMouseDownRef.current = false;
-            }
-          }, 0);
-        }
-      }
+    // Always prevent default to prevent the button from taking focus away from the editor
+    e.preventDefault();
+    
+    if (!editor || editor.isDestroyed) return;
+    
+    // Mark that we're handling it in mousedown to prevent double execution
+    handledInMouseDownRef.current = true;
+    
+    // Preserve the current selection before the button click
+    const { from, to } = editor.state.selection;
+    const hasSelection = from !== to;
+    
+    if (hasSelection) {
+      // Store the selection to restore it
+      preservedSelectionRef.current = { from, to };
+    } else {
+      preservedSelectionRef.current = null;
     }
-  };
-
-  const handleClick = () => {
-    // Only handle click if it wasn't already handled in mousedown
-    // This prevents double execution when mousedown already handled it
-    if (!handledInMouseDownRef.current) {
-      // Ensure editor is focused before applying formatting
-      if (editor && !editor.isFocused) {
+    
+    // Ensure editor is focused
+    if (!editor.isFocused) {
+      editor.commands.focus();
+    }
+    
+    // Execute the formatting command immediately
+    // Use requestAnimationFrame to ensure the editor state is ready
+    requestAnimationFrame(() => {
+      if (!editor || editor.isDestroyed) {
+        handledInMouseDownRef.current = false;
+        return;
+      }
+      
+      // Restore selection if we had one
+      if (preservedSelectionRef.current) {
+        const { from, to } = preservedSelectionRef.current;
+        editor.commands.setTextSelection({ from, to });
+      }
+      
+      // Ensure focus is maintained
+      if (!editor.isFocused) {
         editor.commands.focus();
       }
+      
       // Apply the formatting
       onClick();
-    }
-
-    // Reset the flag for next click
-    handledInMouseDownRef.current = false;
-
-    // Refocus editor after clicking button on mobile to keep toolbar visible
-    if (isMobile && editor) {
+      
+      // Clear preserved selection
+      preservedSelectionRef.current = null;
+      
+      // Reset flag after a short delay to allow click handler to see it was handled
       setTimeout(() => {
-        editor.commands.focus();
-      }, 50);
+        handledInMouseDownRef.current = false;
+      }, 100);
+    });
+  };
+
+  const handleClick = (e: React.MouseEvent) => {
+    // Prevent default to avoid any default button behavior
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Only handle click if it wasn't already handled in mousedown
+    if (handledInMouseDownRef.current) {
+      return;
+    }
+    
+    if (!editor || editor.isDestroyed) return;
+    
+    // Ensure editor is focused before applying formatting
+    if (!editor.isFocused) {
+      editor.commands.focus();
+    }
+    
+    // Apply the formatting
+    onClick();
+    
+    // Refocus editor after clicking button to maintain focus
+    if (editor && !editor.isDestroyed) {
+      requestAnimationFrame(() => {
+        if (editor && !editor.isDestroyed && !editor.isFocused) {
+          editor.commands.focus();
+        }
+      });
     }
   };
 
@@ -159,6 +179,34 @@ const HIGHLIGHT_COLORS = [
   { name: "Purple", value: "#E9D5FF" },
   { name: "Red", value: "#FECACA" },
 ];
+
+// Utility function to determine if a color is bright (light)
+// Returns true if the color is bright enough that black text would be more readable
+const isBrightColor = (color: string): boolean => {
+  if (!color || color.startsWith("#") === false) return false;
+  
+  // Remove # if present
+  const hex = color.replace("#", "");
+  
+  // Parse RGB values
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  
+  // Calculate relative luminance (using the formula from WCAG)
+  // https://www.w3.org/WAI/GL/wiki/Relative_luminance
+  const getLuminance = (val: number) => {
+    const normalized = val / 255;
+    return normalized <= 0.03928
+      ? normalized / 12.92
+      : Math.pow((normalized + 0.055) / 1.055, 2.4);
+  };
+  
+  const luminance = 0.2126 * getLuminance(r) + 0.7152 * getLuminance(g) + 0.0722 * getLuminance(b);
+  
+  // If luminance is greater than 0.5, the color is bright and black text is better
+  return luminance > 0.5;
+};
 
 export const RichTextEditorToolbar = ({
   editor,
@@ -263,10 +311,25 @@ export const RichTextEditorToolbar = ({
             onClick={() => {
               const selection = preservedSelectionRef.current || editor.state.selection;
               const { from, to } = selection;
-              if (from !== to) {
-                editor.chain().focus().setTextSelection({ from, to }).toggleBold().run();
+              const hasSelection = from !== to;
+              
+              if (hasSelection) {
+                // Apply bold only to selected text (not stored marks for future typing)
+                editor
+                  .chain()
+                  .focus()
+                  .setTextSelection({ from, to })
+                  .toggleBold()
+                  .command(({ tr, dispatch }) => {
+                    if (dispatch) {
+                      // Clear stored marks so bold doesn't continue for future typing
+                      tr.setStoredMarks([]);
+                    }
+                    return true;
+                  })
+                  .run();
               } else {
-                editor.chain().focus().toggleBold().run();
+                // No selection - don't apply bold (bold only works on selected text)
               }
             }}
             isActive={isBoldActive}
@@ -341,7 +404,7 @@ export const RichTextEditorToolbar = ({
             >
               <div className="relative">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                 </svg>
                 {currentTextColor && (
                   <div
@@ -363,10 +426,35 @@ export const RichTextEditorToolbar = ({
                       key={color.name}
                       type="button"
                       onClick={() => {
+                        const { from, to } = editor.state.selection;
+                        const hasSelection = from !== to;
+                        
                         if (color.value) {
-                          editor.chain().focus().setColor(color.value).run();
+                          if (hasSelection) {
+                            // Apply text color only to selected text (not stored marks for future typing)
+                            editor
+                              .chain()
+                              .focus()
+                              .setTextSelection({ from, to })
+                              .setColor(color.value)
+                              .command(({ tr, dispatch }) => {
+                                if (dispatch) {
+                                  // Clear stored marks so text color doesn't continue for future typing
+                                  tr.setStoredMarks([]);
+                                }
+                                return true;
+                              })
+                              .run();
+                          } else {
+                            // No selection - don't apply text color (text color only works on selected text)
+                          }
                         } else {
-                          editor.chain().focus().unsetColor().run();
+                          // Remove text color from selection
+                          if (hasSelection) {
+                            editor.chain().focus().setTextSelection({ from, to }).unsetColor().run();
+                          } else {
+                            editor.chain().focus().unsetColor().run();
+                          }
                         }
                         setTextColorOpen(false);
                       }}
@@ -425,10 +513,25 @@ export const RichTextEditorToolbar = ({
               onClick={() => {
                 const selection = preservedSelectionRef.current || editor.state.selection;
                 const { from, to } = selection;
-                if (from !== to) {
-                  editor.chain().focus().setTextSelection({ from, to }).toggleBold().run();
+                const hasSelection = from !== to;
+                
+                if (hasSelection) {
+                  // Apply bold only to selected text (not stored marks for future typing)
+                  editor
+                    .chain()
+                    .focus()
+                    .setTextSelection({ from, to })
+                    .toggleBold()
+                    .command(({ tr, dispatch }) => {
+                      if (dispatch) {
+                        // Clear stored marks so bold doesn't continue for future typing
+                        tr.setStoredMarks([]);
+                      }
+                      return true;
+                    })
+                    .run();
                 } else {
-                  editor.chain().focus().toggleBold().run();
+                  // No selection - don't apply bold (bold only works on selected text)
                 }
               }}
               isActive={isBoldActive}
@@ -457,10 +560,25 @@ export const RichTextEditorToolbar = ({
               onClick={() => {
                 const selection = preservedSelectionRef.current || editor.state.selection;
                 const { from, to } = selection;
-                if (from !== to) {
-                  editor.chain().focus().setTextSelection({ from, to }).toggleItalic().run();
+                const hasSelection = from !== to;
+                
+                if (hasSelection) {
+                  // Apply italic only to selected text (not stored marks for future typing)
+                  editor
+                    .chain()
+                    .focus()
+                    .setTextSelection({ from, to })
+                    .toggleItalic()
+                    .command(({ tr, dispatch }) => {
+                      if (dispatch) {
+                        // Clear stored marks so italic doesn't continue for future typing
+                        tr.setStoredMarks([]);
+                      }
+                      return true;
+                    })
+                    .run();
                 } else {
-                  editor.chain().focus().toggleItalic().run();
+                  // No selection - don't apply italic (italic only works on selected text)
                 }
               }}
               isActive={isItalicActive}
@@ -483,92 +601,123 @@ export const RichTextEditorToolbar = ({
         </FloatingTooltip>
       </div>
 
-      {/* Text Color */}
+      {/* Text Color and Highlight Color */}
       <div
         className={cn(
-          "relative border-r border-neutral-300 dark:border-neutral-600 pr-2 mr-2"
+          "flex items-center border-r border-neutral-300 dark:border-neutral-600 gap-1 pr-2 mr-2"
         )}
-        ref={textColorRef}
       >
-        <FloatingTooltip
-          triggerMode="hover"
-          position="top"
-          trigger={
-            <ToolbarButton
-              editor={editor}
-              isMobile={false}
-              preservedSelectionRef={preservedSelectionRef}
-              handledInMouseDownRef={handledInMouseDownRef}
-              onClick={() => setTextColorOpen(!textColorOpen)}
-              isActive={!!currentTextColor}
-              title="Text color"
-            >
-              <div className="relative">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
-                </svg>
-                {currentTextColor && (
-                  <div
-                    className="absolute bottom-0 right-0 w-2 h-2 rounded-full border border-white dark:border-neutral-800"
-                    style={{ backgroundColor: currentTextColor }}
-                  />
-                )}
-              </div>
-            </ToolbarButton>
-          }
+        {/* Text Color */}
+        <div
+          className={cn(
+            "relative"
+          )}
+          ref={textColorRef}
         >
-          <div className="px-3 py-1.5 text-xs text-neutral-800 dark:text-neutral-100">
-            Text color
-          </div>
-        </FloatingTooltip>
-        {textColorOpen && (
-          <div
-            className={cn(
-              "absolute bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg p-2 min-w-[180px] z-50 top-full left-0 mt-1"
-            )}
+          <FloatingTooltip
+            triggerMode="hover"
+            position="top"
+            trigger={
+              <ToolbarButton
+                editor={editor}
+                isMobile={false}
+                preservedSelectionRef={preservedSelectionRef}
+                handledInMouseDownRef={handledInMouseDownRef}
+                onClick={() => setTextColorOpen(!textColorOpen)}
+                isActive={!!currentTextColor}
+                title="Text color"
+              >
+                <div className="relative">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                  {currentTextColor && (
+                    <div
+                      className="absolute bottom-0 right-0 w-2 h-2 rounded-full border border-white dark:border-neutral-800"
+                      style={{ backgroundColor: currentTextColor }}
+                    />
+                  )}
+                </div>
+              </ToolbarButton>
+            }
           >
-            <div className="grid grid-cols-4 gap-2">
-              {TEXT_COLORS.map((color) => (
-                <button
-                  key={color.name}
-                  type="button"
-                  onClick={() => {
-                    if (color.value) {
-                      editor.chain().focus().setColor(color.value).run();
-                    } else {
-                      editor.chain().focus().unsetColor().run();
-                    }
-                    setTextColorOpen(false);
-                  }}
-                  className={cn(
-                    "w-8 h-8 rounded border-2 transition-all hover:scale-110",
-                    color.value === null
-                      ? "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 flex items-center justify-center"
-                      : "border-transparent",
-                    currentTextColor === color.value && "ring-2 ring-primary-500 ring-offset-1"
-                  )}
-                  style={color.value ? { backgroundColor: color.value } : undefined}
-                  title={color.name}
-                >
-                  {color.value === null && (
-                    <svg className="w-4 h-4 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  )}
-                </button>
-              ))}
+            <div className="px-3 py-1.5 text-xs text-neutral-800 dark:text-neutral-100">
+              Text color
             </div>
-          </div>
-        )}
-      </div>
+          </FloatingTooltip>
+          {textColorOpen && (
+            <div
+              className={cn(
+                "absolute bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg p-2 min-w-[180px] z-50 top-full left-0 mt-1"
+              )}
+            >
+              <div className="grid grid-cols-4 gap-2">
+                {TEXT_COLORS.map((color) => (
+                  <button
+                    key={color.name}
+                    type="button"
+                    onClick={() => {
+                      const { from, to } = editor.state.selection;
+                      const hasSelection = from !== to;
+                      
+                      if (color.value) {
+                        if (hasSelection) {
+                          // Apply text color only to selected text (not stored marks for future typing)
+                          editor
+                            .chain()
+                            .focus()
+                            .setTextSelection({ from, to })
+                            .setColor(color.value)
+                            .command(({ tr, dispatch }) => {
+                              if (dispatch) {
+                                // Clear stored marks so text color doesn't continue for future typing
+                                tr.setStoredMarks([]);
+                              }
+                              return true;
+                            })
+                            .run();
+                        } else {
+                          // No selection - don't apply text color (text color only works on selected text)
+                        }
+                      } else {
+                        // Remove text color from selection
+                        if (hasSelection) {
+                          editor.chain().focus().setTextSelection({ from, to }).unsetColor().run();
+                        } else {
+                          editor.chain().focus().unsetColor().run();
+                        }
+                      }
+                      setTextColorOpen(false);
+                    }}
+                    className={cn(
+                      "w-8 h-8 rounded border-2 transition-all hover:scale-110",
+                      color.value === null
+                        ? "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 flex items-center justify-center"
+                        : "border-transparent",
+                      currentTextColor === color.value && "ring-2 ring-primary-500 ring-offset-1"
+                    )}
+                    style={color.value ? { backgroundColor: color.value } : undefined}
+                    title={color.name}
+                  >
+                    {color.value === null && (
+                      <svg className="w-4 h-4 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
 
-      {/* Highlight Color */}
-      <div
-        className={cn(
-          "relative border-r border-neutral-300 dark:border-neutral-600 pr-2 mr-2"
-        )}
-        ref={highlightColorRef}
-      >
+        {/* Highlight Color */}
+        <div
+          className={cn(
+            "relative"
+          )}
+          ref={highlightColorRef}
+        >
         <FloatingTooltip
           triggerMode="hover"
           position="top"
@@ -584,7 +733,7 @@ export const RichTextEditorToolbar = ({
             >
               <div className="relative">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
                 </svg>
                 {currentHighlightColor && (
                   <div
@@ -612,10 +761,43 @@ export const RichTextEditorToolbar = ({
                   key={color.name}
                   type="button"
                   onClick={() => {
+                    const { from, to } = editor.state.selection;
+                    const hasSelection = from !== to;
+                    
                     if (color.value) {
-                      editor.chain().focus().toggleHighlight({ color: color.value }).run();
+                      if (hasSelection) {
+                        // Apply highlight only to selected text (not stored marks for future typing)
+                        const chain = editor
+                          .chain()
+                          .focus()
+                          .setTextSelection({ from, to })
+                          .setHighlight({ color: color.value });
+                        
+                        // If the highlight color is bright, also set text color to black for readability
+                        if (isBrightColor(color.value)) {
+                          chain.setColor("#000000");
+                        }
+                        
+                        chain
+                          .command(({ tr, dispatch }) => {
+                            if (dispatch) {
+                              // Clear stored marks so highlight doesn't continue for future typing
+                              tr.setStoredMarks([]);
+                            }
+                            return true;
+                          })
+                          .run();
+                      } else {
+                        // No selection - don't apply highlight (highlights only work on selected text)
+                        // Optionally, we could show a message, but for now just do nothing
+                      }
                     } else {
-                      editor.chain().focus().unsetHighlight().run();
+                      // Remove highlight from selection
+                      if (hasSelection) {
+                        editor.chain().focus().setTextSelection({ from, to }).unsetHighlight().run();
+                      } else {
+                        editor.chain().focus().unsetHighlight().run();
+                      }
                     }
                     setHighlightColorOpen(false);
                   }}
@@ -639,6 +821,7 @@ export const RichTextEditorToolbar = ({
             </div>
           </div>
         )}
+        </div>
       </div>
 
       {/* Lists */}

@@ -67,6 +67,7 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting, userT
     register,
     handleSubmit,
     control,
+    reset,
     formState: { errors },
   } = useForm<UpdateTimeEntryInput>({
     resolver: zodResolver(updateTimeEntrySchema),
@@ -81,6 +82,22 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting, userT
       stoppedAt: entry.stoppedAt ?? undefined,
     },
   });
+
+  // Reset form when entry changes to ensure each entry has its own form state
+  React.useEffect(() => {
+    reset({
+      name: entry.name,
+      description: entry.description || "",
+      tags: entry.tags,
+      billable: entry.billable,
+      location: entry.location || "",
+      timezone: entry.timezone || "",
+      startedAt: entry.startedAt,
+      stoppedAt: entry.stoppedAt ?? undefined,
+    });
+    // Also update local tags state
+    setTags(entry.tags);
+  }, [entry.id, entry.name, entry.description, entry.tags, entry.billable, entry.location, entry.timezone, entry.startedAt, entry.stoppedAt, reset]);
 
   const handleAddTag = () => {
     const trimmed = tagInput.trim();

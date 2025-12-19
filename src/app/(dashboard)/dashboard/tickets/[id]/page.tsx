@@ -20,7 +20,9 @@ import { notFound } from "next/navigation";
 import { getAgents } from "@/server/actions/users";
 import { getGroups } from "@/server/actions/groups";
 import { getTimeEntriesForTicket, getAvailableTimeEntriesForAssignment } from "@/server/actions/time-tracking";
-import { getUserProjectsForAssignment, getProject } from "@/server/actions/projects";
+import { getUserProjectsForAssignment, canEditProject } from "@/server/actions/projects";
+import { getTicketTasks } from "@/server/actions/tasks";
+import { TasksSection } from "@/components/features/tasks/TasksSection";
 
 interface TicketDetailPageProps {
   params: Promise<{ id: string }>;
@@ -130,6 +132,14 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
   const activeTimeEntries = timeTrackingEnabled
     ? timeEntries.filter((entry) => entry.status === "RUNNING" || entry.status === "PAUSED")
     : [];
+
+  // Determine if current user can manage tasks for this ticket's project
+  const ticketHasProject = !!ticket.projectId;
+  const canManageTasks =
+    ticketHasProject && user.role !== "USER" && (await canEditProject(user.id, ticket.projectId!));
+
+  // Load tasks linked to this ticket (project permissions are checked internally)
+  const ticketTasks = await getTicketTasks(ticket.id);
 
 
   const getStatusColor = (status: string) => {
@@ -289,6 +299,14 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
               content={(ticket as any).descriptionHtml || ticket.description || ""}
             />
           </div>
+
+          {/* Tasks */}
+          <TasksSection
+            ticketId={ticket.id}
+            tasks={ticketTasks as any}
+            canManage={!!canManageTasks}
+            ticketHasProject={ticketHasProject}
+          />
 
           {/* Comments and Activity Section */}
           <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">

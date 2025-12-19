@@ -1,15 +1,17 @@
 "use server";
 
 import { prisma } from "@/lib/db/prisma";
+import { Prisma } from "@prisma/client";
 import { requireAuth } from "@/lib/utils/auth-server";
 import { formatUserName } from "@/lib/utils/users";
 import { canUserViewModule } from "./modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { fuzzySearch, rankAndLimit } from "@/lib/utils/fuzzy-search";
 import { getUserPermissions } from "@/lib/utils/permissions";
+import { formatTimerNumber } from "@/lib/utils/time-tracking";
 
 export type SearchResult = {
-  type: "ticket" | "module" | "user" | "comment" | "timeentry" | "project" | "setting";
+  type: "ticket" | "module" | "user" | "comment" | "timeentry" | "project" | "setting" | "task";
   id: string;
   title: string;
   description?: string;
@@ -54,12 +56,14 @@ export async function globalSearch(query: string, limit: number = 10): Promise<S
   let totalCount = 0;
 
   // Distribute limit across different result types
-  // 25% users, 35% tickets, 15% time entries, 15% projects, 10% settings
+  // Priority order: User, Tickets, Task, Timer, Other
+  // 25% users, 30% tickets, 20% tasks, 15% time entries, 10% other (projects + settings)
   const userLimit = Math.max(1, Math.floor(limit * 0.25));
-  const ticketLimit = Math.max(1, Math.floor(limit * 0.35));
+  const ticketLimit = Math.max(1, Math.floor(limit * 0.3));
+  const taskLimit = Math.max(1, Math.floor(limit * 0.2));
   const timeEntryLimit = Math.max(1, Math.floor(limit * 0.15));
-  const projectLimit = Math.max(1, Math.floor(limit * 0.15));
-  const settingsLimit = Math.max(1, Math.floor(limit * 0.1));
+  const projectLimit = Math.max(1, Math.floor(limit * 0.05));
+  const settingsLimit = Math.max(1, Math.floor(limit * 0.05));
 
   // Get user permissions
   const userPermissions = await getUserPermissions(user.id);
@@ -75,6 +79,14 @@ export async function globalSearch(query: string, limit: number = 10): Promise<S
     const ticketResults = await searchTickets(searchTerm, user, ticketLimit, userPermissions);
     totalCount += ticketResults.length;
     results.push(...ticketResults);
+  }
+
+  // Search tasks (task module)
+  const canViewTasks = await canUserViewModule(user.id, MODULE_KEYS.TASKS);
+  if (canViewTasks) {
+    const taskResults = await searchTasks(searchTerm, user, taskLimit, userPermissions);
+    totalCount += taskResults.length;
+    results.push(...taskResults);
   }
 
   // Search time entries if user can view time tracking module
@@ -142,6 +154,13 @@ export async function advancedSearch(filters: SearchFilters): Promise<SearchResp
   if (canViewProjects) {
     const projectResults = await searchProjects(searchTerm, user, filters.limit || 100, userPermissions);
     results.push(...projectResults);
+  }
+
+  // Search tasks if user can view tasks module
+  const canViewTasks = await canUserViewModule(user.id, MODULE_KEYS.TASKS);
+  if (canViewTasks && searchTerm) {
+    const taskResults = await searchTasks(searchTerm, user, filters.limit || 100, userPermissions);
+    results.push(...taskResults);
   }
 
   // Search settings that are available to the current user
@@ -795,6 +814,7 @@ async function searchTimeEntries(
       description: entry.description || undefined,
       url: `/dashboard/time-tracking/${entry.id}`,
       metadata: {
+        timerNumber: formatTimerNumber(entry.name, entry.id), // Timer number in TMR-000000 format (6 digits)
         status: entry.status,
         tags: entry.tags,
         location: entry.location,
@@ -851,6 +871,7 @@ async function searchTimeEntries(
     description: entry.description || undefined,
     url: `/dashboard/time-tracking/${entry.id}`,
     metadata: {
+      timerNumber: formatTimerNumber(entry.name, entry.id), // Timer number in TMR-000000 format (6 digits)
       status: entry.status,
       tags: entry.tags,
       location: entry.location,
@@ -867,6 +888,640 @@ async function searchTimeEntries(
       updatedAt: entry.updatedAt,
     },
   }));
+}
+
+/**
+ * Search tasks (including subtasks) by title and description with fuzzy matching.
+ * Respects task visibility rules similar to the tasks module:
+ * - Admins/Moderators: all tasks
+ * - Agents: tasks assigned to them, or tasks linked to tickets they have access to
+ * - Regular users: tasks assigned to them
+ */
+async function searchTasks(
+  searchTerm: string,
+  user: Awaited<ReturnType<typeof requireAuth>>,
+  limit: number,
+  userPermissions: Set<string>
+): Promise<SearchResult[]> {
+  const where: any = {};
+
+  // Determine base visibility
+  const isAdminOrModerator = user.role === "ADMIN" || user.role === "MODERATOR";
+
+  if (!isAdminOrModerator && user.role !== "AGENT") {
+    // Regular users can only see tasks assigned to them
+    where.assignedToId = user.id;
+  } else if (user.role === "AGENT") {
+    // Agents: tasks assigned to them OR tasks linked to tickets they have access to
+    // First collect tickets they have access to (same rules as agentHasTicketAccess)
+    const memberships = await prisma.groupMembership.findMany({
+      where: { userId: user.id },
+      select: { groupId: true },
+    });
+    const agentGroupIds = memberships.map((m) => m.groupId);
+
+    const accessibleTickets = await prisma.ticket.findMany({
+      where: {
+        OR: [
+          { createdById: user.id },
+          { assignedToId: user.id },
+          ...(agentGroupIds.length > 0
+            ? [{ assignedToGroupId: { in: agentGroupIds } }]
+            : []),
+        ],
+      },
+      select: { id: true },
+    });
+
+    const accessibleTicketIds = accessibleTickets.map((t) => t.id);
+
+    where.OR = [
+      { assignedToId: user.id },
+      ...(accessibleTicketIds.length > 0
+        ? [{ ticketId: { in: accessibleTicketIds } }]
+        : []),
+    ];
+  }
+  // Admins/Moderators: no extra filter, see all tasks
+
+  // Use PostgreSQL full-text search for initial filtering if search term is provided
+  let taskIdsFromTextSearch: string[] = [];
+  
+  if (searchTerm && searchTerm.trim().length >= 2) {
+    // Build permission filter conditions
+    const permissionConditions: string[] = [];
+    if (!isAdminOrModerator && user.role !== "AGENT") {
+      permissionConditions.push(`"assignedToId" = '${user.id.replace(/'/g, "''")}'`);
+    } else if (user.role === "AGENT") {
+      const memberships = await prisma.groupMembership.findMany({
+        where: { userId: user.id },
+        select: { groupId: true },
+      });
+      const agentGroupIds = memberships.map((m) => m.groupId);
+      
+      const accessibleTickets = await prisma.ticket.findMany({
+        where: {
+          OR: [
+            { createdById: user.id },
+            { assignedToId: user.id },
+            ...(agentGroupIds.length > 0
+              ? [{ assignedToGroupId: { in: agentGroupIds } }]
+              : []),
+          ],
+        },
+        select: { id: true },
+      });
+      const accessibleTicketIds = accessibleTickets.map((t) => t.id);
+      
+      permissionConditions.push(`"assignedToId" = '${user.id.replace(/'/g, "''")}'`);
+      if (accessibleTicketIds.length > 0) {
+        const ticketIds = accessibleTicketIds.map(id => `'${id.replace(/'/g, "''")}'`).join(',');
+        permissionConditions.push(`"ticketId" = ANY(ARRAY[${ticketIds}]::text[])`);
+      }
+    }
+    
+    const permissionFilter = permissionConditions.length > 0 
+      ? `AND (${permissionConditions.join(' OR ')})`
+      : '';
+    
+    const sanitizedSearchTerm = searchTerm.trim().replace(/'/g, "''"); // Escape single quotes for SQL
+    const searchLimit = Math.min(limit * 5, 500);
+    
+    // Use full-text search to get matching task IDs (uses GIN index)
+    // Use Prisma.sql for safe parameterization
+    const textSearchQuery = Prisma.sql`
+      SELECT id
+      FROM tasks
+      WHERE to_tsvector('english', 
+        COALESCE(title, '') || ' ' || 
+        COALESCE("descriptionPlain", '') || ' ' || 
+        COALESCE("taskNumber", '')
+      ) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
+      ${permissionFilter ? Prisma.raw(permissionFilter) : Prisma.sql``}
+      ORDER BY ts_rank(
+        to_tsvector('english', 
+          COALESCE(title, '') || ' ' || 
+          COALESCE("descriptionPlain", '') || ' ' || 
+          COALESCE("taskNumber", '')
+        ),
+        plainto_tsquery('english', ${sanitizedSearchTerm})
+      ) DESC
+      LIMIT ${searchLimit}
+    `;
+    
+    const textSearchResults = await prisma.$queryRaw<Array<{ id: string }>>(textSearchQuery);
+    
+    taskIdsFromTextSearch = textSearchResults.map(r => r.id);
+    
+    // Also check subtasks for matches and include their parent task IDs
+    if (taskIdsFromTextSearch.length === 0 || taskIdsFromTextSearch.length < limit) {
+      const subtaskLimit = limit * 2;
+      const subtaskSearchQuery = Prisma.sql`
+        SELECT DISTINCT "parentTaskId" as id
+        FROM tasks
+        WHERE "parentTaskId" IS NOT NULL
+        AND to_tsvector('english', 
+          COALESCE(title, '') || ' ' || 
+          COALESCE("descriptionPlain", '')
+        ) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
+        ${permissionFilter ? Prisma.raw(permissionFilter) : Prisma.sql``}
+        LIMIT ${subtaskLimit}
+      `;
+      
+      const subtaskSearchResults = await prisma.$queryRaw<Array<{ id: string }>>(subtaskSearchQuery);
+      
+      const subtaskParentIds = subtaskSearchResults.map(r => r.id);
+      taskIdsFromTextSearch = [...new Set([...taskIdsFromTextSearch, ...subtaskParentIds])];
+    }
+    
+    // Add text search filter to where clause only when we actually have matches.
+    // If there are no text-search matches, we fall back to permission-scoped tasks
+    // and rely on Fuse.js for fuzzy matching (including subtasks).
+    if (taskIdsFromTextSearch.length > 0) {
+      where.id = { in: taskIdsFromTextSearch };
+    }
+  }
+  
+  // Reduced candidate limit - we're already filtering at database level
+  const candidateLimit = searchTerm ? Math.min(limit * 2, 200) : Math.min(limit * 2, 100);
+
+  const tasks = await prisma.task.findMany({
+    where,
+    select: {
+      id: true,
+      taskNumber: true,
+      title: true,
+      description: true,
+      descriptionPlain: true,
+      status: true,
+      priority: true,
+      createdAt: true,
+      updatedAt: true,
+      parentTaskId: true,
+      parentTask: {
+        select: {
+          id: true,
+          title: true,
+        },
+      },
+      assignedToId: true,
+      assignedTo: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      ticketId: true,
+      ticket: {
+        select: {
+          id: true,
+          ticketNumber: true,
+          title: true,
+        },
+      },
+      // Only load subtasks if we're searching (they'll be loaded separately if needed)
+      subtasks: undefined, // Load subtasks separately only when needed
+    },
+    orderBy: {
+      updatedAt: "desc",
+    },
+    take: candidateLimit,
+  });
+
+  // If no search term, return recent tasks (top N)
+  if (!searchTerm || searchTerm.trim().length === 0) {
+    return tasks.slice(0, limit).map((task) => ({
+      type: "task" as const,
+      id: task.id,
+      title: task.title,
+      description: task.descriptionPlain || task.description || undefined,
+      url: `/dashboard/tasks/${task.id}`,
+      metadata: {
+        taskNumber: task.taskNumber,
+        status: task.status,
+        priority: task.priority,
+        parentTaskTitle: task.parentTask?.title,
+        ticketNumber: task.ticket?.ticketNumber,
+        ticketTitle: task.ticket?.title,
+        assignedTo: task.assignedTo ? formatUserName(task.assignedTo) : undefined,
+        createdAt: task.createdAt,
+        updatedAt: task.updatedAt,
+      },
+    }));
+  }
+
+  const trimmed = searchTerm.trim();
+
+  // Load subtasks separately only if we have a search term
+  // Support nested subtasks up to 3 levels deep
+  let subtaskFuzzyResults: Array<{ 
+    item: { 
+      id: string; 
+      title: string; 
+      descriptionPlain: string; 
+      status: string; 
+      parentTaskId: string; 
+      task: typeof tasks[0];
+      level: number; // 1 = direct subtask, 2 = subtask of subtask, 3 = max depth
+      rootTaskId: string; // ID of the top-level task
+      parentChain: string[]; // Array of parent IDs from root to direct parent
+    }; 
+    score?: number 
+  }> = [];
+  
+  if (searchTerm && searchTerm.trim().length >= 2 && tasks.length > 0) {
+    // Get task IDs we already have
+    const taskIds = tasks.map(t => t.id);
+    const taskMap = new Map(tasks.map(t => [t.id, t]));
+
+    // Recursively load subtasks up to 3 levels deep
+    const allSubtasksWithHierarchy: Array<{
+      id: string;
+      title: string;
+      descriptionPlain: string;
+      status: string;
+      parentTaskId: string;
+      task: typeof tasks[0];
+      level: number;
+      rootTaskId: string;
+      parentChain: string[];
+    }> = [];
+
+    // Map to track all loaded subtasks for faster parent lookups
+    const subtaskMap = new Map<string, {
+      id: string;
+      title: string;
+      descriptionPlain: string;
+      status: string;
+      parentTaskId: string;
+    }>();
+
+    // Helper function to recursively load subtasks
+    const loadSubtasksRecursively = async (
+      parentIds: string[],
+      currentLevel: number,
+      maxLevel: number,
+      parentChain: string[],
+      rootTaskId: string
+    ): Promise<void> => {
+      if (currentLevel > maxLevel || parentIds.length === 0) {
+        return;
+      }
+
+      const subtaskLimit = limit * 3;
+      const matchingSubtasks = await prisma.task.findMany({
+        where: {
+          parentTaskId: { in: parentIds },
+        },
+        select: {
+          id: true,
+          title: true,
+          descriptionPlain: true,
+          status: true,
+          parentTaskId: true,
+        },
+        take: subtaskLimit,
+      });
+
+      // Process each subtask
+      for (const subtask of matchingSubtasks) {
+        if (!subtask.parentTaskId) continue;
+
+        // Find the parent task (could be from original tasks or a previously loaded subtask)
+        let parentTask = taskMap.get(subtask.parentTaskId);
+        
+        // If parent not found in original tasks, it's a nested subtask
+        // We need to find it in our already loaded subtasks
+        if (!parentTask) {
+          const parentSubtaskData = subtaskMap.get(subtask.parentTaskId);
+          if (parentSubtaskData) {
+            // Create a minimal parent task object for reference
+            parentTask = {
+              id: parentSubtaskData.id,
+              title: parentSubtaskData.title,
+              taskNumber: null,
+              description: null,
+              descriptionPlain: parentSubtaskData.descriptionPlain,
+              status: parentSubtaskData.status,
+              priority: "MEDIUM" as const,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              parentTaskId: parentSubtaskData.parentTaskId,
+              parentTask: null,
+              assignedToId: null,
+              assignedTo: null,
+              ticketId: null,
+              ticket: null,
+            } as typeof tasks[0];
+          } else {
+            continue; // Skip if we can't find the parent
+          }
+        }
+
+        // Add to subtask map for future lookups
+        subtaskMap.set(subtask.id, {
+          id: subtask.id,
+          title: subtask.title,
+          descriptionPlain: subtask.descriptionPlain || "",
+          status: subtask.status,
+          parentTaskId: subtask.parentTaskId,
+        });
+
+        const newParentChain = [...parentChain, subtask.parentTaskId];
+        
+        allSubtasksWithHierarchy.push({
+          id: subtask.id,
+          title: subtask.title,
+          descriptionPlain: subtask.descriptionPlain || "",
+          status: subtask.status,
+          parentTaskId: subtask.parentTaskId,
+          task: parentTask,
+          level: currentLevel,
+          rootTaskId,
+          parentChain: newParentChain,
+        });
+
+        // Recursively load subtasks of this subtask
+        await loadSubtasksRecursively(
+          [subtask.id],
+          currentLevel + 1,
+          maxLevel,
+          newParentChain,
+          rootTaskId
+        );
+      }
+    };
+
+    // Load subtasks for each root task
+    for (const rootTask of tasks) {
+      await loadSubtasksRecursively(
+        [rootTask.id],
+        1, // Start at level 1 (direct subtasks)
+        3, // Max 3 levels deep
+        [rootTask.id], // Parent chain starts with root task
+        rootTask.id // Root task ID
+      );
+    }
+    
+    // Apply fuzzy search for final ranking on all subtasks (all levels)
+    subtaskFuzzyResults = fuzzySearch(
+      allSubtasksWithHierarchy,
+      trimmed,
+      {
+        keys: [
+          { name: "title", weight: 0.6 },
+          { name: "descriptionPlain", weight: 0.4 },
+        ],
+        threshold: 0.4,
+        minMatchCharLength: 2,
+      }
+    );
+  }
+
+  // Prepare tasks for fuzzy search on title and description
+  // Since we already filtered at database level, this is mainly for ranking
+  const tasksForFuzzy = tasks.map((task) => ({
+    ...task,
+    searchableText: [
+      task.title,
+      task.description || "",
+      task.descriptionPlain || "",
+      task.taskNumber || "",
+      task.ticket?.ticketNumber || "",
+      task.ticket?.title || "",
+      task.parentTask?.title || "",
+    ].join(" "),
+  }));
+
+  const taskFuzzyResults = fuzzySearch(
+    tasksForFuzzy,
+    trimmed,
+    {
+      keys: [
+        { name: "title", weight: 0.5 },
+        { name: "description", weight: 0.25 },
+        { name: "descriptionPlain", weight: 0.25 },
+      ],
+      threshold: 0.4,
+      minMatchCharLength: 2,
+    }
+  );
+
+  // Determine which tasks matched either directly or via subtasks
+  const matchedTaskIds = new Set<string>();
+  const rootTaskIdsFromSubtasks = new Set<string>();
+
+  taskFuzzyResults.forEach((result) => {
+    if (result.score !== undefined && result.score < 0.5) {
+      matchedTaskIds.add(result.item.id);
+    }
+  });
+
+  const topMatchingSubtasks = rankAndLimit(subtaskFuzzyResults, limit * 2);
+  topMatchingSubtasks.forEach((item) => {
+    // Add the root task ID (top-level parent) to matched tasks
+    matchedTaskIds.add(item.rootTaskId);
+    rootTaskIdsFromSubtasks.add(item.rootTaskId);
+    // Also add the direct parent if it's not the root (for nested subtasks)
+    if (item.parentTaskId !== item.rootTaskId) {
+      matchedTaskIds.add(item.parentTaskId);
+    }
+  });
+
+  // Load any root tasks that weren't in the initial results but have matching nested subtasks
+  const missingRootTaskIds = Array.from(rootTaskIdsFromSubtasks).filter(id => !tasks.some(t => t.id === id));
+  if (missingRootTaskIds.length > 0) {
+    const missingRootTasks = await prisma.task.findMany({
+      where: {
+        id: { in: missingRootTaskIds },
+        parentTaskId: null, // Only root tasks
+      },
+      select: {
+        id: true,
+        taskNumber: true,
+        title: true,
+        description: true,
+        descriptionPlain: true,
+        status: true,
+        priority: true,
+        createdAt: true,
+        updatedAt: true,
+        parentTaskId: true,
+        parentTask: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
+        assignedToId: true,
+        assignedTo: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        ticketId: true,
+        ticket: {
+          select: {
+            id: true,
+            ticketNumber: true,
+            title: true,
+          },
+        },
+      },
+    });
+    
+    // Add missing root tasks to the tasks array
+    tasks.push(...missingRootTasks);
+  }
+
+  const taskMap = new Map(tasks.map((t) => [t.id, t]));
+
+  // Score tasks by best match (task title/description vs subtasks)
+  const combinedResults: Array<{
+    task: typeof tasks[0];
+    score: number;
+    matchedViaSubtasks: boolean;
+  }> = [];
+
+  matchedTaskIds.forEach((taskId) => {
+    const task = taskMap.get(taskId);
+    if (!task) return;
+
+    const taskMatch = taskFuzzyResults.find((r) => r.item.id === taskId);
+    const taskScore = taskMatch?.score ?? 1;
+
+    const subtaskMatches = subtaskFuzzyResults.filter((r) => r.item.parentTaskId === taskId);
+    const bestSubtaskScore = subtaskMatches.length > 0
+      ? Math.min(...subtaskMatches.map((r) => r.score ?? 1))
+      : 1;
+
+    const bestScore = Math.min(taskScore, bestSubtaskScore);
+    const matchedViaSubtasks = subtaskMatches.length > 0 && taskScore >= 0.5;
+
+    combinedResults.push({
+      task,
+      score: bestScore,
+      matchedViaSubtasks,
+    });
+  });
+
+  combinedResults.sort((a, b) => a.score - b.score);
+  const topTasks = combinedResults.slice(0, limit).map((r) => r.task);
+
+  const results: SearchResult[] = [];
+  const processedTaskIds = new Set<string>();
+  const addedTaskIds = new Set<string>();
+
+  topTasks.forEach((task) => {
+    processedTaskIds.add(task.id);
+
+    const taskMatch = taskFuzzyResults.find((r) => r.item.id === task.id);
+    const matchedViaFields =
+      taskMatch !== undefined &&
+      taskMatch.score !== undefined &&
+      taskMatch.score < 0.5;
+
+    // Get all matching subtasks (including nested ones) for this root task
+    const taskSubtaskMatches = subtaskFuzzyResults
+      .filter((r) => r.item.rootTaskId === task.id)
+      .sort((a, b) => {
+        // Sort by level first (level 1 before level 2, etc.), then by score
+        if (a.item.level !== b.item.level) {
+          return a.item.level - b.item.level;
+        }
+        return (a.score ?? 1) - (b.score ?? 1);
+      })
+      .slice(0, 10); // Allow more subtasks to show nested structure
+
+    const matchingSubtasks = taskSubtaskMatches.map((r) => r.item);
+
+    if (matchedViaFields || matchingSubtasks.length > 0) {
+      // Parent task result
+      if (!addedTaskIds.has(task.id)) {
+        results.push({
+          type: "task" as const,
+          id: task.id,
+          title: task.title,
+          description: matchedViaFields
+            ? task.descriptionPlain || task.description || undefined
+            : undefined,
+          url: `/dashboard/tasks/${task.id}`,
+          metadata: {
+            taskNumber: task.taskNumber,
+            status: task.status,
+            priority: task.priority,
+            parentTaskTitle: task.parentTask?.title,
+            ticketNumber: task.ticket?.ticketNumber,
+            ticketTitle: task.ticket?.title,
+            assignedTo: task.assignedTo ? formatUserName(task.assignedTo) : undefined,
+            subtaskCount: matchingSubtasks.length,
+            createdAt: task.createdAt,
+            updatedAt: task.updatedAt,
+          },
+        });
+        addedTaskIds.add(task.id);
+      }
+
+      // Add subtasks with hierarchy information
+      // Group by level to maintain proper nesting order
+      const subtasksByLevel = new Map<number, typeof matchingSubtasks>();
+      matchingSubtasks.forEach((subtask) => {
+        const level = subtask.level;
+        if (!subtasksByLevel.has(level)) {
+          subtasksByLevel.set(level, []);
+        }
+        subtasksByLevel.get(level)!.push(subtask);
+      });
+
+      // Add subtasks level by level to maintain hierarchy
+      for (let level = 1; level <= 3; level++) {
+        const levelSubtasks = subtasksByLevel.get(level) || [];
+        levelSubtasks.forEach((subtask) => {
+          if (!addedTaskIds.has(subtask.id)) {
+            // Find the direct parent task title
+            let directParentTitle = task.title;
+            if (subtask.parentTaskId !== task.id) {
+              // Find the direct parent in our loaded subtasks
+              const directParent = matchingSubtasks.find(s => s.id === subtask.parentTaskId);
+              if (directParent) {
+                directParentTitle = directParent.title;
+              } else {
+                // Try to find in original tasks
+                const parentInTasks = tasks.find(t => t.id === subtask.parentTaskId);
+                if (parentInTasks) {
+                  directParentTitle = parentInTasks.title;
+                }
+              }
+            }
+
+            results.push({
+              type: "task" as const,
+              id: subtask.id,
+              title: subtask.title,
+              description: subtask.descriptionPlain || undefined,
+              url: `/dashboard/tasks/${subtask.id}`,
+              metadata: {
+                isSubtask: true,
+                parentTaskId: subtask.parentTaskId, // Direct parent
+                parentTaskTitle: directParentTitle,
+                rootTaskId: subtask.rootTaskId, // Root task
+                rootTaskTitle: task.title,
+                level: subtask.level, // Hierarchy level (1, 2, or 3)
+                parentChain: subtask.parentChain, // Full parent chain
+                status: subtask.status,
+              },
+            });
+            addedTaskIds.add(subtask.id);
+          }
+        });
+      }
+    }
+  });
+
+  return results;
 }
 
 /**
@@ -1199,17 +1854,44 @@ async function searchSettings(
     ].join(" "),
   }));
 
-  const fuzzyResults = fuzzySearch(searchableSettings, normalizedTerm, {
-    keys: [
-      { name: "title", weight: 0.5 },
-      { name: "description", weight: 0.3 },
-      { name: "searchableText", weight: 0.2 },
-    ],
-    threshold: 0.4,
-    minMatchCharLength: 2,
+  // First, check for word matches (case-insensitive) in title, description, or keywords
+  // This prevents substring matches like "test" matching "settings"
+  const lowerTerm = normalizedTerm.toLowerCase();
+  const termWords = lowerTerm.split(/\s+/).filter(Boolean);
+  const exactMatches = searchableSettings.filter((setting) => {
+    const titleLower = setting.title.toLowerCase();
+    const descLower = setting.description.toLowerCase();
+    const keywordsLower = setting.keywords.join(" ").toLowerCase();
+    const allText = `${titleLower} ${descLower} ${keywordsLower}`;
+    
+    // Check if all search terms appear as whole words (word boundary match)
+    return termWords.every((term) => {
+      // Use word boundary regex to match whole words only
+      const wordBoundaryRegex = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+      return wordBoundaryRegex.test(allText);
+    });
   });
 
-  const rankedSettings = rankAndLimit(fuzzyResults, limit);
+  // If we have exact matches, use those; otherwise use fuzzy search with stricter threshold
+  let rankedSettings: typeof searchableSettings;
+  if (exactMatches.length > 0) {
+    rankedSettings = exactMatches.slice(0, limit);
+  } else {
+    // Use fuzzy search with stricter threshold for settings (0.3 instead of 0.4)
+    const fuzzyResults = fuzzySearch(searchableSettings, normalizedTerm, {
+      keys: [
+        { name: "title", weight: 0.5 },
+        { name: "description", weight: 0.3 },
+        { name: "searchableText", weight: 0.2 },
+      ],
+      threshold: 0.3, // Stricter threshold for settings
+      minMatchCharLength: 2,
+    });
+
+    // Filter out results with poor scores (score > 0.3 means not a good match)
+    const goodMatches = fuzzyResults.filter((result) => (result.score ?? 1) <= 0.3);
+    rankedSettings = rankAndLimit(goodMatches, limit);
+  }
 
   return rankedSettings.map((setting) => ({
     type: "setting" as const,
@@ -1292,8 +1974,104 @@ async function searchTickets(
   }
   // ADMIN/MODERATOR with view_all permission can see all tickets (no filter)
 
-  // Fetch more candidates for fuzzy search (3x the limit, or at least 100 to ensure we get enough comments)
-  const candidateLimit = Math.max(limit * 3, 100);
+  // Use PostgreSQL full-text search for initial filtering if search term is provided
+  // This is much faster than loading all tickets and filtering in memory
+  let ticketIdsFromTextSearch: string[] = [];
+  
+  if (searchTerm && searchTerm.trim().length >= 2) {
+    // Build permission filter conditions
+    const permissionConditions: string[] = [];
+    if (!canViewAllTickets) {
+      if (dynamicTicketIds.length > 0) {
+        const ids = dynamicTicketIds.map(id => `'${id.replace(/'/g, "''")}'`).join(',');
+        permissionConditions.push(`id = ANY(ARRAY[${ids}]::text[])`);
+      }
+      if (user.role === "AGENT") {
+        const memberships = await prisma.groupMembership.findMany({
+          where: { userId: user.id },
+          select: { groupId: true },
+        });
+        const agentGroupIds = memberships.map((m) => m.groupId);
+        permissionConditions.push(`"assignedToId" = '${user.id.replace(/'/g, "''")}'`);
+        if (agentGroupIds.length > 0) {
+          const groupIds = agentGroupIds.map(id => `'${id.replace(/'/g, "''")}'`).join(',');
+          permissionConditions.push(`"assignedToGroupId" = ANY(ARRAY[${groupIds}]::text[])`);
+        }
+      } else if (user.role === "USER") {
+        permissionConditions.push(`"createdById" = '${user.id.replace(/'/g, "''")}'`);
+      }
+    }
+    
+    const permissionFilter = permissionConditions.length > 0 
+      ? `AND (${permissionConditions.join(' OR ')})`
+      : '';
+    
+    const sanitizedSearchTerm = searchTerm.trim().replace(/'/g, "''"); // Escape single quotes for SQL
+    const searchLimit = Math.min(limit * 5, 500);
+    
+    // Build permission filter SQL fragment
+    const permissionFilterSql = permissionConditions.length > 0 
+      ? `AND (${permissionConditions.join(' OR ')})`
+      : '';
+    
+    // Use full-text search to get matching ticket IDs (uses GIN index)
+    const textSearchQuery = Prisma.sql`
+      SELECT id
+      FROM tickets
+      WHERE to_tsvector('english', 
+        COALESCE(title, '') || ' ' || 
+        COALESCE("descriptionPlain", '') || ' ' || 
+        COALESCE("ticketNumber", '')
+      ) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
+      ${permissionFilterSql ? Prisma.raw(permissionFilterSql) : Prisma.sql``}
+      ORDER BY ts_rank(
+        to_tsvector('english', 
+          COALESCE(title, '') || ' ' || 
+          COALESCE("descriptionPlain", '') || ' ' || 
+          COALESCE("ticketNumber", '')
+        ),
+        plainto_tsquery('english', ${sanitizedSearchTerm})
+      ) DESC
+      LIMIT ${searchLimit}
+    `;
+    
+    const textSearchResults = await prisma.$queryRaw<Array<{ id: string }>>(textSearchQuery);
+    
+    ticketIdsFromTextSearch = textSearchResults.map(r => r.id);
+    
+    // If no results from ticket text search, check comments
+    if (ticketIdsFromTextSearch.length === 0) {
+      const commentLimit = limit * 2;
+      const commentSearchQuery = user.role === "USER" 
+        ? Prisma.sql`
+          SELECT DISTINCT "ticketId"
+          FROM ticket_comments
+          WHERE to_tsvector('english', COALESCE("contentPlain", content, '')) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
+          AND "isAgentOnly" = false
+          LIMIT ${commentLimit}
+        `
+        : Prisma.sql`
+          SELECT DISTINCT "ticketId"
+          FROM ticket_comments
+          WHERE to_tsvector('english', COALESCE("contentPlain", content, '')) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
+          LIMIT ${commentLimit}
+        `;
+      
+      const commentSearchResults = await prisma.$queryRaw<Array<{ ticketId: string }>>(commentSearchQuery);
+      
+      ticketIdsFromTextSearch = commentSearchResults.map(r => r.ticketId);
+      
+      if (ticketIdsFromTextSearch.length === 0) {
+        return []; // No matches found
+      }
+    }
+    
+    // Add text search filter to where clause
+    where.id = { in: ticketIdsFromTextSearch };
+  }
+  
+  // Reduced candidate limit - we're already filtering at database level
+  const candidateLimit = searchTerm ? Math.min(limit * 2, 200) : Math.min(limit * 2, 100);
   
   const tickets = await prisma.ticket.findMany({
     where,
@@ -1302,6 +2080,7 @@ async function searchTickets(
       ticketNumber: true,
       title: true,
       description: true,
+      descriptionPlain: true,
       status: true,
       priority: true,
       type: true,
@@ -1333,24 +2112,9 @@ async function searchTickets(
           description: true,
         },
       },
-      comments: {
-        where: user.role === "USER"
-          ? { isAgentOnly: false }
-          : undefined,
-        select: {
-          id: true,
-          content: true,
-          createdAt: true,
-          isAgentOnly: true,
-          userId: true,
-          authorName: true,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-        // Get all comments for fuzzy search, not just recent ones
-        take: 50,
-      },
+      // Only load comments if we're searching and we need them for fuzzy matching
+      // Comments matching the search term are loaded separately via full-text search
+      comments: undefined, // Load comments separately only when needed
       _count: {
         select: {
           comments: true,
@@ -1363,71 +2127,120 @@ async function searchTickets(
     take: candidateLimit,
   });
 
-  // Collect all comments with their ticket info for independent search
-  // Flatten structure for Fuse.js compatibility
-  const allCommentsWithTickets: Array<{
-    id: string;
-    content: string;
-    createdAt: Date;
-    isAgentOnly: boolean;
-    ticketId: string;
-    ticket: typeof tickets[0];
-  }> = [];
+  // Load comments separately only if we have a search term
+  let ticketsMatchedViaComments = new Set<string>();
+  let commentFuzzyResults: Array<{ item: { id: string; content: string; createdAt: Date; isAgentOnly: boolean; ticketId: string; ticket: typeof tickets[0] }; score?: number }> = [];
   
-  tickets.forEach((ticket) => {
-    ticket.comments.forEach((comment) => {
-      allCommentsWithTickets.push({
-        id: comment.id,
-        content: comment.content,
-        createdAt: comment.createdAt,
-        isAgentOnly: comment.isAgentOnly,
-        ticketId: ticket.id,
-        ticket,
-      });
+  if (searchTerm && searchTerm.trim().length >= 2 && tickets.length > 0) {
+    // Get ticket IDs we already have
+    const ticketIds = tickets.map(t => t.id);
+    
+    // Load matching comments using full-text search (much faster than loading all comments)
+    const sanitizedSearchTerm = searchTerm.trim().replace(/'/g, "''"); // Escape single quotes for SQL
+    const commentLimit = limit * 3;
+    const commentSearchQuery = user.role === "USER"
+      ? Prisma.sql`
+        SELECT 
+          c.id,
+          COALESCE(c."contentPlain", c.content, '') as content,
+          c."createdAt",
+          c."isAgentOnly",
+          c."ticketId"
+        FROM ticket_comments c
+        WHERE to_tsvector('english', COALESCE(c."contentPlain", c.content, '')) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
+        AND c."isAgentOnly" = false
+        AND c."ticketId" = ANY(${ticketIds}::text[])
+        ORDER BY ts_rank(
+          to_tsvector('english', COALESCE(c."contentPlain", c.content, '')),
+          plainto_tsquery('english', ${sanitizedSearchTerm})
+        ) DESC
+        LIMIT ${commentLimit}
+      `
+      : Prisma.sql`
+        SELECT 
+          c.id,
+          COALESCE(c."contentPlain", c.content, '') as content,
+          c."createdAt",
+          c."isAgentOnly",
+          c."ticketId"
+        FROM ticket_comments c
+        WHERE to_tsvector('english', COALESCE(c."contentPlain", c.content, '')) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
+        AND c."ticketId" = ANY(${ticketIds}::text[])
+        ORDER BY ts_rank(
+          to_tsvector('english', COALESCE(c."contentPlain", c.content, '')),
+          plainto_tsquery('english', ${sanitizedSearchTerm})
+        ) DESC
+        LIMIT ${commentLimit}
+      `;
+    
+    const matchingComments = await prisma.$queryRaw<Array<{
+      id: string;
+      content: string;
+      createdAt: Date;
+      isAgentOnly: boolean;
+      ticketId: string;
+    }>>(commentSearchQuery);
+    
+    // Map comments to tickets we already loaded
+    const ticketMap = new Map(tickets.map(t => [t.id, t]));
+    const allCommentsWithTickets = matchingComments
+      .map(comment => {
+        const ticket = ticketMap.get(comment.ticketId);
+        if (!ticket) return null;
+        
+        return {
+          id: comment.id,
+          content: comment.content,
+          createdAt: comment.createdAt,
+          isAgentOnly: comment.isAgentOnly,
+          ticketId: comment.ticketId,
+          ticket,
+        };
+      })
+      .filter((c): c is NonNullable<typeof c> => c !== null);
+    
+    // Apply fuzzy search for final ranking (database already filtered, just rank)
+    commentFuzzyResults = fuzzySearch(
+      allCommentsWithTickets,
+      searchTerm,
+      {
+        keys: [{ name: "content", weight: 1 }],
+        threshold: 0.4,
+        minMatchCharLength: 2,
+      }
+    );
+    
+    // Get tickets that matched via comments
+    const topMatchingComments = rankAndLimit(commentFuzzyResults, limit * 2);
+    topMatchingComments.forEach((item) => {
+      ticketsMatchedViaComments.add(item.ticketId);
     });
-  });
-
-  // Search comments independently with fuzzy matching
-  const commentFuzzyResults = fuzzySearch(
-    allCommentsWithTickets,
-    searchTerm,
-    {
-      keys: [{ name: "content", weight: 1 }],
-      threshold: 0.4,
-      minMatchCharLength: 2,
-    }
-  );
-
-  // Get tickets that matched via comments (even if they didn't match other fields)
-  const ticketsMatchedViaComments = new Set<string>();
-  const topMatchingComments = rankAndLimit(commentFuzzyResults, limit * 2);
-  topMatchingComments.forEach((item) => {
-    ticketsMatchedViaComments.add(item.ticketId);
-  });
+  }
 
   // Prepare tickets for fuzzy search on ticket fields
-  // Include tags in the searchable text for fuzzy matching
+  // Since we already filtered at database level, this is mainly for ranking
   const ticketsForFuzzy = tickets.map((ticket) => ({
     ...ticket,
     searchableText: [
       ticket.title,
-      ticket.description || "",
+      ticket.description || ticket.descriptionPlain || "",
       ticket.ticketNumber,
-      ...ticket.tags, // Include tags as separate items for better matching
+      ...ticket.tags,
     ].join(" "),
-    tagsString: ticket.tags.join(" "), // Also keep tags as a separate field
+    tagsString: ticket.tags.join(" "),
   }));
 
-  // Apply fuzzy search on ticket fields (title, description, ticketNumber, tags)
+  // Apply fuzzy search on ticket fields for ranking (database already filtered)
   const ticketFuzzyResults = fuzzySearch(
     ticketsForFuzzy,
-    searchTerm,
+    searchTerm || "",
     {
       keys: [
         { name: "title", weight: 0.4 },
         { name: "description", weight: 0.3 },
+        { name: "descriptionPlain", weight: 0.3 },
         { name: "ticketNumber", weight: 0.2 },
-        { name: "tagsString", weight: 0.1 }, // Search tags with fuzzy matching
+        { name: "tagsString", weight: 0.1 },
       ],
       threshold: 0.4,
       minMatchCharLength: 2,

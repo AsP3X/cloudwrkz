@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import type { DatabaseHealthStatus } from "@/lib/utils/db-health";
-import { formatDateTimeFull } from "@/lib/utils/date";
+import { formatDateTimeFull, formatTime } from "@/lib/utils/date";
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, Area, AreaChart, CartesianGrid, ReferenceLine, ComposedChart, Cell, LineProps } from "recharts";
 
 interface HealthMetricsProps {
@@ -117,7 +117,7 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
         !isNaN(initialDbHealth.responseTime) &&
         isFinite(initialDbHealth.responseTime)) {
       setDatabaseResponseTimeHistory([{
-        time: new Date().toLocaleTimeString(),
+        time: formatTime(new Date()),
         timestamp: now,
         responseTime: initialDbHealth.responseTime,
       }]);
@@ -229,7 +229,7 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
         const newHistory = [
           ...prev,
           {
-            time: new Date().toLocaleTimeString(),
+            time: formatTime(new Date()),
             timestamp: Date.now(),
             responseTime: pageResponseTime,
           },
@@ -244,7 +244,7 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
           const newHistory = [
             ...prev,
             {
-              time: new Date().toLocaleTimeString(),
+              time: formatTime(new Date()),
               timestamp: Date.now(),
               responseTime: newResponseTime,
             },
@@ -299,7 +299,7 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
         const newHistory = [
           ...prev,
           {
-            time: new Date().toLocaleTimeString(),
+            time: formatTime(new Date()),
             timestamp: Date.now(),
             responseTime: pageResponseTime,
           },

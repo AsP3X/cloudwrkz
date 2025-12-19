@@ -154,19 +154,20 @@ export function generateRandomTimerName(): string {
 }
 
 /**
- * Generate a timer number in the format TMR-000001
+ * Generate a timer number in the format #TMR-000001
  */
 export function generateTimerNumber(sequenceNumber: number): string {
   const paddedNumber = sequenceNumber.toString().padStart(6, "0");
-  return `TMR-${paddedNumber}`;
+  return `#TMR-${paddedNumber}`;
 }
 
 /**
  * Parse timer number to extract sequence
- * Returns null if the name doesn't match the TMR-XXXXXX format
+ * Returns null if the name doesn't match the TMR-XXXXXX or #TMR-XXXXXX format
  */
 export function parseTimerNumber(timerName: string): { prefix: string; sequence: number } | null {
-  const match = timerName.match(/^TMR-(\d+)$/);
+  // Match both TMR-XXXXXX and #TMR-XXXXXX formats
+  const match = timerName.match(/^#?TMR-(\d+)$/i);
   if (!match) {
     return null;
   }
@@ -174,4 +175,54 @@ export function parseTimerNumber(timerName: string): { prefix: string; sequence:
     prefix: "TMR",
     sequence: parseInt(match[1], 10),
   };
+}
+
+/**
+ * Format timer number to ensure it's in #TMR-000000 format (6 digits)
+ * If the input is already in TMR-XXXXXX or #TMR-XXXXXX format, it will be reformatted to have 6 digits
+ * If the input doesn't match the format, tries to extract TMR pattern from the string
+ * For custom names (like "#INC-000001 - Test - 1"), extracts the number and formats as #TMR
+ * If no number can be extracted, returns the original string
+ */
+export function formatTimerNumber(timerName: string, entryId?: string): string {
+  // First, try to parse as direct TMR-XXXXXX or #TMR-XXXXXX format
+  const parsed = parseTimerNumber(timerName);
+  if (parsed) {
+    // Reformat to ensure 6 digits with # prefix
+    return generateTimerNumber(parsed.sequence);
+  }
+  
+  // Try to find TMR-XXXXXX or #TMR-XXXXXX pattern anywhere in the string
+  const tmrPattern = /#?TMR-(\d+)/i;
+  const match = timerName.match(tmrPattern);
+  if (match) {
+    const sequence = parseInt(match[1], 10);
+    return generateTimerNumber(sequence);
+  }
+  
+  // For custom names like "#INC-000001 - Test - 1", try to extract the number at the end
+  // Pattern: " - 1" or " - 123" at the end of the string
+  const customNamePattern = /\s*-\s*(\d+)\s*$/;
+  const customMatch = timerName.match(customNamePattern);
+  if (customMatch) {
+    const sequence = parseInt(customMatch[1], 10);
+    return generateTimerNumber(sequence);
+  }
+  
+  // If entryId is provided and no pattern matches, generate a consistent TMR from ID hash
+  if (entryId) {
+    // Create a simple hash from the entry ID to get a consistent number
+    let hash = 0;
+    for (let i = 0; i < entryId.length; i++) {
+      const char = entryId.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    // Use absolute value and modulo to get a reasonable sequence number (1-999999)
+    const sequence = Math.abs(hash) % 999999 + 1;
+    return generateTimerNumber(sequence);
+  }
+  
+  // If it doesn't match any pattern and no entryId, return as-is (fallback)
+  return timerName;
 }

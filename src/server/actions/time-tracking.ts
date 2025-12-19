@@ -114,6 +114,14 @@ export async function createTimeEntry(
 
     const user = await requireAuth();
 
+    // Fetch user's current timezone to set on new time entry
+    // This ensures new entries are "locked" to the timezone active at creation time
+    const dbUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { timezone: true },
+    });
+    const userTimezone = dbUser?.timezone || "UTC";
+
     // Check permission if creating from a ticket
     if (input.ticketId) {
       try {
@@ -145,12 +153,13 @@ export async function createTimeEntry(
     // Generate name if not provided
     let name = input.name?.trim();
     if (!name) {
-      // Find the highest sequence number for TMR- prefix
+      // Find the highest sequence number for #TMR- or TMR- prefix
       const existingTimers = await prisma.timeEntry.findMany({
         where: {
-          name: {
-            startsWith: "TMR-",
-          },
+          OR: [
+            { name: { startsWith: "#TMR-" } },
+            { name: { startsWith: "TMR-" } },
+          ],
         },
         select: {
           name: true,
@@ -196,6 +205,7 @@ export async function createTimeEntry(
         ticketId: input.ticketId || null,
         billable: input.billable || false,
         location: input.location?.trim() || null,
+        timezone: userTimezone, // Set user's current timezone on new entry
         status: "RUNNING",
         startedAt: new Date(),
         lastResumedAt: new Date(),
@@ -259,15 +269,24 @@ export async function createTimeEntryWithDuration(
 
     const user = await requireAuth();
 
+    // Fetch user's current timezone to set on new time entry
+    // This ensures new entries are "locked" to the timezone active at creation time
+    const dbUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { timezone: true },
+    });
+    const userTimezone = dbUser?.timezone || "UTC";
+
     // Generate name if not provided
     let name = input.name?.trim();
     if (!name) {
-      // Find the highest sequence number for TMR- prefix
+      // Find the highest sequence number for #TMR- or TMR- prefix
       const existingTimers = await prisma.timeEntry.findMany({
         where: {
-          name: {
-            startsWith: "TMR-",
-          },
+          OR: [
+            { name: { startsWith: "#TMR-" } },
+            { name: { startsWith: "TMR-" } },
+          ],
         },
         select: {
           name: true,
@@ -312,6 +331,7 @@ export async function createTimeEntryWithDuration(
         ticketId: input.ticketId || null,
         billable: input.billable || false,
         location: input.location?.trim() || null,
+        timezone: userTimezone, // Set user's current timezone on new entry
         status: "STOPPED",
         startedAt: input.startedAt,
         stoppedAt: input.stoppedAt || new Date(),

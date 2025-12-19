@@ -64,6 +64,35 @@ export default async function RootLayout({
             __html: `
               (function() {
                 try {
+                  // Fix Performance API measure errors (Next.js internal tracking)
+                  if (typeof window !== 'undefined' && window.performance && window.performance.measure) {
+                    const originalMeasure = window.performance.measure.bind(window.performance);
+                    window.performance.measure = function(name, startMark, endMark) {
+                      try {
+                        // Check if marks exist before measuring
+                        if (startMark && typeof startMark === 'string') {
+                          const startEntries = performance.getEntriesByName(startMark, 'mark');
+                          if (startEntries.length === 0) {
+                            return; // Mark doesn't exist, skip measurement
+                          }
+                        }
+                        if (endMark && typeof endMark === 'string') {
+                          const endEntries = performance.getEntriesByName(endMark, 'mark');
+                          if (endEntries.length === 0) {
+                            return; // Mark doesn't exist, skip measurement
+                          }
+                        }
+                        // Try to measure, but catch any errors
+                        return originalMeasure(name, startMark, endMark);
+                      } catch (e) {
+                        // Silently ignore performance measurement errors
+                        // This prevents "cannot have a negative time stamp" errors from Next.js
+                        // Common causes: marks cleared before measurement, timing issues, or invalid mark names
+                        return;
+                      }
+                    };
+                  }
+                  
                   // Get theme from server (database) or localStorage
                   const serverTheme = ${JSON.stringify(serverTheme)};
                   const storedTheme = localStorage.getItem('theme');

@@ -304,3 +304,38 @@ export async function hasTicketPermission(
   
   return false;
 }
+
+/**
+ * Check if two users share at least one common group
+ * @param userId1 - First user ID
+ * @param userId2 - Second user ID
+ * @returns true if both users are members of at least one common group
+ */
+export async function areUsersInSameGroup(userId1: string, userId2: string): Promise<boolean> {
+  // If same user, they're always in the same "group" (themselves)
+  if (userId1 === userId2) {
+    return true;
+  }
+
+  // Get all groups for user 1
+  const user1Groups = await prisma.groupMembership.findMany({
+    where: { userId: userId1 },
+    select: { groupId: true },
+  });
+
+  if (user1Groups.length === 0) {
+    return false;
+  }
+
+  const user1GroupIds = new Set(user1Groups.map((m) => m.groupId));
+
+  // Check if user 2 is in any of user 1's groups
+  const sharedMembership = await prisma.groupMembership.findFirst({
+    where: {
+      userId: userId2,
+      groupId: { in: Array.from(user1GroupIds) },
+    },
+  });
+
+  return sharedMembership !== null;
+}

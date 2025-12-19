@@ -22,6 +22,10 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
   const [totalResults, setTotalResults] = useState(0);
   const [mounted, setMounted] = useState(false);
   const [expandedTickets, setExpandedTickets] = useState<Set<string>>(new Set());
+  const [expandedLevel1Subtasks, setExpandedLevel1Subtasks] = useState<Set<string>>(new Set());
+  const [visibleLevel2Subtasks, setVisibleLevel2Subtasks] = useState<Set<string>>(new Set());
+  const [expandedLevel2Subtasks, setExpandedLevel2Subtasks] = useState<Set<string>>(new Set());
+  const [visibleLevel3Subtasks, setVisibleLevel3Subtasks] = useState<Set<string>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
 
@@ -80,9 +84,9 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
       return;
     }
 
-    if (e.key === "Enter" && selectedIndex >= 0 && results[selectedIndex]) {
+    if (e.key === "Enter" && selectedIndex >= 0 && visibleItems[selectedIndex]) {
       e.preventDefault();
-      handleResultClick(results[selectedIndex]);
+      handleResultClick(visibleItems[selectedIndex]);
       return;
     }
 
@@ -95,18 +99,24 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
       return;
     }
 
-    if (results.length === 0) {
+    if (visibleItems.length === 0) {
       return;
     }
 
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
-        setSelectedIndex((prev) => (prev < results.length - 1 ? prev + 1 : prev));
+        setSelectedIndex((prev) => {
+          if (prev === -1) return 0; // Start from first item
+          return prev < visibleItems.length - 1 ? prev + 1 : prev;
+        });
         break;
       case "ArrowUp":
         e.preventDefault();
-        setSelectedIndex((prev) => (prev > 0 ? prev - 1 : -1));
+        setSelectedIndex((prev) => {
+          if (prev === -1) return visibleItems.length - 1; // Start from last item
+          return prev > 0 ? prev - 1 : -1;
+        });
         break;
     }
   };
@@ -131,17 +141,102 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
     });
   };
 
-  // Group results by ticket
+  const toggleLevel1SubtaskExpansion = (subtaskId: string) => {
+    const isCurrentlyExpanded = expandedLevel1Subtasks.has(subtaskId);
+    
+    if (isCurrentlyExpanded) {
+      setExpandedLevel1Subtasks((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(subtaskId);
+        return newSet;
+      });
+      setTimeout(() => {
+        setVisibleLevel2Subtasks((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(subtaskId);
+          return newSet;
+        });
+      }, 300);
+    } else {
+      setVisibleLevel2Subtasks((prev) => {
+        const newSet = new Set(prev);
+        newSet.add(subtaskId);
+        return newSet;
+      });
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setExpandedLevel1Subtasks((prev) => {
+            const newSet = new Set(prev);
+            newSet.add(subtaskId);
+            return newSet;
+          });
+        });
+      });
+    }
+  };
+
+  const toggleLevel2SubtaskExpansion = (subtaskId: string) => {
+    const isCurrentlyExpanded = expandedLevel2Subtasks.has(subtaskId);
+    
+    if (isCurrentlyExpanded) {
+      setExpandedLevel2Subtasks((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(subtaskId);
+        return newSet;
+      });
+      setTimeout(() => {
+        setVisibleLevel3Subtasks((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(subtaskId);
+          return newSet;
+        });
+      }, 300);
+    } else {
+      setVisibleLevel3Subtasks((prev) => {
+        const newSet = new Set(prev);
+        newSet.add(subtaskId);
+        return newSet;
+      });
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setExpandedLevel2Subtasks((prev) => {
+            const newSet = new Set(prev);
+            newSet.add(subtaskId);
+            return newSet;
+          });
+        });
+      });
+    }
+  };
+
+  // Group results by ticket/task
   const groupedResults = React.useMemo(() => {
-    const groups: Array<{ ticket: SearchResult; comments: SearchResult[] }> = [];
+    const groups: Array<{ ticket: SearchResult; comments: SearchResult[]; subtaskHierarchy?: Map<string, SearchResult[]>; level3Hierarchy?: Map<string, SearchResult[]> }> = [];
     const ticketMap = new Map<string, SearchResult>();
+    const taskMap = new Map<string, SearchResult>();
     const commentMap = new Map<string, SearchResult[]>();
+    const subtaskMap = new Map<string, SearchResult[]>();
 
     results.forEach((result) => {
       if (result.type === "ticket") {
         ticketMap.set(result.id, result);
         if (!commentMap.has(result.id)) {
           commentMap.set(result.id, []);
+        }
+      } else if (result.type === "task") {
+        // Check if this is a subtask
+        if (result.metadata?.isSubtask && result.metadata?.rootTaskId) {
+          // Group by root task ID to support nested subtasks
+          const rootTaskId = result.metadata.rootTaskId as string;
+          const subtasks = subtaskMap.get(rootTaskId) || [];
+          subtasks.push(result);
+          subtaskMap.set(rootTaskId, subtasks);
+        } else {
+          // Parent task
+          taskMap.set(result.id, result);
+          if (!subtaskMap.has(result.id)) {
+            subtaskMap.set(result.id, []);
+          }
         }
       } else if (result.type === "comment" && result.parentTicketId) {
         const comments = commentMap.get(result.parentTicketId) || [];
@@ -161,8 +256,95 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
       });
     });
 
+    // Add tasks with their subtasks (displayed like comments)
+    // Build hierarchical structure for nested subtasks
+    taskMap.forEach((task) => {
+      const allSubtasks = subtaskMap.get(task.id) || [];
+      
+      // Create maps to organize subtasks by their parent
+      // Map: level 2 subtasks grouped by their level 1 parent
+      const level2ByParent = new Map<string, SearchResult[]>();
+      // Map: level 3 subtasks grouped by their level 2 parent
+      const level3ByParent = new Map<string, SearchResult[]>();
+      
+      // Separate subtasks by level
+      const level1Subtasks: SearchResult[] = [];
+      
+      allSubtasks.forEach((subtask) => {
+        const level = (subtask.metadata?.level as number) || 1;
+        const parentTaskId = subtask.metadata?.parentTaskId as string;
+        
+        if (level === 1) {
+          level1Subtasks.push(subtask);
+        } else if (level === 2 && parentTaskId) {
+          // Level 2 subtasks: group by their level 1 parent
+          if (!level2ByParent.has(parentTaskId)) {
+            level2ByParent.set(parentTaskId, []);
+          }
+          level2ByParent.get(parentTaskId)!.push(subtask);
+        } else if (level === 3 && parentTaskId) {
+          // Level 3 subtasks: group by their level 2 parent
+          if (!level3ByParent.has(parentTaskId)) {
+            level3ByParent.set(parentTaskId, []);
+          }
+          level3ByParent.get(parentTaskId)!.push(subtask);
+        }
+      });
+      
+      // Sort function for subtasks
+      const sortSubtasks = (subtasks: SearchResult[]) => {
+        return subtasks.sort((a, b) => {
+          const chainA = (a.metadata?.parentChain as string[]) || [];
+          const chainB = (b.metadata?.parentChain as string[]) || [];
+          for (let i = 0; i < Math.min(chainA.length, chainB.length); i++) {
+            if (chainA[i] !== chainB[i]) {
+              return chainA[i].localeCompare(chainB[i]);
+            }
+          }
+          return chainA.length - chainB.length;
+        });
+      };
+      
+      // Sort level 1 subtasks
+      sortSubtasks(level1Subtasks);
+      
+      // Sort level 2 and level 3 subtasks within each parent
+      level2ByParent.forEach((subtasks) => sortSubtasks(subtasks));
+      level3ByParent.forEach((subtasks) => sortSubtasks(subtasks));
+      
+      // Only show level 1 subtasks in the main list
+      // Level 2 and 3 will be shown via toggles
+      groups.push({
+        ticket: task,
+        comments: level1Subtasks,
+        subtaskHierarchy: level2ByParent.size > 0 ? level2ByParent : undefined, // Map of level 2 subtasks by their level 1 parent
+        level3Hierarchy: level3ByParent.size > 0 ? level3ByParent : undefined, // Map of level 3 subtasks by their level 2 parent
+      });
+    });
+
     return groups;
   }, [results]);
+
+  // Create a flat list of visible items in display order for navigation
+  const visibleItems = React.useMemo(() => {
+    const items: SearchResult[] = [];
+    groupedResults.forEach((group) => {
+      // Always add the main item (ticket/task/user/etc.)
+      items.push(group.ticket);
+      // Add comments/subtasks only if the parent is expanded
+      if ((group.ticket.type === "ticket" || group.ticket.type === "task") && expandedTickets.has(group.ticket.id)) {
+        items.push(...group.comments);
+      }
+    });
+    return items;
+  }, [groupedResults, expandedTickets]);
+
+  // Reset selection if the currently selected item is no longer visible
+  useEffect(() => {
+    if (selectedIndex >= visibleItems.length) {
+      setSelectedIndex(-1);
+    }
+  }, [visibleItems.length, selectedIndex]);
 
   const handleClear = () => {
     setQuery("");
@@ -216,6 +398,23 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
             strokeLinejoin="round"
             strokeWidth={2}
             d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+          />
+        </svg>
+      );
+    }
+    if (type === "task") {
+      return (
+        <svg
+          className="w-5 h-5 text-indigo-600 dark:text-indigo-400"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M9 5H7a2 2 0 00-2 2v11a2 2 0 002 2h10a2 2 0 002-2V9a2 2 0 00-2-2h-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 5v4h6"
           />
         </svg>
       );
@@ -502,9 +701,11 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                     <div className="divide-y divide-neutral-200 dark:divide-neutral-800">
                       {groupedResults.map((group, groupIndex) => {
                         const isTicket = group.ticket.type === "ticket";
+                        const isTask = group.ticket.type === "task";
                         const hasComments = group.comments.length > 0;
                         const isExpanded = expandedTickets.has(group.ticket.id);
-                        const ticketIndex = results.findIndex((r) => r.id === group.ticket.id && r.type === group.ticket.type);
+                        // Check if this ticket/task is selected in the visible items list
+                        const isTicketSelected = selectedIndex >= 0 && visibleItems[selectedIndex]?.id === group.ticket.id && visibleItems[selectedIndex]?.type === group.ticket.type;
 
                         return (
                           <div key={`group-${group.ticket.type}-${group.ticket.id}`}>
@@ -513,17 +714,17 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                               onClick={() => handleResultClick(group.ticket)}
                               className={cn(
                                 "w-full text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors cursor-pointer",
-                                selectedIndex === ticketIndex && "bg-primary-50 dark:bg-primary-950",
+                                isTicketSelected && "bg-primary-50 dark:bg-primary-950",
                                 "px-4 py-4"
                               )}
                             >
                               <div className="flex items-start gap-4">
                                 <div className="mt-0.5 flex-shrink-0 flex items-center gap-2">
-                                  {isTicket && hasComments && (
+                                  {(isTicket || isTask) && hasComments && (
                                     <button
                                       onClick={(e) => toggleTicketExpansion(group.ticket.id, e)}
                                       className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors"
-                                      aria-label={isExpanded ? "Collapse comments" : "Expand comments"}
+                                      aria-label={isExpanded ? `Collapse ${isTask ? "subtasks" : "comments"}` : `Expand ${isTask ? "subtasks" : "comments"}`}
                                       type="button"
                                     >
                                       <svg
@@ -556,6 +757,11 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                                         {group.ticket.metadata.ticketNumber}
                                       </span>
                                     )}
+                                    {group.ticket.type === "task" && (
+                                      <span className="text-xs text-neutral-500 dark:text-neutral-400 font-mono flex-shrink-0">
+                                        {group.ticket.metadata?.taskNumber || group.ticket.id.slice(0, 8) + "..."}
+                                      </span>
+                                    )}
                                     {group.ticket.type === "user" && group.ticket.metadata?.email && group.ticket.title !== group.ticket.metadata.email && (
                                       <span className="text-xs text-neutral-500 dark:text-neutral-400 flex-shrink-0 truncate max-w-[120px]">
                                         {group.ticket.metadata.email}
@@ -571,9 +777,9 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                                         {group.ticket.metadata.code}
                                       </span>
                                     )}
-                                    {isTicket && hasComments && (
+                                    {(isTicket || group.ticket.type === "task") && hasComments && (
                                       <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                                        ({group.comments.length} comment{group.comments.length !== 1 ? "s" : ""})
+                                        ({group.comments.length} {group.ticket.type === "task" ? "subtask" : "comment"}{group.comments.length !== 1 ? "s" : ""})
                                       </span>
                                     )}
                                   </div>
@@ -628,8 +834,8 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                               </div>
                             </div>
 
-                            {/* Comments */}
-                            {isTicket && hasComments && (
+                            {/* Comments / Subtasks */}
+                            {(isTicket || isTask) && hasComments && (
                               <div
                                 className={cn(
                                   "overflow-hidden transition-all duration-300 ease-in-out",
@@ -637,37 +843,193 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                                 )}
                               >
                                 {group.comments.map((comment, commentIndex) => {
-                                  const commentResultIndex = results.findIndex((r) => r.id === comment.id && r.type === comment.type);
+                                  const isSubtask = comment.metadata?.isSubtask;
+                                  const subtaskLevel = (comment.metadata?.level as number) || 1;
+                                  
+                                  // For level 1 subtasks: check if they have level 2 children
+                                  const hasLevel2Children = isSubtask && subtaskLevel === 1 && group.subtaskHierarchy && group.subtaskHierarchy.has(comment.id);
+                                  const level2Children = hasLevel2Children ? group.subtaskHierarchy!.get(comment.id)! : [];
+                                  const isLevel1Expanded = expandedLevel1Subtasks.has(comment.id);
+                                  const shouldShowLevel2 = visibleLevel2Subtasks.has(comment.id);
+                                  
+                                  // Check if this comment/subtask is selected in the visible items list
+                                  const isCommentSelected = selectedIndex >= 0 && visibleItems[selectedIndex]?.id === comment.id && visibleItems[selectedIndex]?.type === comment.type;
+                                  
                                   return (
-                                    <button
-                                      key={`comment-${comment.id}`}
-                                      onClick={() => handleResultClick(comment)}
-                                      className={cn(
-                                        "w-full text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all duration-300 ease-in-out",
-                                        selectedIndex === commentResultIndex && "bg-primary-50 dark:bg-primary-950",
-                                        "px-4 py-2 pl-12",
-                                        isExpanded 
-                                          ? "opacity-100 translate-y-0" 
-                                          : "opacity-0 -translate-y-2"
-                                      )}
-                                      style={{
-                                        transitionDelay: isExpanded ? `${300 + commentIndex * 30}ms` : `${(group.comments.length - commentIndex - 1) * 20}ms`,
-                                      }}
-                                    >
-                                      <div className="flex items-start gap-4">
-                                        <div className="mt-0.5 flex-shrink-0">{getResultIcon(comment.type)}</div>
-                                        <div className="flex-1 min-w-0">
-                                          <div className="flex items-center gap-2 mb-1">
-                                            <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">
-                                              Comment in {comment.metadata?.ticketNumber}:
-                                            </span>
+                                    <React.Fragment key={`${isSubtask ? "subtask" : "comment"}-${comment.id}`}>
+                                      {/* Level 1 Subtask */}
+                                      <div
+                                        className={cn(
+                                          "w-full transition-all duration-300 ease-in-out",
+                                          isExpanded 
+                                            ? "opacity-100 translate-y-0" 
+                                            : "opacity-0 -translate-y-2"
+                                        )}
+                                        style={{
+                                          transitionDelay: isExpanded ? `${300 + commentIndex * 30}ms` : `${(group.comments.length - commentIndex - 1) * 20}ms`,
+                                        }}
+                                      >
+                                        <div className={cn(
+                                          "flex items-start gap-4 px-4 py-2 pl-12 hover:bg-neutral-50 dark:hover:bg-neutral-800",
+                                          isCommentSelected && "bg-primary-50 dark:bg-primary-950"
+                                        )}>
+                                          <div className="mt-0.5 flex-shrink-0 flex items-center gap-2">
+                                            {isSubtask && hasLevel2Children && (
+                                              <button
+                                                onClick={() => toggleLevel1SubtaskExpansion(comment.id)}
+                                                className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors"
+                                                aria-label={isLevel1Expanded ? "Collapse level 2 subtasks" : "Expand level 2 subtasks"}
+                                              >
+                                                <svg
+                                                  className={cn(
+                                                    "w-3 h-3 text-neutral-500 dark:text-neutral-400 transition-transform duration-200",
+                                                    isLevel1Expanded && "rotate-90"
+                                                  )}
+                                                  fill="none"
+                                                  viewBox="0 0 24 24"
+                                                  stroke="currentColor"
+                                                >
+                                                  <path
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    strokeWidth={2}
+                                                    d="M9 5l7 7-7 7"
+                                                  />
+                                                </svg>
+                                              </button>
+                                            )}
+                                            {getResultIcon(comment.type)}
                                           </div>
-                                          <p className="text-sm text-neutral-700 dark:text-neutral-300">
-                                            {highlightMatch(comment.title, query)}
-                                          </p>
+                                          <button
+                                            onClick={() => handleResultClick(comment)}
+                                            className="flex-1 min-w-0 text-left"
+                                          >
+                                            <div className="flex items-center gap-2 mb-1">
+                                              <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">
+                                                {isSubtask ? (
+                                                  `Subtask (Level ${subtaskLevel}) in ${comment.metadata?.parentTaskTitle || "task"}:`
+                                                ) : (
+                                                  `Comment in ${comment.metadata?.ticketNumber}:`
+                                                )}
+                                              </span>
+                                            </div>
+                                            <p className="text-sm text-neutral-700 dark:text-neutral-300">
+                                              {highlightMatch(comment.title, query)}
+                                            </p>
+                                          </button>
                                         </div>
                                       </div>
-                                    </button>
+                                      
+                                      {/* Level 2 Subtasks (nested under level 1) */}
+                                      {isSubtask && hasLevel2Children && shouldShowLevel2 && level2Children.map((level2Subtask, level2Index) => {
+                                        const level2Delay = level2Index * 20;
+                                        const hasLevel3Children = group.level3Hierarchy && group.level3Hierarchy.has(level2Subtask.id);
+                                        const level3Children = hasLevel3Children ? group.level3Hierarchy!.get(level2Subtask.id)! : [];
+                                        const isLevel2Expanded = expandedLevel2Subtasks.has(level2Subtask.id);
+                                        const shouldShowLevel3 = visibleLevel3Subtasks.has(level2Subtask.id);
+                                        
+                                        return (
+                                          <React.Fragment key={`level2-subtask-${level2Subtask.id}`}>
+                                            <div
+                                              className={cn(
+                                                "w-full transition-all duration-300 ease-in-out",
+                                                isLevel1Expanded 
+                                                  ? "opacity-100 translate-y-0" 
+                                                  : "opacity-0 -translate-y-2"
+                                              )}
+                                              style={{
+                                                transitionDelay: isLevel1Expanded 
+                                                  ? `${level2Delay}ms` 
+                                                  : `${(level2Children.length - level2Index - 1) * 15}ms`,
+                                              }}
+                                            >
+                                              <div className="flex items-start gap-4 px-4 py-2 pl-12 hover:bg-neutral-50 dark:hover:bg-neutral-800" style={{ paddingLeft: "96px" }}>
+                                                <div className="mt-0.5 flex-shrink-0 flex items-center gap-2">
+                                                  {hasLevel3Children && (
+                                                    <button
+                                                      onClick={() => toggleLevel2SubtaskExpansion(level2Subtask.id)}
+                                                      className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors"
+                                                      aria-label={isLevel2Expanded ? "Collapse level 3 subtasks" : "Expand level 3 subtasks"}
+                                                    >
+                                                      <svg
+                                                        className={cn(
+                                                          "w-3 h-3 text-neutral-500 dark:text-neutral-400 transition-transform duration-200",
+                                                          isLevel2Expanded && "rotate-90"
+                                                        )}
+                                                        fill="none"
+                                                        viewBox="0 0 24 24"
+                                                        stroke="currentColor"
+                                                      >
+                                                        <path
+                                                          strokeLinecap="round"
+                                                          strokeLinejoin="round"
+                                                          strokeWidth={2}
+                                                          d="M9 5l7 7-7 7"
+                                                        />
+                                                      </svg>
+                                                    </button>
+                                                  )}
+                                                  {getResultIcon(level2Subtask.type)}
+                                                </div>
+                                                <button
+                                                  onClick={() => handleResultClick(level2Subtask)}
+                                                  className="flex-1 min-w-0 text-left"
+                                                >
+                                                  <div className="flex items-center gap-2 mb-1">
+                                                    <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">
+                                                      {`Subtask (Level 2) in ${level2Subtask.metadata?.parentTaskTitle || "task"}:`}
+                                                    </span>
+                                                  </div>
+                                                  <p className="text-sm text-neutral-700 dark:text-neutral-300">
+                                                    {highlightMatch(level2Subtask.title, query)}
+                                                  </p>
+                                                </button>
+                                              </div>
+                                            </div>
+                                            
+                                            {/* Level 3 Subtasks (nested under level 2) */}
+                                            {hasLevel3Children && shouldShowLevel3 && level3Children.map((level3Subtask, level3Index) => {
+                                              const level3Delay = level3Index * 15;
+                                              return (
+                                                <div
+                                                  key={`level3-subtask-${level3Subtask.id}`}
+                                                  className={cn(
+                                                    "w-full transition-all duration-300 ease-in-out",
+                                                    isLevel2Expanded 
+                                                      ? "opacity-100 translate-y-0" 
+                                                      : "opacity-0 -translate-y-2"
+                                                  )}
+                                                  style={{
+                                                    transitionDelay: isLevel2Expanded 
+                                                      ? `${level3Delay}ms` 
+                                                      : `${(level3Children.length - level3Index - 1) * 10}ms`,
+                                                  }}
+                                                >
+                                                  <div className="flex items-start gap-4 px-4 py-2 pl-12 hover:bg-neutral-50 dark:hover:bg-neutral-800" style={{ paddingLeft: "112px" }}>
+                                                    <div className="mt-0.5 flex-shrink-0">
+                                                      {getResultIcon(level3Subtask.type)}
+                                                    </div>
+                                                    <button
+                                                      onClick={() => handleResultClick(level3Subtask)}
+                                                      className="flex-1 min-w-0 text-left"
+                                                    >
+                                                      <div className="flex items-center gap-2 mb-1">
+                                                        <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">
+                                                          {`Subtask (Level 3) in ${level3Subtask.metadata?.parentTaskTitle || "task"}:`}
+                                                        </span>
+                                                      </div>
+                                                      <p className="text-sm text-neutral-700 dark:text-neutral-300">
+                                                        {highlightMatch(level3Subtask.title, query)}
+                                                      </p>
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
+                                          </React.Fragment>
+                                        );
+                                      })}
+                                    </React.Fragment>
                                   );
                                 })}
                               </div>
