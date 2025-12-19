@@ -1013,7 +1013,7 @@ async function searchTasks(
     
     taskIdsFromTextSearch = textSearchResults.map(r => r.id);
     
-    // Also check subtasks for matches
+    // Also check subtasks for matches and include their parent task IDs
     if (taskIdsFromTextSearch.length === 0 || taskIdsFromTextSearch.length < limit) {
       const subtaskLimit = limit * 2;
       const subtaskSearchQuery = Prisma.sql`
@@ -1032,14 +1032,14 @@ async function searchTasks(
       
       const subtaskParentIds = subtaskSearchResults.map(r => r.id);
       taskIdsFromTextSearch = [...new Set([...taskIdsFromTextSearch, ...subtaskParentIds])];
-      
-      if (taskIdsFromTextSearch.length === 0) {
-        return []; // No matches found
-      }
     }
     
-    // Add text search filter to where clause
-    where.id = { in: taskIdsFromTextSearch };
+    // Add text search filter to where clause only when we actually have matches.
+    // If there are no text-search matches, we fall back to permission-scoped tasks
+    // and rely on Fuse.js for fuzzy matching (including subtasks).
+    if (taskIdsFromTextSearch.length > 0) {
+      where.id = { in: taskIdsFromTextSearch };
+    }
   }
   
   // Reduced candidate limit - we're already filtering at database level
@@ -1119,45 +1119,31 @@ async function searchTasks(
   if (searchTerm && searchTerm.trim().length >= 2 && tasks.length > 0) {
     // Get task IDs we already have
     const taskIds = tasks.map(t => t.id);
-    
-    // Load matching subtasks using full-text search
-    const sanitizedSearchTerm = searchTerm.trim().replace(/'/g, "''"); // Escape single quotes for SQL
+
+    // Load subtasks for these tasks without applying an additional full-text filter.
+    // This keeps the candidate set bounded while allowing Fuse.js to handle
+    // fuzzy matching on subtask titles/descriptions (including typos and partials).
     const subtaskLimit = limit * 3;
-    const subtaskSearchQuery = Prisma.sql`
-      SELECT 
-        id,
-        title,
-        COALESCE("descriptionPlain", '') as "descriptionPlain",
-        status,
-        "parentTaskId"
-      FROM tasks
-      WHERE "parentTaskId" IS NOT NULL
-      AND "parentTaskId" = ANY(${taskIds}::text[])
-      AND to_tsvector('english', 
-        COALESCE(title, '') || ' ' || 
-        COALESCE("descriptionPlain", '')
-      ) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
-      ORDER BY ts_rank(
-        to_tsvector('english', 
-          COALESCE(title, '') || ' ' || 
-          COALESCE("descriptionPlain", '')
-        ),
-        plainto_tsquery('english', ${sanitizedSearchTerm})
-      ) DESC
-      LIMIT ${subtaskLimit}
-    `;
-    
-    const matchingSubtasks = await prisma.$queryRaw<Array<{
-      id: string;
-      title: string;
-      descriptionPlain: string;
-      status: string;
-      parentTaskId: string;
-    }>>(subtaskSearchQuery);
-    
+    const matchingSubtasks = await prisma.task.findMany({
+      where: {
+        parentTaskId: { in: taskIds },
+      },
+      select: {
+        id: true,
+        title: true,
+        descriptionPlain: true,
+        status: true,
+        parentTaskId: true,
+      },
+      take: subtaskLimit,
+    });
+
     // Map subtasks to parent tasks we already loaded
     const taskMap = new Map(tasks.map(t => [t.id, t]));
     const allSubtasksWithParent = matchingSubtasks
+      .filter((subtask): subtask is typeof subtask & { parentTaskId: string } => 
+        subtask.parentTaskId !== null
+      )
       .map(subtask => {
         const parentTask = taskMap.get(subtask.parentTaskId);
         if (!parentTask) return null;
@@ -1173,7 +1159,7 @@ async function searchTasks(
       })
       .filter((s): s is NonNullable<typeof s> => s !== null);
     
-    // Apply fuzzy search for final ranking
+    // Apply fuzzy search for final ranking on subtasks
     subtaskFuzzyResults = fuzzySearch(
       allSubtasksWithParent,
       trimmed,
