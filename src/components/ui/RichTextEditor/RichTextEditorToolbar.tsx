@@ -180,6 +180,34 @@ const HIGHLIGHT_COLORS = [
   { name: "Red", value: "#FECACA" },
 ];
 
+// Utility function to determine if a color is bright (light)
+// Returns true if the color is bright enough that black text would be more readable
+const isBrightColor = (color: string): boolean => {
+  if (!color || color.startsWith("#") === false) return false;
+  
+  // Remove # if present
+  const hex = color.replace("#", "");
+  
+  // Parse RGB values
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  
+  // Calculate relative luminance (using the formula from WCAG)
+  // https://www.w3.org/WAI/GL/wiki/Relative_luminance
+  const getLuminance = (val: number) => {
+    const normalized = val / 255;
+    return normalized <= 0.03928
+      ? normalized / 12.92
+      : Math.pow((normalized + 0.055) / 1.055, 2.4);
+  };
+  
+  const luminance = 0.2126 * getLuminance(r) + 0.7152 * getLuminance(g) + 0.0722 * getLuminance(b);
+  
+  // If luminance is greater than 0.5, the color is bright and black text is better
+  return luminance > 0.5;
+};
+
 export const RichTextEditorToolbar = ({
   editor,
   onImageUpload,
@@ -739,11 +767,18 @@ export const RichTextEditorToolbar = ({
                     if (color.value) {
                       if (hasSelection) {
                         // Apply highlight only to selected text (not stored marks for future typing)
-                        editor
+                        const chain = editor
                           .chain()
                           .focus()
                           .setTextSelection({ from, to })
-                          .setHighlight({ color: color.value })
+                          .setHighlight({ color: color.value });
+                        
+                        // If the highlight color is bright, also set text color to black for readability
+                        if (isBrightColor(color.value)) {
+                          chain.setColor("#000000");
+                        }
+                        
+                        chain
                           .command(({ tr, dispatch }) => {
                             if (dispatch) {
                               // Clear stored marks so highlight doesn't continue for future typing

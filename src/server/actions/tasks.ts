@@ -1227,6 +1227,34 @@ export async function getTask(id: string) {
     actualHours = timeEntries.reduce((sum, entry) => sum + entry.totalDuration / 3600, 0) || null;
   }
 
+  // Get subtask counts for each subtask
+  if (task.subtasks && task.subtasks.length > 0) {
+    const subtaskIds = task.subtasks.map((st) => st.id);
+    const subtaskCounts = await prisma.task.groupBy({
+      by: ["parentTaskId"],
+      where: {
+        parentTaskId: {
+          in: subtaskIds,
+        },
+      },
+      _count: {
+        id: true,
+      },
+    });
+
+    const countMap = new Map(
+      subtaskCounts.map((item) => [item.parentTaskId, item._count.id])
+    );
+
+    // Attach counts to subtasks
+    task.subtasks = task.subtasks.map((subtask) => ({
+      ...subtask,
+      _count: {
+        subtasks: countMap.get(subtask.id) || 0,
+      },
+    }));
+  }
+
   return {
     ...task,
     actualHours,

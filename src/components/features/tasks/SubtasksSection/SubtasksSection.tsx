@@ -5,7 +5,7 @@ import { TaskViewToggle, TaskViewMode } from "../TaskViewToggle";
 import { cn } from "@/lib/utils/cn";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { formatDate } from "@/lib/utils/date";
+import { formatDateInTimezone } from "@/lib/utils/date";
 import { formatUserName } from "@/lib/utils/users";
 import { useRouter } from "next/navigation";
 import { createSubtask, updateTask } from "@/server/actions/tasks";
@@ -22,6 +22,9 @@ type Subtask = {
     name: string | null;
     email: string;
   } | null;
+  _count?: {
+    subtasks: number;
+  };
 };
 
 interface SubtasksSectionProps {
@@ -30,6 +33,7 @@ interface SubtasksSectionProps {
   canManage: boolean;
   viewMode?: TaskViewMode;
   onViewChange?: (mode: TaskViewMode) => void;
+  userTimezone?: string;
 }
 
 const getStatusColor = (status: string) => {
@@ -63,7 +67,7 @@ const getPriorityColor = (priority?: string) => {
   }
 };
 
-export const SubtasksSection = ({ parentTaskId, subtasks, canManage, viewMode: externalViewMode, onViewChange: externalOnViewChange }: SubtasksSectionProps) => {
+export const SubtasksSection = ({ parentTaskId, subtasks, canManage, viewMode: externalViewMode, onViewChange: externalOnViewChange, userTimezone = "UTC" }: SubtasksSectionProps) => {
   const router = useRouter();
   const [internalViewMode, setInternalViewMode] = React.useState<TaskViewMode>("table");
   const [mounted, setMounted] = React.useState(false);
@@ -171,6 +175,11 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage, viewMode: e
                 {task.priority}
               </Badge>
             )}
+            {task._count && task._count.subtasks > 0 && (
+              <Badge className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs sm:text-[10px] px-2.5 py-1 sm:px-2 sm:py-0.5 flex-shrink-0 font-medium">
+                {task._count.subtasks} {task._count.subtasks === 1 ? "subtask" : "subtasks"}
+              </Badge>
+            )}
           </div>
           {(task.assignedTo || task.dueDate) && (
             <div className="flex flex-wrap items-center gap-x-3 sm:gap-x-4 gap-y-1 sm:gap-y-1 text-sm sm:text-[11px] text-neutral-600 dark:text-neutral-400">
@@ -190,7 +199,7 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage, viewMode: e
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
                   <span className="font-medium text-neutral-800 dark:text-neutral-200">
-                    {formatDate(task.dueDate)}
+                    {formatDateInTimezone(task.dueDate, userTimezone)}
                   </span>
                 </div>
               )}
@@ -239,6 +248,11 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage, viewMode: e
             <Badge className={cn(getPriorityColor(task.priority), "text-xs px-2.5 py-1 flex-shrink-0 font-medium")}>
               {task.priority ?? "MEDIUM"}
             </Badge>
+            {task._count && task._count.subtasks > 0 && (
+              <Badge className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs px-2.5 py-1 flex-shrink-0 font-medium">
+                {task._count.subtasks} {task._count.subtasks === 1 ? "subtask" : "subtasks"}
+              </Badge>
+            )}
           </div>
           {(task.assignedTo || task.dueDate) && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-neutral-600 dark:text-neutral-400">
@@ -258,7 +272,7 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage, viewMode: e
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
                   <span className="font-medium text-neutral-800 dark:text-neutral-200">
-                    {formatDate(task.dueDate)}
+                    {formatDateInTimezone(task.dueDate, userTimezone)}
                   </span>
                 </div>
               )}
@@ -313,6 +327,15 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage, viewMode: e
           {task.priority ?? "MEDIUM"}
         </Badge>
       </td>
+      <td className="px-3 sm:px-4 py-3 sm:py-2 align-middle hidden xl:table-cell">
+        {task._count && task._count.subtasks > 0 ? (
+          <Badge className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs sm:text-[11px] px-2.5 py-1 sm:px-2 sm:py-0.5 font-medium">
+            {task._count.subtasks} {task._count.subtasks === 1 ? "subtask" : "subtasks"}
+          </Badge>
+        ) : (
+          <span className="text-xs text-neutral-400 dark:text-neutral-500">—</span>
+        )}
+      </td>
       <td className="px-3 sm:px-4 py-3 sm:py-2 align-middle hidden md:table-cell">
         {task.assignedTo ? (
           <span className="text-sm text-neutral-800 dark:text-neutral-200">
@@ -325,7 +348,7 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage, viewMode: e
       <td className="px-3 sm:px-4 py-3 sm:py-2 align-middle hidden lg:table-cell">
         {task.dueDate ? (
           <span className="text-sm text-neutral-800 dark:text-neutral-200">
-            {formatDate(task.dueDate)}
+            {formatDateInTimezone(task.dueDate, userTimezone)}
           </span>
         ) : (
           <span className="text-xs text-neutral-400 dark:text-neutral-500">—</span>
@@ -337,9 +360,16 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage, viewMode: e
   return (
     <div className="space-y-4 sm:space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h2 className="text-xl sm:text-xl font-bold text-neutral-900 dark:text-neutral-100">
-          Subtasks
-        </h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-xl sm:text-xl font-bold text-neutral-900 dark:text-neutral-100">
+            Subtasks
+          </h2>
+          {hasSubtasks && (
+            <Badge className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-sm px-2.5 py-1">
+              {subtasks.length} {subtasks.length === 1 ? "subtask" : "subtasks"}
+            </Badge>
+          )}
+        </div>
         {hasSubtasks && mounted && (
           <div className="hidden sm:block">
             <TaskViewToggle currentView={viewMode} onViewChange={handleViewChange} />
@@ -421,6 +451,9 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage, viewMode: e
                       <th className="px-3 sm:px-4 py-3 sm:py-2 text-left text-sm sm:text-xs font-semibold text-neutral-600 dark:text-neutral-300">
                         Priority
                       </th>
+                      <th className="px-3 sm:px-4 py-3 sm:py-2 text-left text-sm sm:text-xs font-semibold text-neutral-600 dark:text-neutral-300 hidden xl:table-cell">
+                        Subtasks
+                      </th>
                       <th className="px-3 sm:px-4 py-3 sm:py-2 text-left text-sm sm:text-xs font-semibold text-neutral-600 dark:text-neutral-300 hidden md:table-cell">
                         Assigned To
                       </th>
@@ -479,6 +512,9 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage, viewMode: e
                       </th>
                       <th className="px-3 sm:px-4 py-3 sm:py-2 text-left text-sm sm:text-xs font-semibold text-neutral-600 dark:text-neutral-300">
                         Priority
+                      </th>
+                      <th className="px-3 sm:px-4 py-3 sm:py-2 text-left text-sm sm:text-xs font-semibold text-neutral-600 dark:text-neutral-300 hidden xl:table-cell">
+                        Subtasks
                       </th>
                       <th className="px-3 sm:px-4 py-3 sm:py-2 text-left text-sm sm:text-xs font-semibold text-neutral-600 dark:text-neutral-300 hidden md:table-cell">
                         Assigned To

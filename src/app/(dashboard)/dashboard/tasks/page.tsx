@@ -77,6 +77,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
         tasks={tasks as any}
         canManage={canCreateTasks}
         userRole={user.role}
+        userTimezone={user.timezone ?? "UTC"}
       />
     </>
   );

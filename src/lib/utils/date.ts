@@ -85,3 +85,19 @@ export function formatDateTimeInTimezone(
     timeZone,
   }).format(new Date(date));
 }
+
+/**
+ * Format a date (without time) in a specific IANA timezone (e.g., "Europe/Berlin")
+ * using a deterministic "en-US" locale so server and client match.
+ */
+export function formatDateInTimezone(
+  date: Date | string,
+  timeZone: string
+): string {
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone,
+  }).format(new Date(date));
+}

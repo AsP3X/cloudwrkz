@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
-import { formatDate } from "@/lib/utils/date";
+import { formatDateInTimezone } from "@/lib/utils/date";
 import { formatUserName } from "@/lib/utils/users";
 import { TaskViewMode } from "../TaskViewToggle";
 import { cn } from "@/lib/utils/cn";
@@ -36,12 +36,16 @@ type StandaloneTask = {
     ticketNumber: string;
     title: string;
   } | null;
+  _count?: {
+    subtasks: number;
+  };
 };
 
 interface StandaloneTaskListProps {
   tasks: StandaloneTask[];
   viewMode: TaskViewMode;
   canManage: boolean;
+  userTimezone?: string;
 }
 
 const getStatusColor = (status: string) => {
@@ -74,7 +78,7 @@ const getPriorityColor = (priority: string) => {
   }
 };
 
-export const StandaloneTaskList = ({ tasks, viewMode, canManage }: StandaloneTaskListProps) => {
+export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = "UTC" }: StandaloneTaskListProps) => {
   const router = useRouter();
 
   const handleToggleComplete = async (task: StandaloneTask) => {
@@ -127,6 +131,11 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage }: StandaloneTas
             <Badge className={cn(getPriorityColor(task.priority), "text-[10px] px-2 py-0.5")}>
               {task.priority}
             </Badge>
+            {task._count && task._count.subtasks > 0 && (
+              <Badge className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-[10px] px-2 py-0.5">
+                {task._count.subtasks} {task._count.subtasks === 1 ? "subtask" : "subtasks"}
+              </Badge>
+            )}
           </div>
           {task.description && (
             <p className="text-xs text-neutral-600 dark:text-neutral-400 line-clamp-2 mb-1.5">
@@ -165,7 +174,7 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage }: StandaloneTas
               <span>
                 Due{" "}
                 <span className="text-neutral-800 dark:text-neutral-200">
-                  {formatDate(task.dueDate)}
+                  {formatDateInTimezone(task.dueDate, userTimezone)}
                 </span>
               </span>
             )}
@@ -174,6 +183,11 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage }: StandaloneTas
             )}
             {typeof task.actualHours === "number" && (
               <span>Actual {task.actualHours.toFixed(1)}h</span>
+            )}
+            {task._count && task._count.subtasks > 0 && (
+              <span>
+                {task._count.subtasks} {task._count.subtasks === 1 ? "subtask" : "subtasks"}
+              </span>
             )}
           </div>
         </div>
@@ -245,6 +259,15 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage }: StandaloneTas
           <span className="text-xs text-neutral-400 dark:text-neutral-400">—</span>
         )}
       </td>
+      <td className="px-6 py-4 whitespace-nowrap hidden xl:table-cell">
+        {task._count && task._count.subtasks > 0 ? (
+          <Badge className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300">
+            {task._count.subtasks} {task._count.subtasks === 1 ? "subtask" : "subtasks"}
+          </Badge>
+        ) : (
+          <span className="text-xs text-neutral-400 dark:text-neutral-400">—</span>
+        )}
+      </td>
       <td className="px-6 py-4 whitespace-nowrap">
         <Badge className={getStatusColor(task.status)}>{task.status.replace("_", " ")}</Badge>
       </td>
@@ -263,7 +286,7 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage }: StandaloneTas
       <td className="px-6 py-4 whitespace-nowrap hidden lg:table-cell">
         {task.dueDate ? (
           <div className="text-sm text-neutral-600 dark:text-neutral-400">
-            {formatDate(task.dueDate)}
+            {formatDateInTimezone(task.dueDate, userTimezone)}
           </div>
         ) : (
           <span className="text-xs text-neutral-400 dark:text-neutral-400">—</span>
@@ -314,6 +337,9 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage }: StandaloneTas
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden md:table-cell">
                       Ticket
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden xl:table-cell">
+                      Subtasks
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                       Status
@@ -373,6 +399,9 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage }: StandaloneTas
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden md:table-cell">
                       Ticket
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden xl:table-cell">
+                      Subtasks
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                       Status

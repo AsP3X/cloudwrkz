@@ -349,6 +349,77 @@
     color: rgb(209 213 219) !important; /* neutral-300 */
   }
 
+  /* Ensure text is black on bright highlight colors for readability */
+  .prose mark[data-color="#FEF08A"],
+  .prose mark[data-color="#BBF7D0"],
+  .prose mark[data-color="#BFDBFE"],
+  .prose mark[data-color="#FCE7F3"],
+  .prose mark[data-color="#FED7AA"],
+  .prose mark[data-color="#E9D5FF"],
+  .prose mark[data-color="#FECACA"],
+  .ProseMirror mark[data-color="#FEF08A"],
+  .ProseMirror mark[data-color="#BBF7D0"],
+  .ProseMirror mark[data-color="#BFDBFE"],
+  .ProseMirror mark[data-color="#FCE7F3"],
+  .ProseMirror mark[data-color="#FED7AA"],
+  .ProseMirror mark[data-color="#E9D5FF"],
+  .ProseMirror mark[data-color="#FECACA"],
+  mark[data-color="#FEF08A"],
+  mark[data-color="#BBF7D0"],
+  mark[data-color="#BFDBFE"],
+  mark[data-color="#FCE7F3"],
+  mark[data-color="#FED7AA"],
+  mark[data-color="#E9D5FF"],
+  mark[data-color="#FECACA"] {
+    color: rgb(0 0 0) !important; /* black text for readability on bright backgrounds */
+  }
+
+  /* Also handle highlights applied via inline styles (bright colors) */
+  .prose mark[style*="background-color: #FEF08A"],
+  .prose mark[style*="background-color:#FEF08A"],
+  .prose mark[style*="background-color: #BBF7D0"],
+  .prose mark[style*="background-color:#BBF7D0"],
+  .prose mark[style*="background-color: #BFDBFE"],
+  .prose mark[style*="background-color:#BFDBFE"],
+  .prose mark[style*="background-color: #FCE7F3"],
+  .prose mark[style*="background-color:#FCE7F3"],
+  .prose mark[style*="background-color: #FED7AA"],
+  .prose mark[style*="background-color:#FED7AA"],
+  .prose mark[style*="background-color: #E9D5FF"],
+  .prose mark[style*="background-color:#E9D5FF"],
+  .prose mark[style*="background-color: #FECACA"],
+  .prose mark[style*="background-color:#FECACA"],
+  .ProseMirror mark[style*="background-color: #FEF08A"],
+  .ProseMirror mark[style*="background-color:#FEF08A"],
+  .ProseMirror mark[style*="background-color: #BBF7D0"],
+  .ProseMirror mark[style*="background-color:#BBF7D0"],
+  .ProseMirror mark[style*="background-color: #BFDBFE"],
+  .ProseMirror mark[style*="background-color:#BFDBFE"],
+  .ProseMirror mark[style*="background-color: #FCE7F3"],
+  .ProseMirror mark[style*="background-color:#FCE7F3"],
+  .ProseMirror mark[style*="background-color: #FED7AA"],
+  .ProseMirror mark[style*="background-color:#FED7AA"],
+  .ProseMirror mark[style*="background-color: #E9D5FF"],
+  .ProseMirror mark[style*="background-color:#E9D5FF"],
+  .ProseMirror mark[style*="background-color: #FECACA"],
+  .ProseMirror mark[style*="background-color:#FECACA"],
+  mark[style*="background-color: #FEF08A"],
+  mark[style*="background-color:#FEF08A"],
+  mark[style*="background-color: #BBF7D0"],
+  mark[style*="background-color:#BBF7D0"],
+  mark[style*="background-color: #BFDBFE"],
+  mark[style*="background-color:#BFDBFE"],
+  mark[style*="background-color: #FCE7F3"],
+  mark[style*="background-color:#FCE7F3"],
+  mark[style*="background-color: #FED7AA"],
+  mark[style*="background-color:#FED7AA"],
+  mark[style*="background-color: #E9D5FF"],
+  mark[style*="background-color:#E9D5FF"],
+  mark[style*="background-color: #FECACA"],
+  mark[style*="background-color:#FECACA"] {
+    color: rgb(0 0 0) !important; /* black text for readability on bright backgrounds */
+  }
+
 }
 
 /* Fix calendar picker icon visibility in dark mode - outside layer for higher specificity */

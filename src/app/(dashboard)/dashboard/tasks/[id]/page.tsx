@@ -1,7 +1,7 @@
 import { getCurrentUser } from "@/lib/utils/auth-server";
 import { hasPermission } from "@/lib/utils/permissions";
 import { formatUserName } from "@/lib/utils/users";
-import { formatDateTime } from "@/lib/utils/date";
+import { formatDateTimeInTimezone, formatDateInTimezone } from "@/lib/utils/date";
 import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
 import { canUserViewModule } from "@/server/actions/modules";
@@ -132,6 +132,7 @@ export default async function TaskDetailPage({ params, searchParams }: TaskDetai
 
   const canEdit = isAgent || await hasPermission(user.id, "tasks.update");
   const isEditing = isEditingRequested && canEdit;
+  const userTimezone = user.timezone ?? "UTC";
 
   // For inline edit mode, load users and recent tickets (similar to the dedicated edit page)
   let assignableUsers: Awaited<ReturnType<typeof getAllUsers>> = [];
@@ -163,7 +164,6 @@ export default async function TaskDetailPage({ params, searchParams }: TaskDetai
     }));
   }
 
-  const hasSubtasks = (task.subtasks || []).length > 0;
 
   return (
     <div className="space-y-6">
@@ -173,11 +173,11 @@ export default async function TaskDetailPage({ params, searchParams }: TaskDetai
         taskTitle={task.title}
         createdAt={task.createdAt}
         canEdit={canEdit}
-        hasSubtasks={hasSubtasks}
         description={task.description}
         descriptionHtml={(task as any).descriptionHtml}
         parentTaskId={task.parentTask?.id}
         isEditing={isEditing}
+        userTimezone={userTimezone}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -216,8 +216,10 @@ export default async function TaskDetailPage({ params, searchParams }: TaskDetai
                   // these fields are optional for now; can be expanded later
                   dueDate: (subtask as any).dueDate ?? null,
                   assignedTo: (subtask as any).assignedTo ?? null,
+                  _count: (subtask as any)._count ?? { subtasks: 0 },
                 }))}
                 canManage={canEdit}
+                userTimezone={userTimezone}
               />
 
               {/* Dependencies */}
@@ -349,6 +351,7 @@ export default async function TaskDetailPage({ params, searchParams }: TaskDetai
                   </>
                 )}
 
+
                 {/* Ticket - Only show if task is linked to a ticket */}
                 {task.ticket && (
                   <>
@@ -394,7 +397,7 @@ export default async function TaskDetailPage({ params, searchParams }: TaskDetai
                       <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                         Start Date
                       </label>
-                      <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDateTime(task.startDate)}</p>
+                      <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDateTimeInTimezone(task.startDate, userTimezone)}</p>
                     </div>
                   )}
                   {task.dueDate && (
@@ -402,7 +405,7 @@ export default async function TaskDetailPage({ params, searchParams }: TaskDetai
                       <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                         Due Date
                       </label>
-                      <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDateTime(task.dueDate)}</p>
+                      <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDateTimeInTimezone(task.dueDate, userTimezone)}</p>
                     </div>
                   )}
                   {task.completedDate && (
@@ -410,21 +413,21 @@ export default async function TaskDetailPage({ params, searchParams }: TaskDetai
                       <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                         Completed Date
                       </label>
-                      <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDateTime(task.completedDate)}</p>
+                      <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDateTimeInTimezone(task.completedDate, userTimezone)}</p>
                     </div>
                   )}
                   <div>
                     <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                       Created
                     </label>
-                    <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDateTime(task.createdAt)}</p>
+                    <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDateTimeInTimezone(task.createdAt, userTimezone)}</p>
                   </div>
                   {task.updatedAt && task.updatedAt.getTime() !== task.createdAt.getTime() && (
                     <div>
                       <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                         Last Updated
                       </label>
-                      <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDateTime(task.updatedAt)}</p>
+                      <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDateTimeInTimezone(task.updatedAt, userTimezone)}</p>
                     </div>
                   )}
                 </div>

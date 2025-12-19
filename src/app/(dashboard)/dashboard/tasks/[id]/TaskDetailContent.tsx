@@ -21,9 +21,10 @@ interface TaskDetailContentProps {
   parentTaskId: string;
   subtasks: Subtask[];
   canManage: boolean;
+  userTimezone?: string;
 }
 
-export const TaskDetailContent = ({ parentTaskId, subtasks, canManage }: TaskDetailContentProps) => {
+export const TaskDetailContent = ({ parentTaskId, subtasks, canManage, userTimezone = "UTC" }: TaskDetailContentProps) => {
   // Start with default "table" to avoid hydration mismatch, then update from localStorage on client
   const [viewMode, setViewMode] = React.useState<TaskViewMode>("table");
   const [mounted, setMounted] = React.useState(false);
@@ -68,6 +69,7 @@ export const TaskDetailContent = ({ parentTaskId, subtasks, canManage }: TaskDet
           localStorage.setItem("task-view-mode", mode);
         }
       }}
+      userTimezone={userTimezone}
     />
   );
 };

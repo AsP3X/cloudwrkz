@@ -32,15 +32,19 @@ type Task = {
     ticketNumber: string;
     title: string;
   } | null;
+  _count?: {
+    subtasks: number;
+  };
 };
 
 interface TasksPageClientProps {
   tasks: Task[];
   canManage: boolean;
   userRole: string;
+  userTimezone?: string;
 }
 
-export function TasksPageClient({ tasks, canManage, userRole }: TasksPageClientProps) {
+export function TasksPageClient({ tasks, canManage, userRole, userTimezone = "UTC" }: TasksPageClientProps) {
   const [viewMode, setViewMode] = React.useState<TaskViewMode>("table");
   const [isReady, setIsReady] = React.useState(false);
 
@@ -120,6 +124,7 @@ export function TasksPageClient({ tasks, canManage, userRole }: TasksPageClientP
                 tasks={tasks}
                 viewMode={viewMode}
                 canManage={canManage}
+                userTimezone={userTimezone}
               />
             </>
           ) : (

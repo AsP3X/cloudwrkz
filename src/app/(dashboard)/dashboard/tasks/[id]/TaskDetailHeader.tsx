@@ -3,8 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
-import { TaskViewToggle, TaskViewMode, saveTaskViewMode } from "@/components/features/tasks/TaskViewToggle";
-import { formatDateTime } from "@/lib/utils/date";
+import { formatDateTimeInTimezone } from "@/lib/utils/date";
 import { RichTextDisplay } from "@/components/features/tickets/RichTextDisplay";
 
 interface TaskDetailHeaderProps {
@@ -12,12 +11,11 @@ interface TaskDetailHeaderProps {
   taskTitle: string;
   createdAt: Date;
   canEdit: boolean;
-  hasSubtasks: boolean;
   description?: string | null;
   descriptionHtml?: string | null;
-  onViewModeChange?: (mode: TaskViewMode) => void;
   parentTaskId?: string;
   isEditing?: boolean;
+  userTimezone?: string;
 }
 
 export const TaskDetailHeader = ({ 
@@ -25,37 +23,12 @@ export const TaskDetailHeader = ({
   taskTitle, 
   createdAt, 
   canEdit, 
-  hasSubtasks,
   description,
   descriptionHtml,
-  onViewModeChange,
   parentTaskId,
   isEditing,
+  userTimezone = "UTC",
 }: TaskDetailHeaderProps) => {
-  // Start with default "table" to avoid hydration mismatch, then update from localStorage on client
-  const [viewMode, setViewMode] = React.useState<TaskViewMode>("table");
-  const [mounted, setMounted] = React.useState(false);
-
-  // Initialize from localStorage only on client after mount
-  React.useEffect(() => {
-    setMounted(true);
-    try {
-      const stored = localStorage.getItem("task-view-mode");
-      if (stored && (stored === "table" || stored === "card")) {
-        setViewMode(stored as TaskViewMode);
-      }
-    } catch (error) {
-      // Ignore localStorage errors
-    }
-  }, []);
-
-  const handleViewChange = (mode: TaskViewMode) => {
-    setViewMode(mode);
-    saveTaskViewMode(mode);
-    if (onViewModeChange) {
-      onViewModeChange(mode);
-    }
-  };
 
   const backHref = parentTaskId ? `/dashboard/tasks/${parentTaskId}` : "/dashboard/tasks";
   const backLabel = parentTaskId ? "Back to Parent Task" : "Back to Tasks";
@@ -85,9 +58,11 @@ export const TaskDetailHeader = ({
           </Button>
         </Link>
         <div className="flex-1">
-          <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">{taskTitle}</h1>
+          <div className="flex items-center gap-3 mb-2">
+            <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-neutral-100">{taskTitle}</h1>
+          </div>
           <p className="text-sm sm:text-base text-neutral-600 dark:text-neutral-400 mb-3 sm:mb-0">
-            Created {formatDateTime(createdAt)}
+            Created {formatDateTimeInTimezone(createdAt, userTimezone)}
           </p>
           {/* Description on mobile - shown directly under title */}
           {(descriptionHtml || description) && (
@@ -101,9 +76,6 @@ export const TaskDetailHeader = ({
       </div>
       {/* Edit Button and View Toggle (mobile only) */}
       <div className="flex flex-wrap items-center gap-2 sm:hidden">
-        {hasSubtasks && mounted && (
-          <TaskViewToggle currentView={viewMode} onViewChange={handleViewChange} />
-        )}
         {canEdit && (
           <Link href={editHref}>
             <Button variant="primary" size="sm" className="w-full sm:w-auto">
