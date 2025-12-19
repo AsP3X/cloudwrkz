@@ -1114,54 +1114,159 @@ async function searchTasks(
   const trimmed = searchTerm.trim();
 
   // Load subtasks separately only if we have a search term
-  let subtaskFuzzyResults: Array<{ item: { id: string; title: string; descriptionPlain: string; status: string; parentTaskId: string; task: typeof tasks[0] }; score?: number }> = [];
+  // Support nested subtasks up to 3 levels deep
+  let subtaskFuzzyResults: Array<{ 
+    item: { 
+      id: string; 
+      title: string; 
+      descriptionPlain: string; 
+      status: string; 
+      parentTaskId: string; 
+      task: typeof tasks[0];
+      level: number; // 1 = direct subtask, 2 = subtask of subtask, 3 = max depth
+      rootTaskId: string; // ID of the top-level task
+      parentChain: string[]; // Array of parent IDs from root to direct parent
+    }; 
+    score?: number 
+  }> = [];
   
   if (searchTerm && searchTerm.trim().length >= 2 && tasks.length > 0) {
     // Get task IDs we already have
     const taskIds = tasks.map(t => t.id);
-
-    // Load subtasks for these tasks without applying an additional full-text filter.
-    // This keeps the candidate set bounded while allowing Fuse.js to handle
-    // fuzzy matching on subtask titles/descriptions (including typos and partials).
-    const subtaskLimit = limit * 3;
-    const matchingSubtasks = await prisma.task.findMany({
-      where: {
-        parentTaskId: { in: taskIds },
-      },
-      select: {
-        id: true,
-        title: true,
-        descriptionPlain: true,
-        status: true,
-        parentTaskId: true,
-      },
-      take: subtaskLimit,
-    });
-
-    // Map subtasks to parent tasks we already loaded
     const taskMap = new Map(tasks.map(t => [t.id, t]));
-    const allSubtasksWithParent = matchingSubtasks
-      .filter((subtask): subtask is typeof subtask & { parentTaskId: string } => 
-        subtask.parentTaskId !== null
-      )
-      .map(subtask => {
-        const parentTask = taskMap.get(subtask.parentTaskId);
-        if (!parentTask) return null;
+
+    // Recursively load subtasks up to 3 levels deep
+    const allSubtasksWithHierarchy: Array<{
+      id: string;
+      title: string;
+      descriptionPlain: string;
+      status: string;
+      parentTaskId: string;
+      task: typeof tasks[0];
+      level: number;
+      rootTaskId: string;
+      parentChain: string[];
+    }> = [];
+
+    // Map to track all loaded subtasks for faster parent lookups
+    const subtaskMap = new Map<string, {
+      id: string;
+      title: string;
+      descriptionPlain: string;
+      status: string;
+      parentTaskId: string;
+    }>();
+
+    // Helper function to recursively load subtasks
+    const loadSubtasksRecursively = async (
+      parentIds: string[],
+      currentLevel: number,
+      maxLevel: number,
+      parentChain: string[],
+      rootTaskId: string
+    ): Promise<void> => {
+      if (currentLevel > maxLevel || parentIds.length === 0) {
+        return;
+      }
+
+      const subtaskLimit = limit * 3;
+      const matchingSubtasks = await prisma.task.findMany({
+        where: {
+          parentTaskId: { in: parentIds },
+        },
+        select: {
+          id: true,
+          title: true,
+          descriptionPlain: true,
+          status: true,
+          parentTaskId: true,
+        },
+        take: subtaskLimit,
+      });
+
+      // Process each subtask
+      for (const subtask of matchingSubtasks) {
+        if (!subtask.parentTaskId) continue;
+
+        // Find the parent task (could be from original tasks or a previously loaded subtask)
+        let parentTask = taskMap.get(subtask.parentTaskId);
         
-        return {
+        // If parent not found in original tasks, it's a nested subtask
+        // We need to find it in our already loaded subtasks
+        if (!parentTask) {
+          const parentSubtaskData = subtaskMap.get(subtask.parentTaskId);
+          if (parentSubtaskData) {
+            // Create a minimal parent task object for reference
+            parentTask = {
+              id: parentSubtaskData.id,
+              title: parentSubtaskData.title,
+              taskNumber: null,
+              description: null,
+              descriptionPlain: parentSubtaskData.descriptionPlain,
+              status: parentSubtaskData.status,
+              priority: "MEDIUM" as const,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              parentTaskId: parentSubtaskData.parentTaskId,
+              parentTask: null,
+              assignedToId: null,
+              assignedTo: null,
+              ticketId: null,
+              ticket: null,
+            } as typeof tasks[0];
+          } else {
+            continue; // Skip if we can't find the parent
+          }
+        }
+
+        // Add to subtask map for future lookups
+        subtaskMap.set(subtask.id, {
+          id: subtask.id,
+          title: subtask.title,
+          descriptionPlain: subtask.descriptionPlain || "",
+          status: subtask.status,
+          parentTaskId: subtask.parentTaskId,
+        });
+
+        const newParentChain = [...parentChain, subtask.parentTaskId];
+        
+        allSubtasksWithHierarchy.push({
           id: subtask.id,
           title: subtask.title,
           descriptionPlain: subtask.descriptionPlain || "",
           status: subtask.status,
           parentTaskId: subtask.parentTaskId,
           task: parentTask,
-        };
-      })
-      .filter((s): s is NonNullable<typeof s> => s !== null);
+          level: currentLevel,
+          rootTaskId,
+          parentChain: newParentChain,
+        });
+
+        // Recursively load subtasks of this subtask
+        await loadSubtasksRecursively(
+          [subtask.id],
+          currentLevel + 1,
+          maxLevel,
+          newParentChain,
+          rootTaskId
+        );
+      }
+    };
+
+    // Load subtasks for each root task
+    for (const rootTask of tasks) {
+      await loadSubtasksRecursively(
+        [rootTask.id],
+        1, // Start at level 1 (direct subtasks)
+        3, // Max 3 levels deep
+        [rootTask.id], // Parent chain starts with root task
+        rootTask.id // Root task ID
+      );
+    }
     
-    // Apply fuzzy search for final ranking on subtasks
+    // Apply fuzzy search for final ranking on all subtasks (all levels)
     subtaskFuzzyResults = fuzzySearch(
-      allSubtasksWithParent,
+      allSubtasksWithHierarchy,
       trimmed,
       {
         keys: [
@@ -1205,6 +1310,7 @@ async function searchTasks(
 
   // Determine which tasks matched either directly or via subtasks
   const matchedTaskIds = new Set<string>();
+  const rootTaskIdsFromSubtasks = new Set<string>();
 
   taskFuzzyResults.forEach((result) => {
     if (result.score !== undefined && result.score < 0.5) {
@@ -1214,8 +1320,62 @@ async function searchTasks(
 
   const topMatchingSubtasks = rankAndLimit(subtaskFuzzyResults, limit * 2);
   topMatchingSubtasks.forEach((item) => {
-    matchedTaskIds.add(item.parentTaskId);
+    // Add the root task ID (top-level parent) to matched tasks
+    matchedTaskIds.add(item.rootTaskId);
+    rootTaskIdsFromSubtasks.add(item.rootTaskId);
+    // Also add the direct parent if it's not the root (for nested subtasks)
+    if (item.parentTaskId !== item.rootTaskId) {
+      matchedTaskIds.add(item.parentTaskId);
+    }
   });
+
+  // Load any root tasks that weren't in the initial results but have matching nested subtasks
+  const missingRootTaskIds = Array.from(rootTaskIdsFromSubtasks).filter(id => !tasks.some(t => t.id === id));
+  if (missingRootTaskIds.length > 0) {
+    const missingRootTasks = await prisma.task.findMany({
+      where: {
+        id: { in: missingRootTaskIds },
+        parentTaskId: null, // Only root tasks
+      },
+      select: {
+        id: true,
+        taskNumber: true,
+        title: true,
+        description: true,
+        descriptionPlain: true,
+        status: true,
+        priority: true,
+        createdAt: true,
+        updatedAt: true,
+        parentTaskId: true,
+        parentTask: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
+        assignedToId: true,
+        assignedTo: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        ticketId: true,
+        ticket: {
+          select: {
+            id: true,
+            ticketNumber: true,
+            title: true,
+          },
+        },
+      },
+    });
+    
+    // Add missing root tasks to the tasks array
+    tasks.push(...missingRootTasks);
+  }
 
   const taskMap = new Map(tasks.map((t) => [t.id, t]));
 
@@ -1264,10 +1424,17 @@ async function searchTasks(
       taskMatch.score !== undefined &&
       taskMatch.score < 0.5;
 
+    // Get all matching subtasks (including nested ones) for this root task
     const taskSubtaskMatches = subtaskFuzzyResults
-      .filter((r) => r.item.parentTaskId === task.id)
-      .sort((a, b) => (a.score ?? 1) - (b.score ?? 1))
-      .slice(0, 5);
+      .filter((r) => r.item.rootTaskId === task.id)
+      .sort((a, b) => {
+        // Sort by level first (level 1 before level 2, etc.), then by score
+        if (a.item.level !== b.item.level) {
+          return a.item.level - b.item.level;
+        }
+        return (a.score ?? 1) - (b.score ?? 1);
+      })
+      .slice(0, 10); // Allow more subtasks to show nested structure
 
     const matchingSubtasks = taskSubtaskMatches.map((r) => r.item);
 
@@ -1298,25 +1465,59 @@ async function searchTasks(
         addedTaskIds.add(task.id);
       }
 
-      // Subtask "comment-style" results
+      // Add subtasks with hierarchy information
+      // Group by level to maintain proper nesting order
+      const subtasksByLevel = new Map<number, typeof matchingSubtasks>();
       matchingSubtasks.forEach((subtask) => {
-        if (!addedTaskIds.has(subtask.id)) {
-          results.push({
-            type: "task" as const,
-            id: subtask.id,
-            title: subtask.title,
-            description: subtask.descriptionPlain || undefined,
-            url: `/dashboard/tasks/${subtask.id}`,
-            metadata: {
-              isSubtask: true,
-              parentTaskId: task.id,
-              parentTaskTitle: task.title,
-              status: subtask.status,
-            },
-          });
-          addedTaskIds.add(subtask.id);
+        const level = subtask.level;
+        if (!subtasksByLevel.has(level)) {
+          subtasksByLevel.set(level, []);
         }
+        subtasksByLevel.get(level)!.push(subtask);
       });
+
+      // Add subtasks level by level to maintain hierarchy
+      for (let level = 1; level <= 3; level++) {
+        const levelSubtasks = subtasksByLevel.get(level) || [];
+        levelSubtasks.forEach((subtask) => {
+          if (!addedTaskIds.has(subtask.id)) {
+            // Find the direct parent task title
+            let directParentTitle = task.title;
+            if (subtask.parentTaskId !== task.id) {
+              // Find the direct parent in our loaded subtasks
+              const directParent = matchingSubtasks.find(s => s.id === subtask.parentTaskId);
+              if (directParent) {
+                directParentTitle = directParent.title;
+              } else {
+                // Try to find in original tasks
+                const parentInTasks = tasks.find(t => t.id === subtask.parentTaskId);
+                if (parentInTasks) {
+                  directParentTitle = parentInTasks.title;
+                }
+              }
+            }
+
+            results.push({
+              type: "task" as const,
+              id: subtask.id,
+              title: subtask.title,
+              description: subtask.descriptionPlain || undefined,
+              url: `/dashboard/tasks/${subtask.id}`,
+              metadata: {
+                isSubtask: true,
+                parentTaskId: subtask.parentTaskId, // Direct parent
+                parentTaskTitle: directParentTitle,
+                rootTaskId: subtask.rootTaskId, // Root task
+                rootTaskTitle: task.title,
+                level: subtask.level, // Hierarchy level (1, 2, or 3)
+                parentChain: subtask.parentChain, // Full parent chain
+                status: subtask.status,
+              },
+            });
+            addedTaskIds.add(subtask.id);
+          }
+        });
+      }
     }
   });
 

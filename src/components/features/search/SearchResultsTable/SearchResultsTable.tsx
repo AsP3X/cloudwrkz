@@ -15,6 +15,10 @@ interface SearchResultsTableProps {
 export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsTableProps) => {
   const [expandedTickets, setExpandedTickets] = React.useState<Set<string>>(new Set());
   const [visibleComments, setVisibleComments] = React.useState<Set<string>>(new Set());
+  const [expandedLevel1Subtasks, setExpandedLevel1Subtasks] = React.useState<Set<string>>(new Set());
+  const [visibleLevel2Subtasks, setVisibleLevel2Subtasks] = React.useState<Set<string>>(new Set());
+  const [expandedLevel2Subtasks, setExpandedLevel2Subtasks] = React.useState<Set<string>>(new Set());
+  const [visibleLevel3Subtasks, setVisibleLevel3Subtasks] = React.useState<Set<string>>(new Set());
 
   const toggleTicketExpansion = (ticketId: string) => {
     const isCurrentlyExpanded = expandedTickets.has(ticketId);
@@ -55,9 +59,77 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
     }
   };
 
+  const toggleLevel1SubtaskExpansion = (subtaskId: string) => {
+    const isCurrentlyExpanded = expandedLevel1Subtasks.has(subtaskId);
+    
+    if (isCurrentlyExpanded) {
+      setExpandedLevel1Subtasks((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(subtaskId);
+        return newSet;
+      });
+      setTimeout(() => {
+        setVisibleLevel2Subtasks((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(subtaskId);
+          return newSet;
+        });
+      }, 300);
+    } else {
+      setVisibleLevel2Subtasks((prev) => {
+        const newSet = new Set(prev);
+        newSet.add(subtaskId);
+        return newSet;
+      });
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setExpandedLevel1Subtasks((prev) => {
+            const newSet = new Set(prev);
+            newSet.add(subtaskId);
+            return newSet;
+          });
+        });
+      });
+    }
+  };
+
+  const toggleLevel2SubtaskExpansion = (subtaskId: string) => {
+    const isCurrentlyExpanded = expandedLevel2Subtasks.has(subtaskId);
+    
+    if (isCurrentlyExpanded) {
+      setExpandedLevel2Subtasks((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(subtaskId);
+        return newSet;
+      });
+      setTimeout(() => {
+        setVisibleLevel3Subtasks((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(subtaskId);
+          return newSet;
+        });
+      }, 300);
+    } else {
+      setVisibleLevel3Subtasks((prev) => {
+        const newSet = new Set(prev);
+        newSet.add(subtaskId);
+        return newSet;
+      });
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setExpandedLevel2Subtasks((prev) => {
+            const newSet = new Set(prev);
+            newSet.add(subtaskId);
+            return newSet;
+          });
+        });
+      });
+    }
+  };
+
   // Group results by ticket/task
   const groupedResults = React.useMemo(() => {
-    const groups: Array<{ ticket: SearchResult; comments: SearchResult[] }> = [];
+    const groups: Array<{ ticket: SearchResult; comments: SearchResult[]; subtaskHierarchy?: Map<string, SearchResult[]>; level3Hierarchy?: Map<string, SearchResult[]> }> = [];
     const ticketMap = new Map<string, SearchResult>();
     const taskMap = new Map<string, SearchResult>();
     const commentMap = new Map<string, SearchResult[]>();
@@ -71,10 +143,12 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
         }
       } else if (result.type === "task") {
         // Check if this is a subtask
-        if (result.metadata?.isSubtask && result.metadata?.parentTaskId) {
-          const subtasks = subtaskMap.get(result.metadata.parentTaskId) || [];
+        if (result.metadata?.isSubtask && result.metadata?.rootTaskId) {
+          // Group by root task ID to support nested subtasks
+          const rootTaskId = result.metadata.rootTaskId as string;
+          const subtasks = subtaskMap.get(rootTaskId) || [];
           subtasks.push(result);
-          subtaskMap.set(result.metadata.parentTaskId, subtasks);
+          subtaskMap.set(rootTaskId, subtasks);
         } else {
           // Parent task
           taskMap.set(result.id, result);
@@ -101,10 +175,68 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
     });
 
     // Add tasks with their subtasks (displayed like comments)
+    // Build hierarchical structure for nested subtasks
     taskMap.forEach((task) => {
+      const allSubtasks = subtaskMap.get(task.id) || [];
+      
+      // Create maps to organize subtasks by their parent
+      // Map: level 2 subtasks grouped by their level 1 parent
+      const level2ByParent = new Map<string, SearchResult[]>();
+      // Map: level 3 subtasks grouped by their level 2 parent
+      const level3ByParent = new Map<string, SearchResult[]>();
+      
+      // Separate subtasks by level
+      const level1Subtasks: SearchResult[] = [];
+      
+      allSubtasks.forEach((subtask) => {
+        const level = (subtask.metadata?.level as number) || 1;
+        const parentTaskId = subtask.metadata?.parentTaskId as string;
+        
+        if (level === 1) {
+          level1Subtasks.push(subtask);
+        } else if (level === 2 && parentTaskId) {
+          // Level 2 subtasks: group by their level 1 parent
+          if (!level2ByParent.has(parentTaskId)) {
+            level2ByParent.set(parentTaskId, []);
+          }
+          level2ByParent.get(parentTaskId)!.push(subtask);
+        } else if (level === 3 && parentTaskId) {
+          // Level 3 subtasks: group by their level 2 parent
+          if (!level3ByParent.has(parentTaskId)) {
+            level3ByParent.set(parentTaskId, []);
+          }
+          level3ByParent.get(parentTaskId)!.push(subtask);
+        }
+      });
+      
+      // Sort function for subtasks
+      const sortSubtasks = (subtasks: SearchResult[]) => {
+        return subtasks.sort((a, b) => {
+          const chainA = (a.metadata?.parentChain as string[]) || [];
+          const chainB = (b.metadata?.parentChain as string[]) || [];
+          for (let i = 0; i < Math.min(chainA.length, chainB.length); i++) {
+            if (chainA[i] !== chainB[i]) {
+              return chainA[i].localeCompare(chainB[i]);
+            }
+          }
+          return chainA.length - chainB.length;
+        });
+      };
+      
+      // Sort level 1 subtasks
+      sortSubtasks(level1Subtasks);
+      
+      // Sort level 2 and level 3 subtasks within each parent
+      level2ByParent.forEach((subtasks) => sortSubtasks(subtasks));
+      level3ByParent.forEach((subtasks) => sortSubtasks(subtasks));
+      
+      // Only show level 1 subtasks in the main list
+      // Level 2 and 3 will be shown via toggles
       groups.push({
         ticket: task,
-        comments: subtaskMap.get(task.id) || [],
+        comments: level1Subtasks,
+        subtaskHierarchy: level2ByParent.size > 0 ? level2ByParent : undefined, // Map of level 2 subtasks by their level 1 parent
+        level3Hierarchy: level3ByParent.size > 0 ? level3ByParent : undefined, // Map of level 3 subtasks by their level 2 parent
       });
     });
 
@@ -633,100 +765,339 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                         // Staggered delay for each comment/subtask
                         const commentDelay = commentIndex * 30;
                         const isSubtask = comment.metadata?.isSubtask;
+                        const subtaskLevel = (comment.metadata?.level as number) || 1;
+                        
+                        // For level 1 subtasks: check if they have level 2 children
+                        const hasLevel2Children = isSubtask && subtaskLevel === 1 && group.subtaskHierarchy && group.subtaskHierarchy.has(comment.id);
+                        const level2Children = hasLevel2Children ? group.subtaskHierarchy!.get(comment.id)! : [];
+                        const isLevel1Expanded = expandedLevel1Subtasks.has(comment.id);
+                        const shouldShowLevel2 = visibleLevel2Subtasks.has(comment.id);
                         
                         return (
-                          <tr
-                            key={`${isSubtask ? "subtask" : "comment"}-${comment.id}`}
-                            className={cn(
-                              "bg-neutral-50/50 dark:bg-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-800",
-                              isExpanded 
-                                ? "opacity-100 translate-y-0" 
-                                : "opacity-0 -translate-y-2"
-                            )}
-                            style={{
-                              transitionProperty: "opacity, transform",
-                              transitionDuration: "300ms",
-                              transitionTimingFunction: "ease-in-out",
-                              transitionDelay: isExpanded 
-                                ? `${commentDelay}ms` 
-                                : `${(group.comments.length - commentIndex - 1) * 20}ms`,
-                              willChange: "opacity, transform",
-                            }}
-                          >
-                          <td className="pl-12 pr-6 py-2 whitespace-nowrap">
-                            <div className="flex items-center">
-                              {getResultIcon(comment.type)}
-                            </div>
-                          </td>
-                          <td className="px-6 py-2 whitespace-nowrap">
-                            {isSubtask && comment.metadata?.parentTaskTitle ? (
-                              <Link
-                                href={comment.url}
-                                className="text-xs font-mono text-neutral-500 dark:text-neutral-400 hover:text-indigo-600 dark:hover:text-indigo-400"
-                              >
-                                {group.ticket.metadata?.taskNumber || "Task"}
-                              </Link>
-                            ) : comment.metadata?.ticketNumber ? (
-                              <Link
-                                href={comment.url}
-                                className="text-xs font-mono text-neutral-500 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400"
-                              >
-                                {comment.metadata.ticketNumber}
-                              </Link>
-                            ) : null}
-                          </td>
-                          <td className="px-6 py-2">
-                            <Link
-                              href={comment.url}
-                              className="text-sm text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400"
+                          <React.Fragment key={`${isSubtask ? "subtask" : "comment"}-${comment.id}`}>
+                            {/* Level 1 Subtask */}
+                            <tr
+                              className={cn(
+                                "bg-neutral-50/50 dark:bg-neutral-800/50 hover:bg-neutral-50 dark:hover:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-800",
+                                isExpanded 
+                                  ? "opacity-100 translate-y-0" 
+                                  : "opacity-0 -translate-y-2"
+                              )}
+                              style={{
+                                transitionProperty: "opacity, transform",
+                                transitionDuration: "300ms",
+                                transitionTimingFunction: "ease-in-out",
+                                transitionDelay: isExpanded 
+                                  ? `${commentDelay}ms` 
+                                  : `${(group.comments.length - commentIndex - 1) * 20}ms`,
+                                willChange: "opacity, transform",
+                              }}
                             >
-                              <div className="max-w-md">
-                                <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
-                                  {isSubtask
-                                    ? `Subtask in ${comment.metadata?.parentTaskTitle || "task"}:`
-                                    : `Comment in ${comment.metadata?.ticketTitle}:`}
-                                </div>
-                                <div className="truncate">{highlightMatch(comment.title, searchQuery)}</div>
+                            <td className="pl-12 pr-6 py-2 whitespace-nowrap">
+                              <div className="flex items-center gap-2">
+                                {isSubtask && hasLevel2Children && (
+                                  <button
+                                    onClick={() => toggleLevel1SubtaskExpansion(comment.id)}
+                                    className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors"
+                                    aria-label={isLevel1Expanded ? "Collapse level 2 subtasks" : "Expand level 2 subtasks"}
+                                  >
+                                    <svg
+                                      className={cn(
+                                        "w-3 h-3 text-neutral-500 dark:text-neutral-400 transition-transform duration-200",
+                                        isLevel1Expanded && "rotate-90"
+                                      )}
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      stroke="currentColor"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M9 5l7 7-7 7"
+                                      />
+                                    </svg>
+                                  </button>
+                                )}
+                                {getResultIcon(comment.type)}
                               </div>
-                            </Link>
-                          </td>
-                          <td className="px-6 py-2 whitespace-nowrap">
-                            {isSubtask && comment.metadata?.status ? (
-                              <span
-                                className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(
-                                  comment.metadata.status
-                                )}`}
+                            </td>
+                            <td className="px-6 py-2 whitespace-nowrap">
+                              {isSubtask && comment.metadata?.parentTaskTitle ? (
+                                <Link
+                                  href={comment.url}
+                                  className="text-xs font-mono text-neutral-500 dark:text-neutral-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                                >
+                                  {group.ticket.metadata?.taskNumber || "Task"}
+                                </Link>
+                              ) : comment.metadata?.ticketNumber ? (
+                                <Link
+                                  href={comment.url}
+                                  className="text-xs font-mono text-neutral-500 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400"
+                                >
+                                  {comment.metadata.ticketNumber}
+                                </Link>
+                              ) : null}
+                            </td>
+                            <td className="px-6 py-2">
+                              <Link
+                                href={comment.url}
+                                className="text-sm text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400"
                               >
-                                {comment.metadata.status.replace("_", " ")}
-                              </span>
-                            ) : (
+                                <div className="max-w-md">
+                                  <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
+                                    {isSubtask ? (
+                                      `Subtask (Level ${subtaskLevel}) in ${comment.metadata?.parentTaskTitle || "task"}:`
+                                    ) : (
+                                      `Comment in ${comment.metadata?.ticketTitle}:`
+                                    )}
+                                  </div>
+                                  <div className="truncate">
+                                    {highlightMatch(comment.title, searchQuery)}
+                                  </div>
+                                </div>
+                              </Link>
+                            </td>
+                            <td className="px-6 py-2 whitespace-nowrap">
+                              {isSubtask && comment.metadata?.status ? (
+                                <span
+                                  className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(
+                                    comment.metadata.status
+                                  )}`}
+                                >
+                                  {comment.metadata.status.replace("_", " ")}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
+                              )}
+                            </td>
+                            <td className="px-6 py-2 whitespace-nowrap">
                               <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
-                            )}
-                          </td>
-                          <td className="px-6 py-2 whitespace-nowrap">
-                            <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
-                          </td>
-                          <td className="px-6 py-2 whitespace-nowrap hidden md:table-cell">
-                            <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
-                          </td>
-                          <td className="px-6 py-2 whitespace-nowrap hidden lg:table-cell">
-                            <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
-                          </td>
-                          <td className="px-6 py-2 whitespace-nowrap hidden lg:table-cell">
-                            {comment.metadata?.createdAt && (
-                              <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                                {formatDate(comment.metadata.createdAt)}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-6 py-2 whitespace-nowrap hidden xl:table-cell">
-                            <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
-                          </td>
-                        </tr>
-                        );
-                      })}
-                    </>
-                  )}
+                            </td>
+                            <td className="px-6 py-2 whitespace-nowrap hidden md:table-cell">
+                              <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
+                            </td>
+                            <td className="px-6 py-2 whitespace-nowrap hidden lg:table-cell">
+                              <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
+                            </td>
+                            <td className="px-6 py-2 whitespace-nowrap hidden lg:table-cell">
+                              {comment.metadata?.createdAt && (
+                                <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                                  {formatDate(comment.metadata.createdAt)}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-6 py-2 whitespace-nowrap hidden xl:table-cell">
+                              <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
+                            </td>
+                          </tr>
+                          
+                          {/* Level 2 Subtasks (nested under level 1) */}
+                          {isSubtask && hasLevel2Children && shouldShowLevel2 && level2Children.map((level2Subtask, level2Index) => {
+                            const level2Delay = level2Index * 20;
+                            const hasLevel3Children = group.level3Hierarchy && group.level3Hierarchy.has(level2Subtask.id);
+                            const level3Children = hasLevel3Children ? group.level3Hierarchy!.get(level2Subtask.id)! : [];
+                            const isLevel2Expanded = expandedLevel2Subtasks.has(level2Subtask.id);
+                            const shouldShowLevel3 = visibleLevel3Subtasks.has(level2Subtask.id);
+                            
+                            return (
+                              <React.Fragment key={`level2-subtask-${level2Subtask.id}`}>
+                                <tr
+                                  className={cn(
+                                    "bg-neutral-50/40 dark:bg-neutral-800/40 hover:bg-neutral-50 dark:hover:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-800",
+                                    isLevel1Expanded 
+                                      ? "opacity-100 translate-y-0" 
+                                      : "opacity-0 -translate-y-2"
+                                  )}
+                                  style={{
+                                    transitionProperty: "opacity, transform",
+                                    transitionDuration: "300ms",
+                                    transitionTimingFunction: "ease-in-out",
+                                    transitionDelay: isLevel1Expanded 
+                                      ? `${level2Delay}ms` 
+                                      : `${(level2Children.length - level2Index - 1) * 15}ms`,
+                                    willChange: "opacity, transform",
+                                  }}
+                                >
+                                  <td className="pl-12 pr-6 py-2 whitespace-nowrap">
+                                    <div className="flex items-center gap-2" style={{ paddingLeft: "48px" }}>
+                                      {hasLevel3Children && (
+                                        <button
+                                          onClick={() => toggleLevel2SubtaskExpansion(level2Subtask.id)}
+                                          className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors"
+                                          aria-label={isLevel2Expanded ? "Collapse level 3 subtasks" : "Expand level 3 subtasks"}
+                                        >
+                                          <svg
+                                            className={cn(
+                                              "w-3 h-3 text-neutral-500 dark:text-neutral-400 transition-transform duration-200",
+                                              isLevel2Expanded && "rotate-90"
+                                            )}
+                                            fill="none"
+                                            viewBox="0 0 24 24"
+                                            stroke="currentColor"
+                                          >
+                                            <path
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                              strokeWidth={2}
+                                              d="M9 5l7 7-7 7"
+                                            />
+                                          </svg>
+                                        </button>
+                                      )}
+                                      {getResultIcon(level2Subtask.type)}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-2 whitespace-nowrap">
+                                    <Link
+                                      href={level2Subtask.url}
+                                      className="text-xs font-mono text-neutral-500 dark:text-neutral-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                                    >
+                                      {group.ticket.metadata?.taskNumber || "Task"}
+                                    </Link>
+                                  </td>
+                                  <td className="px-6 py-2">
+                                    <Link
+                                      href={level2Subtask.url}
+                                      className="text-sm text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400"
+                                    >
+                                      <div className="max-w-md">
+                                        <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
+                                          {`Subtask (Level 2) in ${level2Subtask.metadata?.parentTaskTitle || "task"}:`}
+                                        </div>
+                                        <div className="truncate">
+                                          {highlightMatch(level2Subtask.title, searchQuery)}
+                                        </div>
+                                      </div>
+                                    </Link>
+                                  </td>
+                                  <td className="px-6 py-2 whitespace-nowrap">
+                                    {level2Subtask.metadata?.status ? (
+                                      <span
+                                        className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(
+                                          level2Subtask.metadata.status as string
+                                        )}`}
+                                      >
+                                        {(level2Subtask.metadata.status as string).replace("_", " ")}
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-2 whitespace-nowrap">
+                                    <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
+                                  </td>
+                                  <td className="px-6 py-2 whitespace-nowrap hidden md:table-cell">
+                                    <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
+                                  </td>
+                                  <td className="px-6 py-2 whitespace-nowrap hidden lg:table-cell">
+                                    <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
+                                  </td>
+                                  <td className="px-6 py-2 whitespace-nowrap hidden lg:table-cell">
+                                    {level2Subtask.metadata?.createdAt && (
+                                      <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                                        {formatDate(level2Subtask.metadata.createdAt as Date)}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-2 whitespace-nowrap hidden xl:table-cell">
+                                    <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
+                                  </td>
+                                </tr>
+                                
+                                {/* Level 3 Subtasks (nested under level 2) */}
+                                {hasLevel3Children && shouldShowLevel3 && level3Children.map((level3Subtask, level3Index) => {
+                                  const level3Delay = level3Index * 15;
+                                  return (
+                                    <tr
+                                      key={`level3-subtask-${level3Subtask.id}`}
+                                      className={cn(
+                                        "bg-neutral-50/30 dark:bg-neutral-800/30 hover:bg-neutral-50 dark:hover:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-800",
+                                        isLevel2Expanded 
+                                          ? "opacity-100 translate-y-0" 
+                                          : "opacity-0 -translate-y-2"
+                                      )}
+                                      style={{
+                                        transitionProperty: "opacity, transform",
+                                        transitionDuration: "300ms",
+                                        transitionTimingFunction: "ease-in-out",
+                                        transitionDelay: isLevel2Expanded 
+                                          ? `${level3Delay}ms` 
+                                          : `${(level3Children.length - level3Index - 1) * 10}ms`,
+                                        willChange: "opacity, transform",
+                                      }}
+                                    >
+                                      <td className="pl-12 pr-6 py-2 whitespace-nowrap">
+                                        <div className="flex items-center" style={{ paddingLeft: "64px" }}>
+                                          {getResultIcon(level3Subtask.type)}
+                                        </div>
+                                      </td>
+                                      <td className="px-6 py-2 whitespace-nowrap">
+                                        <Link
+                                          href={level3Subtask.url}
+                                          className="text-xs font-mono text-neutral-500 dark:text-neutral-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                                        >
+                                          {group.ticket.metadata?.taskNumber || "Task"}
+                                        </Link>
+                                      </td>
+                                      <td className="px-6 py-2">
+                                        <Link
+                                          href={level3Subtask.url}
+                                          className="text-sm text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400"
+                                        >
+                                        <div className="max-w-md">
+                                          <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
+                                            {`Subtask (Level 3) in ${level3Subtask.metadata?.parentTaskTitle || "task"}:`}
+                                          </div>
+                                          <div className="truncate">
+                                            {highlightMatch(level3Subtask.title, searchQuery)}
+                                          </div>
+                                        </div>
+                                        </Link>
+                                      </td>
+                                      <td className="px-6 py-2 whitespace-nowrap">
+                                        {level3Subtask.metadata?.status ? (
+                                          <span
+                                            className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(
+                                              level3Subtask.metadata.status as string
+                                            )}`}
+                                          >
+                                            {(level3Subtask.metadata.status as string).replace("_", " ")}
+                                          </span>
+                                        ) : (
+                                          <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
+                                        )}
+                                      </td>
+                                      <td className="px-6 py-2 whitespace-nowrap">
+                                        <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
+                                      </td>
+                                      <td className="px-6 py-2 whitespace-nowrap hidden md:table-cell">
+                                        <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
+                                      </td>
+                                      <td className="px-6 py-2 whitespace-nowrap hidden lg:table-cell">
+                                        <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
+                                      </td>
+                                      <td className="px-6 py-2 whitespace-nowrap hidden lg:table-cell">
+                                        {level3Subtask.metadata?.createdAt && (
+                                          <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                                            {formatDate(level3Subtask.metadata.createdAt as Date)}
+                                          </div>
+                                        )}
+                                      </td>
+                                      <td className="px-6 py-2 whitespace-nowrap hidden xl:table-cell">
+                                        <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </React.Fragment>
+                            );
+                          })}
+                        </React.Fragment>
+                      );
+                    })}
+                  </>
+                )}
                 </React.Fragment>
               );
             })}
