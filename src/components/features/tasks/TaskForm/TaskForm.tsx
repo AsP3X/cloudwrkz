@@ -195,6 +195,19 @@ export const TaskForm = ({ users = [], tickets = [], canAssign = false }: TaskFo
           onChange={(html) => {
             setValue("description", html, { shouldValidate: true });
           }}
+          onImageUpload={async (file) => {
+            const formData = new FormData();
+            formData.append("file", file);
+            const response = await fetch("/api/tasks/upload-image", {
+              method: "POST",
+              body: formData,
+            });
+            if (!response.ok) {
+              throw new Error("Failed to upload image");
+            }
+            const data = await response.json();
+            return data.url;
+          }}
           name="description"
         />
       </div>

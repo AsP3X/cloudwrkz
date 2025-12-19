@@ -17,6 +17,7 @@ interface TaskDetailHeaderProps {
   descriptionHtml?: string | null;
   onViewModeChange?: (mode: TaskViewMode) => void;
   parentTaskId?: string;
+  isEditing?: boolean;
 }
 
 export const TaskDetailHeader = ({ 
@@ -28,7 +29,8 @@ export const TaskDetailHeader = ({
   description,
   descriptionHtml,
   onViewModeChange,
-  parentTaskId
+  parentTaskId,
+  isEditing,
 }: TaskDetailHeaderProps) => {
   // Start with default "table" to avoid hydration mismatch, then update from localStorage on client
   const [viewMode, setViewMode] = React.useState<TaskViewMode>("table");
@@ -57,6 +59,9 @@ export const TaskDetailHeader = ({
 
   const backHref = parentTaskId ? `/dashboard/tasks/${parentTaskId}` : "/dashboard/tasks";
   const backLabel = parentTaskId ? "Back to Parent Task" : "Back to Tasks";
+
+  const editHref = isEditing ? `/dashboard/tasks/${taskId}` : `/dashboard/tasks/${taskId}?mode=edit`;
+  const editLabel = isEditing ? "Cancel Editing" : "Edit Task";
 
   return (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -100,7 +105,7 @@ export const TaskDetailHeader = ({
           <TaskViewToggle currentView={viewMode} onViewChange={handleViewChange} />
         )}
         {canEdit && (
-          <Link href={`/dashboard/tasks/${taskId}/edit`}>
+          <Link href={editHref}>
             <Button variant="primary" size="sm" className="w-full sm:w-auto">
               <svg
                 className="w-4 h-4 mr-2"
@@ -115,7 +120,7 @@ export const TaskDetailHeader = ({
                   d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
                 />
               </svg>
-              Edit Task
+              {editLabel}
             </Button>
           </Link>
         )}
@@ -123,7 +128,7 @@ export const TaskDetailHeader = ({
       {/* Edit Button (desktop only) */}
       {canEdit && (
         <div className="hidden sm:flex flex-wrap items-center gap-2">
-          <Link href={`/dashboard/tasks/${taskId}/edit`}>
+          <Link href={editHref}>
             <Button variant="primary" size="sm" className="w-full sm:w-auto">
               <svg
                 className="w-4 h-4 mr-2"
@@ -138,7 +143,7 @@ export const TaskDetailHeader = ({
                   d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
                 />
               </svg>
-              Edit Task
+              {editLabel}
             </Button>
           </Link>
         </div>

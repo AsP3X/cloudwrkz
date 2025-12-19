@@ -70,7 +70,6 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage, viewMode: e
   const [isCreating, setIsCreating] = React.useState(false);
   const [createError, setCreateError] = React.useState<string | null>(null);
   const [newTitle, setNewTitle] = React.useState("");
-  const [newPriority, setNewPriority] = React.useState<"LOW" | "MEDIUM" | "HIGH" | "URGENT">("MEDIUM");
 
   // Mark as mounted after hydration
   React.useEffect(() => {
@@ -98,7 +97,7 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage, viewMode: e
     try {
       const result = await createSubtask(parentTaskId, {
         title: newTitle.trim(),
-        priority: newPriority,
+        priority: "MEDIUM",
         status: "NOT_STARTED",
       });
 
@@ -106,7 +105,6 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage, viewMode: e
         setCreateError(result.error || "Failed to create subtask");
       } else {
         setNewTitle("");
-        setNewPriority("MEDIUM");
         router.refresh();
       }
     } catch (error) {
@@ -359,19 +357,14 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage, viewMode: e
                 placeholder="Add a quick subtask (e.g. 'Draft outline', 'Review implementation')"
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleQuickCreate();
+                  }
+                }}
                 disabled={isCreating}
               />
-              <select
-                className="hidden sm:block rounded-md border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-xs text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                value={newPriority}
-                onChange={(e) => setNewPriority(e.target.value as any)}
-                disabled={isCreating}
-              >
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-                <option value="URGENT">Urgent</option>
-              </select>
               <Button
                 variant="primary"
                 size="sm"
@@ -507,4 +500,3 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage, viewMode: e
     </div>
   );
 };
-

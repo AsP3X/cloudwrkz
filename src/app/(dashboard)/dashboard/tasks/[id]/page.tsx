@@ -9,23 +9,30 @@ import { MODULE_KEYS } from "@/lib/constants/modules";
 import { getTask } from "@/server/actions/tasks";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
-import { getAgents } from "@/server/actions/users";
+import { getAgents, getAllUsers } from "@/server/actions/users";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/utils/cn";
 import { RichTextDisplay } from "@/components/features/tickets/RichTextDisplay";
 import { TaskDetailHeader } from "./TaskDetailHeader";
 import { TaskDetailContent } from "./TaskDetailContent";
+import { TaskEditForm } from "@/components/features/tasks/TaskEditForm";
+import { getTickets } from "@/server/actions/tickets";
+import { TaskStatusPriorityFields } from "@/components/features/tasks/TaskStatusPriorityFields";
+import { TaskAssigneeField } from "@/components/features/tasks/TaskAssigneeField";
 
 interface TaskDetailPageProps {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{ mode?: string }>;
 }
 
 // Force dynamic rendering to prevent caching issues
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
+export default async function TaskDetailPage({ params, searchParams }: TaskDetailPageProps) {
   const { id } = await params;
+  const { mode } = (await searchParams) || {};
+  const isEditingRequested = mode === "edit";
   const user = await getCurrentUser();
 
   if (!user) {
@@ -124,6 +131,37 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
   };
 
   const canEdit = isAgent || await hasPermission(user.id, "tasks.update");
+  const isEditing = isEditingRequested && canEdit;
+
+  // For inline edit mode, load users and recent tickets (similar to the dedicated edit page)
+  let assignableUsers: Awaited<ReturnType<typeof getAllUsers>> = [];
+  let recentTickets:
+    | Array<{
+        id: string;
+        ticketNumber: string;
+        title: string;
+      }>
+    | [] = [];
+
+  if (isEditing) {
+    const canAssign =
+      user.role === "ADMIN" ||
+      user.role === "AGENT" ||
+      user.role === "MODERATOR" ||
+      (await hasPermission(user.id, "tasks.assign"));
+
+    assignableUsers = canAssign ? await getAllUsers() : [];
+
+    const tickets = await getTickets({
+      sortBy: "createdAt",
+      sortOrder: "desc",
+    });
+    recentTickets = tickets.slice(0, 50).map((ticket) => ({
+      id: ticket.id,
+      ticketNumber: ticket.ticketNumber,
+      title: ticket.title,
+    }));
+  }
 
   const hasSubtasks = (task.subtasks || []).length > 0;
 
@@ -139,65 +177,78 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
         description={task.description}
         descriptionHtml={(task as any).descriptionHtml}
         parentTaskId={task.parentTask?.id}
+        isEditing={isEditing}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Task Description - Desktop only */}
-          {(task as any).descriptionHtml || task.description ? (
-            <div className="hidden sm:block bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
-              <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">Description</h2>
-              <RichTextDisplay
-                content={(task as any).descriptionHtml || task.description || ""}
+          {isEditing ? (
+            <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
+              <TaskEditForm
+                task={{
+                  id: task.id,
+                  title: task.title,
+                  description: (task as any).descriptionHtml || task.description,
+                }}
               />
             </div>
-          ) : null}
+          ) : (
+            <>
+              {/* Task Description - Desktop only */}
+              {(task as any).descriptionHtml || task.description ? (
+                <div className="hidden sm:block bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
+                  <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">Description</h2>
+                  <RichTextDisplay
+                    content={(task as any).descriptionHtml || task.description || ""}
+                  />
+                </div>
+              ) : null}
 
-          {/* Subtasks Section (card/table view under description) */}
-          <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
-            <TaskDetailContent
-              parentTaskId={task.id}
-              subtasks={(task.subtasks || []).map((subtask) => ({
-                id: subtask.id,
-                title: subtask.title,
-                status: subtask.status,
-                priority: subtask.priority,
-                // these fields are optional for now; can be expanded later
-                dueDate: (subtask as any).dueDate ?? null,
-                assignedTo: (subtask as any).assignedTo ?? null,
-              }))}
-              canManage={canEdit}
-            />
-          </div>
+              {/* Subtasks Section - rendered as its own element (like overview page) */}
+              <TaskDetailContent
+                parentTaskId={task.id}
+                subtasks={(task.subtasks || []).map((subtask) => ({
+                  id: subtask.id,
+                  title: subtask.title,
+                  status: subtask.status,
+                  priority: subtask.priority,
+                  // these fields are optional for now; can be expanded later
+                  dueDate: (subtask as any).dueDate ?? null,
+                  assignedTo: (subtask as any).assignedTo ?? null,
+                }))}
+                canManage={canEdit}
+              />
 
-          {/* Dependencies */}
-          {task.dependencies && task.dependencies.length > 0 && (
-            <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
-              <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">
-                Dependencies ({task.dependencies.length})
-              </h2>
-              <div className="space-y-2">
-                {task.dependencies.map((dep) => (
-                  <Link
-                    key={dep.dependsOnTask.id}
-                    href={`/dashboard/tasks/${dep.dependsOnTask.id}`}
-                    className="block p-3 rounded-lg border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <span className="font-medium text-neutral-900 dark:text-neutral-100">
-                          {dep.dependsOnTask.title}
-                        </span>
-                        <Badge className={cn(getStatusColor(dep.dependsOnTask.status), "text-xs")}>
-                          {dep.dependsOnTask.status.replace("_", " ")}
-                        </Badge>
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </div>
+              {/* Dependencies */}
+              {task.dependencies && task.dependencies.length > 0 && (
+                <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
+                  <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">
+                    Dependencies ({task.dependencies.length})
+                  </h2>
+                  <div className="space-y-2">
+                    {task.dependencies.map((dep) => (
+                      <Link
+                        key={dep.dependsOnTask.id}
+                        href={`/dashboard/tasks/${dep.dependsOnTask.id}`}
+                        className="block p-3 rounded-lg border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                              {dep.dependsOnTask.title}
+                            </span>
+                            <Badge className={cn(getStatusColor(dep.dependsOnTask.status), "text-xs")}>
+                              {dep.dependsOnTask.status.replace("_", " ")}
+                            </Badge>
+                          </div>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -205,45 +256,64 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
         <div className="space-y-6">
           {/* Task Info Card */}
           <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
-            <h3 className="text-lg font-bold text-neutral-900 dark:text-neutral-100 mb-4">Task Information</h3>
-            <div className="space-y-4">
-              {/* Task Number */}
-              {task.taskNumber && (
-                <div>
-                  <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
-                    Task Number
-                  </label>
-                  <p className="text-sm font-mono text-neutral-900 dark:text-neutral-100">
-                    {task.taskNumber}
-                  </p>
-                </div>
+              <h3 className="text-lg font-bold text-neutral-900 dark:text-neutral-100 mb-4">Task Information</h3>
+              <div className="space-y-4">
+                {/* Task Number */}
+                {task.taskNumber && (
+                  <div>
+                    <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
+                      Task Number
+                    </label>
+                    <p className="text-sm font-mono text-neutral-900 dark:text-neutral-100">
+                      {task.taskNumber}
+                    </p>
+                  </div>
+                )}
+
+              {/* Status & Priority */}
+              {isEditing && canEdit ? (
+                <TaskStatusPriorityFields
+                  taskId={task.id}
+                  status={task.status}
+                  priority={task.priority}
+                />
+              ) : (
+                <>
+                  <div>
+                    <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
+                      Status
+                    </label>
+                    <Badge className={cn(getStatusColor(task.status), "text-sm")}>
+                      {task.status.replace("_", " ")}
+                    </Badge>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
+                      Priority
+                    </label>
+                    <Badge className={cn(getPriorityColor(task.priority), "text-sm")}>
+                      {task.priority}
+                    </Badge>
+                  </div>
+                </>
               )}
 
-              {/* Status */}
-              <div>
-                <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
-                  Status
-                </label>
-                <Badge className={cn(getStatusColor(task.status), "text-sm")}>
-                  {task.status.replace("_", " ")}
-                </Badge>
-              </div>
-
-              {/* Priority */}
-              <div>
-                <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
-                  Priority
-                </label>
-                <Badge className={cn(getPriorityColor(task.priority), "text-sm")}>
-                  {task.priority}
-                </Badge>
-              </div>
-
-              {/* Divider */}
-              <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4"></div>
+                {/* Divider */}
+                <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4"></div>
 
               {/* Assigned To */}
-              {task.assignedTo ? (
+              {isEditing && canEdit ? (
+                <TaskAssigneeField
+                  taskId={task.id}
+                  assignedToId={task.assignedTo?.id || null}
+                  users={assignableUsers.map((u) => ({
+                    id: u.id,
+                    name: u.name,
+                    email: u.email,
+                  }))}
+                />
+              ) : task.assignedTo ? (
                 <div>
                   <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                     Assigned To
@@ -261,136 +331,136 @@ export default async function TaskDetailPage({ params }: TaskDetailPageProps) {
                 </div>
               )}
 
-              {/* Parent Task */}
-              {task.parentTask && (
-                <>
-                  <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4"></div>
-                  <div>
-                    <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
-                      Parent Task
-                    </label>
-                    <Link
-                      href={`/dashboard/tasks/${task.parentTask.id}`}
-                      className="text-sm text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
-                    >
-                      {task.parentTask.title}
-                    </Link>
-                  </div>
-                </>
-              )}
-
-              {/* Ticket - Only show if task is linked to a ticket */}
-              {task.ticket && (
-                <>
-                  <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4"></div>
-                  <div>
-                    <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
-                      Linked Ticket
-                    </label>
-                    <Link
-                      href={`/dashboard/tickets/${task.ticket.id}`}
-                      className="flex items-center gap-2 text-sm text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
-                    >
-                      <span className="font-medium">{task.ticket.ticketNumber}</span>
-                      <span className="text-neutral-500 dark:text-neutral-500">-</span>
-                      <span>{task.ticket.title}</span>
-                    </Link>
-                  </div>
-                </>
-              )}
-
-              {/* Milestone */}
-              {task.milestone && (
-                <>
-                  <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4"></div>
-                  <div>
-                    <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
-                      Milestone
-                    </label>
-                    <p className="text-sm text-neutral-900 dark:text-neutral-100">
-                      {task.milestone.name}
-                    </p>
-                  </div>
-                </>
-              )}
-
-              {/* Divider */}
-              <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4"></div>
-
-              {/* Dates */}
-              <div className="space-y-2">
-                {task.startDate && (
-                  <div>
-                    <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
-                      Start Date
-                    </label>
-                    <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDateTime(task.startDate)}</p>
-                  </div>
+                {/* Parent Task */}
+                {task.parentTask && (
+                  <>
+                    <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4"></div>
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
+                        Parent Task
+                      </label>
+                      <Link
+                        href={`/dashboard/tasks/${task.parentTask.id}`}
+                        className="text-sm text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                      >
+                        {task.parentTask.title}
+                      </Link>
+                    </div>
+                  </>
                 )}
-                {task.dueDate && (
+
+                {/* Ticket - Only show if task is linked to a ticket */}
+                {task.ticket && (
+                  <>
+                    <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4"></div>
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
+                        Linked Ticket
+                      </label>
+                      <Link
+                        href={`/dashboard/tickets/${task.ticket.id}`}
+                        className="flex items-center gap-2 text-sm text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                      >
+                        <span className="font-medium">{task.ticket.ticketNumber}</span>
+                        <span className="text-neutral-500 dark:text-neutral-500">-</span>
+                        <span>{task.ticket.title}</span>
+                      </Link>
+                    </div>
+                  </>
+                )}
+
+                {/* Milestone */}
+                {task.milestone && (
+                  <>
+                    <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4"></div>
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
+                        Milestone
+                      </label>
+                      <p className="text-sm text-neutral-900 dark:text-neutral-100">
+                        {task.milestone.name}
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                {/* Divider */}
+                <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4"></div>
+
+                {/* Dates */}
+                <div className="space-y-2">
+                  {task.startDate && (
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
+                        Start Date
+                      </label>
+                      <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDateTime(task.startDate)}</p>
+                    </div>
+                  )}
+                  {task.dueDate && (
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
+                        Due Date
+                      </label>
+                      <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDateTime(task.dueDate)}</p>
+                    </div>
+                  )}
+                  {task.completedDate && (
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
+                        Completed Date
+                      </label>
+                      <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDateTime(task.completedDate)}</p>
+                    </div>
+                  )}
                   <div>
                     <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
-                      Due Date
+                      Created
                     </label>
-                    <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDateTime(task.dueDate)}</p>
+                    <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDateTime(task.createdAt)}</p>
                   </div>
-                )}
-                {task.completedDate && (
-                  <div>
-                    <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
-                      Completed Date
-                    </label>
-                    <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDateTime(task.completedDate)}</p>
-                  </div>
-                )}
-                <div>
-                  <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
-                    Created
-                  </label>
-                  <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDateTime(task.createdAt)}</p>
+                  {task.updatedAt && task.updatedAt.getTime() !== task.createdAt.getTime() && (
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
+                        Last Updated
+                      </label>
+                      <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDateTime(task.updatedAt)}</p>
+                    </div>
+                  )}
                 </div>
-                {task.updatedAt && task.updatedAt.getTime() !== task.createdAt.getTime() && (
-                  <div>
-                    <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
-                      Last Updated
-                    </label>
-                    <p className="text-sm text-neutral-900 dark:text-neutral-100">{formatDateTime(task.updatedAt)}</p>
-                  </div>
+
+                {/* Hours */}
+                {(task.estimatedHours !== null || task.actualHours !== null) && (
+                  <>
+                    <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4"></div>
+                    <div className="space-y-2">
+                      {task.estimatedHours !== null && (
+                        <div>
+                          <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
+                            Estimated Hours
+                          </label>
+                          <p className="text-sm text-neutral-900 dark:text-neutral-100">
+                            {task.estimatedHours.toFixed(1)}h
+                          </p>
+                        </div>
+                      )}
+                      {task.actualHours !== null && (
+                        <div>
+                          <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
+                            Actual Hours
+                          </label>
+                          <p className="text-sm text-neutral-900 dark:text-neutral-100">
+                            {task.actualHours.toFixed(1)}h
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
-
-              {/* Hours */}
-              {(task.estimatedHours !== null || task.actualHours !== null) && (
-                <>
-                  <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4"></div>
-                  <div className="space-y-2">
-                    {task.estimatedHours !== null && (
-                      <div>
-                        <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
-                          Estimated Hours
-                        </label>
-                        <p className="text-sm text-neutral-900 dark:text-neutral-100">
-                          {task.estimatedHours.toFixed(1)}h
-                        </p>
-                      </div>
-                    )}
-                    {task.actualHours !== null && (
-                      <div>
-                        <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
-                          Actual Hours
-                        </label>
-                        <p className="text-sm text-neutral-900 dark:text-neutral-100">
-                          {task.actualHours.toFixed(1)}h
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
             </div>
           </div>
         </div>
       </div>
-    </div>
   );
 }

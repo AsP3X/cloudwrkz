@@ -71,7 +71,6 @@ export const TaskList = ({ ticketId, tasks, viewMode, canManage }: TaskListProps
   const [isCreating, setIsCreating] = React.useState(false);
   const [createError, setCreateError] = React.useState<string | null>(null);
   const [newTitle, setNewTitle] = React.useState("");
-  const [newPriority, setNewPriority] = React.useState<"LOW" | "MEDIUM" | "HIGH" | "URGENT">("MEDIUM");
 
   const handleQuickCreate = async () => {
     if (!newTitle.trim()) return;
@@ -82,7 +81,7 @@ export const TaskList = ({ ticketId, tasks, viewMode, canManage }: TaskListProps
     try {
       const result = await createTicketTask(ticketId, {
         title: newTitle.trim(),
-        priority: newPriority,
+        priority: "MEDIUM",
         status: "NOT_STARTED",
       });
 
@@ -90,7 +89,6 @@ export const TaskList = ({ ticketId, tasks, viewMode, canManage }: TaskListProps
         setCreateError(result.error || "Failed to create task");
       } else {
         setNewTitle("");
-        setNewPriority("MEDIUM");
         router.refresh();
       }
     } catch (error) {
@@ -133,33 +131,27 @@ export const TaskList = ({ ticketId, tasks, viewMode, canManage }: TaskListProps
                   placeholder="Add a quick task (e.g. 'Call customer', 'Verify logs')"
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleQuickCreate();
+                    }
+                  }}
                   disabled={isCreating}
                 />
-                <select
-                  className="rounded-md border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-2 text-xs text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  value={newPriority}
-                  onChange={(e) => setNewPriority(e.target.value as any)}
-                  disabled={isCreating}
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleQuickCreate}
+                  disabled={isCreating || !newTitle.trim()}
+                  className="flex-shrink-0 whitespace-nowrap"
                 >
-                  <option value="LOW">Low</option>
-                  <option value="MEDIUM">Medium</option>
-                  <option value="HIGH">High</option>
-                  <option value="URGENT">Urgent</option>
-                </select>
+                  {isCreating ? "Creating..." : "Add Task"}
+                </Button>
               </div>
               {createError && (
                 <p className="text-xs text-error-600 dark:text-error-400">{createError}</p>
               )}
-            </div>
-            <div className="flex-shrink-0">
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleQuickCreate}
-                disabled={isCreating || !newTitle.trim()}
-              >
-                {isCreating ? "Creating..." : "Add Task"}
-              </Button>
             </div>
           </div>
         </div>
@@ -356,4 +348,3 @@ export const TaskList = ({ ticketId, tasks, viewMode, canManage }: TaskListProps
     </div>
   );
 };
-
