@@ -400,7 +400,7 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage, viewMode: e
                 size="sm"
                 onClick={handleQuickCreate}
                 disabled={isCreating || !newTitle.trim()}
-                className="flex-shrink-0"
+                className="flex-shrink-0 w-20"
               >
                 {isCreating ? "Creating..." : "Add"}
               </Button>

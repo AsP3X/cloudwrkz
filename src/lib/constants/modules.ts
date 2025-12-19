@@ -16,7 +16,7 @@ export const MODULE_CONFIG = {
     key: MODULE_KEYS.TICKETS,
     name: "Tickets",
     description: "Support ticket and issue tracking system",
-    defaultEnabled: true,
+    defaultEnabled: false,
   },
   [MODULE_KEYS.TIMETRACKING]: {
     key: MODULE_KEYS.TIMETRACKING,
@@ -34,6 +34,6 @@ export const MODULE_CONFIG = {
     key: MODULE_KEYS.TASKS,
     name: "Tasks",
     description: "Subtasks / todos attached to tickets",
-    defaultEnabled: true,
+    defaultEnabled: false,
   },
 } as const;
