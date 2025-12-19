@@ -770,8 +770,30 @@ export async function deleteTask(taskId: string): Promise<ActionResult> {
       }
     }
 
-    await prisma.task.delete({
-      where: { id: taskId },
+    // Recursively delete all subtasks first, then delete the parent task
+    // This ensures that when a parent task is deleted, all its subtasks are also deleted
+    // Use a transaction to ensure atomicity
+    await prisma.$transaction(async (tx) => {
+      const deleteTaskAndSubtasks = async (taskIdToDelete: string): Promise<void> => {
+        // Find all direct subtasks
+        const subtasks = await tx.task.findMany({
+          where: { parentTaskId: taskIdToDelete },
+          select: { id: true },
+        });
+
+        // Recursively delete all subtasks first
+        for (const subtask of subtasks) {
+          await deleteTaskAndSubtasks(subtask.id);
+        }
+
+        // Delete the task itself
+        await tx.task.delete({
+          where: { id: taskIdToDelete },
+        });
+      };
+
+      // Delete the task and all its subtasks recursively
+      await deleteTaskAndSubtasks(taskId);
     });
 
     // Tasks are independent - only revalidate tasks page

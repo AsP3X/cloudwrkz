@@ -131,6 +131,7 @@ export default async function TaskDetailPage({ params, searchParams }: TaskDetai
   };
 
   const canEdit = isAgent || await hasPermission(user.id, "tasks.update");
+  const canDelete = isAgent || await hasPermission(user.id, "tasks.delete");
   const isEditing = isEditingRequested && canEdit;
   const userTimezone = user.timezone ?? "UTC";
 
@@ -173,11 +174,13 @@ export default async function TaskDetailPage({ params, searchParams }: TaskDetai
         taskTitle={task.title}
         createdAt={task.createdAt}
         canEdit={canEdit}
+        canDelete={canDelete}
         description={task.description}
         descriptionHtml={(task as any).descriptionHtml}
         parentTaskId={task.parentTask?.id}
         isEditing={isEditing}
         userTimezone={userTimezone}
+        subtasks={task.subtasks || []}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
