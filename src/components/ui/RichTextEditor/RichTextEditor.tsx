@@ -18,6 +18,7 @@ import { Dialog } from "@/components/ui/Dialog/Dialog";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { RichTextEditorToolbar } from "./RichTextEditorToolbar";
+import { ImageFormatDialog } from "./ImageFormatDialog";
 import type { RichTextEditorProps } from "./RichTextEditor.types";
 
 export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorProps>(
@@ -52,6 +53,11 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
     const [linkDialogMode, setLinkDialogMode] = React.useState<"selection" | "new">("selection");
     const [linkText, setLinkText] = React.useState("");
     const [linkUrl, setLinkUrl] = React.useState("");
+    const [isImageFormatDialogOpen, setIsImageFormatDialogOpen] = React.useState(false);
+    const [selectedImageFile, setSelectedImageFile] = React.useState<File | null>(null);
+    const [isUploadDialogOpen, setIsUploadDialogOpen] = React.useState(false);
+    const [uploadProgress, setUploadProgress] = React.useState<number>(0);
+    const [uploadStage, setUploadStage] = React.useState<string>("");
 
     const editor = useEditor({
       immediatelyRender: false,
@@ -463,19 +469,88 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
           return;
         }
 
-        try {
-          setIsImageUploading(true);
-          const url = await onImageUpload(file);
-          editor.chain().focus().setImage({ src: url }).run();
-        } catch (error) {
-          console.error("Image upload error:", error);
-          alert("Failed to upload image. Please try again.");
-        } finally {
-          setIsImageUploading(false);
-        }
+        // Show image format dialog
+        setSelectedImageFile(file);
+        setIsImageFormatDialogOpen(true);
       };
       input.click();
     }, [onImageUpload, editor]);
+
+    const handleImageFormatConfirm = React.useCallback(async (processedImageDataUrl: string) => {
+      if (!onImageUpload || !editor || !selectedImageFile) return;
+
+      try {
+        setIsImageUploading(true);
+        setIsUploadDialogOpen(true);
+        setUploadProgress(0);
+        setUploadStage("Preparing image...");
+
+        // Progress simulation for image processing
+        const progressSteps = [
+          { progress: 15, stage: "Processing image..." },
+          { progress: 30, stage: "Converting format..." },
+          { progress: 45, stage: "Optimizing image..." },
+          { progress: 60, stage: "Preparing upload..." },
+        ];
+
+        let currentStep = 0;
+        const progressInterval = setInterval(() => {
+          if (currentStep < progressSteps.length) {
+            const step = progressSteps[currentStep];
+            setUploadProgress(step.progress);
+            setUploadStage(step.stage);
+            currentStep++;
+          } else {
+            clearInterval(progressInterval);
+          }
+        }, 150);
+
+        // Convert data URL to Blob, then to File
+        setUploadProgress(70);
+        setUploadStage("Converting to file format...");
+        const response = await fetch(processedImageDataUrl);
+        const blob = await response.blob();
+        const processedFile = new File([blob], selectedImageFile.name, {
+          type: selectedImageFile.type || "image/png",
+        });
+
+        clearInterval(progressInterval);
+        setUploadProgress(80);
+        setUploadStage("Uploading image...");
+
+        // Upload the processed image
+        const url = await onImageUpload(processedFile);
+
+        setUploadProgress(95);
+        setUploadStage("Inserting into editor...");
+
+        // Small delay to show the insertion stage
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        editor.chain().focus().setImage({ src: url }).run();
+
+        setUploadProgress(100);
+        setUploadStage("Complete!");
+
+        // Small delay before closing to show completion
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Reset state
+        setSelectedImageFile(null);
+        setIsImageFormatDialogOpen(false);
+        setIsUploadDialogOpen(false);
+        setUploadProgress(0);
+        setUploadStage("");
+      } catch (error) {
+        console.error("Image upload error:", error);
+        setIsUploadDialogOpen(false);
+        setUploadProgress(0);
+        setUploadStage("");
+        alert("Failed to upload image. Please try again.");
+      } finally {
+        setIsImageUploading(false);
+      }
+    }, [onImageUpload, editor, selectedImageFile]);
 
     const handleLinkAdd = React.useCallback(() => {
       if (!editor) return;
@@ -732,6 +807,53 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
               </Button>
             </div>
           </form>
+        </Dialog>
+
+        {/* Image Format Dialog */}
+        <ImageFormatDialog
+          open={isImageFormatDialogOpen}
+          onOpenChange={(open) => {
+            setIsImageFormatDialogOpen(open);
+            if (!open) {
+              setSelectedImageFile(null);
+            }
+          }}
+          imageFile={selectedImageFile}
+          onConfirm={handleImageFormatConfirm}
+        />
+
+        {/* Upload Progress Dialog */}
+        <Dialog
+          open={isUploadDialogOpen}
+          onOpenChange={() => {}} // Prevent closing during upload
+          title="Uploading Image"
+          description="Please wait while your image is being processed and uploaded"
+          className="max-w-md"
+        >
+          <div className="px-4 sm:px-6 py-6 space-y-4">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-neutral-700 dark:text-neutral-300 font-medium">
+                  {uploadStage}
+                </span>
+                <span className="text-neutral-500 dark:text-neutral-400 font-mono">
+                  {uploadProgress}%
+                </span>
+              </div>
+              <div className="w-full h-3 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary-600 dark:bg-primary-500 rounded-full transition-all duration-300 ease-out"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-center pt-2">
+              <svg className="animate-spin h-5 w-5 text-primary-600 dark:text-primary-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+          </div>
         </Dialog>
       </div>
     );
