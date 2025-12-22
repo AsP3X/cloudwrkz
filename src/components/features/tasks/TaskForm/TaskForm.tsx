@@ -175,11 +175,11 @@ export const TaskForm = ({ users = [], tickets = [], canAssign = false }: TaskFo
 
       {/* Title Field */}
       <Input
-        label="Task Title"
+        label="ToDo Title"
         type="text"
-        placeholder="Brief description of the task"
+        placeholder="Brief description of the todo"
         error={errors.title?.message}
-        helperText="A clear, concise title helps identify the task quickly"
+        helperText="A clear, concise title helps identify the ToDo quickly"
         required
         {...register("title")}
       />
@@ -188,7 +188,7 @@ export const TaskForm = ({ users = [], tickets = [], canAssign = false }: TaskFo
       <div>
         <RichTextEditor
           label="Description"
-          placeholder="Provide detailed information about the task..."
+          placeholder="Provide detailed information about the ToDo..."
           error={errors.description?.message}
           helperText="Include any relevant details, requirements, or context"
           value={watch("description") || ""}
@@ -220,7 +220,7 @@ export const TaskForm = ({ users = [], tickets = [], canAssign = false }: TaskFo
           options={STATUS_OPTIONS}
           placeholder="Select status"
           error={errors.status?.message}
-          helperText="Current status of the task"
+          helperText="Current status of the ToDo"
           required
           {...register("status")}
         />
@@ -231,7 +231,7 @@ export const TaskForm = ({ users = [], tickets = [], canAssign = false }: TaskFo
           options={PRIORITY_OPTIONS}
           placeholder="Select priority"
           error={errors.priority?.message}
-          helperText="How urgent is this task?"
+          helperText="How urgent is this ToDo?"
           required
           {...register("priority")}
         />
@@ -246,7 +246,7 @@ export const TaskForm = ({ users = [], tickets = [], canAssign = false }: TaskFo
             options={userOptions}
             placeholder="Select user"
             error={errors.assignedToId?.message}
-            helperText="Assign this task to a user (optional)"
+            helperText="Assign this ToDo to a user (optional)"
             {...register("assignedToId")}
           />
         )}
@@ -258,7 +258,7 @@ export const TaskForm = ({ users = [], tickets = [], canAssign = false }: TaskFo
             options={ticketOptions}
             placeholder="Select ticket"
             error={errors.ticketId?.message}
-            helperText="Link this task to a ticket (optional)"
+            helperText="Link this ToDo to a ticket (optional)"
             {...register("ticketId")}
           />
         )}
@@ -283,7 +283,7 @@ export const TaskForm = ({ users = [], tickets = [], canAssign = false }: TaskFo
           label="Start Date"
           type="date"
           error={errors.startDate?.message}
-          helperText="When to start the task (optional)"
+          helperText="When to start the ToDo (optional)"
           {...register("startDate")}
         />
 
@@ -292,7 +292,7 @@ export const TaskForm = ({ users = [], tickets = [], canAssign = false }: TaskFo
           label="Due Date"
           type="date"
           error={errors.dueDate?.message}
-          helperText="When the task is due (optional)"
+          helperText="When the ToDo is due (optional)"
           {...register("dueDate")}
         />
       </div>
