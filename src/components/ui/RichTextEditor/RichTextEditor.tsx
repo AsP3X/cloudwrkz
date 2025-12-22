@@ -158,12 +158,12 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
           const lastTwoChars = editor.state.doc.textBetween(pos - 2, pos);
           if (lastTwoChars === "  ") {
             // Two consecutive spaces - exit formatting mode
-            // This works for: two spaces anywhere, or two spaces after a dot
-            const newPos = pos - 2;
+            // Delete only the second space, keeping one space
+            const newPos = pos - 1;
             editor
               .chain()
               .focus()
-              .setTextSelection({ from: pos - 2, to: pos })
+              .setTextSelection({ from: pos - 1, to: pos })
               .deleteSelection()
               .setTextSelection(newPos)
               .command(({ tr, dispatch }) => {
