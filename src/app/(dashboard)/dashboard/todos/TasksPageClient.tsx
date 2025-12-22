@@ -68,10 +68,10 @@ export function TasksPageClient({ tasks, canManage, userRole, userTimezone = "UT
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100">
-            Tasks
+            ToDos
           </h1>
           <p className="text-neutral-600 dark:text-neutral-400 mt-1">
-            Create and manage tasks across all your projects. Tasks can work independently or be linked to tickets when needed.
+            Create and manage todos across all your projects. Todos can work independently or be linked to tickets when needed.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -80,7 +80,7 @@ export function TasksPageClient({ tasks, canManage, userRole, userTimezone = "UT
           )}
           <TaskFilterButton />
           {canManage && (
-            <Link href="/dashboard/tasks/new">
+            <Link href="/dashboard/todos/new">
               <Button variant="primary">Create</Button>
             </Link>
           )}
@@ -103,10 +103,10 @@ export function TasksPageClient({ tasks, canManage, userRole, userTimezone = "UT
               d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
             />
           </svg>
-          <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">No tasks yet</h3>
-          <p className="text-neutral-600 dark:text-neutral-400 mb-4">Get started by creating your first task</p>
+          <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">No todos yet</h3>
+          <p className="text-neutral-600 dark:text-neutral-400 mb-4">Get started by creating your first todo</p>
           {canManage && (
-            <Link href="/dashboard/tasks/new">
+            <Link href="/dashboard/todos/new">
               <Button variant="primary">Create</Button>
             </Link>
           )}
