@@ -7,8 +7,8 @@ import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/Input";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { Button } from "@/components/ui/Button";
-import { updateTaskSchema, type UpdateTaskInput } from "@/lib/validations/tasks";
-import { updateTask } from "@/server/actions/tasks";
+import { updateTodoSchema, type UpdateTodoInput } from "@/lib/validations/todos";
+import { updateTodo } from "@/server/actions/todos";
 
 interface TaskEditFormProps {
   task: {
@@ -28,19 +28,19 @@ export const TaskEditForm = ({ task }: TaskEditFormProps) => {
     formState: { errors, isSubmitting },
     watch,
     setValue,
-  } = useForm<UpdateTaskInput>({
-    resolver: zodResolver(updateTaskSchema),
+  } = useForm<UpdateTodoInput>({
+    resolver: zodResolver(updateTodoSchema),
     defaultValues: {
       title: task.title,
       description: (task as any).descriptionHtml || task.description || "",
     },
   });
 
-  const onSubmit = async (data: UpdateTaskInput) => {
+  const onSubmit = async (data: UpdateTodoInput) => {
     setServerError(null);
 
     try {
-      const result = await updateTask(
+      const result = await updateTodo(
         task.id,
         {
           title: data.title,
@@ -49,7 +49,7 @@ export const TaskEditForm = ({ task }: TaskEditFormProps) => {
       );
 
       if (result.success) {
-        router.push(`/dashboard/tasks/${task.id}`);
+        router.push(`/dashboard/todos/${task.id}`);
         router.refresh();
       } else if (!result.success) {
         if (result.fieldErrors) {
@@ -126,7 +126,7 @@ export const TaskEditForm = ({ task }: TaskEditFormProps) => {
           onImageUpload={async (file) => {
             const formData = new FormData();
             formData.append("file", file);
-            const response = await fetch("/api/tasks/upload-image", {
+            const response = await fetch("/api/todos/upload-image", {
               method: "POST",
               body: formData,
             });

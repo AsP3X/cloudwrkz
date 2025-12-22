@@ -104,7 +104,7 @@ export default async function DashboardLayout({
     [MODULE_KEYS.TICKETS]: "modules.tickets.view",
     [MODULE_KEYS.TIMETRACKING]: "modules.timetracking.view",
     [MODULE_KEYS.PROJECTS]: "modules.projects.view",
-    [MODULE_KEYS.TASKS]: "modules.tasks.view",
+    [MODULE_KEYS.TODOS]: "modules.todos.view",
   };
   
   // Filter modules based on:
@@ -120,17 +120,17 @@ export default async function DashboardLayout({
       const permissionKey = modulePermissionMap[m.key];
       if (!permissionKey) return true; // If no permission mapping, allow (backward compatibility)
       
-      // Special handling for TASKS: also check for task-related permissions
-      // If user has any task permission (tasks.view, tasks.create, etc.), they can see the module
-      if (m.key === MODULE_KEYS.TASKS) {
+      // Special handling for TODOS: also check for todo-related permissions
+      // If user has any todo permission (todos.view, todos.create, etc.), they can see the module
+      if (m.key === MODULE_KEYS.TODOS) {
         const hasModulePermission = userPermissions.has(permissionKey as any);
-        const hasTaskPermission = 
-          userPermissions.has("tasks.view" as any) ||
-          userPermissions.has("tasks.create" as any) ||
-          userPermissions.has("tasks.update" as any) ||
-          userPermissions.has("tasks.delete" as any);
+        const hasTodoPermission = 
+          userPermissions.has("todos.view" as any) ||
+          userPermissions.has("todos.create" as any) ||
+          userPermissions.has("todos.update" as any) ||
+          userPermissions.has("todos.delete" as any);
         
-        return hasModulePermission || hasTaskPermission;
+        return hasModulePermission || hasTodoPermission;
       }
       
       return userPermissions.has(permissionKey as any);

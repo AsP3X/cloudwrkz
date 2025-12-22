@@ -99,7 +99,7 @@ export const TaskDeleteDialog = ({
                 {subtasks.map((subtask) => (
                   <li key={subtask.id} className="min-w-0">
                     <Link
-                      href={`/dashboard/tasks/${subtask.id}`}
+                      href={`/dashboard/todos/${subtask.id}`}
                       onClick={(e) => {
                         // Prevent the dialog from closing when clicking a subtask link
                         e.stopPropagation();

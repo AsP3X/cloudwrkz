@@ -45,20 +45,20 @@ export const getTaskFilterConfig = (): FilterConfig => {
       label: "Linked To Ticket",
       type: "select",
       options: [
-        { value: "all", label: "All Tasks" },
-        { value: "withTicket", label: "Only Tasks Linked to Tickets" },
-        { value: "withoutTicket", label: "Only Tasks Without Ticket" },
+        { value: "all", label: "All ToDos" },
+        { value: "withTicket", label: "Only ToDos Linked to Tickets" },
+        { value: "withoutTicket", label: "Only ToDos Without Ticket" },
       ],
       gridCols: 2,
     },
     {
       key: "kind",
-      label: "Task Type",
+      label: "ToDo Type",
       type: "select",
       options: [
-        { value: "all", label: "All Tasks" },
-        { value: "root", label: "Only Top-Level Tasks" },
-        { value: "subtask", label: "Only Subtasks" },
+        { value: "all", label: "All ToDos" },
+        { value: "root", label: "Only Top-Level ToDos" },
+        { value: "subtask", label: "Only Sub-ToDos" },
       ],
       gridCols: 2,
     },
@@ -77,10 +77,10 @@ export const getTaskFilterConfig = (): FilterConfig => {
   ];
 
   return {
-    moduleName: "task",
-    baseRoute: "/dashboard/tasks",
-    title: "Filter Tasks",
-    description: "Create, edit, and save filter presets to quickly find tasks",
+    moduleName: "todo",
+    baseRoute: "/dashboard/todos",
+    title: "Filter ToDos",
+    description: "Create, edit, and save filter presets to quickly find ToDos",
     defaultSort: "createdAt-desc",
     defaultFilters: {
       status: "ALL",

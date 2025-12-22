@@ -81,8 +81,8 @@ export async function globalSearch(query: string, limit: number = 10): Promise<S
     results.push(...ticketResults);
   }
 
-  // Search tasks (task module)
-  const canViewTasks = await canUserViewModule(user.id, MODULE_KEYS.TASKS);
+  // Search todos (todo module)
+  const canViewTasks = await canUserViewModule(user.id, MODULE_KEYS.TODOS);
   if (canViewTasks) {
     const taskResults = await searchTasks(searchTerm, user, taskLimit, userPermissions);
     totalCount += taskResults.length;
@@ -156,8 +156,8 @@ export async function advancedSearch(filters: SearchFilters): Promise<SearchResp
     results.push(...projectResults);
   }
 
-  // Search tasks if user can view tasks module
-  const canViewTasks = await canUserViewModule(user.id, MODULE_KEYS.TASKS);
+  // Search todos if user can view todos module
+  const canViewTasks = await canUserViewModule(user.id, MODULE_KEYS.TODOS);
   if (canViewTasks && searchTerm) {
     const taskResults = await searchTasks(searchTerm, user, filters.limit || 100, userPermissions);
     results.push(...taskResults);
@@ -891,11 +891,11 @@ async function searchTimeEntries(
 }
 
 /**
- * Search tasks (including subtasks) by title and description with fuzzy matching.
- * Respects task visibility rules similar to the tasks module:
- * - Admins/Moderators: all tasks
- * - Agents: tasks assigned to them, or tasks linked to tickets they have access to
- * - Regular users: tasks assigned to them
+ * Search todos (including subtodos) by title and description with fuzzy matching.
+ * Visibility rules:
+ * - Admins/Moderators: all todos
+ * - Agents: todos assigned to them, or todos linked to tickets they have access to
+ * - Regular users: todos assigned to them
  */
 async function searchTasks(
   searchTerm: string,
@@ -905,15 +905,13 @@ async function searchTasks(
 ): Promise<SearchResult[]> {
   const where: any = {};
 
-  // Determine base visibility
   const isAdminOrModerator = user.role === "ADMIN" || user.role === "MODERATOR";
 
   if (!isAdminOrModerator && user.role !== "AGENT") {
-    // Regular users can only see tasks assigned to them
+    // Regular users can only see todos assigned to them
     where.assignedToId = user.id;
   } else if (user.role === "AGENT") {
-    // Agents: tasks assigned to them OR tasks linked to tickets they have access to
-    // First collect tickets they have access to (same rules as agentHasTicketAccess)
+    // Agents: todos assigned to them OR todos linked to tickets they have access to
     const memberships = await prisma.groupMembership.findMany({
       where: { userId: user.id },
       select: { groupId: true },
@@ -942,114 +940,15 @@ async function searchTasks(
         : []),
     ];
   }
-  // Admins/Moderators: no extra filter, see all tasks
+  // Admins/Moderators: no extra filter, see all todos
 
-  // Use PostgreSQL full-text search for initial filtering if search term is provided
-  let taskIdsFromTextSearch: string[] = [];
-  
-  if (searchTerm && searchTerm.trim().length >= 2) {
-    // Build permission filter conditions
-    const permissionConditions: string[] = [];
-    if (!isAdminOrModerator && user.role !== "AGENT") {
-      permissionConditions.push(`"assignedToId" = '${user.id.replace(/'/g, "''")}'`);
-    } else if (user.role === "AGENT") {
-      const memberships = await prisma.groupMembership.findMany({
-        where: { userId: user.id },
-        select: { groupId: true },
-      });
-      const agentGroupIds = memberships.map((m) => m.groupId);
-      
-      const accessibleTickets = await prisma.ticket.findMany({
-        where: {
-          OR: [
-            { createdById: user.id },
-            { assignedToId: user.id },
-            ...(agentGroupIds.length > 0
-              ? [{ assignedToGroupId: { in: agentGroupIds } }]
-              : []),
-          ],
-        },
-        select: { id: true },
-      });
-      const accessibleTicketIds = accessibleTickets.map((t) => t.id);
-      
-      permissionConditions.push(`"assignedToId" = '${user.id.replace(/'/g, "''")}'`);
-      if (accessibleTicketIds.length > 0) {
-        const ticketIds = accessibleTicketIds.map(id => `'${id.replace(/'/g, "''")}'`).join(',');
-        permissionConditions.push(`"ticketId" = ANY(ARRAY[${ticketIds}]::text[])`);
-      }
-    }
-    
-    const permissionFilter = permissionConditions.length > 0 
-      ? `AND (${permissionConditions.join(' OR ')})`
-      : '';
-    
-    const sanitizedSearchTerm = searchTerm.trim().replace(/'/g, "''"); // Escape single quotes for SQL
-    const searchLimit = Math.min(limit * 5, 500);
-    
-    // Use full-text search to get matching task IDs (uses GIN index)
-    // Use Prisma.sql for safe parameterization
-    const textSearchQuery = Prisma.sql`
-      SELECT id
-      FROM tasks
-      WHERE to_tsvector('english', 
-        COALESCE(title, '') || ' ' || 
-        COALESCE("descriptionPlain", '') || ' ' || 
-        COALESCE("taskNumber", '')
-      ) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
-      ${permissionFilter ? Prisma.raw(permissionFilter) : Prisma.sql``}
-      ORDER BY ts_rank(
-        to_tsvector('english', 
-          COALESCE(title, '') || ' ' || 
-          COALESCE("descriptionPlain", '') || ' ' || 
-          COALESCE("taskNumber", '')
-        ),
-        plainto_tsquery('english', ${sanitizedSearchTerm})
-      ) DESC
-      LIMIT ${searchLimit}
-    `;
-    
-    const textSearchResults = await prisma.$queryRaw<Array<{ id: string }>>(textSearchQuery);
-    
-    taskIdsFromTextSearch = textSearchResults.map(r => r.id);
-    
-    // Also check subtasks for matches and include their parent task IDs
-    if (taskIdsFromTextSearch.length === 0 || taskIdsFromTextSearch.length < limit) {
-      const subtaskLimit = limit * 2;
-      const subtaskSearchQuery = Prisma.sql`
-        SELECT DISTINCT "parentTaskId" as id
-        FROM tasks
-        WHERE "parentTaskId" IS NOT NULL
-        AND to_tsvector('english', 
-          COALESCE(title, '') || ' ' || 
-          COALESCE("descriptionPlain", '')
-        ) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
-        ${permissionFilter ? Prisma.raw(permissionFilter) : Prisma.sql``}
-        LIMIT ${subtaskLimit}
-      `;
-      
-      const subtaskSearchResults = await prisma.$queryRaw<Array<{ id: string }>>(subtaskSearchQuery);
-      
-      const subtaskParentIds = subtaskSearchResults.map(r => r.id);
-      taskIdsFromTextSearch = [...new Set([...taskIdsFromTextSearch, ...subtaskParentIds])];
-    }
-    
-    // Add text search filter to where clause only when we actually have matches.
-    // If there are no text-search matches, we fall back to permission-scoped tasks
-    // and rely on Fuse.js for fuzzy matching (including subtasks).
-    if (taskIdsFromTextSearch.length > 0) {
-      where.id = { in: taskIdsFromTextSearch };
-    }
-  }
-  
-  // Reduced candidate limit - we're already filtering at database level
-  const candidateLimit = searchTerm ? Math.min(limit * 2, 200) : Math.min(limit * 2, 100);
+  const candidateLimit = Math.max(limit * 3, 50);
 
-  const tasks = await prisma.task.findMany({
+  const todos = await prisma.todo.findMany({
     where,
     select: {
       id: true,
-      taskNumber: true,
+      todoNumber: true,
       title: true,
       description: true,
       descriptionPlain: true,
@@ -1057,8 +956,8 @@ async function searchTasks(
       priority: true,
       createdAt: true,
       updatedAt: true,
-      parentTaskId: true,
-      parentTask: {
+      parentTodoId: true,
+      parentTodo: {
         select: {
           id: true,
           title: true,
@@ -1080,8 +979,6 @@ async function searchTasks(
           title: true,
         },
       },
-      // Only load subtasks if we're searching (they'll be loaded separately if needed)
-      subtasks: undefined, // Load subtasks separately only when needed
     },
     orderBy: {
       updatedAt: "desc",
@@ -1089,213 +986,46 @@ async function searchTasks(
     take: candidateLimit,
   });
 
-  // If no search term, return recent tasks (top N)
+  // If no search term, return recent todos (top N)
   if (!searchTerm || searchTerm.trim().length === 0) {
-    return tasks.slice(0, limit).map((task) => ({
+    return todos.slice(0, limit).map((todo) => ({
       type: "task" as const,
-      id: task.id,
-      title: task.title,
-      description: task.descriptionPlain || task.description || undefined,
-      url: `/dashboard/tasks/${task.id}`,
+      id: todo.id,
+      title: todo.title,
+      description: todo.descriptionPlain || todo.description || undefined,
+      url: `/dashboard/todos/${todo.id}`,
       metadata: {
-        taskNumber: task.taskNumber,
-        status: task.status,
-        priority: task.priority,
-        parentTaskTitle: task.parentTask?.title,
-        ticketNumber: task.ticket?.ticketNumber,
-        ticketTitle: task.ticket?.title,
-        assignedTo: task.assignedTo ? formatUserName(task.assignedTo) : undefined,
-        createdAt: task.createdAt,
-        updatedAt: task.updatedAt,
+        todoNumber: todo.todoNumber,
+        status: todo.status,
+        priority: todo.priority,
+        parentTodoTitle: todo.parentTodo?.title,
+        ticketNumber: todo.ticket?.ticketNumber,
+        ticketTitle: todo.ticket?.title,
+        assignedTo: todo.assignedTo ? formatUserName(todo.assignedTo) : undefined,
+        createdAt: todo.createdAt,
+        updatedAt: todo.updatedAt,
       },
     }));
   }
 
   const trimmed = searchTerm.trim();
 
-  // Load subtasks separately only if we have a search term
-  // Support nested subtasks up to 3 levels deep
-  let subtaskFuzzyResults: Array<{ 
-    item: { 
-      id: string; 
-      title: string; 
-      descriptionPlain: string; 
-      status: string; 
-      parentTaskId: string; 
-      task: typeof tasks[0];
-      level: number; // 1 = direct subtask, 2 = subtask of subtask, 3 = max depth
-      rootTaskId: string; // ID of the top-level task
-      parentChain: string[]; // Array of parent IDs from root to direct parent
-    }; 
-    score?: number 
-  }> = [];
-  
-  if (searchTerm && searchTerm.trim().length >= 2 && tasks.length > 0) {
-    // Get task IDs we already have
-    const taskIds = tasks.map(t => t.id);
-    const taskMap = new Map(tasks.map(t => [t.id, t]));
-
-    // Recursively load subtasks up to 3 levels deep
-    const allSubtasksWithHierarchy: Array<{
-      id: string;
-      title: string;
-      descriptionPlain: string;
-      status: string;
-      parentTaskId: string;
-      task: typeof tasks[0];
-      level: number;
-      rootTaskId: string;
-      parentChain: string[];
-    }> = [];
-
-    // Map to track all loaded subtasks for faster parent lookups
-    const subtaskMap = new Map<string, {
-      id: string;
-      title: string;
-      descriptionPlain: string;
-      status: string;
-      parentTaskId: string;
-    }>();
-
-    // Helper function to recursively load subtasks
-    const loadSubtasksRecursively = async (
-      parentIds: string[],
-      currentLevel: number,
-      maxLevel: number,
-      parentChain: string[],
-      rootTaskId: string
-    ): Promise<void> => {
-      if (currentLevel > maxLevel || parentIds.length === 0) {
-        return;
-      }
-
-      const subtaskLimit = limit * 3;
-      const matchingSubtasks = await prisma.task.findMany({
-        where: {
-          parentTaskId: { in: parentIds },
-        },
-        select: {
-          id: true,
-          title: true,
-          descriptionPlain: true,
-          status: true,
-          parentTaskId: true,
-        },
-        take: subtaskLimit,
-      });
-
-      // Process each subtask
-      for (const subtask of matchingSubtasks) {
-        if (!subtask.parentTaskId) continue;
-
-        // Find the parent task (could be from original tasks or a previously loaded subtask)
-        let parentTask = taskMap.get(subtask.parentTaskId);
-        
-        // If parent not found in original tasks, it's a nested subtask
-        // We need to find it in our already loaded subtasks
-        if (!parentTask) {
-          const parentSubtaskData = subtaskMap.get(subtask.parentTaskId);
-          if (parentSubtaskData) {
-            // Create a minimal parent task object for reference
-            parentTask = {
-              id: parentSubtaskData.id,
-              title: parentSubtaskData.title,
-              taskNumber: null,
-              description: null,
-              descriptionPlain: parentSubtaskData.descriptionPlain,
-              status: parentSubtaskData.status,
-              priority: "MEDIUM" as const,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-              parentTaskId: parentSubtaskData.parentTaskId,
-              parentTask: null,
-              assignedToId: null,
-              assignedTo: null,
-              ticketId: null,
-              ticket: null,
-            } as typeof tasks[0];
-          } else {
-            continue; // Skip if we can't find the parent
-          }
-        }
-
-        // Add to subtask map for future lookups
-        subtaskMap.set(subtask.id, {
-          id: subtask.id,
-          title: subtask.title,
-          descriptionPlain: subtask.descriptionPlain || "",
-          status: subtask.status,
-          parentTaskId: subtask.parentTaskId,
-        });
-
-        const newParentChain = [...parentChain, subtask.parentTaskId];
-        
-        allSubtasksWithHierarchy.push({
-          id: subtask.id,
-          title: subtask.title,
-          descriptionPlain: subtask.descriptionPlain || "",
-          status: subtask.status,
-          parentTaskId: subtask.parentTaskId,
-          task: parentTask,
-          level: currentLevel,
-          rootTaskId,
-          parentChain: newParentChain,
-        });
-
-        // Recursively load subtasks of this subtask
-        await loadSubtasksRecursively(
-          [subtask.id],
-          currentLevel + 1,
-          maxLevel,
-          newParentChain,
-          rootTaskId
-        );
-      }
-    };
-
-    // Load subtasks for each root task
-    for (const rootTask of tasks) {
-      await loadSubtasksRecursively(
-        [rootTask.id],
-        1, // Start at level 1 (direct subtasks)
-        3, // Max 3 levels deep
-        [rootTask.id], // Parent chain starts with root task
-        rootTask.id // Root task ID
-      );
-    }
-    
-    // Apply fuzzy search for final ranking on all subtasks (all levels)
-    subtaskFuzzyResults = fuzzySearch(
-      allSubtasksWithHierarchy,
-      trimmed,
-      {
-        keys: [
-          { name: "title", weight: 0.6 },
-          { name: "descriptionPlain", weight: 0.4 },
-        ],
-        threshold: 0.4,
-        minMatchCharLength: 2,
-      }
-    );
-  }
-
-  // Prepare tasks for fuzzy search on title and description
-  // Since we already filtered at database level, this is mainly for ranking
-  const tasksForFuzzy = tasks.map((task) => ({
-    ...task,
+  // Prepare todos for fuzzy search on title and description
+  const todosForFuzzy = todos.map((todo) => ({
+    ...todo,
     searchableText: [
-      task.title,
-      task.description || "",
-      task.descriptionPlain || "",
-      task.taskNumber || "",
-      task.ticket?.ticketNumber || "",
-      task.ticket?.title || "",
-      task.parentTask?.title || "",
+      todo.title,
+      todo.description || "",
+      todo.descriptionPlain || "",
+      todo.todoNumber || "",
+      todo.ticket?.ticketNumber || "",
+      todo.ticket?.title || "",
+      todo.parentTodo?.title || "",
     ].join(" "),
   }));
 
-  const taskFuzzyResults = fuzzySearch(
-    tasksForFuzzy,
+  const todoFuzzyResults = fuzzySearch(
+    todosForFuzzy,
     trimmed,
     {
       keys: [
@@ -1308,220 +1038,26 @@ async function searchTasks(
     }
   );
 
-  // Determine which tasks matched either directly or via subtasks
-  const matchedTaskIds = new Set<string>();
-  const rootTaskIdsFromSubtasks = new Set<string>();
+  const topTodos = rankAndLimit(todoFuzzyResults, limit);
 
-  taskFuzzyResults.forEach((result) => {
-    if (result.score !== undefined && result.score < 0.5) {
-      matchedTaskIds.add(result.item.id);
-    }
-  });
-
-  const topMatchingSubtasks = rankAndLimit(subtaskFuzzyResults, limit * 2);
-  topMatchingSubtasks.forEach((item) => {
-    // Add the root task ID (top-level parent) to matched tasks
-    matchedTaskIds.add(item.rootTaskId);
-    rootTaskIdsFromSubtasks.add(item.rootTaskId);
-    // Also add the direct parent if it's not the root (for nested subtasks)
-    if (item.parentTaskId !== item.rootTaskId) {
-      matchedTaskIds.add(item.parentTaskId);
-    }
-  });
-
-  // Load any root tasks that weren't in the initial results but have matching nested subtasks
-  const missingRootTaskIds = Array.from(rootTaskIdsFromSubtasks).filter(id => !tasks.some(t => t.id === id));
-  if (missingRootTaskIds.length > 0) {
-    const missingRootTasks = await prisma.task.findMany({
-      where: {
-        id: { in: missingRootTaskIds },
-        parentTaskId: null, // Only root tasks
-      },
-      select: {
-        id: true,
-        taskNumber: true,
-        title: true,
-        description: true,
-        descriptionPlain: true,
-        status: true,
-        priority: true,
-        createdAt: true,
-        updatedAt: true,
-        parentTaskId: true,
-        parentTask: {
-          select: {
-            id: true,
-            title: true,
-          },
-        },
-        assignedToId: true,
-        assignedTo: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        ticketId: true,
-        ticket: {
-          select: {
-            id: true,
-            ticketNumber: true,
-            title: true,
-          },
-        },
-      },
-    });
-    
-    // Add missing root tasks to the tasks array
-    tasks.push(...missingRootTasks);
-  }
-
-  const taskMap = new Map(tasks.map((t) => [t.id, t]));
-
-  // Score tasks by best match (task title/description vs subtasks)
-  const combinedResults: Array<{
-    task: typeof tasks[0];
-    score: number;
-    matchedViaSubtasks: boolean;
-  }> = [];
-
-  matchedTaskIds.forEach((taskId) => {
-    const task = taskMap.get(taskId);
-    if (!task) return;
-
-    const taskMatch = taskFuzzyResults.find((r) => r.item.id === taskId);
-    const taskScore = taskMatch?.score ?? 1;
-
-    const subtaskMatches = subtaskFuzzyResults.filter((r) => r.item.parentTaskId === taskId);
-    const bestSubtaskScore = subtaskMatches.length > 0
-      ? Math.min(...subtaskMatches.map((r) => r.score ?? 1))
-      : 1;
-
-    const bestScore = Math.min(taskScore, bestSubtaskScore);
-    const matchedViaSubtasks = subtaskMatches.length > 0 && taskScore >= 0.5;
-
-    combinedResults.push({
-      task,
-      score: bestScore,
-      matchedViaSubtasks,
-    });
-  });
-
-  combinedResults.sort((a, b) => a.score - b.score);
-  const topTasks = combinedResults.slice(0, limit).map((r) => r.task);
-
-  const results: SearchResult[] = [];
-  const processedTaskIds = new Set<string>();
-  const addedTaskIds = new Set<string>();
-
-  topTasks.forEach((task) => {
-    processedTaskIds.add(task.id);
-
-    const taskMatch = taskFuzzyResults.find((r) => r.item.id === task.id);
-    const matchedViaFields =
-      taskMatch !== undefined &&
-      taskMatch.score !== undefined &&
-      taskMatch.score < 0.5;
-
-    // Get all matching subtasks (including nested ones) for this root task
-    const taskSubtaskMatches = subtaskFuzzyResults
-      .filter((r) => r.item.rootTaskId === task.id)
-      .sort((a, b) => {
-        // Sort by level first (level 1 before level 2, etc.), then by score
-        if (a.item.level !== b.item.level) {
-          return a.item.level - b.item.level;
-        }
-        return (a.score ?? 1) - (b.score ?? 1);
-      })
-      .slice(0, 10); // Allow more subtasks to show nested structure
-
-    const matchingSubtasks = taskSubtaskMatches.map((r) => r.item);
-
-    if (matchedViaFields || matchingSubtasks.length > 0) {
-      // Parent task result
-      if (!addedTaskIds.has(task.id)) {
-        results.push({
-          type: "task" as const,
-          id: task.id,
-          title: task.title,
-          description: matchedViaFields
-            ? task.descriptionPlain || task.description || undefined
-            : undefined,
-          url: `/dashboard/tasks/${task.id}`,
-          metadata: {
-            taskNumber: task.taskNumber,
-            status: task.status,
-            priority: task.priority,
-            parentTaskTitle: task.parentTask?.title,
-            ticketNumber: task.ticket?.ticketNumber,
-            ticketTitle: task.ticket?.title,
-            assignedTo: task.assignedTo ? formatUserName(task.assignedTo) : undefined,
-            subtaskCount: matchingSubtasks.length,
-            createdAt: task.createdAt,
-            updatedAt: task.updatedAt,
-          },
-        });
-        addedTaskIds.add(task.id);
-      }
-
-      // Add subtasks with hierarchy information
-      // Group by level to maintain proper nesting order
-      const subtasksByLevel = new Map<number, typeof matchingSubtasks>();
-      matchingSubtasks.forEach((subtask) => {
-        const level = subtask.level;
-        if (!subtasksByLevel.has(level)) {
-          subtasksByLevel.set(level, []);
-        }
-        subtasksByLevel.get(level)!.push(subtask);
-      });
-
-      // Add subtasks level by level to maintain hierarchy
-      for (let level = 1; level <= 3; level++) {
-        const levelSubtasks = subtasksByLevel.get(level) || [];
-        levelSubtasks.forEach((subtask) => {
-          if (!addedTaskIds.has(subtask.id)) {
-            // Find the direct parent task title
-            let directParentTitle = task.title;
-            if (subtask.parentTaskId !== task.id) {
-              // Find the direct parent in our loaded subtasks
-              const directParent = matchingSubtasks.find(s => s.id === subtask.parentTaskId);
-              if (directParent) {
-                directParentTitle = directParent.title;
-              } else {
-                // Try to find in original tasks
-                const parentInTasks = tasks.find(t => t.id === subtask.parentTaskId);
-                if (parentInTasks) {
-                  directParentTitle = parentInTasks.title;
-                }
-              }
-            }
-
-            results.push({
-              type: "task" as const,
-              id: subtask.id,
-              title: subtask.title,
-              description: subtask.descriptionPlain || undefined,
-              url: `/dashboard/tasks/${subtask.id}`,
-              metadata: {
-                isSubtask: true,
-                parentTaskId: subtask.parentTaskId, // Direct parent
-                parentTaskTitle: directParentTitle,
-                rootTaskId: subtask.rootTaskId, // Root task
-                rootTaskTitle: task.title,
-                level: subtask.level, // Hierarchy level (1, 2, or 3)
-                parentChain: subtask.parentChain, // Full parent chain
-                status: subtask.status,
-              },
-            });
-            addedTaskIds.add(subtask.id);
-          }
-        });
-      }
-    }
-  });
-
-  return results;
+  return topTodos.map((todo) => ({
+    type: "task" as const,
+    id: todo.id,
+    title: todo.title,
+    description: todo.descriptionPlain || todo.description || undefined,
+    url: `/dashboard/todos/${todo.id}`,
+    metadata: {
+      todoNumber: todo.todoNumber,
+      status: todo.status,
+      priority: todo.priority,
+      parentTodoTitle: todo.parentTodo?.title,
+      ticketNumber: todo.ticket?.ticketNumber,
+      ticketTitle: todo.ticket?.title,
+      assignedTo: todo.assignedTo ? formatUserName(todo.assignedTo) : undefined,
+      createdAt: todo.createdAt,
+      updatedAt: todo.updatedAt,
+    },
+  }));
 }
 
 /**

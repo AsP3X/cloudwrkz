@@ -95,8 +95,8 @@ async function runInteractiveMode() {
       },
       {
         key: "t",
-        label: "📋 Task Management",
-        description: "Manage tasks and task assignments",
+        label: "📋 Todo Management",
+        description: "Manage todos and todo assignments",
       },
       {
         key: "tk",
@@ -152,7 +152,7 @@ async function runInteractiveMode() {
         await runProjectInteractive();
         break;
       case "t":
-        await runTaskInteractive();
+        await runTodoInteractive();
         break;
       case "tk":
         await runTicketInteractive();
@@ -1162,9 +1162,9 @@ async function runProjectInteractive() {
   }
 }
 
-async function runTaskInteractive() {
+async function runTodoInteractive() {
   clear();
-  notice("Task Management CLI - Use non-interactive mode: pnpm cli task <command>", "info");
+  notice("Todo Management CLI - Use non-interactive mode: pnpm cli todo <command>", "info");
   await waitForEnter();
 }
 
@@ -1340,8 +1340,8 @@ Run 'pnpm cli help' for more information.
     case "project":
       await import("./project-cli");
       break;
-    case "task":
-      await import("./task-cli");
+    case "todo":
+      await import("./todo-cli");
       break;
     case "ticket":
       await import("./ticket-cli");
@@ -1375,7 +1375,7 @@ function showHelp() {
   console.log(chalk.cyan("  module    "), "Module management (list, enable, disable, show, config, status, sync)");
   console.log(chalk.cyan("  session   "), "Session management (list, show, revoke, revoke-user, revoke-all, cleanup, stats)");
   console.log(chalk.cyan("  project   "), "Project management (list, create, show, update, delete, add-member, remove-member, list-members, add-group, remove-group, list-groups)");
-  console.log(chalk.cyan("  task      "), "Task management (list, show, create, update, assign, complete, delete)");
+  console.log(chalk.cyan("  todo      "), "Todo management (list, show, create, update, assign, complete, delete)");
   console.log(chalk.cyan("  ticket    "), "Ticket management (list, show, create, update, assign, close, reopen, delete)");
   console.log(chalk.cyan("  time      "), "Time tracking (list, show, start, stop, pause, resume, create, update, delete, export, report)");
   console.log(chalk.cyan("  permission"), "Permission management (list, show, grant, revoke, list-group, sync)");

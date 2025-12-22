@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
 import { canUserViewModule } from "@/server/actions/modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
-import { getAllTasks } from "@/server/actions/tasks";
+import { getAllTodos } from "@/server/actions/todos";
 import { hasPermission } from "@/lib/utils/permissions";
 import { TaskFilterButton } from "@/components/features/tasks/TaskFilterButton";
 import { TaskFilterLoader } from "@/components/features/tasks/TaskFilterLoader";
@@ -15,7 +15,7 @@ import { TasksPageClient } from "./TasksPageClient";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-interface TasksPageProps {
+interface TodosPageProps {
   searchParams: Promise<{
     status?: string;
     priority?: string;
@@ -26,7 +26,7 @@ interface TasksPageProps {
   }>;
 }
 
-export default async function TasksPage({ searchParams }: TasksPageProps) {
+export default async function TodosPage({ searchParams }: TodosPageProps) {
   const user = await getCurrentUser();
   const params = await searchParams;
 
@@ -34,14 +34,14 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     redirect(ROUTES.LOGIN);
   }
 
-  const canViewTasks = await canUserViewModule(user.id, MODULE_KEYS.TASKS);
+  const canViewTodos = await canUserViewModule(user.id, MODULE_KEYS.TODOS);
 
-  if (!canViewTasks) {
+  if (!canViewTodos) {
     return (
       <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8 text-center">
         <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">Access Denied</h2>
         <p className="text-neutral-600 dark:text-neutral-400 mb-4">
-          You don&apos;t have permission to access the Tasks module. Please contact an administrator.
+          You don&apos;t have permission to access the ToDo module. Please contact an administrator.
         </p>
         <Link href={ROUTES.DASHBOARD}>
           <Button variant="primary">Back to Dashboard</Button>
@@ -51,7 +51,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   }
 
   // Build filters from search params
-  const tasks = await getAllTasks({
+  const tasks = await getAllTodos({
     status: params.status,
     priority: params.priority,
     assignee: (params.assignee as any) || undefined,
@@ -61,13 +61,13 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     sort: params.sort,
   });
 
-  // Check if user can create tasks (tasks module permission)
-  // Tasks are completely independent of projects
+  // Check if user can create todos (ToDo module permission)
+  // Todos are completely independent of projects
   const canCreateTasks = 
     user.role === "ADMIN" || 
     user.role === "AGENT" || 
     user.role === "MODERATOR" ||
-    await hasPermission(user.id, "tasks.create");
+    await hasPermission(user.id, "todos.create");
 
   return (
     <>

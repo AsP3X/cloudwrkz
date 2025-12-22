@@ -43,7 +43,7 @@ const TicketsIcon = () => (
   </svg>
 );
 
-const TasksIcon = () => (
+const TodosIcon = () => (
   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path
       strokeLinecap="round"
@@ -132,10 +132,10 @@ const NAV_SECTIONS = Object.freeze([
         moduleKey: "tickets",
       }),
       Object.freeze({
-        name: "Tasks",
-        href: "/dashboard/tasks",
-        icon: TasksIcon,
-        moduleKey: "tasks",
+        name: "ToDo",
+        href: "/dashboard/todos",
+        icon: TodosIcon,
+        moduleKey: "todos",
       }),
       Object.freeze({
         name: "Projects",

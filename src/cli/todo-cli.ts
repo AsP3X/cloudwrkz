@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 
 /**
- * Task Management CLI Tool
+ * Todo Management CLI Tool
  * 
  * Usage:
- *   pnpm cli task list [--project=PROJECT] [--status=STATUS] [--assignee=EMAIL]
- *   pnpm cli task show <id|number>
- *   pnpm cli task create <project> <title> [--description=DESC] [--assignee=EMAIL] [--due-date=DATE]
- *   pnpm cli task update <id|number> [--status=STATUS] [--assignee=EMAIL] [--due-date=DATE]
- *   pnpm cli task assign <id|number> <user>
- *   pnpm cli task complete <id|number>
- *   pnpm cli task delete <id|number>
+ *   pnpm cli todo list [--project=PROJECT] [--status=STATUS] [--assignee=EMAIL]
+ *   pnpm cli todo show <id|number>
+ *   pnpm cli todo create <project> <title> [--description=DESC] [--assignee=EMAIL] [--due-date=DATE]
+ *   pnpm cli todo update <id|number> [--status=STATUS] [--assignee=EMAIL] [--due-date=DATE]
+ *   pnpm cli todo assign <id|number> <user>
+ *   pnpm cli todo complete <id|number>
+ *   pnpm cli todo delete <id|number>
  */
 
 import { prisma } from "../lib/db/prisma";
@@ -33,31 +33,31 @@ import {
 import chalk from "chalk";
 
 const args = process.argv.slice(2);
-const commandArgs = args[0] === "task" ? args.slice(1) : args;
+const commandArgs = args[0] === "todo" ? args.slice(1) : args;
 
-const isRunDirectly = process.argv[1]?.includes("task-cli");
+const isRunDirectly = process.argv[1]?.includes("todo-cli");
 const isCalledFromIndex = process.argv[1]?.includes("cli/index") || process.argv[1]?.includes("index.ts");
 const shouldExecute = isRunDirectly || (isCalledFromIndex && commandArgs.length > 0);
 
 if (isRunDirectly && commandArgs.length === 0) {
   console.log(`
-Task Management CLI Tool
+Todo Management CLI Tool
 
 Commands:
-  list [--project=PROJECT] [--status=STATUS] [--assignee=EMAIL]  List tasks with filters
-  show <id>                                                       Show task details
-  create <project> <title> [--description=DESC] [--assignee=EMAIL] [--due-date=DATE]  Create a new task
-  update <id> [--status=STATUS] [--assignee=EMAIL] [--due-date=DATE]  Update task
-  assign <id> <user>                                             Assign task to user
-  complete <id>                                                  Mark task as completed
-  delete <id>                                                    Delete a task
+  list [--project=PROJECT] [--status=STATUS] [--assignee=EMAIL]  List todos with filters
+  show <id>                                                       Show todo details
+  create <project> <title> [--description=DESC] [--assignee=EMAIL] [--due-date=DATE]  Create a new todo
+  update <id> [--status=STATUS] [--assignee=EMAIL] [--due-date=DATE]  Update todo
+  assign <id> <user>                                             Assign todo to user
+  complete <id>                                                  Mark todo as completed
+  delete <id>                                                    Delete a todo
 
 Status: NOT_STARTED, IN_PROGRESS, COMPLETED, BLOCKED, CANCELLED
 
 Examples:
-  pnpm cli task list
-  pnpm cli task list --project=PROJ-000001 --status=IN_PROGRESS
-  pnpm cli task create PROJ-000001 "Task Title" --assignee=user@example.com
+  pnpm cli todo list
+  pnpm cli todo list --project=PROJ-000001 --status=IN_PROGRESS
+  pnpm cli todo create PROJ-000001 "Todo Title" --assignee=user@example.com
 `);
   process.exit(0);
 }
@@ -115,24 +115,24 @@ function parseArgs(args: string[]): { [key: string]: string | boolean } {
   return parsed;
 }
 
-async function resolveTask(selection: string) {
-  const task = await prisma.task.findFirst({
+async function resolveTodo(selection: string) {
+  const todo = await prisma.todo.findFirst({
     where: {
-      OR: [{ id: selection }, { taskNumber: selection }],
+      OR: [{ id: selection }, { todoNumber: selection }],
     },
     select: {
       id: true,
-      taskNumber: true,
+      todoNumber: true,
       title: true,
     },
   });
 
-  if (!task) {
-    console.error(`Task not found: ${selection}`);
+  if (!todo) {
+    console.error(`Todo not found: ${selection}`);
     process.exit(1);
   }
 
-  return task;
+  return todo;
 }
 
 async function handleList() {
@@ -141,7 +141,7 @@ async function handleList() {
   const status = parsed.status as string | undefined;
   const assigneeEmail = parsed.assignee as string | undefined;
 
-  const spinner = createSpinner("Loading tasks...");
+  const spinner = createSpinner("Loading todos...");
   spinner.start();
 
   try {
@@ -164,7 +164,7 @@ async function handleList() {
       if (user) where.assignedToId = user.id;
     }
 
-    const tasks = await prisma.task.findMany({
+    const todos = await prisma.todo.findMany({
       where,
       include: {
         milestone: {
@@ -178,10 +178,10 @@ async function handleList() {
       take: 100,
     });
 
-    spinner.succeed(`Found ${tasks.length} task(s)`);
+    spinner.succeed(`Found ${todos.length} todo(s)`);
 
-    if (tasks.length === 0) {
-      notice("No tasks found.", "info");
+    if (todos.length === 0) {
+      notice("No todos found.", "info");
       return;
     }
 
@@ -192,9 +192,9 @@ async function handleList() {
       { colWidths: [14, 30, 15, 15, 25, 15] }
     );
 
-    tasks.forEach((t) => {
+    todos.forEach((t) => {
       table.push([
-        t.taskNumber || `${t.id.substring(0, 8)}...`,
+        t.todoNumber || `${t.id.substring(0, 8)}...`,
         t.title.substring(0, 28),
         t.milestone?.project?.code || "-",
         t.status,
@@ -205,7 +205,7 @@ async function handleList() {
 
     console.log(table.toString());
   } catch (err) {
-    spinner.fail("Failed to load tasks");
+    spinner.fail("Failed to load todos");
     error(err instanceof Error ? err.message : String(err));
   }
 }
@@ -217,12 +217,12 @@ async function handleShow() {
   }
 
   const selection = commandArgs[1];
-  const spinner = createSpinner("Loading task details...");
+  const spinner = createSpinner("Loading todo details...");
   spinner.start();
 
   try {
-    const resolved = await resolveTask(selection);
-    const task = await prisma.task.findUnique({
+    const resolved = await resolveTodo(selection);
+    const todo = await prisma.todo.findUnique({
       where: { id: resolved.id },
       include: {
         milestone: {
@@ -234,28 +234,28 @@ async function handleShow() {
       },
     });
 
-    spinner.succeed("Task details loaded");
+    spinner.succeed("Todo details loaded");
 
-    if (!task) {
-      error(`Task not found: ${selection}`);
+    if (!todo) {
+      error(`Todo not found: ${selection}`);
       process.exit(1);
     }
 
     separator();
-    sectionHeader("Task Details");
-    displayKeyValue("ID", task.id);
-    displayKeyValue("Number", task.taskNumber || "(not set)");
-    displayKeyValue("Title", task.title);
-    displayKeyValue("Description", task.description || "-");
-    displayKeyValue("Project", task.milestone?.project ? `${task.milestone.project.code} - ${task.milestone.project.name}` : "-");
-    displayKeyValue("Status", task.status);
-    displayKeyValue("Priority", task.priority);
-    displayKeyValue("Assignee", task.assignedTo ? `${task.assignedTo.email}${task.assignedTo.name ? ` (${task.assignedTo.name})` : ""}` : "-");
-    displayKeyValue("Due Date", task.dueDate?.toLocaleString() || "-");
-    displayKeyValue("Created", task.createdAt.toLocaleString());
-    displayKeyValue("Updated", task.updatedAt.toLocaleString());
+    sectionHeader("Todo Details");
+    displayKeyValue("ID", todo.id);
+    displayKeyValue("Number", todo.todoNumber || "(not set)");
+    displayKeyValue("Title", todo.title);
+    displayKeyValue("Description", todo.description || "-");
+    displayKeyValue("Project", todo.milestone?.project ? `${todo.milestone.project.code} - ${todo.milestone.project.name}` : "-");
+    displayKeyValue("Status", todo.status);
+    displayKeyValue("Priority", todo.priority);
+    displayKeyValue("Assignee", todo.assignedTo ? `${todo.assignedTo.email}${todo.assignedTo.name ? ` (${todo.assignedTo.name})` : ""}` : "-");
+    displayKeyValue("Due Date", todo.dueDate?.toLocaleString() || "-");
+    displayKeyValue("Created", todo.createdAt.toLocaleString());
+    displayKeyValue("Updated", todo.updatedAt.toLocaleString());
   } catch (err) {
-    spinner.fail("Failed to load task details");
+    spinner.fail("Failed to load todo details");
     error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
@@ -274,11 +274,11 @@ async function handleCreate() {
   const assigneeEmail = parsed.assignee as string | undefined;
   const dueDateStr = parsed["due-date"] as string | undefined;
 
-  const spinner = createSpinner("Creating task...");
+  const spinner = createSpinner("Creating todo...");
   spinner.start();
 
   try {
-    // Find a milestone for the project (tasks are linked to projects via milestones)
+    // Find a milestone for the project (todos are linked to projects via milestones)
     const milestone = await prisma.milestone.findFirst({
       where: {
         project: {
@@ -291,7 +291,7 @@ async function handleCreate() {
 
     if (!milestone) {
       spinner.fail("No milestone found");
-      error(`No milestone found for project "${projectCode}". Tasks must be associated with a milestone.`);
+      error(`No milestone found for project "${projectCode}". Todos must be associated with a milestone.`);
       process.exit(1);
     }
 
@@ -313,7 +313,7 @@ async function handleCreate() {
       data.dueDate = new Date(dueDateStr);
     }
 
-    const task = await prisma.task.create({
+    const todo = await prisma.todo.create({
       data,
       include: {
         milestone: {
@@ -324,14 +324,14 @@ async function handleCreate() {
       },
     });
 
-    spinner.succeed("Task created");
+    spinner.succeed("Todo created");
     console.log(
-      `\n✅ Task "${task.title}" (${task.taskNumber || task.id.substring(0, 8) + "..."}) has been created in project ${
-        task.milestone?.project?.code || projectCode
+      `\n✅ Todo "${todo.title}" (${todo.todoNumber || todo.id.substring(0, 8) + "..."}) has been created in project ${
+        todo.milestone?.project?.code || projectCode
       }.`
     );
   } catch (err) {
-    spinner.fail("Failed to create task");
+    spinner.fail("Failed to create todo");
     error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
@@ -346,11 +346,11 @@ async function handleUpdate() {
   const selection = commandArgs[1];
   const parsed = parseArgs(commandArgs.slice(2));
 
-  const spinner = createSpinner("Updating task...");
+  const spinner = createSpinner("Updating todo...");
   spinner.start();
 
   try {
-    const task = await resolveTask(selection);
+    const todo = await resolveTodo(selection);
 
     const updateData: any = {};
     if (parsed.status) updateData.status = parsed.status;
@@ -371,8 +371,8 @@ async function handleUpdate() {
       process.exit(1);
     }
 
-    const updated = await prisma.task.update({
-      where: { id: task.id },
+    const updated = await prisma.todo.update({
+      where: { id: todo.id },
       data: updateData,
       select: {
         id: true,
@@ -381,10 +381,10 @@ async function handleUpdate() {
       },
     });
 
-    spinner.succeed("Task updated");
-    console.log(`\n✅ Task "${updated.title}" has been updated.`);
+    spinner.succeed("Todo updated");
+    console.log(`\n✅ Todo "${updated.title}" has been updated.`);
   } catch (err) {
-    spinner.fail("Failed to update task");
+    spinner.fail("Failed to update todo");
     error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
@@ -399,11 +399,11 @@ async function handleAssign() {
   const selection = commandArgs[1];
   const userEmail = commandArgs[2];
 
-  const spinner = createSpinner("Assigning task...");
+  const spinner = createSpinner("Assigning todo...");
   spinner.start();
 
   try {
-    const task = await resolveTask(selection);
+    const todo = await resolveTodo(selection);
 
     const user = await prisma.user.findUnique({
       where: { email: userEmail },
@@ -416,25 +416,25 @@ async function handleAssign() {
       process.exit(1);
     }
 
-    const updated = await prisma.task.update({
-      where: { id: task.id },
+    const updated = await prisma.todo.update({
+      where: { id: todo.id },
       data: { assignedToId: user.id },
       select: {
         id: true,
-        taskNumber: true,
+        todoNumber: true,
         title: true,
         assignedTo: { select: { email: true } },
       },
     });
 
-    spinner.succeed("Task assigned");
+    spinner.succeed("Todo assigned");
     console.log(
-      `\n✅ Task "${updated.title}" (${updated.taskNumber || updated.id.substring(0, 8) + "..."}) has been assigned to ${
+      `\n✅ Todo "${updated.title}" (${updated.todoNumber || updated.id.substring(0, 8) + "..."}) has been assigned to ${
         updated.assignedTo?.email
       }.`
     );
   } catch (err) {
-    spinner.fail("Failed to assign task");
+    spinner.fail("Failed to assign todo");
     error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
@@ -448,32 +448,32 @@ async function handleComplete() {
 
   const selection = commandArgs[1];
 
-  const spinner = createSpinner("Completing task...");
+  const spinner = createSpinner("Completing todo...");
   spinner.start();
 
   try {
-    const task = await resolveTask(selection);
+    const todo = await resolveTodo(selection);
 
-    const updated = await prisma.task.update({
-      where: { id: task.id },
+    const updated = await prisma.todo.update({
+      where: { id: todo.id },
       data: {
         status: "COMPLETED",
         completedDate: new Date(),
       },
       select: {
         id: true,
-        taskNumber: true,
+        todoNumber: true,
         title: true,
         status: true,
       },
     });
 
-    spinner.succeed("Task completed");
+    spinner.succeed("Todo completed");
     console.log(
-      `\n✅ Task "${updated.title}" (${updated.taskNumber || updated.id.substring(0, 8) + "..."}) has been marked as completed.`
+      `\n✅ Todo "${updated.title}" (${updated.todoNumber || updated.id.substring(0, 8) + "..."}) has been marked as completed.`
     );
   } catch (err) {
-    spinner.fail("Failed to complete task");
+    spinner.fail("Failed to complete todo");
     error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
@@ -486,10 +486,10 @@ async function handleDelete() {
   }
 
   const selection = commandArgs[1];
-  const task = await resolveTask(selection);
+  const todo = await resolveTodo(selection);
 
   const confirmed = await confirm(
-    `⚠️  WARNING: Delete task "${task.taskNumber || task.id.substring(0, 8) + "..."}"? This cannot be undone.`,
+    `⚠️  WARNING: Delete todo "${todo.todoNumber || todo.id.substring(0, 8) + "..."}"? This cannot be undone.`,
     false
   );
 
@@ -498,18 +498,18 @@ async function handleDelete() {
     return;
   }
 
-  const spinner = createSpinner("Deleting task...");
+  const spinner = createSpinner("Deleting todo...");
   spinner.start();
 
   try {
-    await prisma.task.delete({
-      where: { id: task.id },
+    await prisma.todo.delete({
+      where: { id: todo.id },
     });
 
-    spinner.succeed("Task deleted");
-    console.log(`\n✅ Task "${task.taskNumber || task.id.substring(0, 8) + "..."}" has been deleted.`);
+    spinner.succeed("Todo deleted");
+    console.log(`\n✅ Todo "${todo.todoNumber || todo.id.substring(0, 8) + "..."}" has been deleted.`);
   } catch (err) {
-    spinner.fail("Failed to delete task");
+    spinner.fail("Failed to delete todo");
     error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }

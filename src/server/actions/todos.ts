@@ -57,27 +57,27 @@ async function agentHasTicketAccess(agentId: string, ticketId: string): Promise<
   return false;
 }
 
-export type TaskStatus = "NOT_STARTED" | "IN_PROGRESS" | "BLOCKED" | "COMPLETED" | "CANCELLED";
-export type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
-export type TaskDependencyType = "FINISH_TO_START" | "START_TO_START" | "FINISH_TO_FINISH" | "START_TO_FINISH";
+export type TodoStatus = "NOT_STARTED" | "IN_PROGRESS" | "BLOCKED" | "COMPLETED" | "CANCELLED";
+export type TodoPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+export type TodoDependencyType = "FINISH_TO_START" | "START_TO_START" | "FINISH_TO_FINISH" | "START_TO_FINISH";
 
-export type TaskInput = {
+export type TodoInput = {
   title: string;
   description?: string;
-  status?: TaskStatus;
-  priority?: TaskPriority;
+  status?: TodoStatus;
+  priority?: TodoPriority;
   assignedToId?: string;
   estimatedHours?: number;
   startDate?: Date | string;
   dueDate?: Date | string;
-  parentTaskId?: string;
+  parentTodoId?: string;
   milestoneId?: string;
   ticketId?: string;
   order?: number;
-  dependencyIds?: string[]; // Task IDs this task depends on
+  dependencyIds?: string[]; // Todo IDs this todo depends on
 };
 
-export type TaskUpdateInput = Partial<TaskInput> & {
+export type TodoUpdateInput = Partial<TodoInput> & {
   completedDate?: Date | string | null;
 };
 
@@ -86,53 +86,53 @@ export type ActionResult<T = void> =
   | { success: false; error: string; fieldErrors?: Record<string, string[]> };
 
 /**
- * Create a new task.
+ * Create a new todo.
  *
- * Note: For ticket-scoped tasks, prefer using createTicketTask which
+ * Note: For ticket-scoped todos, prefer using createTicketTodo which
  * will also revalidate the ticket detail page.
  */
 
-export async function createTask(
-  input: TaskInput
+export async function createTodo(
+  input: TodoInput
 ): Promise<ActionResult<{ id: string }>> {
   try {
-    // Check if tasks module is enabled
-    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.TASKS);
+    // Check if todos module is enabled
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.TODOS);
     if (!moduleEnabled) {
       return {
         success: false,
-        error: "Tasks module is not enabled",
+        error: "Todos module is not enabled",
       };
     }
 
     // Check permission (this also calls requireAuth internally)
-    const user = await requireAnyPermission("tasks.create");
+    const user = await requireAnyPermission("todos.create");
 
-    // Tasks are completely independent of projects
+    // Todos are completely independent of projects
 
     if (!input.title || input.title.trim().length === 0) {
       return {
         success: false,
-        error: "Task title is required",
-        fieldErrors: { title: ["Task title cannot be empty"] },
+        error: "Todo title is required",
+        fieldErrors: { title: ["Todo title cannot be empty"] },
       };
     }
 
-    // Validate parent task exists (no project validation needed - tasks are independent)
-    if (input.parentTaskId) {
-      const parentTask = await prisma.task.findUnique({
-        where: { id: input.parentTaskId },
+    // Validate parent todo exists (no project validation needed - todos are independent)
+    if (input.parentTodoId) {
+      const parentTodo = await prisma.todo.findUnique({
+        where: { id: input.parentTodoId },
         select: { id: true },
       });
-      if (!parentTask) {
+      if (!parentTodo) {
         return {
           success: false,
-          error: "Parent task not found",
+          error: "Parent todo not found",
         };
       }
     }
 
-    // Validate milestone exists (no project validation needed - tasks are independent)
+    // Validate milestone exists (no project validation needed - todos are independent)
     if (input.milestoneId) {
       const milestone = await prisma.milestone.findUnique({
         where: { id: input.milestoneId },
@@ -172,9 +172,9 @@ export async function createTask(
       };
     }
 
-    // Create task - tasks are completely independent of projects
+    // Create todo - todos are completely independent of projects
     // Build data object, only including fields that are not undefined
-    const taskData: any = {
+    const todoData: any = {
       title: input.title.trim(),
       status: input.status || "NOT_STARTED",
       priority: input.priority || "MEDIUM",
@@ -188,9 +188,9 @@ export async function createTask(
       const descriptionPlain = descriptionHtml ? extractPlainText(descriptionHtml) : null;
 
       // Keep legacy description field in sync with plain text for backward compatibility
-      taskData.description = descriptionPlain;
-      taskData.descriptionHtml = descriptionHtml;
-      taskData.descriptionPlain = descriptionPlain;
+      todoData.description = descriptionPlain;
+      todoData.descriptionHtml = descriptionHtml;
+      todoData.descriptionPlain = descriptionPlain;
     }
     
     // Handle assignment: auto-assign to creator if not specified, or validate assignment to others
@@ -203,70 +203,70 @@ export async function createTask(
         if (!inSameGroup) {
           return {
             success: false,
-            error: "You can only assign tasks to users in your group. Please contact an administrator if you need to assign to someone else.",
-            fieldErrors: { assignedToId: ["You can only assign tasks to users in your group"] },
+            error: "You can only assign todos to users in your group. Please contact an administrator if you need to assign to someone else.",
+            fieldErrors: { assignedToId: ["You can only assign todos to users in your group"] },
           };
         }
       }
-      taskData.assignedToId = input.assignedToId;
+      todoData.assignedToId = input.assignedToId;
     } else {
       // Auto-assign to creator if no assignment specified
-      taskData.assignedToId = user.id;
+      todoData.assignedToId = user.id;
     }
     if (input.estimatedHours !== undefined && input.estimatedHours !== null) {
-      taskData.estimatedHours = input.estimatedHours;
+      todoData.estimatedHours = input.estimatedHours;
     }
     if (startDate !== null) {
-      taskData.startDate = startDate;
+      todoData.startDate = startDate;
     }
     if (dueDate !== null) {
-      taskData.dueDate = dueDate;
+      todoData.dueDate = dueDate;
     }
-    if (input.parentTaskId !== undefined && input.parentTaskId !== null) {
-      taskData.parentTaskId = input.parentTaskId;
+    if (input.parentTodoId !== undefined && input.parentTodoId !== null) {
+      todoData.parentTodoId = input.parentTodoId;
     }
     if (input.milestoneId !== undefined && input.milestoneId !== null) {
-      taskData.milestoneId = input.milestoneId;
+      todoData.milestoneId = input.milestoneId;
     }
     if (input.ticketId !== undefined && input.ticketId !== null) {
-      taskData.ticketId = input.ticketId;
+      todoData.ticketId = input.ticketId;
     }
 
-    // Generate sequential task number in the format #TSK-000001
-    const existingTasks = await prisma.task.findMany({
+    // Generate sequential todo number in the format #TDO-000001
+    const existingTodos = await prisma.todo.findMany({
       where: {
-        taskNumber: {
-          startsWith: "#TSK-",
+        todoNumber: {
+          startsWith: "#TDO-",
         },
       },
       select: {
-        taskNumber: true,
+        todoNumber: true,
       },
       orderBy: {
-        taskNumber: "desc",
+        todoNumber: "desc",
       },
       take: 1,
     });
 
     let nextSequence = 1;
-    if (existingTasks.length > 0 && existingTasks[0].taskNumber) {
-      const match = existingTasks[0].taskNumber.match(/^#TSK-(\d+)$/);
+    if (existingTodos.length > 0 && existingTodos[0].todoNumber) {
+      const match = existingTodos[0].todoNumber.match(/^#TDO-(\d+)$/);
       if (match) {
         nextSequence = parseInt(match[1], 10) + 1;
       }
     }
 
     const padded = nextSequence.toString().padStart(6, "0");
-    taskData.taskNumber = `#TSK-${padded}`;
+    todoData.todoNumber = `#TDO-${padded}`;
 
-    const task = await prisma.task.create({
-      data: taskData,
+    const todo = await prisma.todo.create({
+      data: todoData,
     });
 
-    // Create dependencies (no project validation - tasks are independent)
+    // Create dependencies (no project validation - todos are independent)
     if (input.dependencyIds && input.dependencyIds.length > 0) {
       // Validate all dependencies exist
-      const dependencies = await prisma.task.findMany({
+      const dependencies = await prisma.todo.findMany({
         where: {
           id: { in: input.dependencyIds },
         },
@@ -276,30 +276,30 @@ export async function createTask(
       if (dependencies.length !== input.dependencyIds.length) {
         return {
           success: false,
-          error: "Some dependency tasks do not exist",
+          error: "Some dependency todos do not exist",
         };
       }
 
-      await prisma.taskDependency.createMany({
-        data: input.dependencyIds.map((dependsOnTaskId) => ({
-          taskId: task.id,
-          dependsOnTaskId,
+      await prisma.todoDependency.createMany({
+        data: input.dependencyIds.map((dependsOnTodoId) => ({
+          todoId: todo.id,
+          dependsOnTodoId,
           type: "FINISH_TO_START",
         })),
         skipDuplicates: true,
       });
     }
 
-    // Tasks are independent - only revalidate tasks page
-    revalidatePath(`/dashboard/tasks`);
+    // Todos are independent - only revalidate todos page
+    revalidatePath(`/dashboard/todos`);
 
     return {
       success: true,
-      data: { id: task.id },
-      message: "Task created successfully",
+      data: { id: todo.id },
+      message: "Todo created successfully",
     };
   } catch (error) {
-    console.error("Error creating task:", error);
+    console.error("Error creating todo:", error);
     // Provide more detailed error information
     const errorMessage = error instanceof Error ? error.message : String(error);
     
@@ -307,7 +307,7 @@ export async function createTask(
     if (errorMessage.includes("Forbidden") || errorMessage.includes("Missing")) {
       return {
         success: false,
-        error: "You don't have permission to create tasks. Please contact an administrator.",
+        error: "You don't have permission to create todos. Please contact an administrator.",
       };
     }
     
@@ -323,7 +323,7 @@ export async function createTask(
     if (errorMessage.includes("Unique constraint")) {
       return {
         success: false,
-        error: "A task with this information already exists.",
+        error: "A todo with this information already exists.",
       };
     }
     
@@ -344,22 +344,22 @@ export async function createTask(
     // Generic error
     return {
       success: false,
-      error: `Failed to create task: ${errorMessage}`,
+      error: `Failed to create todo: ${errorMessage}`,
     };
   }
 }
 
 /**
- * Convenience helper for creating a task that is attached to a specific ticket.
+ * Convenience helper for creating a todo that is attached to a specific ticket.
  *
  * This will:
  * - Ensure the ticket exists
- * - Delegate to createTask
+ * - Delegate to createTodo
  * - Revalidate the ticket detail page on success
  */
-export async function createTicketTask(
+export async function createTicketTodo(
   ticketId: string,
-  input: Omit<TaskInput, "ticketId">
+  input: Omit<TodoInput, "ticketId">
 ): Promise<ActionResult<{ id: string }>> {
   try {
     await requireAuth();
@@ -379,59 +379,59 @@ export async function createTicketTask(
       };
     }
 
-    const result = await createTask({
+    const result = await createTodo({
       ...input,
       ticketId,
     });
 
     if (result.success) {
-      // Also revalidate the ticket detail page so the new task appears
+      // Also revalidate the ticket detail page so the new todo appears
       revalidatePath(`/dashboard/tickets/${ticketId}`);
     }
 
     return result;
   } catch (error) {
-    console.error("Error creating ticket task:", error);
+    console.error("Error creating ticket todo:", error);
     return {
       success: false,
-      error: "Failed to create task for ticket. Please try again.",
+      error: "Failed to create todo for ticket. Please try again.",
     };
   }
 }
 
 /**
- * Convenience helper for creating a subtask attached to a specific parent task.
+ * Convenience helper for creating a subtodo attached to a specific parent todo.
  *
- * This delegates to createTask and ensures the parent exists.
+ * This delegates to createTodo and ensures the parent exists.
  */
-export async function createSubtask(
-  parentTaskId: string,
-  input: Omit<TaskInput, "parentTaskId" | "ticketId" | "milestoneId">
+export async function createSubtodo(
+  parentTodoId: string,
+  input: Omit<TodoInput, "parentTodoId" | "ticketId" | "milestoneId">
 ): Promise<ActionResult<{ id: string }>> {
   try {
-    // Reuse the same permission/module checks as createTask
-    const parent = await prisma.task.findUnique({
-      where: { id: parentTaskId },
+    // Reuse the same permission/module checks as createTodo
+    const parent = await prisma.todo.findUnique({
+      where: { id: parentTodoId },
       select: { id: true, ticketId: true, milestoneId: true },
     });
 
     if (!parent) {
       return {
         success: false,
-        error: "Parent task not found",
+        error: "Parent todo not found",
       };
     }
 
-    const result = await createTask({
+    const result = await createTodo({
       ...input,
-      parentTaskId,
+      parentTodoId,
       ticketId: parent.ticketId ?? undefined,
       milestoneId: parent.milestoneId ?? undefined,
     });
 
     if (result.success) {
-      // Revalidate both the standalone tasks page and the parent detail page
-      revalidatePath(`/dashboard/tasks/${parentTaskId}`);
+      // Revalidate both the standalone todos page and the parent detail page
+      revalidatePath(`/dashboard/todos/${parentTodoId}`);
       if (parent.ticketId) {
         revalidatePath(`/dashboard/tickets/${parent.ticketId}`);
       }
@@ -439,101 +439,101 @@ export async function createSubtask(
 
     return result;
   } catch (error) {
-    console.error("Error creating subtask:", error);
+    console.error("Error creating subtodo:", error);
     return {
       success: false,
-      error: "Failed to create subtask. Please try again.",
+      error: "Failed to create subtodo. Please try again.",
     };
   }
 }
 
-export async function updateTask(
-  taskId: string,
-  input: TaskUpdateInput
+export async function updateTodo(
+  todoId: string,
+  input: TodoUpdateInput
 ): Promise<ActionResult> {
   try {
     const user = await requireAuth();
 
-    const task = await prisma.task.findUnique({
-      where: { id: taskId },
-      select: { parentTaskId: true, assignedToId: true, ticketId: true },
+    const todo = await prisma.todo.findUnique({
+      where: { id: todoId },
+      select: { parentTodoId: true, assignedToId: true, ticketId: true },
     });
 
-    if (!task) {
+    if (!todo) {
       return {
         success: false,
-        error: "Task not found",
+        error: "Todo not found",
       };
     }
 
-    // Tasks are independent - check task permissions, not project permissions
+    // Todos are independent - check todo permissions, not project permissions
     // Admins and moderators can always update
     const { hasPermission } = await import("@/lib/utils/permissions");
     if (
       user.role !== "ADMIN" &&
       user.role !== "AGENT" &&
       user.role !== "MODERATOR" &&
-      !(await hasPermission(user.id, "tasks.update"))
+      !(await hasPermission(user.id, "todos.update"))
     ) {
       return {
         success: false,
-        error: "You don't have permission to update this task",
+        error: "You don't have permission to update this todo",
       };
     }
 
     // Check access based on role
     if (user.role === "ADMIN" || user.role === "MODERATOR") {
-      // Admins and moderators can update all tasks
+      // Admins and moderators can update all todos
     } else if (user.role === "AGENT") {
-      // Agents can update tasks if:
-      // 1. Task is assigned to them, OR
-      // 2. Task is linked to a ticket they have access to
-      if (task.assignedToId === user.id) {
+      // Agents can update todos if:
+      // 1. Todo is assigned to them, OR
+      // 2. Todo is linked to a ticket they have access to
+      if (todo.assignedToId === user.id) {
         // Assigned to agent - allow update
-      } else if (task.ticketId) {
+      } else if (todo.ticketId) {
         // Check if agent has access to the ticket
-        const hasAccess = await agentHasTicketAccess(user.id, task.ticketId);
+        const hasAccess = await agentHasTicketAccess(user.id, todo.ticketId);
         if (!hasAccess) {
           return {
             success: false,
-            error: "You can only update tasks assigned to you or tasks linked to tickets you have access to",
+            error: "You can only update todos assigned to you or todos linked to tickets you have access to",
           };
         }
       } else {
-        // Task not assigned and not linked to ticket - deny update
+        // Todo not assigned and not linked to ticket - deny update
         return {
           success: false,
-          error: "You can only update tasks assigned to you or tasks linked to tickets you have access to",
+          error: "You can only update todos assigned to you or todos linked to tickets you have access to",
         };
       }
     } else {
-      // Regular users can only update tasks assigned to them
-      if (!task.assignedToId || task.assignedToId !== user.id) {
+      // Regular users can only update todos assigned to them
+      if (!todo.assignedToId || todo.assignedToId !== user.id) {
         return {
           success: false,
-          error: "You can only update tasks assigned to you",
+          error: "You can only update todos assigned to you",
         };
       }
     }
 
     // Prevent circular parent references
-    if (input.parentTaskId && input.parentTaskId === taskId) {
+    if (input.parentTodoId && input.parentTodoId === todoId) {
       return {
         success: false,
-        error: "A task cannot be its own parent",
+        error: "A todo cannot be its own parent",
       };
     }
 
-    // Validate parent task exists (no project validation - tasks are independent)
-    if (input.parentTaskId) {
-      const parentTask = await prisma.task.findUnique({
-        where: { id: input.parentTaskId },
+    // Validate parent todo exists (no project validation - todos are independent)
+    if (input.parentTodoId) {
+      const parentTodo = await prisma.todo.findUnique({
+        where: { id: input.parentTodoId },
         select: { id: true },
       });
-      if (!parentTask) {
+      if (!parentTodo) {
         return {
           success: false,
-          error: "Parent task not found",
+          error: "Parent todo not found",
         };
       }
     }
@@ -555,7 +555,7 @@ export async function updateTask(
     }
 
     // Validate assignment change if provided
-    if (input.assignedToId !== undefined && input.assignedToId !== task.assignedToId) {
+    if (input.assignedToId !== undefined && input.assignedToId !== todo.assignedToId) {
       // If assigning to someone other than the current user, validate they're in the same group
       // (unless user is ADMIN, AGENT, or MODERATOR who can assign to anyone)
       if (
@@ -569,8 +569,8 @@ export async function updateTask(
         if (!inSameGroup) {
           return {
             success: false,
-            error: "You can only assign tasks to users in your group. Please contact an administrator if you need to assign to someone else.",
-            fieldErrors: { assignedToId: ["You can only assign tasks to users in your group"] },
+            error: "You can only assign todos to users in your group. Please contact an administrator if you need to assign to someone else.",
+            fieldErrors: { assignedToId: ["You can only assign todos to users in your group"] },
           };
         }
       }
@@ -594,7 +594,7 @@ export async function updateTask(
     if (input.startDate !== undefined) updateData.startDate = startDate;
     if (input.dueDate !== undefined) updateData.dueDate = dueDate;
     if (input.completedDate !== undefined) updateData.completedDate = completedDate;
-    if (input.parentTaskId !== undefined) updateData.parentTaskId = input.parentTaskId;
+    if (input.parentTodoId !== undefined) updateData.parentTodoId = input.parentTodoId;
     if (input.milestoneId !== undefined) updateData.milestoneId = input.milestoneId;
     if (input.ticketId !== undefined) updateData.ticketId = input.ticketId;
     if (input.order !== undefined) updateData.order = input.order;
@@ -604,21 +604,21 @@ export async function updateTask(
       updateData.completedDate = new Date();
     }
 
-    await prisma.task.update({
-      where: { id: taskId },
+    await prisma.todo.update({
+      where: { id: todoId },
       data: updateData,
     });
 
     // Update dependencies if provided
     if (input.dependencyIds !== undefined) {
       // Remove existing dependencies
-      await prisma.taskDependency.deleteMany({
-        where: { taskId },
+      await prisma.todoDependency.deleteMany({
+        where: { todoId },
       });
 
-      // Add new dependencies (no project validation - tasks are independent)
+      // Add new dependencies (no project validation - todos are independent)
       if (input.dependencyIds.length > 0) {
-        const dependencies = await prisma.task.findMany({
+        const dependencies = await prisma.todo.findMany({
           where: {
             id: { in: input.dependencyIds },
           },
@@ -626,10 +626,10 @@ export async function updateTask(
         });
 
         if (dependencies.length > 0) {
-          await prisma.taskDependency.createMany({
+          await prisma.todoDependency.createMany({
             data: dependencies.map((dep) => ({
-              taskId,
-              dependsOnTaskId: dep.id,
+              todoId,
+              dependsOnTodoId: dep.id,
               type: "FINISH_TO_START",
             })),
             skipDuplicates: true,
@@ -638,193 +638,193 @@ export async function updateTask(
       }
     }
 
-    // Tasks are independent - only revalidate tasks page
-    revalidatePath(`/dashboard/tasks`);
+    // Todos are independent - only revalidate todos page
+    revalidatePath(`/dashboard/todos`);
 
     return {
       success: true,
-      message: "Task updated successfully",
+      message: "Todo updated successfully",
     };
   } catch (error) {
-    console.error("Error updating task:", error);
+    console.error("Error updating todo:", error);
     return {
       success: false,
-      error: "Failed to update task. Please try again.",
+      error: "Failed to update todo. Please try again.",
     };
   }
 }
 
 /**
- * Update a task that is attached to a specific ticket.
+ * Update a todo that is attached to a specific ticket.
  *
- * This is a thin wrapper around updateTask that:
- * - Ensures the task exists and belongs to a ticket
+ * This is a thin wrapper around updateTodo that:
+ * - Ensures the todo exists and belongs to a ticket
  * - Revalidates the ticket detail page on success
  */
-export async function updateTicketTask(
-  taskId: string,
-  input: TaskUpdateInput
+export async function updateTicketTodo(
+  todoId: string,
+  input: TodoUpdateInput
 ): Promise<ActionResult> {
   try {
-    const task = await prisma.task.findUnique({
-      where: { id: taskId },
+    const todo = await prisma.todo.findUnique({
+      where: { id: todoId },
       select: {
         id: true,
         ticketId: true,
       },
     });
 
-    if (!task) {
+    if (!todo) {
       return {
         success: false,
-        error: "Task not found",
+        error: "Todo not found",
       };
     }
 
-    if (!task.ticketId) {
+    if (!todo.ticketId) {
       return {
         success: false,
-        error: "This task is not linked to a ticket",
+        error: "This todo is not linked to a ticket",
       };
     }
 
-    const result = await updateTask(taskId, input);
+    const result = await updateTodo(todoId, input);
 
     if (result.success) {
-      revalidatePath(`/dashboard/tickets/${task.ticketId}`);
+      revalidatePath(`/dashboard/tickets/${todo.ticketId}`);
     }
 
     return result;
   } catch (error) {
-    console.error("Error updating ticket task:", error);
+    console.error("Error updating ticket todo:", error);
     return {
       success: false,
-      error: "Failed to update task for ticket. Please try again.",
+      error: "Failed to update todo for ticket. Please try again.",
     };
   }
 }
 
-export async function deleteTask(taskId: string): Promise<ActionResult> {
+export async function deleteTodo(todoId: string): Promise<ActionResult> {
   try {
     const user = await requireAuth();
 
-    const task = await prisma.task.findUnique({
-      where: { id: taskId },
+    const todo = await prisma.todo.findUnique({
+      where: { id: todoId },
       select: { id: true, assignedToId: true, ticketId: true },
     });
 
-    if (!task) {
+    if (!todo) {
       return {
         success: false,
-        error: "Task not found",
+        error: "Todo not found",
       };
     }
 
-    // Tasks are independent - check task permissions, not project permissions
+    // Todos are independent - check todo permissions, not project permissions
     // Admins and moderators can always delete
     const { hasPermission } = await import("@/lib/utils/permissions");
     if (
       user.role !== "ADMIN" &&
       user.role !== "AGENT" &&
       user.role !== "MODERATOR" &&
-      !(await hasPermission(user.id, "tasks.delete"))
+      !(await hasPermission(user.id, "todos.delete"))
     ) {
       return {
         success: false,
-        error: "You don't have permission to delete this task",
+        error: "You don't have permission to delete this todo",
       };
     }
 
     // Check access based on role
     if (user.role === "ADMIN" || user.role === "MODERATOR") {
-      // Admins and moderators can delete all tasks
+      // Admins and moderators can delete all todos
     } else if (user.role === "AGENT") {
-      // Agents can delete tasks if:
-      // 1. Task is assigned to them, OR
-      // 2. Task is linked to a ticket they have access to
-      if (task.assignedToId === user.id) {
+      // Agents can delete todos if:
+      // 1. Todo is assigned to them, OR
+      // 2. Todo is linked to a ticket they have access to
+      if (todo.assignedToId === user.id) {
         // Assigned to agent - allow delete
-      } else if (task.ticketId) {
+      } else if (todo.ticketId) {
         // Check if agent has access to the ticket
-        const hasAccess = await agentHasTicketAccess(user.id, task.ticketId);
+        const hasAccess = await agentHasTicketAccess(user.id, todo.ticketId);
         if (!hasAccess) {
           return {
             success: false,
-            error: "You can only delete tasks assigned to you or tasks linked to tickets you have access to",
+            error: "You can only delete todos assigned to you or todos linked to tickets you have access to",
           };
         }
       } else {
-        // Task not assigned and not linked to ticket - deny delete
+        // Todo not assigned and not linked to ticket - deny delete
         return {
           success: false,
-          error: "You can only delete tasks assigned to you or tasks linked to tickets you have access to",
+          error: "You can only delete todos assigned to you or todos linked to tickets you have access to",
         };
       }
     } else {
-      // Regular users can only delete tasks assigned to them
-      if (!task.assignedToId || task.assignedToId !== user.id) {
+      // Regular users can only delete todos assigned to them
+      if (!todo.assignedToId || todo.assignedToId !== user.id) {
         return {
           success: false,
-          error: "You can only delete tasks assigned to you",
+          error: "You can only delete todos assigned to you",
         };
       }
     }
 
-    // Recursively delete all subtasks first, then delete the parent task
-    // This ensures that when a parent task is deleted, all its subtasks are also deleted
+    // Recursively delete all subtodos first, then delete the parent todo
+    // This ensures that when a parent todo is deleted, all its subtodos are also deleted
     // Use a transaction to ensure atomicity
     await prisma.$transaction(async (tx) => {
-      const deleteTaskAndSubtasks = async (taskIdToDelete: string): Promise<void> => {
-        // Find all direct subtasks
-        const subtasks = await tx.task.findMany({
-          where: { parentTaskId: taskIdToDelete },
+      const deleteTodoAndSubtodos = async (todoIdToDelete: string): Promise<void> => {
+        // Find all direct subtodos
+        const subtodos = await tx.todo.findMany({
+          where: { parentTodoId: todoIdToDelete },
           select: { id: true },
         });
 
-        // Recursively delete all subtasks first
-        for (const subtask of subtasks) {
-          await deleteTaskAndSubtasks(subtask.id);
+        // Recursively delete all subtodos first
+        for (const subtodo of subtodos) {
+          await deleteTodoAndSubtodos(subtodo.id);
         }
 
-        // Delete the task itself
-        await tx.task.delete({
-          where: { id: taskIdToDelete },
+        // Delete the todo itself
+        await tx.todo.delete({
+          where: { id: todoIdToDelete },
         });
       };
 
-      // Delete the task and all its subtasks recursively
-      await deleteTaskAndSubtasks(taskId);
+      // Delete the todo and all its subtodos recursively
+      await deleteTodoAndSubtodos(todoId);
     });
 
-    // Tasks are independent - only revalidate tasks page
-    revalidatePath(`/dashboard/tasks`);
+    // Todos are independent - only revalidate todos page
+    revalidatePath(`/dashboard/todos`);
 
     return {
       success: true,
-      message: "Task deleted successfully",
+      message: "Todo deleted successfully",
     };
   } catch (error) {
-    console.error("Error deleting task:", error);
+    console.error("Error deleting todo:", error);
     return {
       success: false,
-      error: "Failed to delete task. Please try again.",
+      error: "Failed to delete todo. Please try again.",
     };
   }
 }
 
-export async function getProjectTasks(projectId: string) {
-  // Tasks are now independent of projects - this function is deprecated
-  // Return empty array since tasks no longer belong to projects
+export async function getProjectTodos(projectId: string) {
+  // Todos are now independent of projects - this function is deprecated
+  // Return empty array since todos no longer belong to projects
   return [];
 }
 
 /**
- * Get all tasks that are linked to a specific ticket.
- * Tasks are independent of projects.
- * Only shows tasks assigned to the current user (unless ADMIN/MODERATOR).
- * For AGENTs: only shows tasks if they have access to the ticket.
+ * Get all todos that are linked to a specific ticket.
+ * Todos are independent of projects.
+ * Only shows todos assigned to the current user (unless ADMIN/MODERATOR).
+ * For AGENTs: only shows todos if they have access to the ticket.
  */
-export async function getTicketTasks(ticketId: string) {
+export async function getTicketTodos(ticketId: string) {
   const user = await requireAuth();
 
   // Ensure ticket exists
@@ -845,24 +845,24 @@ export async function getTicketTasks(ticketId: string) {
     if (!hasAccess) {
       return [];
     }
-    // Agent has access to ticket - show all tasks for this ticket
+    // Agent has access to ticket - show all todos for this ticket
   }
 
   // Build where clause based on user role
   const whereClause: any = { ticketId };
   if (user.role === "ADMIN" || user.role === "MODERATOR") {
-    // Admins and moderators can see all tasks for the ticket
+    // Admins and moderators can see all todos for the ticket
     // No additional filter needed
   } else if (user.role === "AGENT") {
-    // Agent has access to ticket - show all tasks (already checked above)
+    // Agent has access to ticket - show all todos (already checked above)
     // No additional filter needed
   } else {
-    // Regular users can only see tasks assigned to them
+    // Regular users can only see todos assigned to them
     whereClause.assignedToId = user.id;
   }
 
-  // Get tasks linked to this ticket (tasks are independent of projects)
-  const tasks = await prisma.task.findMany({
+  // Get todos linked to this ticket (todos are independent of projects)
+  const todos = await prisma.todo.findMany({
     where: whereClause,
     include: {
       assignedTo: {
@@ -872,7 +872,7 @@ export async function getTicketTasks(ticketId: string) {
           email: true,
         },
       },
-      parentTask: {
+      parentTodo: {
         select: {
           id: true,
           title: true,
@@ -893,7 +893,7 @@ export async function getTicketTasks(ticketId: string) {
       },
       dependencies: {
         include: {
-          dependsOnTask: {
+          dependsOnTodo: {
             select: {
               id: true,
               title: true,
@@ -902,7 +902,7 @@ export async function getTicketTasks(ticketId: string) {
           },
         },
       },
-      subtasks: {
+      subtodos: {
         select: {
           id: true,
           title: true,
@@ -911,7 +911,7 @@ export async function getTicketTasks(ticketId: string) {
       },
       _count: {
         select: {
-          subtasks: true,
+          subtodos: true,
         },
       },
     },
@@ -932,25 +932,25 @@ export async function getTicketTasks(ticketId: string) {
 
   const totalHours = timeEntries.reduce((sum, entry) => sum + entry.totalDuration / 3600, 0);
 
-  return tasks.map((task) => ({
-    ...task,
+  return todos.map((todo) => ({
+    ...todo,
     actualHours: totalHours || null,
   }));
 }
 
 /**
- * Get all tasks that the user can view.
- * Tasks are completely independent of projects.
- * This is used for the standalone tasks page.
- * Only shows tasks assigned to the current user (unless ADMIN/MODERATOR).
- * For AGENTs: shows tasks assigned to them OR linked to tickets they have access to.
+ * Get all todos that the user can view.
+ * Todos are completely independent of projects.
+ * This is used for the standalone todos page.
+ * Only shows todos assigned to the current user (unless ADMIN/MODERATOR).
+ * For AGENTs: shows todos assigned to them OR linked to tickets they have access to.
  */
-export async function getAllTasks(filters?: {
+export async function getAllTodos(filters?: {
   status?: string;
   priority?: string;
   assignee?: "all" | "me" | "unassigned";
   link?: "all" | "withTicket" | "withoutTicket";
-  kind?: "all" | "root" | "subtask";
+  kind?: "all" | "root" | "subtodo";
   sort?: string; // e.g. "createdAt-desc", "dueDate-asc"
 }) {
   const user = await requireAuth();
@@ -959,17 +959,17 @@ export async function getAllTasks(filters?: {
   const whereClause: any = {};
   
   if (user.role === "ADMIN" || user.role === "MODERATOR") {
-    // Admins and moderators can see all tasks
+    // Admins and moderators can see all todos
     // No filter needed
   } else if (user.role === "AGENT") {
-    // Agents can see tasks assigned to them OR tasks linked to tickets they have access to
+    // Agents can see todos assigned to them OR todos linked to tickets they have access to
     // We'll filter by assignment first, then filter by ticket access in memory
     whereClause.OR = [
       { assignedToId: user.id },
-      { ticketId: { not: null } }, // Tasks with tickets (we'll check access in memory)
+      { ticketId: { not: null } }, // Todos with tickets (we'll check access in memory)
     ];
   } else {
-    // Regular users can only see tasks assigned to them
+    // Regular users can only see todos assigned to them
     whereClause.assignedToId = user.id;
   }
 
@@ -992,8 +992,8 @@ export async function getAllTasks(filters?: {
   const sortParam = filters?.sort || "createdAt-desc";
   const [sortBy, sortOrder] = sortParam.split("-") as ["createdAt" | "dueDate", "asc" | "desc"];
 
-  // Tasks are independent - get tasks filtered by assignment and filters
-  const tasks = await prisma.task.findMany({
+  // Todos are independent - get todos filtered by assignment and filters
+  const todos = await prisma.todo.findMany({
     where: whereClause,
     include: {
       assignedTo: {
@@ -1003,7 +1003,7 @@ export async function getAllTasks(filters?: {
           email: true,
         },
       },
-      parentTask: {
+      parentTodo: {
         select: {
           id: true,
           title: true,
@@ -1024,7 +1024,7 @@ export async function getAllTasks(filters?: {
       },
       dependencies: {
         include: {
-          dependsOnTask: {
+          dependsOnTodo: {
             select: {
               id: true,
               title: true,
@@ -1033,7 +1033,7 @@ export async function getAllTasks(filters?: {
           },
         },
       },
-      subtasks: {
+      subtodos: {
         select: {
           id: true,
           title: true,
@@ -1042,7 +1042,7 @@ export async function getAllTasks(filters?: {
       },
       _count: {
         select: {
-          subtasks: true,
+          subtodos: true,
         },
       },
     },
@@ -1060,7 +1060,7 @@ export async function getAllTasks(filters?: {
   });
 
   // Calculate actual hours from time entries
-  const ticketIds = tasks.filter((t) => t.ticketId).map((t) => t.ticketId!);
+  const ticketIds = todos.filter((t) => t.ticketId).map((t) => t.ticketId!);
   const timeEntries = await prisma.timeEntry.findMany({
     where: {
       ticketId: { in: ticketIds },
@@ -1080,53 +1080,53 @@ export async function getAllTasks(filters?: {
     }
   }
 
-  // For AGENTs, filter tasks to only show those assigned to them OR linked to tickets they have access to
-  let filteredTasks = tasks;
+  // For AGENTs, filter todos to only show those assigned to them OR linked to tickets they have access to
+  let filteredTodos = todos;
   if (user.role === "AGENT") {
-    const taskAccessChecks = await Promise.all(
-      tasks.map(async (task) => {
+    const todoAccessChecks = await Promise.all(
+      todos.map(async (todo) => {
         // If assigned to agent, always show
-        if (task.assignedToId === user.id) {
+        if (todo.assignedToId === user.id) {
           return true;
         }
         // If linked to a ticket, check if agent has access to that ticket
-        if (task.ticketId) {
-          return await agentHasTicketAccess(user.id, task.ticketId);
+        if (todo.ticketId) {
+          return await agentHasTicketAccess(user.id, todo.ticketId);
         }
-        // Task not assigned and not linked to ticket - don't show
+        // Todo not assigned and not linked to ticket - don't show
         return false;
       })
     );
-    filteredTasks = tasks.filter((_, index) => taskAccessChecks[index]);
+    filteredTodos = todos.filter((_, index) => todoAccessChecks[index]);
   }
 
   // Apply link/kind filters in memory (useful even after permission filtering)
-  filteredTasks = filteredTasks.filter((task) => {
+  filteredTodos = filteredTodos.filter((todo) => {
     // Link filter
-    if (filters?.link === "withTicket" && !task.ticketId) return false;
-    if (filters?.link === "withoutTicket" && task.ticketId) return false;
+    if (filters?.link === "withTicket" && !todo.ticketId) return false;
+    if (filters?.link === "withoutTicket" && todo.ticketId) return false;
 
     // Kind filter
-    if (filters?.kind === "root" && task.parentTaskId) return false;
-    if (filters?.kind === "subtask" && !task.parentTaskId) return false;
+    if (filters?.kind === "root" && todo.parentTodoId) return false;
+    if (filters?.kind === "subtodo" && !todo.parentTodoId) return false;
 
     return true;
   });
 
-  return filteredTasks.map((task) => ({
-    ...task,
-    actualHours: task.ticketId ? hoursByTicket.get(task.ticketId) || 0 : null,
+  return filteredTodos.map((todo) => ({
+    ...todo,
+    actualHours: todo.ticketId ? hoursByTicket.get(todo.ticketId) || 0 : null,
   }));
 }
 
 /**
- * Get a single task by ID with all related data.
- * Tasks are completely independent of projects.
+ * Get a single todo by ID with all related data.
+ * Todos are completely independent of projects.
  */
-export async function getTask(id: string) {
+export async function getTodo(id: string) {
   const user = await requireAuth();
 
-  const task = await prisma.task.findUnique({
+  const todo = await prisma.todo.findUnique({
     where: { id },
     include: {
       assignedTo: {
@@ -1137,7 +1137,7 @@ export async function getTask(id: string) {
           status: true,
         },
       },
-      parentTask: {
+      parentTodo: {
         select: {
           id: true,
           title: true,
@@ -1159,7 +1159,7 @@ export async function getTask(id: string) {
       },
       dependencies: {
         include: {
-          dependsOnTask: {
+          dependsOnTodo: {
             select: {
               id: true,
               title: true,
@@ -1168,7 +1168,7 @@ export async function getTask(id: string) {
           },
         },
       },
-      subtasks: {
+      subtodos: {
         select: {
           id: true,
           title: true,
@@ -1179,66 +1179,66 @@ export async function getTask(id: string) {
       },
       _count: {
         select: {
-          subtasks: true,
+          subtodos: true,
         },
       },
     },
   });
 
-  if (!task) {
+  if (!todo) {
     return null;
   }
 
-  // Check if tasks module is enabled
-  const moduleEnabled = await isModuleEnabled(MODULE_KEYS.TASKS);
+  // Check if todos module is enabled
+  const moduleEnabled = await isModuleEnabled(MODULE_KEYS.TODOS);
   if (!moduleEnabled) {
     return null;
   }
 
-  // Check permissions - tasks are independent, so we check general task permissions
+  // Check permissions - todos are independent, so we check general todo permissions
   // Admins, agents, and moderators can always view
   const { hasPermission } = await import("@/lib/utils/permissions");
   if (
     user.role !== "ADMIN" &&
     user.role !== "AGENT" &&
     user.role !== "MODERATOR" &&
-    !(await hasPermission(user.id, "tasks.view"))
+    !(await hasPermission(user.id, "todos.view"))
   ) {
     return null;
   }
 
   // Check access based on role
   if (user.role === "ADMIN" || user.role === "MODERATOR") {
-    // Admins and moderators can view all tasks
+    // Admins and moderators can view all todos
   } else if (user.role === "AGENT") {
-    // Agents can view tasks if:
-    // 1. Task is assigned to them, OR
-    // 2. Task is linked to a ticket they have access to
-    if (task.assignedToId === user.id) {
+    // Agents can view todos if:
+    // 1. Todo is assigned to them, OR
+    // 2. Todo is linked to a ticket they have access to
+    if (todo.assignedToId === user.id) {
       // Assigned to agent - allow access
-    } else if (task.ticketId) {
+    } else if (todo.ticketId) {
       // Check if agent has access to the ticket
-      const hasAccess = await agentHasTicketAccess(user.id, task.ticketId);
+      const hasAccess = await agentHasTicketAccess(user.id, todo.ticketId);
       if (!hasAccess) {
         return null;
       }
     } else {
-      // Task not assigned and not linked to ticket - deny access
+      // Todo not assigned and not linked to ticket - deny access
       return null;
     }
   } else {
-    // Regular users can only view tasks assigned to them
-    if (!task.assignedToId || task.assignedToId !== user.id) {
+    // Regular users can only view todos assigned to them
+    if (!todo.assignedToId || todo.assignedToId !== user.id) {
       return null;
     }
   }
 
-  // Calculate actual hours from time entries if task is linked to a ticket
+  // Calculate actual hours from time entries if todo is linked to a ticket
   let actualHours: number | null = null;
-  if (task.ticketId) {
+  if (todo.ticketId) {
     const timeEntries = await prisma.timeEntry.findMany({
       where: {
-        ticketId: task.ticketId,
+        ticketId: todo.ticketId,
         status: "COMPLETED",
       },
       select: {
@@ -1249,14 +1249,14 @@ export async function getTask(id: string) {
     actualHours = timeEntries.reduce((sum, entry) => sum + entry.totalDuration / 3600, 0) || null;
   }
 
-  // Get subtask counts for each subtask
-  if (task.subtasks && task.subtasks.length > 0) {
-    const subtaskIds = task.subtasks.map((st) => st.id);
-    const subtaskCounts = await prisma.task.groupBy({
-      by: ["parentTaskId"],
+  // Get subtodo counts for each subtodo
+  if (todo.subtodos && todo.subtodos.length > 0) {
+    const subtodoIds = todo.subtodos.map((st) => st.id);
+    const subtodoCounts = await prisma.todo.groupBy({
+      by: ["parentTodoId"],
       where: {
-        parentTaskId: {
-          in: subtaskIds,
+        parentTodoId: {
+          in: subtodoIds,
         },
       },
       _count: {
@@ -1265,20 +1265,20 @@ export async function getTask(id: string) {
     });
 
     const countMap = new Map(
-      subtaskCounts.map((item) => [item.parentTaskId, item._count.id])
+      subtodoCounts.map((item) => [item.parentTodoId, item._count.id])
     );
 
-    // Attach counts to subtasks
-    task.subtasks = task.subtasks.map((subtask) => ({
-      ...subtask,
+    // Attach counts to subtodos
+    todo.subtodos = todo.subtodos.map((subtodo) => ({
+      ...subtodo,
       _count: {
-        subtasks: countMap.get(subtask.id) || 0,
+        subtodos: countMap.get(subtodo.id) || 0,
       },
     }));
   }
 
   return {
-    ...task,
+    ...todo,
     actualHours,
   };
 }

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { formatDateTimeInTimezone } from "@/lib/utils/date";
 import { RichTextDisplay } from "@/components/features/tickets/RichTextDisplay";
-import { deleteTask } from "@/server/actions/tasks";
+import { deleteTodo } from "@/server/actions/todos";
 import { TaskDeleteDialog } from "@/components/features/tasks/TaskDeleteDialog";
 
 interface Subtask {
@@ -46,15 +46,15 @@ export const TaskDetailHeader = ({
   const router = useRouter();
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
 
-  const backHref = parentTaskId ? `/dashboard/tasks/${parentTaskId}` : "/dashboard/tasks";
-  const backLabel = parentTaskId ? "Back to Parent Task" : "Back to Tasks";
+  const backHref = parentTaskId ? `/dashboard/todos/${parentTaskId}` : "/dashboard/todos";
+  const backLabel = parentTaskId ? "Back to Parent ToDo" : "Back to ToDos";
 
-  const editHref = isEditing ? `/dashboard/tasks/${taskId}` : `/dashboard/tasks/${taskId}?mode=edit`;
-  const editLabel = isEditing ? "Cancel Editing" : "Edit Task";
+  const editHref = isEditing ? `/dashboard/todos/${taskId}` : `/dashboard/todos/${taskId}?mode=edit`;
+  const editLabel = isEditing ? "Cancel Editing" : "Edit ToDo";
 
   const handleDelete = async () => {
     try {
-      const result = await deleteTask(taskId);
+      const result = await deleteTodo(taskId);
       if (result.success) {
         setDeleteDialogOpen(false);
         router.push(backHref);
@@ -148,7 +148,7 @@ export const TaskDetailHeader = ({
                 d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
               />
             </svg>
-            Delete Task
+            Delete ToDo
           </Button>
         )}
       </div>
@@ -176,27 +176,27 @@ export const TaskDetailHeader = ({
             </Link>
           )}
           {canDelete && (
-            <Button 
-              variant="danger" 
-              size="sm" 
-              className="w-full sm:w-auto"
-              onClick={() => setDeleteDialogOpen(true)}
-            >
-              <svg
-                className="w-4 h-4 mr-2"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+              <Button 
+                variant="danger" 
+                size="sm" 
+                className="w-full sm:w-auto"
+                onClick={() => setDeleteDialogOpen(true)}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                />
-              </svg>
-              Delete Task
-            </Button>
+                <svg
+                  className="w-4 h-4 mr-2"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
+                </svg>
+                Delete ToDo
+              </Button>
           )}
         </div>
       )}

@@ -3,7 +3,7 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { Select } from "@/components/ui/Select";
-import { updateTask } from "@/server/actions/tasks";
+import { updateTodo } from "@/server/actions/todos";
 
 interface UserOption {
   id: string;
@@ -35,7 +35,7 @@ export const TaskAssigneeField = ({ taskId, assignedToId, users }: TaskAssigneeF
     setError(null);
 
     try {
-      const result = await updateTask(taskId, {
+    const result = await updateTodo(taskId, {
         assignedToId: value === "" ? "" : value,
       });
 

@@ -3,7 +3,7 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { Select } from "@/components/ui/Select";
-import { updateTask } from "@/server/actions/tasks";
+import { updateTodo } from "@/server/actions/todos";
 
 interface TaskStatusPriorityFieldsProps {
   taskId: string;
@@ -41,7 +41,7 @@ export const TaskStatusPriorityFields = ({
     setError(null);
 
     try {
-      const result = await updateTask(taskId, {
+    const result = await updateTodo(taskId, {
         status: value as "NOT_STARTED" | "IN_PROGRESS" | "BLOCKED" | "COMPLETED" | "CANCELLED",
       });
 
@@ -63,7 +63,7 @@ export const TaskStatusPriorityFields = ({
     setError(null);
 
     try {
-      const result = await updateTask(taskId, {
+      const result = await updateTodo(taskId, {
         priority: value as "LOW" | "MEDIUM" | "HIGH" | "URGENT",
       });
 

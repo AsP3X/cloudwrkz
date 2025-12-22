@@ -325,12 +325,9 @@ async function handleStart() {
     };
 
     if (taskId) {
-      const task = await prisma.task.findUnique({
-        where: { id: taskId },
-        select: { id: true },
-      });
-      // Note: TimeEntry doesn't have direct task relation in schema, but we can add it to description
-      if (task) data.description = `${data.description || ""} [Task: ${taskId}]`.trim();
+      // TimeEntry doesn't have a direct todo relation in the schema,
+      // but we can append the reference to the description for traceability.
+      data.description = `${data.description || ""} [Task: ${taskId}]`.trim();
     }
 
     const entry = await prisma.timeEntry.create({
@@ -563,11 +560,9 @@ async function handleCreate() {
     };
 
     if (taskId) {
-      const task = await prisma.task.findUnique({
-        where: { id: taskId },
-        select: { id: true },
-      });
-      if (task) data.description = `${data.description || ""} [Task: ${taskId}]`.trim();
+      // TimeEntry doesn't have a direct todo relation in the schema,
+      // but we can append the reference to the description for traceability.
+      data.description = `${data.description || ""} [Task: ${taskId}]`.trim();
     }
 
     const entry = await prisma.timeEntry.create({

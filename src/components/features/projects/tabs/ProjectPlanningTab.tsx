@@ -9,10 +9,10 @@ import { Select } from "@/components/ui/Select";
 import { Dialog } from "@/components/ui/Dialog";
 import type { getProject } from "@/server/actions/projects";
 import { getProjectMilestones } from "@/server/actions/milestones";
-import { getProjectTasks } from "@/server/actions/tasks";
+import { getProjectTodos } from "@/server/actions/todos";
 import { getProjectBudgetCategories } from "@/server/actions/budget-categories";
 import { createMilestone, updateMilestone, deleteMilestone } from "@/server/actions/milestones";
-import { createTask, updateTask, deleteTask } from "@/server/actions/tasks";
+import { createTodo, updateTodo, deleteTodo } from "@/server/actions/todos";
 import { createBudgetCategory, updateBudgetCategory, deleteBudgetCategory } from "@/server/actions/budget-categories";
 import { formatDate } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
@@ -41,7 +41,7 @@ export function ProjectPlanningTab({ project }: ProjectPlanningTabProps) {
     try {
       const [milestonesData, tasksData, budgetData] = await Promise.all([
         getProjectMilestones(project.id),
-        getProjectTasks(project.id),
+        getProjectTodos(project.id),
         getProjectBudgetCategories(project.id),
       ]);
       setMilestones(milestonesData);
@@ -229,7 +229,7 @@ export function ProjectPlanningTab({ project }: ProjectPlanningTabProps) {
                   }}
                   onDelete={async (id) => {
                     if (confirm("Are you sure you want to delete this task?")) {
-                      const result = await deleteTask(id);
+                      const result = await deleteTodo(id);
                       if (result.success) {
                         router.refresh();
                         await loadData();
@@ -372,7 +372,7 @@ export function ProjectPlanningTab({ project }: ProjectPlanningTabProps) {
         onSubmit={
           editingItem
             ? async (data) => {
-                const result = await updateTask(editingItem.id, data);
+                const result = await updateTodo(editingItem.id, data);
                 if (result.success) {
                   router.refresh();
                   loadData();
@@ -382,7 +382,7 @@ export function ProjectPlanningTab({ project }: ProjectPlanningTabProps) {
                 return result;
               }
             : async (data) => {
-                const result = await createTask(data);
+                const result = await createTodo(data);
                 if (result.success) {
                   router.refresh();
                   loadData();

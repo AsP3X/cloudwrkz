@@ -17,15 +17,15 @@ export default async function NewTaskPage() {
     redirect(ROUTES.LOGIN);
   }
 
-  // Check if user can view tasks module
-  const canViewTasks = await canUserViewModule(user.id, MODULE_KEYS.TASKS);
+  // Check if user can view ToDo module
+  const canViewTodos = await canUserViewModule(user.id, MODULE_KEYS.TODOS);
 
-  if (!canViewTasks) {
+  if (!canViewTodos) {
     return (
       <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8 text-center">
         <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">Access Denied</h2>
         <p className="text-neutral-600 dark:text-neutral-400 mb-4">
-          You don&apos;t have permission to access the Tasks module. Please contact an administrator.
+          You don&apos;t have permission to access the ToDo module. Please contact an administrator.
         </p>
         <Link href={ROUTES.DASHBOARD}>
           <Button variant="primary">Back to Dashboard</Button>
@@ -34,12 +34,12 @@ export default async function NewTaskPage() {
     );
   }
 
-  // Check if user has permission to assign tasks
+  // Check if user has permission to assign todos
   const canAssign = 
     user.role === "ADMIN" || 
     user.role === "AGENT" || 
     user.role === "MODERATOR" ||
-    await hasPermission(user.id, "tasks.assign");
+    await hasPermission(user.id, "todos.assign");
 
   // Get users for assignment dropdown (only if user can assign)
   const users = canAssign ? await getAllUsers() : [];
@@ -61,7 +61,7 @@ export default async function NewTaskPage() {
       {/* Header */}
       <div className="space-y-4">
         <div className="flex items-center gap-3 flex-wrap">
-          <Link href="/dashboard/tasks" className="flex-shrink-0">
+          <Link href="/dashboard/todos" className="flex-shrink-0">
             <Button variant="outline" size="sm">
               <svg
                 className="w-4 h-4 mr-2"
@@ -76,16 +76,16 @@ export default async function NewTaskPage() {
                   d="M10 19l-7-7m0 0l7-7m-7 7h18"
                 />
               </svg>
-              Back to Tasks
+              Back to ToDos
             </Button>
           </Link>
         </div>
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-neutral-100">
-            Create New Task
+            Create New ToDo
           </h1>
           <p className="text-sm sm:text-base text-neutral-600 dark:text-neutral-400 mt-1">
-            Create a new task to track work and progress
+            Create a new ToDo to track work and progress
           </p>
         </div>
       </div>

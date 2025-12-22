@@ -2,9 +2,9 @@ import { z } from "zod";
 import { sanitizeHtml } from "@/lib/utils/rich-text";
 
 /**
- * Task creation schema
+ * Todo creation schema
  */
-export const createTaskSchema = z.object({
+export const createTodoSchema = z.object({
   title: z
     .string()
     .min(3, "Title must be at least 3 characters")
@@ -43,12 +43,12 @@ export const createTaskSchema = z.object({
   ticketId: z.string().optional().or(z.literal("")),
 });
 
-export type CreateTaskInput = z.infer<typeof createTaskSchema>;
+export type CreateTodoInput = z.infer<typeof createTodoSchema>;
 
 /**
- * Task update schema
+ * Todo update schema
  */
-export const updateTaskSchema = z.object({
+export const updateTodoSchema = z.object({
   title: z
     .string()
     .min(3, "Title must be at least 3 characters")
@@ -88,4 +88,4 @@ export const updateTaskSchema = z.object({
   ticketId: z.string().optional().or(z.literal("")),
 });
 
-export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;
+export type UpdateTodoInput = z.infer<typeof updateTodoSchema>;

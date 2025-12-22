@@ -21,7 +21,7 @@ import { getAgents } from "@/server/actions/users";
 import { getGroups } from "@/server/actions/groups";
 import { getTimeEntriesForTicket, getAvailableTimeEntriesForAssignment } from "@/server/actions/time-tracking";
 import { getUserProjectsForAssignment, canEditProject } from "@/server/actions/projects";
-import { getTicketTasks } from "@/server/actions/tasks";
+import { getTicketTodos } from "@/server/actions/todos";
 import { TasksSection } from "@/components/features/tasks/TasksSection";
 
 interface TicketDetailPageProps {
@@ -138,8 +138,8 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
   const canManageTasks =
     ticketHasProject && user.role !== "USER" && (await canEditProject(user.id, ticket.projectId!));
 
-  // Load tasks linked to this ticket (project permissions are checked internally)
-  const ticketTasks = await getTicketTasks(ticket.id);
+  // Load todos linked to this ticket (project permissions are checked internally)
+  const ticketTasks = await getTicketTodos(ticket.id);
 
 
   const getStatusColor = (status: string) => {

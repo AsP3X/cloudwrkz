@@ -8,8 +8,8 @@ import { Input } from "@/components/ui/Input";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
-import { createTaskSchema, type CreateTaskInput } from "@/lib/validations/tasks";
-import { createTask } from "@/server/actions/tasks";
+import { createTodoSchema, type CreateTodoInput } from "@/lib/validations/todos";
+import { createTodo } from "@/server/actions/todos";
 import { ROUTES } from "@/lib/constants/routes";
 
 const STATUS_OPTIONS = [
@@ -68,8 +68,8 @@ export const TaskForm = ({ users = [], tickets = [], canAssign = false }: TaskFo
     formState: { errors, isSubmitting },
     watch,
     setValue,
-  } = useForm<CreateTaskInput>({
-    resolver: zodResolver(createTaskSchema),
+  } = useForm<CreateTodoInput>({
+    resolver: zodResolver(createTodoSchema),
     defaultValues: {
       status: "NOT_STARTED",
       priority: "MEDIUM",
@@ -81,7 +81,7 @@ export const TaskForm = ({ users = [], tickets = [], canAssign = false }: TaskFo
     },
   });
 
-  const onSubmit = async (data: CreateTaskInput) => {
+  const onSubmit = async (data: CreateTodoInput) => {
     setServerError(null);
 
     try {
@@ -103,7 +103,7 @@ export const TaskForm = ({ users = [], tickets = [], canAssign = false }: TaskFo
         }
       }
 
-      const result = await createTask({
+      const result = await createTodo({
         title: data.title,
         description: data.description || undefined,
         status: data.status as "NOT_STARTED" | "IN_PROGRESS" | "BLOCKED" | "COMPLETED" | "CANCELLED",
@@ -116,8 +116,8 @@ export const TaskForm = ({ users = [], tickets = [], canAssign = false }: TaskFo
       });
 
       if (result.success && result.data) {
-        // Redirect to the tasks list page
-        router.push(`${ROUTES.DASHBOARD}/tasks`);
+        // Redirect to the todos list page
+        router.push(`${ROUTES.DASHBOARD}/todos`);
         router.refresh();
       } else if (!result.success) {
         // Handle field-specific errors
@@ -198,7 +198,7 @@ export const TaskForm = ({ users = [], tickets = [], canAssign = false }: TaskFo
           onImageUpload={async (file) => {
             const formData = new FormData();
             formData.append("file", file);
-            const response = await fetch("/api/tasks/upload-image", {
+            const response = await fetch("/api/todos/upload-image", {
               method: "POST",
               body: formData,
             });

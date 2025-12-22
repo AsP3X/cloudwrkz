@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { formatDateInTimezone } from "@/lib/utils/date";
 import { formatUserName } from "@/lib/utils/users";
 import { useRouter } from "next/navigation";
-import { createSubtask, updateTask } from "@/server/actions/tasks";
+import { createSubtodo, updateTodo } from "@/server/actions/todos";
 import Link from "next/link";
 
 type Subtask = {
@@ -99,7 +99,7 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage, viewMode: e
     setCreateError(null);
 
     try {
-      const result = await createSubtask(parentTaskId, {
+      const result = await createSubtodo(parentTaskId, {
         title: newTitle.trim(),
         priority: "MEDIUM",
         status: "NOT_STARTED",
@@ -121,7 +121,7 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage, viewMode: e
   const handleToggleComplete = async (task: Subtask) => {
     const nextStatus = task.status === "COMPLETED" ? "IN_PROGRESS" : "COMPLETED";
     try {
-      await updateTask(task.id, {
+      await updateTodo(task.id, {
         status: nextStatus as any,
       });
       router.refresh();
@@ -158,7 +158,7 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage, viewMode: e
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 sm:gap-2 mb-2 sm:mb-1">
             <Link
-              href={`/dashboard/tasks/${task.id}`}
+              href={`/dashboard/todos/${task.id}`}
               className={cn(
                 "font-semibold text-base sm:text-sm text-neutral-900 dark:text-neutral-100 break-words leading-snug hover:text-primary-600 dark:hover:text-primary-400 transition-colors cursor-pointer",
                 task.status === "COMPLETED" && "line-through opacity-60"
@@ -233,7 +233,7 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage, viewMode: e
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-2">
             <Link
-              href={`/dashboard/tasks/${task.id}`}
+              href={`/dashboard/todos/${task.id}`}
               className={cn(
                 "font-semibold text-base text-neutral-900 dark:text-neutral-100 break-words leading-snug hover:text-primary-600 dark:hover:text-primary-400 transition-colors cursor-pointer",
                 task.status === "COMPLETED" && "line-through opacity-60"
@@ -309,7 +309,7 @@ export const SubtasksSection = ({ parentTaskId, subtasks, canManage, viewMode: e
       <td className="px-3 sm:px-4 py-3 sm:py-2 align-middle">
         <div className="max-w-xs">
           <Link
-            href={`/dashboard/tasks/${task.id}`}
+            href={`/dashboard/todos/${task.id}`}
             className="font-semibold text-base sm:text-sm text-neutral-900 dark:text-neutral-100 break-words hover:text-primary-600 dark:hover:text-primary-400 transition-colors cursor-pointer"
             onClick={(e) => e.stopPropagation()}
           >

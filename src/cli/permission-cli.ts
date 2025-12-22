@@ -29,6 +29,7 @@ import {
   displayKeyValue,
   notice,
   paginatedSelect,
+  paginatedCheckbox,
 } from "./prompts";
 import chalk from "chalk";
 
@@ -222,14 +223,14 @@ async function handleShow() {
   }
 }
 
-async function handleGrant() {
-  if (commandArgs.length < 3) {
+async function handleGrant(groupNameArg?: string, permissionKeyArg?: string) {
+  const groupName = groupNameArg ?? commandArgs[1];
+  const permissionKey = permissionKeyArg ?? commandArgs[2];
+
+  if (!groupName || !permissionKey) {
     console.error("Usage: grant <group> <permission>");
     process.exit(1);
   }
-
-  const groupName = commandArgs[1];
-  const permissionKey = commandArgs[2];
 
   const spinner = createSpinner("Granting permission...");
   spinner.start();
@@ -288,14 +289,14 @@ async function handleGrant() {
   }
 }
 
-async function handleRevoke() {
-  if (commandArgs.length < 3) {
+async function handleRevoke(groupNameArg?: string, permissionKeyArg?: string) {
+  const groupName = groupNameArg ?? commandArgs[1];
+  const permissionKey = permissionKeyArg ?? commandArgs[2];
+
+  if (!groupName || !permissionKey) {
     console.error("Usage: revoke <group> <permission>");
     process.exit(1);
   }
-
-  const groupName = commandArgs[1];
-  const permissionKey = commandArgs[2];
 
   const spinner = createSpinner("Revoking permission...");
   spinner.start();
@@ -539,19 +540,19 @@ export async function handleGrantInteractive() {
       return;
     }
 
-    const permission = await paginatedSelect(
-      "Select a permission to grant:",
+    const selectedPermissions = await paginatedCheckbox(
+      "Select permission(s) to grant (use Space to toggle, Enter to confirm):",
       permissions,
       (p, index) => `${index + 1}. [${p.category}] ${p.name} (${p.key})`
     );
 
-    if (!permission) {
-      notice("No permission selected.", "warning");
+    if (!selectedPermissions || selectedPermissions.length === 0) {
+      notice("No permissions selected.", "warning");
       return;
     }
 
     const confirmed = await confirm(
-      `Grant permission "${permission.key}" to group "${group.name}"?`,
+      `Grant ${selectedPermissions.length} permission(s) to group "${group.name}"?`,
       true
     );
 
@@ -560,10 +561,9 @@ export async function handleGrantInteractive() {
       return;
     }
 
-    commandArgs.length = 0;
-    commandArgs.push("grant", group.name, permission.key);
-
-    await handleGrant();
+    for (const permission of selectedPermissions) {
+      await handleGrant(group.name, permission.key);
+    }
   } catch (err) {
     error(err instanceof Error ? err.message : String(err));
   }
@@ -620,20 +620,20 @@ export async function handleRevokeInteractive() {
       return;
     }
 
-    const selected = await paginatedSelect(
-      "Select a permission to revoke:",
+    const selectedPermissions = await paginatedCheckbox(
+      "Select permission(s) to revoke (use Space to toggle, Enter to confirm):",
       groupPermissions,
       (gp, index) =>
         `${index + 1}. [${gp.permission.category}] ${gp.permission.name} (${gp.permission.key})`
     );
 
-    if (!selected) {
-      notice("No permission selected.", "warning");
+    if (!selectedPermissions || selectedPermissions.length === 0) {
+      notice("No permissions selected.", "warning");
       return;
     }
 
     const confirmed = await confirm(
-      `Revoke permission "${selected.permission.key}" from group "${group.name}"?`,
+      `Revoke ${selectedPermissions.length} permission(s) from group "${group.name}"?`,
       true
     );
 
@@ -642,10 +642,9 @@ export async function handleRevokeInteractive() {
       return;
     }
 
-    commandArgs.length = 0;
-    commandArgs.push("revoke", group.name, selected.permission.key);
-
-    await handleRevoke();
+    for (const selected of selectedPermissions) {
+      await handleRevoke(group.name, selected.permission.key);
+    }
   } catch (err) {
     error(err instanceof Error ? err.message : String(err));
   }

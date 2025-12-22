@@ -74,7 +74,7 @@ model User {
   timeEntries        TimeEntry[]
   projectMemberships ProjectUser[]
   createdProjects    Project[]         @relation("ProjectCreator")
-  assignedTasks      Task[]            @relation("TaskAssignee")
+  assignedTodos      Todo[]            @relation("TodoAssignee")
   ownedRisks         ProjectRisk[]     @relation("RiskOwner")
   assignedIssues     ProjectIssue[]    @relation("IssueAssignee")
   reportedIssues     ProjectIssue[]    @relation("IssueReporter")
@@ -283,7 +283,7 @@ model Ticket {
   comments     TicketComment[]
   activities   TicketActivity[]
   timeEntries  TimeEntry[]
-  tasks        Task[]           @relation("TaskTicket")
+  todos        Todo[]           @relation("TodoTicket")
   unbanRequest UnbanRequest?
 
   // Timestamps
@@ -572,7 +572,7 @@ model Milestone {
   order         Int             @default(0) // For ordering milestones
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
-  Task          Task[]
+  Todo          Todo[]
 
   @@index([projectId])
   @@index([status])
@@ -580,8 +580,8 @@ model Milestone {
   @@map("milestones")
 }
 
-// Task Status
-enum TaskStatus {
+// Todo Status
+enum TodoStatus {
   NOT_STARTED
   IN_PROGRESS
   BLOCKED
@@ -589,32 +589,32 @@ enum TaskStatus {
   CANCELLED
 }
 
-// Task Priority
-enum TaskPriority {
+// Todo Priority
+enum TodoPriority {
   LOW
   MEDIUM
   HIGH
   URGENT
 }
 
-// Project Task
-model Task {
+// Project Todo
+model Todo {
   id           String  @id @default(cuid())
-  taskNumber   String? @unique // e.g., #TSK-000001
-  parentTaskId String? // For hierarchical tasks
-  parentTask   Task?   @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
-  subtasks     Task[]  @relation("TaskHierarchy")
+  todoNumber   String? @unique // e.g., #TDO-000001
+  parentTodoId String? // For hierarchical todos
+  parentTodo   Todo?   @relation("TodoHierarchy", fields: [parentTodoId], references: [id], onDelete: SetNull)
+  subtodos     Todo[]  @relation("TodoHierarchy")
 
   title            String
   description      String? // Legacy plain text field (will be migrated)
   descriptionHtml  String? // Rich text HTML (sanitized)
   descriptionPlain String? // Plain text version for search/indexing
-  status           TaskStatus   @default(NOT_STARTED)
-  priority         TaskPriority @default(MEDIUM)
+  status           TodoStatus   @default(NOT_STARTED)
+  priority         TodoPriority @default(MEDIUM)
 
   // Assignment
   assignedToId String?
-  assignedTo   User?   @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedTo   User?   @relation("TodoAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
 
   // Estimates and tracking
   estimatedHours Float? // Estimated time in hours
@@ -629,50 +629,50 @@ model Task {
   milestoneId String?
   milestone   Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
 
-  // Ticket relation (optional - task can be linked to a ticket)
+  // Ticket relation (optional - todo can be linked to a ticket)
   ticketId String?
-  ticket   Ticket? @relation("TaskTicket", fields: [ticketId], references: [id], onDelete: SetNull)
+  ticket   Ticket? @relation("TodoTicket", fields: [ticketId], references: [id], onDelete: SetNull)
 
   // Dependencies
-  dependencies TaskDependency[] @relation("TaskDependency")
-  dependents   TaskDependency[] @relation("TaskDependent")
+  dependencies TodoDependency[] @relation("TodoDependency")
+  dependents   TodoDependency[] @relation("TodoDependent")
 
   order     Int      @default(0) // For ordering tasks
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([parentTaskId])
+  @@index([parentTodoId])
   @@index([assignedToId])
   @@index([status])
   @@index([priority])
   @@index([milestoneId])
   @@index([ticketId])
-  @@index([taskNumber])
-  @@map("tasks")
+  @@index([todoNumber])
+  @@map("todos")
 }
 
-// Task Dependency Type
-enum TaskDependencyType {
-  FINISH_TO_START // Task B can't start until Task A finishes
-  START_TO_START // Task B can't start until Task A starts
-  FINISH_TO_FINISH // Task B can't finish until Task A finishes
-  START_TO_FINISH // Task B can't finish until Task A starts
+// Todo Dependency Type
+enum TodoDependencyType {
+  FINISH_TO_START // Todo B can't start until Todo A finishes
+  START_TO_START // Todo B can't start until Todo A starts
+  FINISH_TO_FINISH // Todo B can't finish until Todo A finishes
+  START_TO_FINISH // Todo B can't finish until Todo A starts
 }
 
-// Task Dependencies
-model TaskDependency {
+// Todo Dependencies
+model TodoDependency {
   id              String             @id @default(cuid())
-  taskId          String // The task that depends on another
-  task            Task               @relation("TaskDependency", fields: [taskId], references: [id], onDelete: Cascade)
-  dependsOnTaskId String // The task that this task depends on
-  dependsOnTask   Task               @relation("TaskDependent", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
-  type            TaskDependencyType @default(FINISH_TO_START)
+  todoId          String // The todo that depends on another
+  todo            Todo               @relation("TodoDependency", fields: [todoId], references: [id], onDelete: Cascade)
+  dependsOnTodoId String // The todo that this todo depends on
+  dependsOnTodo   Todo               @relation("TodoDependent", fields: [dependsOnTodoId], references: [id], onDelete: Cascade)
+  type            TodoDependencyType @default(FINISH_TO_START)
   createdAt       DateTime           @default(now())
 
-  @@unique([taskId, dependsOnTaskId])
-  @@index([taskId])
-  @@index([dependsOnTaskId])
-  @@map("task_dependencies")
+  @@unique([todoId, dependsOnTodoId])
+  @@index([todoId])
+  @@index([dependsOnTodoId])
+  @@map("todo_dependencies")
 }
 
 // Risk Severity

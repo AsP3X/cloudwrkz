@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
 import { canUserViewModule } from "@/server/actions/modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
-import { getTask } from "@/server/actions/tasks";
+import { getTodo } from "@/server/actions/todos";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { getAgents, getAllUsers } from "@/server/actions/users";
@@ -20,7 +20,7 @@ import { getTickets } from "@/server/actions/tickets";
 import { TaskStatusPriorityFields } from "@/components/features/tasks/TaskStatusPriorityFields";
 import { TaskAssigneeField } from "@/components/features/tasks/TaskAssigneeField";
 
-interface TaskDetailPageProps {
+interface TodoDetailPageProps {
   params: Promise<{ id: string }>;
   searchParams?: Promise<{ mode?: string }>;
 }
@@ -29,7 +29,7 @@ interface TaskDetailPageProps {
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export default async function TaskDetailPage({ params, searchParams }: TaskDetailPageProps) {
+export default async function TodoDetailPage({ params, searchParams }: TodoDetailPageProps) {
   const { id } = await params;
   const { mode } = (await searchParams) || {};
   const isEditingRequested = mode === "edit";
@@ -39,15 +39,15 @@ export default async function TaskDetailPage({ params, searchParams }: TaskDetai
     redirect(ROUTES.LOGIN);
   }
 
-  // Check if user can view tasks module (module enabled AND user has permission)
-  const canViewTasks = await canUserViewModule(user.id, MODULE_KEYS.TASKS);
+  // Check if user can view ToDo module (module enabled AND user has permission)
+  const canViewTasks = await canUserViewModule(user.id, MODULE_KEYS.TODOS);
 
   if (!canViewTasks) {
     return (
       <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8 text-center">
         <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">Access Denied</h2>
         <p className="text-neutral-600 dark:text-neutral-400 mb-4">
-          You don&apos;t have permission to access the Tasks module. Please contact an administrator.
+          You don&apos;t have permission to access the ToDo module. Please contact an administrator.
         </p>
         <Link href={ROUTES.DASHBOARD}>
           <Button variant="primary">Back to Dashboard</Button>
@@ -56,9 +56,9 @@ export default async function TaskDetailPage({ params, searchParams }: TaskDetai
     );
   }
 
-  // getTask already checks for permissions
+  // getTodo already checks for permissions
   // It returns null if the user doesn't have access
-  const task = await getTask(id);
+  const task = await getTodo(id);
 
   if (!task) {
     // Show permission denied page instead of 404
@@ -84,10 +84,10 @@ export default async function TaskDetailPage({ params, searchParams }: TaskDetai
             Access Denied
           </h2>
           <p className="text-neutral-600 dark:text-neutral-400 mb-6">
-            You don&apos;t have permission to view this task. The permission may have been removed or you may not have been granted access.
+            You don&apos;t have permission to view this ToDo. The permission may have been removed or you may not have been granted access.
           </p>
-          <Link href="/dashboard/tasks">
-            <Button variant="primary">Back to Tasks</Button>
+          <Link href="/dashboard/todos">
+            <Button variant="primary">Back to ToDos</Button>
           </Link>
         </div>
       </div>
@@ -130,8 +130,8 @@ export default async function TaskDetailPage({ params, searchParams }: TaskDetai
     }
   };
 
-  const canEdit = isAgent || await hasPermission(user.id, "tasks.update");
-  const canDelete = isAgent || await hasPermission(user.id, "tasks.delete");
+  const canEdit = isAgent || await hasPermission(user.id, "todos.update");
+  const canDelete = isAgent || await hasPermission(user.id, "todos.delete");
   const isEditing = isEditingRequested && canEdit;
   const userTimezone = user.timezone ?? "UTC";
 
@@ -146,11 +146,11 @@ export default async function TaskDetailPage({ params, searchParams }: TaskDetai
     | [] = [];
 
   if (isEditing) {
-    const canAssign =
+      const canAssign =
       user.role === "ADMIN" ||
       user.role === "AGENT" ||
       user.role === "MODERATOR" ||
-      (await hasPermission(user.id, "tasks.assign"));
+      (await hasPermission(user.id, "todos.assign"));
 
     assignableUsers = canAssign ? await getAllUsers() : [];
 
@@ -177,10 +177,10 @@ export default async function TaskDetailPage({ params, searchParams }: TaskDetai
         canDelete={canDelete}
         description={task.description}
         descriptionHtml={(task as any).descriptionHtml}
-        parentTaskId={task.parentTask?.id}
+        parentTaskId={(task as any).parentTodo?.id}
         isEditing={isEditing}
         userTimezone={userTimezone}
-        subtasks={task.subtasks || []}
+        subtasks={(task as any).subtodos || []}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -211,40 +211,40 @@ export default async function TaskDetailPage({ params, searchParams }: TaskDetai
               {/* Subtasks Section - rendered as its own element (like overview page) */}
               <TaskDetailContent
                 parentTaskId={task.id}
-                subtasks={(task.subtasks || []).map((subtask) => ({
+                subtasks={((task as any).subtodos || []).map((subtask: any) => ({
                   id: subtask.id,
                   title: subtask.title,
                   status: subtask.status,
                   priority: subtask.priority,
                   // these fields are optional for now; can be expanded later
-                  dueDate: (subtask as any).dueDate ?? null,
-                  assignedTo: (subtask as any).assignedTo ?? null,
-                  _count: (subtask as any)._count ?? { subtasks: 0 },
+                  dueDate: subtask.dueDate ?? null,
+                  assignedTo: subtask.assignedTo ?? null,
+                  _count: subtask._count ?? { subtasks: 0 },
                 }))}
                 canManage={canEdit}
                 userTimezone={userTimezone}
               />
 
               {/* Dependencies */}
-              {task.dependencies && task.dependencies.length > 0 && (
+              {(task as any).dependencies && (task as any).dependencies.length > 0 && (
                 <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
                   <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">
                     Dependencies ({task.dependencies.length})
                   </h2>
-                  <div className="space-y-2">
-                    {task.dependencies.map((dep) => (
+                    <div className="space-y-2">
+              {(task as any).dependencies.map((dep: any) => (
                       <Link
-                        key={dep.dependsOnTask.id}
-                        href={`/dashboard/tasks/${dep.dependsOnTask.id}`}
+                        key={dep.dependsOnTodo.id}
+                        href={`/dashboard/todos/${dep.dependsOnTodo.id}`}
                         className="block p-3 rounded-lg border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors"
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
                             <span className="font-medium text-neutral-900 dark:text-neutral-100">
-                              {dep.dependsOnTask.title}
+                              {dep.dependsOnTodo.title}
                             </span>
-                            <Badge className={cn(getStatusColor(dep.dependsOnTask.status), "text-xs")}>
-                              {dep.dependsOnTask.status.replace("_", " ")}
+                            <Badge className={cn(getStatusColor(dep.dependsOnTodo.status), "text-xs")}>
+                              {dep.dependsOnTodo.status.replace("_", " ")}
                             </Badge>
                           </div>
                         </div>
@@ -264,13 +264,13 @@ export default async function TaskDetailPage({ params, searchParams }: TaskDetai
               <h3 className="text-lg font-bold text-neutral-900 dark:text-neutral-100 mb-4">Task Information</h3>
               <div className="space-y-4">
                 {/* Task Number */}
-                {task.taskNumber && (
+                {(task as any).todoNumber && (
                   <div>
                     <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
                       Task Number
                     </label>
                     <p className="text-sm font-mono text-neutral-900 dark:text-neutral-100">
-                      {task.taskNumber}
+                      {(task as any).todoNumber}
                     </p>
                   </div>
                 )}
@@ -337,7 +337,7 @@ export default async function TaskDetailPage({ params, searchParams }: TaskDetai
               )}
 
                 {/* Parent Task */}
-                {task.parentTask && (
+                {(task as any).parentTodo && (
                   <>
                     <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4"></div>
                     <div>
@@ -345,10 +345,10 @@ export default async function TaskDetailPage({ params, searchParams }: TaskDetai
                         Parent Task
                       </label>
                       <Link
-                        href={`/dashboard/tasks/${task.parentTask.id}`}
+                        href={`/dashboard/todos/${(task as any).parentTodo.id}`}
                         className="text-sm text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
                       >
-                        {task.parentTask.title}
+                        {(task as any).parentTodo.title}
                       </Link>
                     </div>
                   </>

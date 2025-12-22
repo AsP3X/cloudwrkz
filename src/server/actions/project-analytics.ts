@@ -124,8 +124,8 @@ export async function getProjectAnalytics(projectId: string): Promise<ProjectAna
     },
   });
 
-  // Get tasks (through milestones)
-  const tasks = await prisma.task.findMany({
+  // Get todos (through milestones)
+  const tasks = await prisma.todo.findMany({
     where: {
       milestone: {
         projectId,

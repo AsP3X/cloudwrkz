@@ -32,12 +32,12 @@ export type PermissionKey =
   | "time_tracking.create"
   | "time_tracking.update"
   | "time_tracking.delete"
-  // Tasks
-  | "tasks.view"
-  | "tasks.create"
-  | "tasks.update"
-  | "tasks.delete"
-  | "tasks.assign"
+  // Todos
+  | "todos.view"
+  | "todos.create"
+  | "todos.update"
+  | "todos.delete"
+  | "todos.assign"
   // Issues
   | "issues.view"
   | "issues.create"
@@ -70,7 +70,7 @@ export type PermissionKey =
   | "modules.tickets.view"
   | "modules.timetracking.view"
   | "modules.projects.view"
-  | "modules.tasks.view";
+  | "modules.todos.view";
 
 export interface PermissionDefinition {
   key: PermissionKey;
@@ -259,41 +259,41 @@ export const PERMISSIONS: PermissionDefinition[] = [
     category: "time_tracking",
     module: "timetracking",
   },
-  // Tasks
+  // Todos
   {
-    key: "tasks.view",
-    name: "View Tasks",
-    description: "View tasks in accessible projects",
-    category: "tasks",
-    module: "tasks",
+    key: "todos.view",
+    name: "View Todos",
+    description: "View todos in accessible projects",
+    category: "todos",
+    module: "todos",
   },
   {
-    key: "tasks.create",
-    name: "Create Tasks",
-    description: "Create new tasks",
-    category: "tasks",
-    module: "tasks",
+    key: "todos.create",
+    name: "Create Todos",
+    description: "Create new todos",
+    category: "todos",
+    module: "todos",
   },
   {
-    key: "tasks.update",
-    name: "Update Tasks",
-    description: "Update existing tasks",
-    category: "tasks",
-    module: "tasks",
+    key: "todos.update",
+    name: "Update Todos",
+    description: "Update existing todos",
+    category: "todos",
+    module: "todos",
   },
   {
-    key: "tasks.delete",
-    name: "Delete Tasks",
-    description: "Delete tasks",
-    category: "tasks",
-    module: "tasks",
+    key: "todos.delete",
+    name: "Delete Todos",
+    description: "Delete todos",
+    category: "todos",
+    module: "todos",
   },
   {
-    key: "tasks.assign",
-    name: "Assign Tasks",
-    description: "Assign tasks to other users",
-    category: "tasks",
-    module: "tasks",
+    key: "todos.assign",
+    name: "Assign Todos",
+    description: "Assign todos to other users",
+    category: "todos",
+    module: "todos",
   },
   // Issues
   {
@@ -479,11 +479,11 @@ export const PERMISSIONS: PermissionDefinition[] = [
     module: "projects",
   },
   {
-    key: "modules.tasks.view",
-    name: "View Tasks Module",
-    description: "Access to the Tasks module in navigation and dashboard",
+    key: "modules.todos.view",
+    name: "View ToDo Module",
+    description: "Access to the ToDo module in navigation and dashboard",
     category: "modules",
-    module: "tasks",
+    module: "todos",
   },
 ];
 
@@ -552,12 +552,12 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     "time_tracking.create",
     "time_tracking.update",
     "time_tracking.delete",
-    // Tasks
-    "tasks.view",
-    "tasks.create",
-    "tasks.update",
-    "tasks.delete",
-    "tasks.assign",
+    // Todos
+    "todos.view",
+    "todos.create",
+    "todos.update",
+    "todos.delete",
+    "todos.assign",
     // Issues
     "issues.view",
     "issues.create",
@@ -578,7 +578,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     "modules.tickets.view",
     "modules.timetracking.view",
     "modules.projects.view",
-    "modules.tasks.view",
+    "modules.todos.view",
   ],
   AGENT: [
     // Tickets
@@ -594,16 +594,16 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     "time_tracking.update",
     // Projects (limited - only assigned)
     "projects.view",
-    // Tasks (limited - only in assigned projects)
-    "tasks.view",
-    "tasks.create",
-    "tasks.update",
-    "tasks.assign",
+    // Todos (limited - only in assigned projects)
+    "todos.view",
+    "todos.create",
+    "todos.update",
+    "todos.assign",
     // Module Visibility
     "modules.tickets.view",
     "modules.timetracking.view",
     "modules.projects.view",
-    "modules.tasks.view",
+    "modules.todos.view",
   ],
   USER: [
     // Default users have no permissions - they must be added to groups to get permissions

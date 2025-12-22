@@ -8,7 +8,7 @@ import { formatUserName } from "@/lib/utils/users";
 import { TaskViewMode } from "../TaskViewToggle";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils/cn";
-import { createTicketTask, updateTicketTask } from "@/server/actions/tasks";
+import { createTicketTodo, updateTicketTodo } from "@/server/actions/todos";
 import { useRouter } from "next/navigation";
 
 type TicketTask = {
@@ -79,7 +79,7 @@ export const TaskList = ({ ticketId, tasks, viewMode, canManage }: TaskListProps
     setCreateError(null);
 
     try {
-      const result = await createTicketTask(ticketId, {
+      const result = await createTicketTodo(ticketId, {
         title: newTitle.trim(),
         priority: "MEDIUM",
         status: "NOT_STARTED",
@@ -101,7 +101,7 @@ export const TaskList = ({ ticketId, tasks, viewMode, canManage }: TaskListProps
   const handleToggleComplete = async (task: TicketTask) => {
     const nextStatus = task.status === "COMPLETED" ? "IN_PROGRESS" : "COMPLETED";
     try {
-      await updateTicketTask(task.id, {
+      await updateTicketTodo(task.id, {
         status: nextStatus as any,
       });
       router.refresh();

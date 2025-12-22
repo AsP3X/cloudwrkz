@@ -7,7 +7,7 @@ import { formatDateInTimezone } from "@/lib/utils/date";
 import { formatUserName } from "@/lib/utils/users";
 import { TaskViewMode } from "../TaskViewToggle";
 import { cn } from "@/lib/utils/cn";
-import { updateTask } from "@/server/actions/tasks";
+import { updateTodo } from "@/server/actions/todos";
 import { useRouter } from "next/navigation";
 
 type StandaloneTask = {
@@ -84,7 +84,7 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
   const handleToggleComplete = async (task: StandaloneTask) => {
     const nextStatus = task.status === "COMPLETED" ? "IN_PROGRESS" : "COMPLETED";
     try {
-      await updateTask(task.id, {
+      await updateTodo(task.id, {
         status: nextStatus as any,
       });
       router.refresh();
@@ -120,7 +120,7 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-1">
             <Link
-              href={`/dashboard/tasks/${task.id}`}
+              href={`/dashboard/todos/${task.id}`}
               className="font-medium text-sm text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
             >
               {task.title}
@@ -146,8 +146,8 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
             {task.parentTask && (
               <span>
                 Subtask of{" "}
-                <Link
-                  href={`/dashboard/tasks/${task.parentTask.id}`}
+              <Link
+                  href={`/dashboard/todos/${task.parentTask.id}`}
                   className="text-neutral-800 dark:text-neutral-200 hover:text-primary-600 dark:hover:text-primary-400"
                 >
                   {task.parentTask.title}
@@ -220,7 +220,7 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
       )}
       <td className="px-6 py-4">
         <Link
-          href={`/dashboard/tasks/${task.id}`}
+          href={`/dashboard/todos/${task.id}`}
           className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400"
         >
           <div className="max-w-md">
@@ -250,7 +250,7 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
           </Link>
         ) : task.parentTask ? (
           <Link
-            href={`/dashboard/tasks/${task.parentTask.id}`}
+            href={`/dashboard/todos/${task.parentTask.id}`}
             className="text-xs text-neutral-600 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400"
           >
             Subtask of {task.parentTask.title}
