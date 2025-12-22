@@ -161,20 +161,49 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
             // Delete both spaces, then insert one space outside the formatting
             const beforePos = pos - 2;
             
-            // For links, find where the link ends so we can insert space outside it
+            // Find where the formatting ends so we can insert space outside it
+            // This applies to all formatting types: links, bold, italic, highlight, text color
             let insertPos = beforePos;
+            const docSize = editor.state.doc.content.size;
+            let currentPos = beforePos;
+            
+            // Check what formatting marks are active
+            const activeMarks: Array<{ type: any; check: (mark: any) => boolean }> = [];
             if (isInLink) {
-              // Find the end of the link by checking positions forward
-              let currentPos = beforePos;
-              const docSize = editor.state.doc.content.size;
-              
+              activeMarks.push({ type: linkMark, check: (mark) => mark.type === linkMark });
+            }
+            if (isInBold) {
+              activeMarks.push({ type: boldMark, check: (mark) => mark.type === boldMark });
+            }
+            if (isInItalic) {
+              activeMarks.push({ type: italicMark, check: (mark) => mark.type === italicMark });
+            }
+            if (isInRegularHighlight) {
+              activeMarks.push({ 
+                type: highlightMark, 
+                check: (mark) => mark.type === highlightMark && mark.attrs.color !== "#inline-quote" 
+              });
+            }
+            if (isInTextColor) {
+              activeMarks.push({ 
+                type: textStyleMark, 
+                check: (mark) => mark.type === textStyleMark && mark.attrs.color 
+              });
+            }
+            
+            // If we have active formatting, find where it ends
+            if (activeMarks.length > 0) {
               while (currentPos < docSize) {
                 const $checkPos = editor.state.doc.resolve(currentPos);
                 const checkMarks = $checkPos.marks();
-                const hasLink = checkMarks.some(mark => mark.type === linkMark);
                 
-                if (!hasLink) {
-                  // Found the end of the link
+                // Check if any of the active formatting marks are still present
+                const stillHasFormatting = activeMarks.some(({ check }) => 
+                  checkMarks.some(check)
+                );
+                
+                if (!stillHasFormatting) {
+                  // Found the end of the formatting
                   insertPos = currentPos;
                   break;
                 }
