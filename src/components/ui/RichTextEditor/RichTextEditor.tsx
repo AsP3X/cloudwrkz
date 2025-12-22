@@ -453,8 +453,19 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
         }
 
         if (linkDialogMode === "selection") {
-          // Apply link to current selection
-          editor.chain().focus().setLink({ href, target: "_blank" }).run();
+          // Apply link to current selection, then clear stored marks
+          editor
+            .chain()
+            .focus()
+            .setLink({ href, target: "_blank" })
+            .command(({ tr, dispatch }) => {
+              if (dispatch) {
+                // Clear stored marks so link doesn't continue for future typing
+                tr.setStoredMarks([]);
+              }
+              return true;
+            })
+            .run();
         } else {
           // Insert new linked text at cursor
           const text = (linkText || trimmedUrl).trim();
@@ -479,6 +490,20 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
             .insertContent(
               `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeText}</a>`
             )
+            .insertContent(" ")
+            .command(({ tr, dispatch }) => {
+              if (dispatch) {
+                // Delete the space we just added (this moves cursor to position after link)
+                const currentPos = tr.selection.from;
+                if (currentPos > 0) {
+                  tr.delete(currentPos - 1, currentPos);
+                }
+                
+                // Clear stored marks so link doesn't continue for future typing
+                tr.setStoredMarks([]);
+              }
+              return true;
+            })
             .run();
         }
 
