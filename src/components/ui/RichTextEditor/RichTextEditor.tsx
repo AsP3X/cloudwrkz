@@ -106,7 +106,11 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
             class: "max-w-full h-auto rounded-lg",
           },
         }),
-        CodeBlock,
+        CodeBlock.configure({
+          HTMLAttributes: {
+            class: "code-block",
+          },
+        }),
         Code,
         Highlight.configure({
           multicolor: true,
@@ -266,14 +270,26 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
             "prose-strong:text-neutral-900 dark:prose-strong:text-neutral-100",
             "prose-code:text-neutral-900 dark:prose-code:text-neutral-100",
             "prose-code:bg-neutral-100 dark:prose-code:bg-neutral-800",
-            "prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-sm",
-            "prose-code:font-mono",
-            "prose-pre:bg-neutral-100 dark:prose-pre:bg-neutral-800",
-            "prose-pre:text-neutral-900 dark:prose-pre:text-neutral-100",
-            "prose-pre:p-4 prose-pre:rounded-lg prose-pre:border prose-pre:border-neutral-200 dark:prose-pre:border-neutral-700",
-            "prose-pre:overflow-x-auto prose-pre:my-4",
+            "prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm",
+            "prose-code:font-mono prose-code:font-medium",
+            // Code block styling - visually distinct with line numbers
+            "prose-pre:bg-neutral-900 dark:prose-pre:bg-neutral-950",
+            "prose-pre:text-neutral-100 dark:prose-pre:text-neutral-50",
+            "prose-pre:p-0 prose-pre:rounded-lg prose-pre:border-2 prose-pre:border-neutral-700 dark:prose-pre:border-neutral-600",
+            "prose-pre:overflow-hidden prose-pre:my-4",
             "prose-pre:font-mono prose-pre:text-sm",
             "prose-pre:leading-relaxed",
+            "prose-pre:shadow-lg",
+            // Code block wrapper
+            "[.code-block]:bg-neutral-900 dark:[.code-block]:bg-neutral-950",
+            "[.code-block]:text-neutral-100 dark:[.code-block]:text-neutral-50",
+            "[.code-block]:p-0 [.code-block]:rounded-lg [.code-block]:border-2 [.code-block]:border-neutral-700 dark:[.code-block]:border-neutral-600",
+            "[.code-block]:overflow-hidden [.code-block]:my-4",
+            "[.code-block]:font-mono [.code-block]:text-sm",
+            "[.code-block]:shadow-lg",
+            "[.code-block_pre]:bg-transparent [.code-block_pre]:p-0 [.code-block_pre]:m-0",
+            "[.code-block_code]:bg-transparent [.code-block_code]:text-inherit [.code-block_code]:p-0 [.code-block_code]:px-4 [.code-block_code]:py-3",
+            "[.code-block_code]:block [.code-block_code]:overflow-x-auto",
             "prose-blockquote:border-l-4 prose-blockquote:border-l-primary-500",
             "prose-blockquote:pl-4 prose-blockquote:pr-4 prose-blockquote:py-3",
             "prose-blockquote:my-4 prose-blockquote:bg-neutral-100 dark:prose-blockquote:bg-neutral-800/50",
@@ -294,6 +310,109 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
         },
       },
     });
+
+    // Add line numbers to code blocks using DOM manipulation
+    React.useEffect(() => {
+      if (!editor) return;
+
+      const addLineNumbers = () => {
+        const editorElement = editor.view.dom;
+        const codeBlocks = editorElement.querySelectorAll('pre.code-block');
+        
+        codeBlocks.forEach((preElement) => {
+          const pre = preElement as HTMLElement;
+          if (pre.dataset.lineNumbersAdded === 'true') return;
+          pre.dataset.lineNumbersAdded = 'true';
+          
+          const code = pre.querySelector('code');
+          if (!code) return;
+
+          const text = code.textContent || '';
+          const lines = text.split('\n');
+          const lineCount = lines.length;
+          
+          // Create wrapper
+          const wrapper = document.createElement('div');
+          wrapper.className = 'code-block-wrapper';
+          wrapper.style.cssText = `
+            display: flex;
+            background: rgb(30 41 59);
+            border-radius: 0.5rem;
+            overflow: hidden;
+            border: 2px solid rgb(71 85 105);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+          `;
+          
+          // Create line numbers column
+          const lineNumbers = document.createElement('div');
+          lineNumbers.className = 'code-line-numbers';
+          lineNumbers.style.cssText = `
+            background: rgb(15 23 42);
+            color: rgb(148 163 184);
+            padding: 1rem 0.5rem;
+            text-align: right;
+            user-select: none;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.875rem;
+            line-height: 1.75;
+            border-right: 1px solid rgb(51 65 85);
+            min-width: 3rem;
+            flex-shrink: 0;
+          `;
+          
+          // Add line numbers
+          for (let i = 1; i <= lineCount; i++) {
+            const lineNum = document.createElement('div');
+            lineNum.textContent = i.toString();
+            lineNum.style.cssText = 'padding: 0;';
+            lineNumbers.appendChild(lineNum);
+          }
+          
+          // Style the code element
+          const codeWrapper = document.createElement('div');
+          codeWrapper.style.cssText = 'flex: 1; overflow-x: auto;';
+          code.style.cssText = `
+            display: block;
+            padding: 1rem !important;
+            margin: 0 !important;
+            background: transparent !important;
+            color: rgb(226 232 240) !important;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
+            font-size: 0.875rem;
+            line-height: 1.75;
+            white-space: pre;
+          `;
+          
+          codeWrapper.appendChild(code);
+          wrapper.appendChild(lineNumbers);
+          wrapper.appendChild(codeWrapper);
+          
+          // Replace pre content
+          while (pre.firstChild) {
+            pre.removeChild(pre.firstChild);
+          }
+          pre.style.cssText = 'margin: 1rem 0 !important; padding: 0 !important; background: transparent !important; border: none !important;';
+          pre.appendChild(wrapper);
+        });
+      };
+
+      const handleUpdate = () => {
+        setTimeout(addLineNumbers, 50);
+      };
+
+      editor.on('update', handleUpdate);
+      editor.on('selectionUpdate', handleUpdate);
+      editor.on('create', handleUpdate);
+      
+      // Initial run
+      setTimeout(addLineNumbers, 200);
+
+      return () => {
+        editor.off('update', handleUpdate);
+        editor.off('selectionUpdate', handleUpdate);
+        editor.off('create', handleUpdate);
+      };
+    }, [editor]);
 
     // Update editor content when value prop changes
     React.useEffect(() => {
