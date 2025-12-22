@@ -158,19 +158,52 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
           const lastTwoChars = editor.state.doc.textBetween(pos - 2, pos);
           if (lastTwoChars === "  ") {
             // Two consecutive spaces - exit formatting mode
-            // Delete only the second space, keeping one space
-            const newPos = pos - 1;
+            // Delete both spaces, then insert one space outside the formatting
+            const beforePos = pos - 2;
+            
+            // For links, find where the link ends so we can insert space outside it
+            let insertPos = beforePos;
+            if (isInLink) {
+              // Find the end of the link by checking positions forward
+              let currentPos = beforePos;
+              const docSize = editor.state.doc.content.size;
+              
+              while (currentPos < docSize) {
+                const $checkPos = editor.state.doc.resolve(currentPos);
+                const checkMarks = $checkPos.marks();
+                const hasLink = checkMarks.some(mark => mark.type === linkMark);
+                
+                if (!hasLink) {
+                  // Found the end of the link
+                  insertPos = currentPos;
+                  break;
+                }
+                currentPos++;
+              }
+              
+              // If we reached the end, use that position
+              if (currentPos >= docSize) {
+                insertPos = docSize;
+              }
+            }
+            
             editor
               .chain()
               .focus()
-              .setTextSelection({ from: pos - 1, to: pos })
+              .setTextSelection({ from: pos - 2, to: pos })
               .deleteSelection()
-              .setTextSelection(newPos)
+              .setTextSelection(insertPos)
               .command(({ tr, dispatch }) => {
                 if (dispatch) {
-                  // Clear stored marks (remove all formatting including links)
-                  // This prevents future typing from being part of the link,
-                  // but does NOT remove the existing link
+                  // Clear stored marks so the space we insert will be outside formatting
+                  tr.setStoredMarks([]);
+                }
+                return true;
+              })
+              .insertContent(" ")
+              .command(({ tr, dispatch }) => {
+                if (dispatch) {
+                  // Ensure stored marks remain cleared
                   tr.setStoredMarks([]);
                 }
                 return true;
