@@ -140,6 +140,7 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
         const boldMark = schema.marks.bold;
         const italicMark = schema.marks.italic;
         const textStyleMark = schema.marks.textStyle;
+        const linkMark = schema.marks.link;
         
         const highlightMarkInstance = marks.find(mark => mark.type === highlightMark);
         const isInQuote = highlightMarkInstance && highlightMarkInstance.attrs.color === "#inline-quote";
@@ -147,9 +148,10 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
         const isInBold = marks.some(mark => mark.type === boldMark);
         const isInItalic = marks.some(mark => mark.type === italicMark);
         const isInTextColor = marks.some(mark => mark.type === textStyleMark && mark.attrs.color);
+        const isInLink = marks.some(mark => mark.type === linkMark);
         
         // Check if we're in any formatting mode that should exit on two spaces
-        const isInFormattingMode = isInQuote || isInRegularHighlight || isInBold || isInItalic || isInTextColor;
+        const isInFormattingMode = isInQuote || isInRegularHighlight || isInBold || isInItalic || isInTextColor || isInLink;
         
         if (isInFormattingMode && pos >= 2) {
           // Check if the last two characters before cursor are spaces
@@ -158,15 +160,22 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
             // Two consecutive spaces - exit formatting mode
             // This works for: two spaces anywhere, or two spaces after a dot
             const newPos = pos - 2;
-            editor
+            const chain = editor
               .chain()
               .focus()
               .setTextSelection({ from: pos - 2, to: pos })
               .deleteSelection()
-              .setTextSelection(newPos)
+              .setTextSelection(newPos);
+            
+            // If we were in a link, unset it
+            if (isInLink) {
+              chain.unsetLink();
+            }
+            
+            chain
               .command(({ tr, dispatch }) => {
                 if (dispatch) {
-                  // Clear stored marks (remove all formatting)
+                  // Clear stored marks (remove all formatting including links)
                   tr.setStoredMarks([]);
                 }
                 return true;
