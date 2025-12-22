@@ -14,6 +14,9 @@ import { TextStyle } from "@tiptap/extension-text-style";
 import Placeholder from "@tiptap/extension-placeholder";
 import { cn } from "@/lib/utils/cn";
 import { extractPlainText } from "@/lib/utils/rich-text";
+import { Dialog } from "@/components/ui/Dialog/Dialog";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 import { RichTextEditorToolbar } from "./RichTextEditorToolbar";
 import type { RichTextEditorProps } from "./RichTextEditor.types";
 
@@ -45,6 +48,10 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
     const [mounted, setMounted] = React.useState(false);
     const [keyboardHeight, setKeyboardHeight] = React.useState(0);
     const [viewportHeight, setViewportHeight] = React.useState(0);
+    const [isLinkDialogOpen, setIsLinkDialogOpen] = React.useState(false);
+    const [linkDialogMode, setLinkDialogMode] = React.useState<"selection" | "new">("selection");
+    const [linkText, setLinkText] = React.useState("");
+    const [linkUrl, setLinkUrl] = React.useState("");
 
     const editor = useEditor({
       immediatelyRender: false,
@@ -407,11 +414,80 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
     const handleLinkAdd = React.useCallback(() => {
       if (!editor) return;
 
-      const url = window.prompt("Enter URL:");
-      if (url) {
-        editor.chain().focus().setLink({ href: url, target: "_blank" }).run();
+      const { from, to } = editor.state.selection;
+      const hasSelection = from !== to;
+
+      if (hasSelection) {
+        // Use selected text, just ask for URL
+        setLinkDialogMode("selection");
+        setLinkText("");
+      } else {
+        // No selection – ask for both text and URL
+        setLinkDialogMode("new");
+        setLinkText("");
       }
+
+      setLinkUrl("");
+      setIsLinkDialogOpen(true);
     }, [editor]);
+
+    const handleLinkDialogSubmit = React.useCallback(
+      (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editor) return;
+
+        const trimmedUrl = linkUrl.trim();
+        if (!trimmedUrl) {
+          return;
+        }
+
+        // Normalise URL (prepend https:// if no scheme/mailto/tel)
+        let href = trimmedUrl;
+        if (
+          !href.startsWith("http://") &&
+          !href.startsWith("https://") &&
+          !href.startsWith("mailto:") &&
+          !href.startsWith("tel:")
+        ) {
+          href = `https://${href}`;
+        }
+
+        if (linkDialogMode === "selection") {
+          // Apply link to current selection
+          editor.chain().focus().setLink({ href, target: "_blank" }).run();
+        } else {
+          // Insert new linked text at cursor
+          const text = (linkText || trimmedUrl).trim();
+          if (text.length === 0) {
+            return;
+          }
+
+          const escapeHtml = (value: string) =>
+            value
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")
+              .replace(/"/g, "&quot;")
+              .replace(/'/g, "&#39;");
+
+          const safeText = escapeHtml(text);
+          const safeHref = escapeHtml(href);
+
+          editor
+            .chain()
+            .focus()
+            .insertContent(
+              `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeText}</a>`
+            )
+            .run();
+        }
+
+        setIsLinkDialogOpen(false);
+        setLinkText("");
+        setLinkUrl("");
+      },
+      [editor, linkDialogMode, linkText, linkUrl]
+    );
 
     // Use a counter-based ID to avoid hydration mismatches with Math.random()
     const editorIdRef = React.useRef<string | null>(null);
@@ -509,6 +585,63 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
           </p>
         )}
         <input type="hidden" name={name} value={value || ""} />
+
+        {/* Link Dialog */}
+        <Dialog
+          open={isLinkDialogOpen}
+          onOpenChange={(open) => {
+            setIsLinkDialogOpen(open);
+            if (!open) {
+              setLinkText("");
+              setLinkUrl("");
+            }
+          }}
+          title={linkDialogMode === "selection" ? "Add link" : "Create link"}
+          description={
+            linkDialogMode === "selection"
+              ? "Enter the URL to link the selected text."
+              : "Enter the link text and URL."
+          }
+        >
+          <form
+            onSubmit={handleLinkDialogSubmit}
+            className="px-4 sm:px-6 py-4 space-y-4"
+          >
+            {linkDialogMode === "new" && (
+              <Input
+                label="Link text"
+                type="text"
+                value={linkText}
+                onChange={(e) => setLinkText(e.target.value)}
+                placeholder="Text to display"
+              />
+            )}
+            <Input
+              label="URL"
+              type="url"
+              value={linkUrl}
+              onChange={(e) => setLinkUrl(e.target.value)}
+              placeholder="https://example.com"
+              required
+            />
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setIsLinkDialogOpen(false);
+                  setLinkText("");
+                  setLinkUrl("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary">
+                Apply link
+              </Button>
+            </div>
+          </form>
+        </Dialog>
       </div>
     );
   }
