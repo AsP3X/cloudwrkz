@@ -160,22 +160,17 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
             // Two consecutive spaces - exit formatting mode
             // This works for: two spaces anywhere, or two spaces after a dot
             const newPos = pos - 2;
-            const chain = editor
+            editor
               .chain()
               .focus()
               .setTextSelection({ from: pos - 2, to: pos })
               .deleteSelection()
-              .setTextSelection(newPos);
-            
-            // If we were in a link, unset it
-            if (isInLink) {
-              chain.unsetLink();
-            }
-            
-            chain
+              .setTextSelection(newPos)
               .command(({ tr, dispatch }) => {
                 if (dispatch) {
                   // Clear stored marks (remove all formatting including links)
+                  // This prevents future typing from being part of the link,
+                  // but does NOT remove the existing link
                   tr.setStoredMarks([]);
                 }
                 return true;
