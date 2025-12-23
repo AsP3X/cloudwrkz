@@ -81,6 +81,7 @@ const getPriorityColor = (priority: string) => {
 export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = "UTC" }: StandaloneTaskListProps) => {
   const router = useRouter();
   const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
+  const [dragOverStatus, setDragOverStatus] = React.useState<string | null>(null);
   const [isUpdating, setIsUpdating] = React.useState(false);
 
   const handleToggleComplete = async (task: StandaloneTask) => {
@@ -100,13 +101,17 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
     e.dataTransfer.effectAllowed = "move";
   };
 
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>, targetStatus: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
+    if (dragOverStatus !== targetStatus) {
+      setDragOverStatus(targetStatus);
+    }
   };
 
   const handleDrop = async (e: React.DragEvent<HTMLDivElement>, targetStatus: string) => {
     e.preventDefault();
+    setDragOverStatus(null);
     if (!draggedTaskId) return;
 
     const task = tasks.find((t) => t.id === draggedTaskId);
@@ -364,48 +369,68 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
     <>
       {/* Kanban View */}
       {viewMode === "kanban" && (
-        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 overflow-x-auto">
-          <div className="flex items-center justify-between px-4 pt-4 pb-2 text-xs text-neutral-600 dark:text-neutral-400">
-            <span>
-              Drag tasks between columns to update their status.
-            </span>
+        <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/60 dark:border-neutral-800/60 overflow-x-auto">
+          <div className="flex items-center justify-between px-4 pt-4 pb-3 text-xs text-neutral-600 dark:text-neutral-400 border-b border-neutral-200/70 dark:border-neutral-800/70">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary-50 dark:bg-primary-900/40 text-primary-600 dark:text-primary-300 text-xs">
+                ⌘
+              </span>
+              <span className="font-medium text-neutral-700 dark:text-neutral-200">
+                Kanban board
+              </span>
+              <span className="hidden md:inline text-[11px] text-neutral-500 dark:text-neutral-400">
+                Drag tasks between columns to update their status.
+              </span>
+            </div>
             {isUpdating && (
               <span className="italic text-neutral-500 dark:text-neutral-500">
                 Updating…
               </span>
             )}
           </div>
-          <div className="flex gap-4 md:gap-6 px-4 pb-4 min-w-max">
+          <div className="flex gap-4 md:gap-6 px-3 md:px-4 pb-4 pt-3 min-w-max">
             {STATUS_COLUMNS.map((column) => {
               const columnTasks = tasksByStatus[column.value] || [];
               return (
                 <div
                   key={column.value}
-                  className="w-64 md:w-72 bg-neutral-50/70 dark:bg-neutral-900/60 rounded-xl border border-neutral-200/80 dark:border-neutral-800/80 flex-shrink-0 flex flex-col"
-                  onDragOver={handleDragOver}
+                  className="w-64 md:w-72 bg-neutral-50/80 dark:bg-neutral-950/40 rounded-2xl border border-neutral-200/70 dark:border-neutral-800/80 shadow-sm flex-shrink-0 flex flex-col"
+                  onDragOver={(e) => canManage && handleDragOver(e, column.value)}
                   onDrop={(e) => canManage && handleDrop(e, column.value)}
+                  onDragLeave={() => {
+                    if (dragOverStatus === column.value) {
+                      setDragOverStatus(null);
+                    }
+                  }}
                 >
-                  <div className="px-3 py-3 border-b border-neutral-200/80 dark:border-neutral-800/80 flex items-center justify-between gap-2">
+                  <div className="px-3 py-3 border-b border-neutral-200/70 dark:border-neutral-800/70 flex items-center justify-between gap-2 bg-white/60 dark:bg-neutral-950/40 rounded-t-2xl">
                     <div>
                       <div className="text-xs font-semibold uppercase tracking-wide text-neutral-600 dark:text-neutral-300">
                         {column.label}
                       </div>
-                      <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                      <div className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-neutral-100 dark:bg-neutral-900 px-2 py-0.5 text-[11px] text-neutral-600 dark:text-neutral-300">
+                        <span className="h-1.5 w-1.5 rounded-full bg-primary-500" />
                         {columnTasks.length} {columnTasks.length === 1 ? "task" : "tasks"}
                       </div>
                     </div>
                   </div>
                   <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2">
                     {columnTasks.length === 0 && (
-                      <div className="text-[11px] text-neutral-400 dark:text-neutral-500 px-2 py-4 text-center border-2 border-dashed border-neutral-200 dark:border-neutral-800 rounded-lg">
-                        No tasks in this column
+                      <div
+                        className={cn(
+                          "text-[11px] text-neutral-400 dark:text-neutral-500 px-2 py-6 text-center border-2 border-dashed border-neutral-200/80 dark:border-neutral-800/80 rounded-lg bg-white/40 dark:bg-neutral-950/20 transition-colors",
+                          dragOverStatus === column.value &&
+                            "border-primary-300 dark:border-primary-500/80 bg-primary-50/40 dark:bg-primary-950/20 text-primary-700 dark:text-primary-200"
+                        )}
+                      >
+                        No tasks in this column yet
                       </div>
                     )}
                     {columnTasks.map((task) => (
                       <div
                         key={task.id}
                         className={cn(
-                          "rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-soft-lg",
+                          "rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/95 shadow-soft-lg hover:border-primary-200 dark:hover:border-primary-500/70 hover:shadow-md transition-shadow transition-colors",
                           canManage && "cursor-move"
                         )}
                         draggable={canManage}
@@ -414,6 +439,11 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
                         {renderTaskCard(task)}
                       </div>
                     ))}
+                    {canManage && dragOverStatus === column.value && columnTasks.length > 0 && (
+                      <div className="h-10 rounded-lg border-2 border-dashed border-primary-300 dark:border-primary-600 bg-primary-50/40 dark:bg-primary-950/10 flex items-center justify-center text-[11px] text-primary-700 dark:text-primary-200">
+                        Drop here
+                      </div>
+                    )}
                   </div>
                 </div>
               );
