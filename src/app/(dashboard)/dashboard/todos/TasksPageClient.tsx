@@ -47,12 +47,33 @@ interface TasksPageClientProps {
 export function TasksPageClient({ tasks, canManage, userRole, userTimezone = "UTC" }: TasksPageClientProps) {
   const [viewMode, setViewMode] = React.useState<TaskViewMode>("table");
   const [isReady, setIsReady] = React.useState(false);
+  const [isDesktop, setIsDesktop] = React.useState(false);
 
   React.useLayoutEffect(() => {
     // Sync from localStorage on mount to avoid hydration mismatch
     const initial = getInitialTaskViewMode();
-    setViewMode(initial);
+
+    const updateIsDesktop = () => {
+      const desktop = window.innerWidth >= 768; // md breakpoint
+      setIsDesktop(desktop);
+
+      // If user had Kanban selected but we're on mobile, fall back to table
+      if (!desktop && initial === "kanban") {
+        setViewMode("table");
+        saveTaskViewMode("table");
+      } else {
+        setViewMode(initial);
+      }
+    };
+
+    updateIsDesktop();
+    window.addEventListener("resize", updateIsDesktop);
+
     setIsReady(true);
+
+    return () => {
+      window.removeEventListener("resize", updateIsDesktop);
+    };
   }, []);
 
   const handleViewChange = (mode: TaskViewMode) => {
@@ -76,7 +97,11 @@ export function TasksPageClient({ tasks, canManage, userRole, userTimezone = "UT
         </div>
         <div className="flex items-center gap-3">
           {isReady && (
-            <TaskViewToggle currentView={viewMode} onViewChange={handleViewChange} />
+            <TaskViewToggle
+              currentView={viewMode === "kanban" && !isDesktop ? "table" : viewMode}
+              onViewChange={handleViewChange}
+              showKanban={isDesktop}
+            />
           )}
           <TaskFilterButton />
           {canManage && (

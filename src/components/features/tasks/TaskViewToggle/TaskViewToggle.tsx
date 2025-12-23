@@ -3,16 +3,22 @@
 import React from "react";
 import { cn } from "@/lib/utils/cn";
 
-export type TaskViewMode = "table" | "card";
+export type TaskViewMode = "table" | "card" | "kanban";
 
 const VIEW_MODE_STORAGE_KEY = "task-view-mode";
 
 interface TaskViewToggleProps {
   currentView: TaskViewMode;
   onViewChange: (view: TaskViewMode) => void;
+  /**
+   * Enable the Kanban option in the toggle.
+   * This is opt-in so existing contexts (e.g. ticket tasks, subtasks)
+   * keep their current Table/Card behaviour.
+   */
+  showKanban?: boolean;
 }
 
-const viewModes: Array<{ value: TaskViewMode; label: string; icon: React.ReactNode }> = [
+const baseViewModes: Array<{ value: Exclude<TaskViewMode, "kanban">; label: string; icon: React.ReactNode }> = [
   {
     value: "table",
     label: "Table",
@@ -38,7 +44,26 @@ const viewModes: Array<{ value: TaskViewMode; label: string; icon: React.ReactNo
   },
 ];
 
-export const TaskViewToggle = ({ currentView, onViewChange }: TaskViewToggleProps) => {
+const kanbanMode: { value: TaskViewMode; label: string; icon: React.ReactNode } = {
+  value: "kanban",
+  label: "Kanban",
+  icon: (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M5 5h4v14H5zm5 3h4v11h-4zm5-2h4v13h-4z"
+      />
+    </svg>
+  ),
+};
+
+export const TaskViewToggle = ({ currentView, onViewChange, showKanban = false }: TaskViewToggleProps) => {
+  const viewModes = React.useMemo(
+    () => (showKanban ? [...baseViewModes, kanbanMode] : baseViewModes),
+    [showKanban]
+  );
   return (
     <div
       className="inline-flex rounded-lg border-2 border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-1"
@@ -73,7 +98,7 @@ export const getInitialTaskViewMode = (): TaskViewMode => {
 
   try {
     const stored = localStorage.getItem(VIEW_MODE_STORAGE_KEY);
-    if (stored && ["table", "card"].includes(stored)) {
+    if (stored && ["table", "card", "kanban"].includes(stored)) {
       return stored as TaskViewMode;
     }
   } catch (error) {

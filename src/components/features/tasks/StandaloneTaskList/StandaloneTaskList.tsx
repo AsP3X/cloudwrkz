@@ -80,6 +80,8 @@ const getPriorityColor = (priority: string) => {
 
 export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = "UTC" }: StandaloneTaskListProps) => {
   const router = useRouter();
+  const [draggedTaskId, setDraggedTaskId] = React.useState<string | null>(null);
+  const [isUpdating, setIsUpdating] = React.useState(false);
 
   const handleToggleComplete = async (task: StandaloneTask) => {
     const nextStatus = task.status === "COMPLETED" ? "IN_PROGRESS" : "COMPLETED";
@@ -93,9 +95,56 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
     }
   };
 
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, taskId: string) => {
+    setDraggedTaskId(taskId);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>, targetStatus: string) => {
+    e.preventDefault();
+    if (!draggedTaskId) return;
+
+    const task = tasks.find((t) => t.id === draggedTaskId);
+    if (!task || task.status === targetStatus) {
+      setDraggedTaskId(null);
+      return;
+    }
+
+    setIsUpdating(true);
+    try {
+      await updateTodo(draggedTaskId, {
+        status: targetStatus as any,
+      });
+      router.refresh();
+    } catch (error) {
+      // Errors are logged server-side
+    } finally {
+      setIsUpdating(false);
+      setDraggedTaskId(null);
+    }
+  };
+
   // Separate active and completed tasks
   const activeTasks = tasks.filter((task) => task.status !== "COMPLETED");
   const completedTasks = tasks.filter((task) => task.status === "COMPLETED");
+
+  const STATUS_COLUMNS: Array<{ value: string; label: string; hint?: string }> = [
+    { value: "NOT_STARTED", label: "Not Started" },
+    { value: "IN_PROGRESS", label: "In Progress" },
+    { value: "BLOCKED", label: "Blocked" },
+    { value: "COMPLETED", label: "Completed" },
+    { value: "CANCELLED", label: "Cancelled" },
+  ];
+
+  const tasksByStatus = STATUS_COLUMNS.reduce<Record<string, StandaloneTask[]>>((acc, column) => {
+    acc[column.value] = tasks.filter((task) => task.status === column.value);
+    return acc;
+  }, {});
 
   const renderTaskCard = (task: StandaloneTask) => (
     <div key={task.id} className="p-3 sm:p-4">
@@ -313,8 +362,68 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
 
   return (
     <>
+      {/* Kanban View */}
+      {viewMode === "kanban" && (
+        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 overflow-x-auto">
+          <div className="flex items-center justify-between px-4 pt-4 pb-2 text-xs text-neutral-600 dark:text-neutral-400">
+            <span>
+              Drag tasks between columns to update their status.
+            </span>
+            {isUpdating && (
+              <span className="italic text-neutral-500 dark:text-neutral-500">
+                Updating…
+              </span>
+            )}
+          </div>
+          <div className="flex gap-4 md:gap-6 px-4 pb-4 min-w-max">
+            {STATUS_COLUMNS.map((column) => {
+              const columnTasks = tasksByStatus[column.value] || [];
+              return (
+                <div
+                  key={column.value}
+                  className="w-64 md:w-72 bg-neutral-50/70 dark:bg-neutral-900/60 rounded-xl border border-neutral-200/80 dark:border-neutral-800/80 flex-shrink-0 flex flex-col"
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => canManage && handleDrop(e, column.value)}
+                >
+                  <div className="px-3 py-3 border-b border-neutral-200/80 dark:border-neutral-800/80 flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-neutral-600 dark:text-neutral-300">
+                        {column.label}
+                      </div>
+                      <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                        {columnTasks.length} {columnTasks.length === 1 ? "task" : "tasks"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2">
+                    {columnTasks.length === 0 && (
+                      <div className="text-[11px] text-neutral-400 dark:text-neutral-500 px-2 py-4 text-center border-2 border-dashed border-neutral-200 dark:border-neutral-800 rounded-lg">
+                        No tasks in this column
+                      </div>
+                    )}
+                    {columnTasks.map((task) => (
+                      <div
+                        key={task.id}
+                        className={cn(
+                          "rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-soft-lg",
+                          canManage && "cursor-move"
+                        )}
+                        draggable={canManage}
+                        onDragStart={(e) => canManage && handleDragStart(e, task.id)}
+                      >
+                        {renderTaskCard(task)}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Active Tasks */}
-      {activeTasks.length > 0 && (
+      {viewMode !== "kanban" && activeTasks.length > 0 && (
         <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
           {viewMode === "card" && (
             <div className="divide-y divide-neutral-200 dark:divide-neutral-700">
@@ -368,7 +477,7 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
       )}
 
       {/* Completed Tasks */}
-      {completedTasks.length > 0 && (
+      {viewMode !== "kanban" && completedTasks.length > 0 && (
         <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden mt-6">
           <div className="px-6 py-4 border-b border-neutral-200 dark:border-neutral-700">
             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
