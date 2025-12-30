@@ -9,20 +9,16 @@
  *   pnpm cli                          Interactive mode
  *   pnpm cli user <command>           User management commands
  *   pnpm cli group <command>          Group management commands
- *   pnpm cli module <command>         Module management commands (future)
+ *   pnpm cli module <command>        Module management commands
  *   pnpm cli help                     Show help
  */
 
 import {
   menu,
   separator,
-  prompt,
-  confirm,
   clear,
   header,
-  success,
   error,
-  warning,
   info,
   notice,
   waitForEnter,
@@ -62,6 +58,55 @@ if (args.length === 0) {
   executeCommand(args);
 }
 
+/**
+ * Standardized menu runner helper
+ * Ensures consistent menu structure across all submenus
+ */
+type MenuAction = {
+  key: string;
+  label: string;
+  description: string;
+  handler: () => Promise<void>;
+};
+
+async function runMenu(
+  title: string,
+  subtitle: string,
+  actions: MenuAction[],
+  showBack: boolean = true
+): Promise<void> {
+  while (true) {
+    clear();
+    header(title, subtitle);
+
+    const menuItems = actions.map((action) => ({
+      key: action.key,
+      label: action.label,
+      description: action.description,
+    }));
+
+    if (showBack) {
+      menuItems.push({
+        key: "b",
+        label: "⬅️  Back to Main Menu",
+        description: "Return to main menu",
+      });
+    }
+
+    const choice = await menu("Select an action:", menuItems);
+
+    if (choice === "b" && showBack) {
+      return;
+    }
+
+    const selectedAction = actions.find((a) => a.key === choice);
+    if (selectedAction) {
+      await selectedAction.handler();
+      await waitForEnter();
+    }
+  }
+}
+
 async function runInteractiveMode() {
   while (true) {
     clear();
@@ -94,34 +139,9 @@ async function runInteractiveMode() {
         description: "Manage projects and project members",
       },
       {
-        key: "t",
-        label: "📋 Todo Management",
-        description: "Manage todos and todo assignments",
-      },
-      {
-        key: "tk",
-        label: "🎫 Ticket Management",
-        description: "Manage support tickets",
-      },
-      {
-        key: "tm",
-        label: "⏱️  Time Tracking",
-        description: "Manage time entries and tracking",
-      },
-      {
         key: "perm",
         label: "🔑 Permission Management",
         description: "Manage permissions and access control",
-      },
-      {
-        key: "stats",
-        label: "📊 Statistics & Analytics",
-        description: "View system statistics and reports",
-      },
-      {
-        key: "db",
-        label: "🗄️  Database Maintenance",
-        description: "Database operations and maintenance",
       },
       {
         key: "h",
@@ -151,23 +171,8 @@ async function runInteractiveMode() {
       case "p":
         await runProjectInteractive();
         break;
-      case "t":
-        await runTodoInteractive();
-        break;
-      case "tk":
-        await runTicketInteractive();
-        break;
-      case "tm":
-        await runTimeInteractive();
-        break;
       case "perm":
         await runPermissionInteractive();
-        break;
-      case "stats":
-        await runStatsInteractive();
-        break;
-      case "db":
-        await runDbInteractive();
         break;
       case "h":
         clear();
@@ -187,54 +192,41 @@ async function runInteractiveMode() {
 async function runUserInteractive() {
   const userCli = await import("./user-cli");
 
-  while (true) {
-    clear();
-    header("User Management", "Manage user accounts, roles, and permissions");
-
-    const choice = await menu("Select an action:", [
+  await runMenu(
+    "User Management",
+    "Manage user accounts, roles, and permissions",
+    [
       {
         key: "s",
         label: "🔍 Select User(s)",
         description: "Select one or more users to perform actions on",
+        handler: async () => {
+          const selectedUsers = await selectUsersForActions();
+          if (selectedUsers && selectedUsers.length > 0) {
+            await runUserActionsInteractive(selectedUsers);
+          }
+        },
       },
       {
         key: "c",
         label: "➕ Create User",
         description: "Create a new user account",
+        handler: async () => {
+          clear();
+          await userCli.handleCreateInteractive();
+        },
       },
       {
         key: "l",
         label: "📋 List Users",
         description: "View all users with filters and search",
+        handler: async () => {
+          clear();
+          await userCli.handleListInteractive();
+        },
       },
-      {
-        key: "back",
-        label: "⬅️  Back to Main Menu",
-        description: "Return to main menu",
-      },
-    ]);
-
-    switch (choice) {
-      case "s":
-        const selectedUsers = await selectUsersForActions();
-        if (selectedUsers && selectedUsers.length > 0) {
-          await runUserActionsInteractive(selectedUsers);
-        }
-        break;
-      case "c":
-        clear();
-        await userCli.handleCreateInteractive();
-        await waitForEnter();
-        break;
-      case "l":
-        clear();
-        await userCli.handleListInteractive();
-        await waitForEnter();
-        break;
-      case "back":
-        return;
-    }
-  }
+    ]
+  );
 }
 
 async function selectUsersForActions(): Promise<{ id: string; email: string; name: string | null }[] | null> {
@@ -287,10 +279,17 @@ async function selectUsersForActions(): Promise<{ id: string; email: string; nam
       {
         pageSize: 15,
         emptyMessage: "No users found",
+        allowBack: true,
+        backLabel: "⬅️  Back to User Management",
       }
     );
 
-    if (!selectedUsers || selectedUsers.length === 0) {
+    if (!selectedUsers) {
+      // Back was selected - return immediately without message
+      return null;
+    }
+
+    if (selectedUsers.length === 0) {
       notice("No users selected.", "warning");
       await waitForEnter();
       return null;
@@ -745,533 +744,337 @@ async function runCookieConsentInteractiveWithUser(user: { id: string; email: st
 }
 
 async function runGroupInteractive() {
-  while (true) {
-    clear();
-    header("Group Management", "Manage groups and team memberships");
+  const groupCli = await import("./group-cli");
 
-    const choice = await menu("Select an action:", [
+  await runMenu(
+    "Group Management",
+    "Manage groups and team memberships",
+    [
       {
         key: "c",
         label: "➕ Create Group",
         description: "Create a new group",
+        handler: async () => {
+          clear();
+          await groupCli.handleCreateInteractive();
+        },
       },
       {
         key: "l",
         label: "📋 List Groups",
         description: "View all groups",
+        handler: async () => {
+          clear();
+          await groupCli.handleListInteractive();
+        },
       },
       {
         key: "s",
         label: "🔍 Show Group Details",
         description: "View detailed group information",
+        handler: async () => {
+          clear();
+          await groupCli.handleShowInteractive();
+        },
       },
       {
         key: "u",
         label: "✏️  Update Group",
         description: "Modify group name or description",
+        handler: async () => {
+          clear();
+          await groupCli.handleUpdateInteractive();
+        },
       },
       {
         key: "aa",
         label: "➕ Add Agent",
         description: "Add an agent to a group",
+        handler: async () => {
+          clear();
+          await groupCli.handleAddAgentInteractive();
+        },
       },
       {
         key: "ra",
         label: "➖ Remove Agent",
         description: "Remove an agent from a group",
+        handler: async () => {
+          clear();
+          await groupCli.handleRemoveAgentInteractive();
+        },
       },
       {
         key: "la",
         label: "👥 List Agents",
         description: "View all agents in a group",
+        handler: async () => {
+          clear();
+          await groupCli.handleListAgentsInteractive();
+        },
       },
       {
         key: "d",
         label: "🗑️  Delete Group",
         description: "Delete a group (irreversible)",
+        handler: async () => {
+          clear();
+          await groupCli.handleDeleteInteractive();
+        },
       },
-      {
-        key: "b",
-        label: "⬅️  Back to Main Menu",
-        description: "Return to main menu",
-      },
-    ]);
-
-    const groupCli = await import("./group-cli");
-
-    switch (choice) {
-      case "c":
-        clear();
-        await groupCli.handleCreateInteractive();
-        await waitForEnter();
-        break;
-      case "l":
-        clear();
-        await groupCli.handleListInteractive();
-        await waitForEnter();
-        break;
-      case "s":
-        clear();
-        await groupCli.handleShowInteractive();
-        await waitForEnter();
-        break;
-      case "u":
-        clear();
-        await groupCli.handleUpdateInteractive();
-        await waitForEnter();
-        break;
-      case "aa":
-        clear();
-        await groupCli.handleAddAgentInteractive();
-        await waitForEnter();
-        break;
-      case "ra":
-        clear();
-        await groupCli.handleRemoveAgentInteractive();
-        await waitForEnter();
-        break;
-      case "la":
-        clear();
-        await groupCli.handleListAgentsInteractive();
-        await waitForEnter();
-        break;
-      case "d":
-        clear();
-        await groupCli.handleDeleteInteractive();
-        await waitForEnter();
-        break;
-      case "b":
-        return;
-    }
-  }
+    ]
+  );
 }
 
 async function runModuleInteractive() {
   const moduleCli = await import("./module-cli");
 
-  while (true) {
-    clear();
-    header("Module Management", "Configure and manage system modules");
-
-    const choice = await menu("Select an action:", [
+  await runMenu(
+    "Module Management",
+    "Configure and manage system modules",
+    [
       {
         key: "l",
         label: "📋 List Modules",
         description: "View all modules and their status",
+        handler: async () => {
+          clear();
+          await moduleCli.handleListInteractive();
+        },
       },
       {
         key: "e",
         label: "✅ Enable Module",
         description: "Enable a system module",
+        handler: async () => {
+          clear();
+          await moduleCli.handleEnableInteractive();
+        },
       },
       {
         key: "d",
         label: "❌ Disable Module",
         description: "Disable a system module",
+        handler: async () => {
+          clear();
+          await moduleCli.handleDisableInteractive();
+        },
       },
       {
         key: "s",
         label: "🔍 Show Module Details",
         description: "View detailed module information",
+        handler: async () => {
+          clear();
+          await moduleCli.handleShowInteractive();
+        },
       },
       {
         key: "c",
         label: "⚙️  Configure Module",
         description: "Update module configuration",
+        handler: async () => {
+          clear();
+          await moduleCli.handleConfigInteractive();
+        },
       },
       {
         key: "st",
         label: "📊 Module Status",
         description: "View overall module status",
+        handler: async () => {
+          clear();
+          await moduleCli.handleStatusInteractive();
+        },
       },
       {
         key: "sync",
         label: "🔄 Sync Modules",
         description: "Sync modules from code definitions",
+        handler: async () => {
+          clear();
+          await moduleCli.handleSyncInteractive();
+        },
       },
-      {
-        key: "b",
-        label: "⬅️  Back to Main Menu",
-        description: "Return to main menu",
-      },
-    ]);
-
-    switch (choice) {
-      case "l":
-        clear();
-        await moduleCli.handleListInteractive();
-        await waitForEnter();
-        break;
-      case "e":
-        clear();
-        await moduleCli.handleEnableInteractive();
-        await waitForEnter();
-        break;
-      case "d":
-        clear();
-        await moduleCli.handleDisableInteractive();
-        await waitForEnter();
-        break;
-      case "s":
-        clear();
-        await moduleCli.handleShowInteractive();
-        await waitForEnter();
-        break;
-      case "c":
-        clear();
-        await moduleCli.handleConfigInteractive();
-        await waitForEnter();
-        break;
-      case "st":
-        clear();
-        await moduleCli.handleStatusInteractive();
-        await waitForEnter();
-        break;
-      case "sync":
-        clear();
-        await moduleCli.handleSyncInteractive();
-        await waitForEnter();
-        break;
-      case "b":
-        return;
-    }
-  }
+    ]
+  );
 }
 
 async function runSessionInteractive() {
   const sessionCli = await import("./session-cli");
 
-  while (true) {
-    clear();
-    header("Session Management", "Manage user sessions and authentication");
-
-    const choice = await menu("Select an action:", [
+  await runMenu(
+    "Session Management",
+    "Manage user sessions and authentication",
+    [
       {
         key: "l",
         label: "📋 List Sessions",
         description: "View all sessions with filters",
+        handler: async () => {
+          clear();
+          await sessionCli.handleListInteractive();
+        },
       },
       {
         key: "s",
         label: "🔍 Show Session Details",
         description: "View detailed session information",
+        handler: async () => {
+          clear();
+          await sessionCli.handleShowInteractive();
+        },
       },
       {
         key: "r",
         label: "🚫 Revoke Session",
         description: "Revoke a specific session",
+        handler: async () => {
+          clear();
+          await sessionCli.handleRevokeInteractive();
+        },
       },
       {
         key: "ru",
         label: "🚫 Revoke User Sessions",
         description: "Revoke all sessions for a user",
+        handler: async () => {
+          clear();
+          await sessionCli.handleRevokeUserInteractive();
+        },
       },
       {
         key: "ra",
         label: "🚫 Revoke All Sessions",
         description: "Revoke all sessions (with confirmation)",
+        handler: async () => {
+          clear();
+          await sessionCli.handleRevokeAll();
+        },
       },
       {
         key: "c",
         label: "🧹 Cleanup Expired",
         description: "Remove expired sessions",
+        handler: async () => {
+          clear();
+          await sessionCli.handleCleanupInteractive();
+        },
       },
       {
         key: "st",
         label: "📊 Session Statistics",
         description: "View session statistics",
+        handler: async () => {
+          clear();
+          await sessionCli.handleStatsInteractive();
+        },
       },
-      {
-        key: "b",
-        label: "⬅️  Back to Main Menu",
-        description: "Return to main menu",
-      },
-    ]);
-
-    switch (choice) {
-      case "l":
-        clear();
-        await sessionCli.handleListInteractive();
-        await waitForEnter();
-        break;
-      case "s":
-        clear();
-        await sessionCli.handleShowInteractive();
-        await waitForEnter();
-        break;
-      case "r":
-        clear();
-        await sessionCli.handleRevokeInteractive();
-        await waitForEnter();
-        break;
-      case "ru":
-        clear();
-        await sessionCli.handleRevokeUserInteractive();
-        await waitForEnter();
-        break;
-      case "ra":
-        clear();
-        await sessionCli.handleRevokeAll();
-        await waitForEnter();
-        break;
-      case "c":
-        clear();
-        await sessionCli.handleCleanupInteractive();
-        await waitForEnter();
-        break;
-      case "st":
-        clear();
-        await sessionCli.handleStatsInteractive();
-        await waitForEnter();
-        break;
-      case "b":
-        return;
-    }
-  }
+    ]
+  );
 }
 
 async function runProjectInteractive() {
   const projectCli = await import("./project-cli");
 
-  while (true) {
-    clear();
-    header("Project Management", "Manage projects and project members");
-
-    const choice = await menu("Select an action:", [
+  await runMenu(
+    "Project Management",
+    "Manage projects and project members",
+    [
       {
         key: "l",
         label: "📋 List Projects",
         description: "View all projects",
+        handler: async () => {
+          clear();
+          await projectCli.handleListInteractive();
+        },
       },
       {
         key: "c",
         label: "➕ Create Project",
         description: "Create a new project",
+        handler: async () => {
+          clear();
+          await projectCli.handleCreateInteractive();
+        },
       },
       {
         key: "s",
         label: "🔍 Show Project Details",
         description: "View detailed project information",
+        handler: async () => {
+          clear();
+          await projectCli.handleShowInteractive();
+        },
       },
-      {
-        key: "u",
-        label: "✏️  Update Project",
-        description: "Modify project details",
-      },
-      {
-        key: "am",
-        label: "➕ Add Member",
-        description: "Add a user to project",
-      },
-      {
-        key: "rm",
-        label: "➖ Remove Member",
-        description: "Remove a user from project",
-      },
-      {
-        key: "lm",
-        label: "👥 List Members",
-        description: "View project members",
-      },
-      {
-        key: "ag",
-        label: "➕ Add Group",
-        description: "Add a group to project",
-      },
-      {
-        key: "rg",
-        label: "➖ Remove Group",
-        description: "Remove a group from project",
-      },
-      {
-        key: "lg",
-        label: "👥 List Groups",
-        description: "View project groups",
-      },
-      {
-        key: "d",
-        label: "🗑️  Delete Project",
-        description: "Delete a project (irreversible)",
-      },
-      {
-        key: "b",
-        label: "⬅️  Back to Main Menu",
-        description: "Return to main menu",
-      },
-    ]);
-
-    switch (choice) {
-      case "l":
-        clear();
-        await projectCli.handleListInteractive();
-        await waitForEnter();
-        break;
-      case "c":
-        clear();
-        await projectCli.handleCreateInteractive();
-        await waitForEnter();
-        break;
-      case "s":
-        clear();
-        await projectCli.handleShowInteractive();
-        await waitForEnter();
-        break;
-      case "u":
-        clear();
-        notice("Update project functionality - use non-interactive mode: pnpm cli project update <id|code> [--name=NAME] [--status=STATUS]", "info");
-        await waitForEnter();
-        break;
-      case "am":
-        clear();
-        notice("Add member functionality - use non-interactive mode: pnpm cli project add-member <project> <user> [--role=ROLE]", "info");
-        await waitForEnter();
-        break;
-      case "rm":
-        clear();
-        notice("Remove member functionality - use non-interactive mode: pnpm cli project remove-member <project> <user>", "info");
-        await waitForEnter();
-        break;
-      case "lm":
-        clear();
-        notice("List members functionality - use non-interactive mode: pnpm cli project list-members <project>", "info");
-        await waitForEnter();
-        break;
-      case "ag":
-        clear();
-        notice("Add group functionality - use non-interactive mode: pnpm cli project add-group <project> <group>", "info");
-        await waitForEnter();
-        break;
-      case "rg":
-        clear();
-        notice("Remove group functionality - use non-interactive mode: pnpm cli project remove-group <project> <group>", "info");
-        await waitForEnter();
-        break;
-      case "lg":
-        clear();
-        notice("List groups functionality - use non-interactive mode: pnpm cli project list-groups <project>", "info");
-        await waitForEnter();
-        break;
-      case "d":
-        clear();
-        notice("Delete project functionality - use non-interactive mode: pnpm cli project delete <id|code>", "info");
-        await waitForEnter();
-        break;
-      case "b":
-        return;
-    }
-  }
-}
-
-async function runTodoInteractive() {
-  clear();
-  notice("Todo Management CLI - Use non-interactive mode: pnpm cli todo <command>", "info");
-  await waitForEnter();
-}
-
-async function runTicketInteractive() {
-  clear();
-  notice("Ticket Management CLI - Use non-interactive mode: pnpm cli ticket <command>", "info");
-  await waitForEnter();
-}
-
-async function runTimeInteractive() {
-  clear();
-  notice("Time Tracking CLI - Use non-interactive mode: pnpm cli time <command>", "info");
-  await waitForEnter();
+    ]
+  );
 }
 
 async function runPermissionInteractive() {
   const permissionCli = await import("./permission-cli");
 
-  while (true) {
-    clear();
-    header("Permission Management", "Manage permissions and access control");
-
-    const choice = await menu("Select an action:", [
+  await runMenu(
+    "Permission Management",
+    "Manage permissions and access control",
+    [
       {
         key: "l",
         label: "📋 List Permissions",
         description: "View all permissions with optional filters",
+        handler: async () => {
+          clear();
+          await permissionCli.handleListInteractive();
+        },
       },
       {
         key: "s",
         label: "🔍 Show Permission Details",
         description: "View detailed information for a permission",
+        handler: async () => {
+          clear();
+          await permissionCli.handleShowInteractive();
+        },
       },
       {
         key: "g",
         label: "➕ Grant Permission to Group",
         description: "Assign a permission to a group",
+        handler: async () => {
+          clear();
+          await permissionCli.handleGrantInteractive();
+        },
       },
       {
         key: "r",
         label: "➖ Revoke Permission from Group",
         description: "Remove a permission from a group",
+        handler: async () => {
+          clear();
+          await permissionCli.handleRevokeInteractive();
+        },
       },
       {
         key: "lg",
         label: "👥 List Group Permissions",
         description: "View permissions assigned to a group",
+        handler: async () => {
+          clear();
+          await permissionCli.handleListGroupInteractive();
+        },
       },
       {
         key: "sync",
         label: "🔄 Sync Permissions",
         description: "Show how to sync permission definitions",
+        handler: async () => {
+          clear();
+          await permissionCli.handleSyncInteractive();
+        },
       },
-      {
-        key: "b",
-        label: "⬅️  Back to Main Menu",
-        description: "Return to main menu",
-      },
-    ]);
-
-    switch (choice) {
-      case "l":
-        clear();
-        await permissionCli.handleListInteractive();
-        await waitForEnter();
-        break;
-      case "s":
-        clear();
-        await permissionCli.handleShowInteractive();
-        await waitForEnter();
-        break;
-      case "g":
-        clear();
-        await permissionCli.handleGrantInteractive();
-        await waitForEnter();
-        break;
-      case "r":
-        clear();
-        await permissionCli.handleRevokeInteractive();
-        await waitForEnter();
-        break;
-      case "lg":
-        clear();
-        await permissionCli.handleListGroupInteractive();
-        await waitForEnter();
-        break;
-      case "sync":
-        clear();
-        await permissionCli.handleSyncInteractive();
-        await waitForEnter();
-        break;
-      case "b":
-        return;
-    }
-  }
-}
-
-async function runStatsInteractive() {
-  clear();
-  notice("Statistics & Analytics CLI - Use non-interactive mode: pnpm cli stats <command>", "info");
-  await waitForEnter();
-}
-
-async function runDbInteractive() {
-  clear();
-  notice("Database Maintenance CLI - Use non-interactive mode: pnpm cli db <command>", "info");
-  await waitForEnter();
+    ]
+  );
 }
 
 async function executeCommand(args: string[]) {
@@ -1374,7 +1177,7 @@ function showHelp() {
   console.log(chalk.cyan("  group     "), "Group management (create, delete, list, show, update, add-agent, remove-agent, list-agents)");
   console.log(chalk.cyan("  module    "), "Module management (list, enable, disable, show, config, status, sync)");
   console.log(chalk.cyan("  session   "), "Session management (list, show, revoke, revoke-user, revoke-all, cleanup, stats)");
-  console.log(chalk.cyan("  project   "), "Project management (list, create, show, update, delete, add-member, remove-member, list-members, add-group, remove-group, list-groups)");
+  console.log(chalk.cyan("  project   "), "Project management (list, create, show)");
   console.log(chalk.cyan("  todo      "), "Todo management (list, show, create, update, assign, complete, delete)");
   console.log(chalk.cyan("  ticket    "), "Ticket management (list, show, create, update, assign, close, reopen, delete)");
   console.log(chalk.cyan("  time      "), "Time tracking (list, show, start, stop, pause, resume, create, update, delete, export, report)");
@@ -1411,10 +1214,12 @@ function showHelp() {
 
   console.log(chalk.bold("Interactive Mode:\n"));
   console.log("  Run 'pnpm cli' without arguments to start interactive mode");
+  console.log("  Interactive mode provides a menu-driven interface for all available operations");
 
   separator();
 
   console.log(chalk.bold("For detailed help on a category:\n"));
   console.log("  pnpm cli user");
   console.log("  pnpm cli group");
+  console.log("  pnpm cli module");
 }

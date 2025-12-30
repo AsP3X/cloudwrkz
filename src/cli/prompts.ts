@@ -139,19 +139,23 @@ export async function promptPassword(
 /**
  * Prompt user to select from a list of options
  * Uses list with loop: false to prevent infinite scrolling
+ * Shows all options when terminal is large enough
  */
 export async function select(
   question: string,
   options: string[],
   displayNames?: string[]
 ): Promise<string> {
+  // Always show all options - inquirer will handle scrolling if needed
+  const pageSize = options.length;
+
   const { choice } = await inquirer.prompt([
     {
       type: "list",
       name: "choice",
       message: chalk.cyan(question),
       choices: displayNames || options,
-      pageSize: 10,
+      pageSize,
       loop: false, // Disable looping - cursor stops at top and bottom
     },
   ]);
@@ -179,7 +183,7 @@ export async function confirm(
 /**
  * Display a menu and return the selected option key
  * Enhanced with better visual design and keyboard navigation
- * Uses list with loop: false to prevent infinite scrolling
+ * Shows all menu items when terminal is large enough
  */
 export async function menu(
   title: string,
@@ -206,13 +210,19 @@ export async function menu(
     };
   });
 
+  // Force inquirer to show all items by setting pageSize very high
+  // Inquirer v9 automatically limits based on terminal height, but setting a high value
+  // ensures it uses the maximum available space
+  // The key is to set it higher than the number of options so inquirer shows all
+  const pageSize = options.length > 0 ? Math.max(options.length, 50) : 10;
+
   const { choice } = await inquirer.prompt([
     {
       type: "list",
       name: "choice",
       message: chalk.bold.cyan(title),
       choices,
-      pageSize: 15,
+      pageSize,
       loop: false, // Disable looping - cursor stops at top and bottom
     },
   ]);
@@ -223,6 +233,7 @@ export async function menu(
 /**
  * Create a searchable select prompt
  * Uses list with loop: false to prevent infinite scrolling
+ * Shows all options when terminal is large enough
  */
 export async function searchSelect(
   question: string,
@@ -234,13 +245,16 @@ export async function searchSelect(
     value: options[idx],
   }));
 
+  // Always show all options - inquirer will handle scrolling if needed
+  const pageSize = options.length;
+
   const { choice } = await inquirer.prompt([
     {
       type: "list",
       name: "choice",
       message: chalk.cyan(question),
       choices,
-      pageSize: 10,
+      pageSize,
       loop: false, // Disable looping - cursor stops at top and bottom
     },
   ]);
@@ -318,6 +332,7 @@ export function createTable(headers: string[], options?: { colWidths?: number[] 
 /**
  * Display paginated list with search
  * Uses list with loop: false to prevent infinite scrolling
+ * Supports a "back" option to cancel and return null
  */
 export async function paginatedSelect<T>(
   question: string,
@@ -327,6 +342,8 @@ export async function paginatedSelect<T>(
     pageSize?: number;
     searchable?: boolean;
     emptyMessage?: string;
+    allowBack?: boolean;
+    backLabel?: string;
   }
 ): Promise<T | null> {
   if (items.length === 0) {
@@ -337,11 +354,21 @@ export async function paginatedSelect<T>(
   }
 
   const pageSize = options?.pageSize || 10;
+  // Use a unique string that's unlikely to conflict with actual data
+  const BACK_VALUE = "__CLI_BACK_OPTION__" as unknown as T;
 
-  const choices = items.map((item, index) => ({
+  const choices: Array<{ name: string; value: T }> = items.map((item, index) => ({
     name: displayFn(item, index),
     value: item,
   }));
+
+  // Add back option if enabled
+  if (options?.allowBack) {
+    choices.push({
+      name: chalk.gray(options.backLabel || "⬅️  Back"),
+      value: BACK_VALUE,
+    });
+  }
 
   const { selected } = await inquirer.prompt([
     {
@@ -349,16 +376,18 @@ export async function paginatedSelect<T>(
       name: "selected",
       message: chalk.cyan(question),
       choices,
-      pageSize: Math.min(pageSize, items.length),
+      pageSize: Math.min(pageSize, choices.length),
       loop: false, // Disable looping - cursor stops at top and bottom
     },
   ]);
 
-  return selected;
+  // Return null if back was selected, otherwise return the selected item
+  return selected === BACK_VALUE ? null : (selected as T);
 }
 
 /**
  * Display paginated checkbox list for multiple selections
+ * Supports a "back" option to cancel and return null
  */
 export async function paginatedCheckbox<T>(
   question: string,
@@ -367,21 +396,33 @@ export async function paginatedCheckbox<T>(
   options?: {
     pageSize?: number;
     emptyMessage?: string;
+    allowBack?: boolean;
+    backLabel?: string;
   }
-): Promise<T[]> {
+): Promise<T[] | null> {
   if (items.length === 0) {
     if (options?.emptyMessage) {
       console.log(chalk.yellow(options.emptyMessage));
     }
-    return [];
+    return options?.allowBack ? null : [];
   }
 
   const pageSize = options?.pageSize || 15;
+  // Use a unique string that's unlikely to conflict with actual data
+  const BACK_VALUE = "__CLI_BACK_OPTION__" as unknown as T;
 
-  const choices = items.map((item, index) => ({
+  const choices: Array<{ name: string; value: T }> = items.map((item, index) => ({
     name: displayFn(item, index),
     value: item,
   }));
+
+  // Add back option if enabled
+  if (options?.allowBack) {
+    choices.push({
+      name: chalk.gray(options.backLabel || "⬅️  Back"),
+      value: BACK_VALUE,
+    });
+  }
 
   const { selected } = await inquirer.prompt([
     {
@@ -389,11 +430,21 @@ export async function paginatedCheckbox<T>(
       name: "selected",
       message: chalk.cyan(question),
       choices,
-      pageSize: Math.min(pageSize, items.length),
+      pageSize: Math.min(pageSize, choices.length),
     },
   ]);
 
-  return selected || [];
+  if (!selected || selected.length === 0) {
+    return options?.allowBack ? null : [];
+  }
+
+  // Check if back was selected
+  if (selected.includes(BACK_VALUE)) {
+    return null;
+  }
+
+  // Filter out the back value and return selected items
+  return selected.filter((item: T) => item !== BACK_VALUE) as T[];
 }
 
 /**
