@@ -229,7 +229,7 @@ async function runUserInteractive() {
   );
 }
 
-async function selectUsersForActions(): Promise<{ id: string; email: string; name: string | null }[] | null> {
+async function selectUsersForActions(): Promise<{ id: string; email: string; originalEmail: string | null; name: string | null; role: "USER" | "ADMIN" | "MODERATOR" | "AGENT"; status: "PENDING" | "ACTIVE" | "SUSPENDED" | "BANNED" | "DELETED" }[] | null> {
   const { prisma } = await import("../lib/db/prisma");
   const { formatUserName } = await import("../lib/utils/users");
 
@@ -315,7 +315,7 @@ async function selectUsersForActions(): Promise<{ id: string; email: string; nam
   }
 }
 
-async function runUserActionsInteractive(selectedUsers: { id: string; email: string; name: string | null }[]) {
+async function runUserActionsInteractive(selectedUsers: { id: string; email: string; originalEmail: string | null; name: string | null; role: "USER" | "ADMIN" | "MODERATOR" | "AGENT"; status: "PENDING" | "ACTIVE" | "SUSPENDED" | "BANNED" | "DELETED" }[]) {
   const userCli = await import("./user-cli");
   const { prisma } = await import("../lib/db/prisma");
   const { formatStatus, formatRole, displayKeyValue, sectionHeader } = await import("./prompts");
@@ -600,7 +600,7 @@ async function runUserActionsInteractive(selectedUsers: { id: string; email: str
   }
 }
 
-async function showUserDetails(user: { id: string; email: string; name: string | null }) {
+async function showUserDetails(user: { id: string; email: string; originalEmail?: string | null; name: string | null }) {
   const { prisma } = await import("../lib/db/prisma");
   const { formatStatus, formatRole, displayKeyValue, sectionHeader, createTable } = await import("./prompts");
 
@@ -691,7 +691,7 @@ async function showUserDetails(user: { id: string; email: string; name: string |
   }
 }
 
-async function runCookieConsentInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
+async function runCookieConsentInteractiveWithUser(user: { id: string; email: string; originalEmail?: string | null; name: string | null }) {
   const userCli = await import("./user-cli");
 
   while (true) {
