@@ -131,6 +131,73 @@ export async function getGroupDynamicTicketPermissions(groupId: string) {
 }
 
 /**
+ * Get permissions for a specific user
+ */
+export async function getUserPermissions(userId: string) {
+  await requireAnyPermission("admin.permissions.view", "admin.permissions.manage");
+
+  try {
+    if (!prisma.userPermission) {
+      return [];
+    }
+
+    const userPermissions = await prisma.userPermission.findMany({
+      where: { userId },
+      include: {
+        permission: true,
+      },
+      orderBy: {
+        permission: {
+          category: "asc",
+        },
+      },
+    });
+
+    return userPermissions.map((up) => up.permission);
+  } catch (error: any) {
+    console.error("Error fetching user permissions:", error);
+    return [];
+  }
+}
+
+/**
+ * Get dynamic ticket permissions for a specific user
+ */
+export async function getUserDynamicTicketPermissions(userId: string) {
+  await requireAnyPermission("admin.permissions.view", "admin.permissions.manage");
+
+  try {
+    if (!prisma.userPermission) {
+      return [];
+    }
+
+    const userPermissions = await prisma.userPermission.findMany({
+      where: { userId },
+      include: {
+        permission: true,
+      },
+    });
+
+    // Filter for dynamic ticket permissions
+    return userPermissions
+      .map((up) => up.permission)
+      .filter((p) => isDynamicTicketPermission(p.key))
+      .map((p) => {
+        const parsed = parseTicketPermissionKey(p.key);
+        return {
+          ...p,
+          ticketId: parsed?.ticketId || null,
+          prefix: parsed?.prefix || null,
+          action: parsed?.action || null,
+        };
+      });
+  } catch (error: any) {
+    console.error("Error fetching user dynamic ticket permissions:", error);
+    return [];
+  }
+}
+
+/**
  * Seed permissions into the database
  * This should be run once to populate the permissions table
  */

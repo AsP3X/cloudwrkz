@@ -383,7 +383,7 @@ export async function getAgentGroups(agentId: string) {
  * Create or get a dynamic ticket permission
  * This creates the permission in the database if it doesn't exist
  */
-async function createOrGetDynamicPermission(
+export async function createOrGetDynamicPermission(
   permissionKey: string,
   ticketId: string,
   ticketPrefix: string,

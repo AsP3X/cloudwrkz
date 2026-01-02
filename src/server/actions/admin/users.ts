@@ -1,8 +1,8 @@
 "use server";
 
 import { prisma } from "@/lib/db/prisma";
-import { requireRole } from "@/lib/utils/auth-server";
-import { getUserPermissions } from "@/lib/utils/permissions";
+import { requireRole, requireAnyRole } from "@/lib/utils/auth-server";
+import { getUserPermissions, type TicketPermissionAction } from "@/lib/utils/permissions";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
@@ -201,6 +201,7 @@ export async function getAllUsersAdmin(filters: UserFilters = {}) {
             createdTickets: true,
             assignedTickets: true,
             sessions: true,
+            groupMemberships: true,
           },
         },
       },
@@ -799,6 +800,266 @@ export async function unbanUserAdmin(
     return {
       success: false,
       error: error.message || "Failed to unban user",
+    };
+  }
+}
+
+/**
+ * Add permission to user (supports both static and dynamic permissions)
+ */
+export async function addPermissionToUser(
+  userId: string,
+  permissionId: string
+): Promise<ActionResult> {
+  try {
+    await requireAnyRole("ADMIN", "MODERATOR");
+    const { requireAnyPermission } = await import("@/lib/utils/auth-server");
+    await requireAnyPermission("admin.permissions.manage");
+
+    // Check if already exists
+    const existing = await prisma.userPermission.findUnique({
+      where: {
+        userId_permissionId: {
+          userId,
+          permissionId,
+        },
+      },
+    });
+
+    if (existing) {
+      return {
+        success: false,
+        error: "Permission is already assigned to this user",
+      };
+    }
+
+    await prisma.userPermission.create({
+      data: {
+        userId,
+        permissionId,
+      },
+    });
+
+    // Clear permission cache for this user
+    const { clearPermissionCache } = await import("@/lib/utils/permissions");
+    clearPermissionCache(userId);
+
+    return {
+      success: true,
+      message: "Permission added to user successfully",
+    };
+  } catch (error: any) {
+    console.error("Add permission to user error:", error);
+    return {
+      success: false,
+      error: error.message || "Failed to add permission to user",
+    };
+  }
+}
+
+/**
+ * Add a dynamic ticket permission to a user
+ * Creates the permission if it doesn't exist
+ */
+export async function addDynamicTicketPermissionToUser(
+  userId: string,
+  ticketId: string,
+  ticketPrefix: string,
+  ticketNumber: string,
+  action: string
+): Promise<ActionResult<{ permissionId: string }>> {
+  try {
+    await requireAnyRole("ADMIN", "MODERATOR");
+    const { requireAnyPermission } = await import("@/lib/utils/auth-server");
+    await requireAnyPermission("admin.permissions.manage");
+
+    const { 
+      generateTicketPermissionKey, 
+      isValidTicketId,
+    } = await import("@/lib/utils/permissions");
+    const { createOrGetDynamicPermission } = await import("../groups");
+
+    // Validate ticket ID format
+    if (!isValidTicketId(ticketId)) {
+      return {
+        success: false,
+        error: "Invalid ticket ID format",
+      };
+    }
+
+    // Generate permission key using ticket ID and prefix
+    const permissionKey = generateTicketPermissionKey(ticketId, ticketPrefix, action as TicketPermissionAction);
+
+    // Create or get the permission
+    const permission = await createOrGetDynamicPermission(
+      permissionKey,
+      ticketId,
+      ticketPrefix,
+      ticketNumber,
+      action as TicketPermissionAction
+    );
+
+    // Check if already assigned to user
+    const existing = await prisma.userPermission.findUnique({
+      where: {
+        userId_permissionId: {
+          userId,
+          permissionId: permission.id,
+        },
+      },
+    });
+
+    if (existing) {
+      return {
+        success: false,
+        error: "Permission is already assigned to this user",
+      };
+    }
+
+    // Add to user
+    await prisma.userPermission.create({
+      data: {
+        userId,
+        permissionId: permission.id,
+      },
+    });
+
+    // Clear permission cache for this user
+    const { clearPermissionCache } = await import("@/lib/utils/permissions");
+    clearPermissionCache(userId);
+
+    // Revalidate all ticket-related pages to ensure permissions are updated
+    revalidatePath("/dashboard/tickets");
+    revalidatePath("/dashboard/tickets/[id]", "page");
+    revalidatePath("/dashboard");
+
+    return {
+      success: true,
+      data: { permissionId: permission.id },
+      message: "Dynamic ticket permission added to user successfully",
+    };
+  } catch (error: any) {
+    console.error("Add dynamic ticket permission to user error:", error);
+    return {
+      success: false,
+      error: error.message || "Failed to add dynamic ticket permission to user",
+    };
+  }
+}
+
+/**
+ * Remove permission from user
+ */
+export async function removePermissionFromUser(
+  userId: string,
+  permissionId: string
+): Promise<ActionResult> {
+  try {
+    await requireAnyRole("ADMIN", "MODERATOR");
+    const { requireAnyPermission } = await import("@/lib/utils/auth-server");
+    await requireAnyPermission("admin.permissions.manage");
+
+    await prisma.userPermission.delete({
+      where: {
+        userId_permissionId: {
+          userId,
+          permissionId,
+        },
+      },
+    });
+
+    // Clear permission cache for this user
+    const { clearPermissionCache } = await import("@/lib/utils/permissions");
+    clearPermissionCache(userId);
+
+    // Revalidate all ticket-related pages to ensure permissions are updated
+    revalidatePath("/dashboard/tickets");
+    revalidatePath("/dashboard/tickets/[id]", "page");
+    revalidatePath("/dashboard");
+
+    return {
+      success: true,
+      message: "Permission removed from user successfully",
+    };
+  } catch (error: any) {
+    console.error("Remove permission from user error:", error);
+    return {
+      success: false,
+      error: error.message || "Failed to remove permission from user",
+    };
+  }
+}
+
+/**
+ * Bulk update user permissions
+ * Supports both static permissions (by ID) and dynamic permissions (by key)
+ */
+export async function updateUserPermissions(
+  userId: string,
+  permissionIds: string[]
+): Promise<ActionResult> {
+  try {
+    await requireAnyRole("ADMIN", "MODERATOR");
+    const { requireAnyPermission } = await import("@/lib/utils/auth-server");
+    await requireAnyPermission("admin.permissions.manage");
+
+    // Get current permissions
+    const currentPermissions = await prisma.userPermission.findMany({
+      where: { userId },
+      select: { permissionId: true },
+    });
+
+    const currentIds = new Set(currentPermissions.map((p) => p.permissionId));
+    const newIds = new Set(permissionIds);
+
+    // Find permissions to add and remove
+    const toAdd = permissionIds.filter((id) => !currentIds.has(id));
+    const toRemove = currentPermissions
+      .filter((p) => !newIds.has(p.permissionId))
+      .map((p) => p.permissionId);
+
+    // Perform updates in transaction
+    await prisma.$transaction(async (tx) => {
+      // Remove permissions
+      if (toRemove.length > 0) {
+        await tx.userPermission.deleteMany({
+          where: {
+            userId,
+            permissionId: { in: toRemove },
+          },
+        });
+      }
+
+      // Add permissions
+      if (toAdd.length > 0) {
+        await tx.userPermission.createMany({
+          data: toAdd.map((permissionId) => ({
+            userId,
+            permissionId,
+          })),
+          skipDuplicates: true,
+        });
+      }
+    });
+
+    // Clear permission cache for this user
+    const { clearPermissionCache } = await import("@/lib/utils/permissions");
+    clearPermissionCache(userId);
+
+    // Revalidate all ticket-related pages to ensure permissions are updated
+    revalidatePath("/dashboard/tickets");
+    revalidatePath("/dashboard/tickets/[id]", "page");
+    revalidatePath("/dashboard");
+
+    return {
+      success: true,
+      message: "User permissions updated successfully",
+    };
+  } catch (error: any) {
+    console.error("Update user permissions error:", error);
+    return {
+      success: false,
+      error: error.message || "Failed to update user permissions",
     };
   }
 }

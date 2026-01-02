@@ -71,6 +71,7 @@ model User {
   ticketComments     TicketComment[]
   ticketActivities   TicketActivity[]  @relation("TicketActivityChanger")
   groupMemberships   GroupMembership[]
+  permissions        UserPermission[] // User permissions
   timeEntries        TimeEntry[]
   projectMemberships ProjectUser[]
   createdProjects    Project[]         @relation("ProjectCreator")
@@ -189,6 +190,7 @@ model Permission {
 
   // Relations
   groupPermissions GroupPermission[]
+  userPermissions UserPermission[]
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -213,6 +215,21 @@ model GroupPermission {
   @@index([groupId])
   @@index([permissionId])
   @@map("group_permissions")
+}
+
+// UserPermission model - links Users to Permissions
+model UserPermission {
+  id           String     @id @default(cuid())
+  userId       String
+  permissionId String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([userId, permissionId])
+  @@index([userId])
+  @@index([permissionId])
+  @@map("user_permissions")
 }
 
 // Agent Groups - only for agents

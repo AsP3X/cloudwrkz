@@ -9,6 +9,9 @@
  *   pnpm cli permission grant <group> <permission>
  *   pnpm cli permission revoke <group> <permission>
  *   pnpm cli permission list-group <group>
+ *   pnpm cli permission grant-user <user-email> <permission>
+ *   pnpm cli permission revoke-user <user-email> <permission>
+ *   pnpm cli permission list-user <user-email>
  *   pnpm cli permission sync
  */
 
@@ -50,6 +53,9 @@ Commands:
   grant <group> <permission>                     Grant permission to group
   revoke <group> <permission>                    Revoke permission from group
   list-group <group>                             List permissions for a group
+  grant-user <user-email> <permission>           Grant permission to user
+  revoke-user <user-email> <permission>          Revoke permission from user
+  list-user <user-email>                          List permissions for a user
   sync                                           Sync permissions from code definitions
 
 Examples:
@@ -57,6 +63,8 @@ Examples:
   pnpm cli permission list --category=tickets
   pnpm cli permission grant "Support Team" "tickets.create"
   pnpm cli permission list-group "Support Team"
+  pnpm cli permission grant-user "user@example.com" "tickets.create"
+  pnpm cli permission list-user "user@example.com"
 `);
   process.exit(0);
 }
@@ -84,6 +92,15 @@ if (shouldExecute && command) {
           break;
         case "sync":
           await handleSync();
+          break;
+        case "grant-user":
+          await handleGrantUser();
+          break;
+        case "revoke-user":
+          await handleRevokeUser();
+          break;
+        case "list-user":
+          await handleListUser();
           break;
         default:
           console.error(`Unknown command: ${command}`);
@@ -420,6 +437,201 @@ async function handleListGroup() {
 
 async function handleSync() {
   notice("Permission sync functionality - use seed-permissions script: pnpm db:seed-permissions", "info");
+}
+
+async function handleGrantUser() {
+  if (commandArgs.length < 3) {
+    console.error("Usage: grant-user <user-email> <permission>");
+    process.exit(1);
+  }
+
+  const userEmail = commandArgs[1];
+  const permissionKey = commandArgs[2];
+
+  const spinner = createSpinner("Granting permission...");
+  spinner.start();
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { email: userEmail },
+      select: { id: true },
+    });
+
+    if (!user) {
+      spinner.fail("User not found");
+      error(`User with email "${userEmail}" not found`);
+      process.exit(1);
+    }
+
+    const permission = await prisma.permission.findUnique({
+      where: { key: permissionKey },
+      select: { id: true },
+    });
+
+    if (!permission) {
+      spinner.fail("Permission not found");
+      error(`Permission "${permissionKey}" not found`);
+      process.exit(1);
+    }
+
+    const existing = await prisma.userPermission.findUnique({
+      where: {
+        userId_permissionId: {
+          userId: user.id,
+          permissionId: permission.id,
+        },
+      },
+    });
+
+    if (existing) {
+      spinner.succeed("Permission already granted");
+      notice(`User "${userEmail}" already has permission "${permissionKey}"`, "info");
+      return;
+    }
+
+    await prisma.userPermission.create({
+      data: {
+        userId: user.id,
+        permissionId: permission.id,
+      },
+    });
+
+    spinner.succeed("Permission granted");
+    console.log(`\n✅ Permission "${permissionKey}" has been granted to user "${userEmail}".`);
+  } catch (err) {
+    spinner.fail("Failed to grant permission");
+    error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+}
+
+async function handleRevokeUser() {
+  if (commandArgs.length < 3) {
+    console.error("Usage: revoke-user <user-email> <permission>");
+    process.exit(1);
+  }
+
+  const userEmail = commandArgs[1];
+  const permissionKey = commandArgs[2];
+
+  const spinner = createSpinner("Revoking permission...");
+  spinner.start();
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { email: userEmail },
+      select: { id: true },
+    });
+
+    if (!user) {
+      spinner.fail("User not found");
+      error(`User with email "${userEmail}" not found`);
+      process.exit(1);
+    }
+
+    const permission = await prisma.permission.findUnique({
+      where: { key: permissionKey },
+      select: { id: true },
+    });
+
+    if (!permission) {
+      spinner.fail("Permission not found");
+      error(`Permission "${permissionKey}" not found`);
+      process.exit(1);
+    }
+
+    await prisma.userPermission.delete({
+      where: {
+        userId_permissionId: {
+          userId: user.id,
+          permissionId: permission.id,
+        },
+      },
+    });
+
+    spinner.succeed("Permission revoked");
+    console.log(`\n✅ Permission "${permissionKey}" has been revoked from user "${userEmail}".`);
+  } catch (err) {
+    spinner.fail("Failed to revoke permission");
+    if (err instanceof Error && err.message.includes("Record to delete does not exist")) {
+      notice(`User "${userEmail}" does not have permission "${permissionKey}"`, "info");
+    } else {
+      error(err instanceof Error ? err.message : String(err));
+    }
+    process.exit(1);
+  }
+}
+
+async function handleListUser() {
+  if (commandArgs.length < 2) {
+    console.error("Usage: list-user <user-email>");
+    process.exit(1);
+  }
+
+  const userEmail = commandArgs[1];
+  const spinner = createSpinner("Loading user permissions...");
+  spinner.start();
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { email: userEmail },
+      select: { id: true, name: true, email: true },
+    });
+
+    if (!user) {
+      spinner.fail("User not found");
+      error(`User with email "${userEmail}" not found`);
+      process.exit(1);
+    }
+
+    const userPermissions = await prisma.userPermission.findMany({
+      where: { userId: user.id },
+      include: {
+        permission: {
+          select: {
+            key: true,
+            name: true,
+            category: true,
+            module: true,
+          },
+        },
+      },
+      orderBy: {
+        permission: {
+          category: "asc",
+        },
+      },
+    });
+
+    spinner.succeed(`Found ${userPermissions.length} permission(s)`);
+
+    if (userPermissions.length === 0) {
+      notice(`User "${userEmail}" has no direct permissions.`, "info");
+      return;
+    }
+
+    separator();
+    sectionHeader(`Permissions for "${user.name || user.email}" (${user.email})`);
+
+    const table = createTable(
+      ["Key", "Name", "Category", "Module"],
+      { colWidths: [30, 30, 15, 15] }
+    );
+
+    userPermissions.forEach((up) => {
+      table.push([
+        up.permission.key,
+        up.permission.name,
+        up.permission.category,
+        up.permission.module || "-",
+      ]);
+    });
+
+    console.log(table.toString());
+  } catch (err) {
+    spinner.fail("Failed to load user permissions");
+    error(err instanceof Error ? err.message : String(err));
+  }
 }
 
 // Interactive versions

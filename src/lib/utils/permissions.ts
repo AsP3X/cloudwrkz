@@ -137,11 +137,44 @@ export async function getUserPermissions(userId: string): Promise<Set<string>> {
     }
   }
 
-  // Combine role and group permissions (union)
-  const allPermissions = new Set([...rolePermissions, ...groupPermissions]);
+  // Get user-specific permissions (includes both static and dynamic)
+  // Check if userPermission model exists (in case Prisma Client hasn't been regenerated)
+  let userSpecificPermissions = new Set<string>();
+  try {
+    // Check if the model exists
+    if (prisma.userPermission) {
+      const userPermissions = await prisma.userPermission.findMany({
+        where: { userId },
+        include: {
+          permission: true,
+        },
+      });
+
+      for (const userPermission of userPermissions) {
+        // Include all permissions (both static PermissionKey and dynamic ticket permissions)
+        const permissionKey = userPermission.permission.key;
+        userSpecificPermissions.add(permissionKey);
+        
+        // Debug logging for dynamic permissions
+        if (process.env.NODE_ENV === "development" && isDynamicTicketPermission(permissionKey)) {
+          console.log(`[getUserPermissions] Found user-specific dynamic permission for user ${userId}: ${permissionKey}`);
+        }
+      }
+    }
+  } catch (error: any) {
+    // If the model doesn't exist yet (Prisma Client not regenerated), just skip user permissions
+    if (process.env.NODE_ENV === "development") {
+      console.warn(`[getUserPermissions] UserPermission model not available. Run 'pnpm prisma generate' to regenerate Prisma Client. Error:`, error.message);
+    }
+    // Continue without user-specific permissions
+    userSpecificPermissions = new Set<string>();
+  }
+
+  // Combine role, group, and user-specific permissions (union)
+  const allPermissions = new Set([...rolePermissions, ...groupPermissions, ...userSpecificPermissions]);
   
   if (process.env.NODE_ENV === "development") {
-    console.log(`[getUserPermissions] User ${userId} has ${allPermissions.size} total permissions (${rolePermissions.size} role, ${groupPermissions.size} group)`);
+    console.log(`[getUserPermissions] User ${userId} has ${allPermissions.size} total permissions (${rolePermissions.size} role, ${groupPermissions.size} group, ${userSpecificPermissions.size} user-specific)`);
     const dynamicPerms = Array.from(allPermissions).filter(p => isDynamicTicketPermission(p));
     if (dynamicPerms.length > 0) {
       console.log(`[getUserPermissions] Dynamic permissions:`, dynamicPerms);

@@ -1,85 +1,142 @@
 "use client";
 
 import React from "react";
-import { Badge } from "@/components/ui/Badge";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/Button";
+import { getUserByIdAdmin } from "@/server/actions/admin/users";
+import { UserPermissionsManager } from "./UserPermissionsManager";
 
-export function UserPermissionsPage() {
+type User = NonNullable<Awaited<ReturnType<typeof getUserByIdAdmin>>>;
+
+interface UserPermissionsPageProps {
+  user: User;
+}
+
+export function UserPermissionsPage({ user: initialUser }: UserPermissionsPageProps) {
+  const router = useRouter();
+  const [user, setUser] = React.useState(initialUser);
+
+  // Sync user state when initialUser changes (e.g., after router.refresh())
+  React.useEffect(() => {
+    setUser(initialUser);
+    // Debug: Log group membership data
+    if (process.env.NODE_ENV === "development") {
+      console.log("[UserPermissionsPage] User data:", {
+        email: initialUser.email,
+        groupMembershipsLength: initialUser.groupMemberships?.length,
+        groupMembershipsCount: initialUser._count?.groupMemberships,
+        groupMemberships: initialUser.groupMemberships?.map(gm => gm.group.name),
+      });
+    }
+  }, [initialUser.id, initialUser._count?.groupMemberships, initialUser.groupMemberships?.length]);
+
+  // Get user permissions count and IDs
+  const [permissionsCount, setPermissionsCount] = React.useState(0);
+  const [permissionIds, setPermissionIds] = React.useState<string[]>([]);
+
+  React.useEffect(() => {
+    async function loadPermissions() {
+      try {
+        const { getUserPermissions } = await import("@/server/actions/permissions");
+        const perms = await getUserPermissions(user.id);
+        setPermissionsCount(perms.length);
+        setPermissionIds(perms.map((p) => p.id));
+      } catch (err) {
+        console.error("Failed to load permissions:", err);
+      }
+    }
+    loadPermissions();
+  }, [user.id]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100">User Permissions</h1>
-          <p className="text-neutral-600 dark:text-neutral-400 mt-1">
-            Manage permissions for individual users
-          </p>
-        </div>
-      </div>
-
-      {/* Coming Soon Message */}
-      <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-12">
-        <div className="text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary-100 dark:bg-primary-900 mb-4">
-            <svg
-              className="w-8 h-8 text-primary-600 dark:text-primary-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
+          <div className="flex items-center gap-2 mb-2">
+            <Link
+              href="/dashboard/admin/permissions/users"
+              className="text-sm text-neutral-600 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-              />
-            </svg>
+              User Permissions
+            </Link>
+            <span className="text-neutral-400 dark:text-neutral-600">/</span>
+            <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100">
+              {user.name || user.email}
+            </h1>
           </div>
-          <h2 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
-            Feature Coming Soon
-          </h2>
-          <p className="text-neutral-600 dark:text-neutral-400 mb-4 max-w-md mx-auto">
-            The user permissions management feature is currently under development. 
-            You can manage permissions through groups in the meantime.
+          <p className="text-neutral-600 dark:text-neutral-400 mt-1">
+            Manage permissions for this user. Permissions are additive - users get permissions from their role, groups they belong to, and direct user permissions.
           </p>
-          <div className="flex items-center justify-center gap-2">
-            <Badge variant="info" size="md">In Development</Badge>
+        </div>
+        <div className="flex items-center gap-3">
+          <Link href={`/dashboard/admin/users/${user.id}`}>
+            <Button variant="outline">View User Details</Button>
+          </Link>
+        </div>
+      </div>
+
+      {/* User Info Card */}
+      <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
+              {user.name || user.email}
+            </h2>
+            <div className="flex items-center gap-4 text-sm text-neutral-600 dark:text-neutral-400 mb-4">
+              <span>
+                <strong className="text-neutral-900 dark:text-neutral-100">Email:</strong> {user.email}
+              </span>
+              <span>
+                <strong className="text-neutral-900 dark:text-neutral-100">Role:</strong> {user.role}
+              </span>
+              <span>
+                <strong className="text-neutral-900 dark:text-neutral-100">Status:</strong> {user.status}
+              </span>
+            </div>
+            <div className="flex items-center gap-4 text-sm text-neutral-600 dark:text-neutral-400">
+              <span>
+                <strong className="text-neutral-900 dark:text-neutral-100">
+                  {user.groupMemberships?.length ?? user._count?.groupMemberships ?? 0}
+                </strong>{" "}
+                group{(user.groupMemberships?.length ?? user._count?.groupMemberships ?? 0) !== 1 ? "s" : ""}
+              </span>
+              <span>
+                <strong className="text-neutral-900 dark:text-neutral-100">
+                  {permissionsCount}
+                </strong>{" "}
+                direct permission{permissionsCount !== 1 ? "s" : ""}
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Info Section */}
-      <div className="bg-info-50 dark:bg-info-950 border-2 border-info-200 dark:border-info-800 rounded-xl p-6">
-        <div className="flex items-start gap-3">
-          <svg
-            className="w-5 h-5 text-info-600 dark:text-info-400 mt-0.5 flex-shrink-0"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <div className="flex-1">
-            <h3 className="text-sm font-semibold text-info-900 dark:text-info-100 mb-1">
-              Current Permission System
-            </h3>
-            <p className="text-sm text-info-800 dark:text-info-200">
-              Users currently receive permissions through:
-            </p>
-            <ul className="text-sm text-info-800 dark:text-info-200 mt-2 space-y-1 list-disc list-inside">
-              <li>Their role (ADMIN, MODERATOR, AGENT, USER) - which provides default permissions</li>
-              <li>Groups they belong to - which can grant additional permissions</li>
-            </ul>
-            <p className="text-sm text-info-800 dark:text-info-200 mt-2">
-              To manage user permissions, you can add users to groups with the appropriate permissions, 
-              or change their role. Direct user permission management will be available soon.
-            </p>
-          </div>
-        </div>
+      {/* Permissions Manager */}
+      <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
+        <UserPermissionsManager
+          userId={user.id}
+          initialPermissionIds={permissionIds}
+          onSave={async () => {
+            // Reload the user data to update the info card immediately
+            const updatedUser = await getUserByIdAdmin(user.id);
+            if (updatedUser) {
+              setUser(updatedUser);
+            }
+            // Reload permissions count and IDs
+            try {
+              const { getUserPermissions } = await import("@/server/actions/permissions");
+              const perms = await getUserPermissions(user.id);
+              setPermissionsCount(perms.length);
+              setPermissionIds(perms.map((p) => p.id));
+            } catch (err) {
+              console.error("Failed to reload permissions:", err);
+            }
+            // Also trigger router refresh for server component updates
+            router.refresh();
+          }}
+        />
       </div>
     </div>
   );
