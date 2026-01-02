@@ -194,14 +194,12 @@ async function handleStats() {
   try {
     const [
       userCount,
-      projectCount,
       ticketCount,
       todoCount,
       timeEntryCount,
       sessionCount,
     ] = await Promise.all([
       prisma.user.count(),
-      prisma.project.count(),
       prisma.ticket.count(),
       prisma.todo.count(),
       prisma.timeEntry.count(),
@@ -213,7 +211,6 @@ async function handleStats() {
     separator();
     sectionHeader("Database Statistics");
     displayKeyValue("Users", userCount.toString());
-    displayKeyValue("Projects", projectCount.toString());
     displayKeyValue("Tickets", ticketCount.toString());
     displayKeyValue("Todos", todoCount.toString());
     displayKeyValue("Time Entries", timeEntryCount.toString());

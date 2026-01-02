@@ -26,14 +26,12 @@ interface TasksSectionProps {
   ticketId: string;
   tasks: TicketTask[];
   canManage: boolean;
-  ticketHasProject: boolean;
 }
 
 export const TasksSection = ({
   ticketId,
   tasks,
   canManage,
-  ticketHasProject,
 }: TasksSectionProps) => {
   // Initialize with default to avoid hydration mismatch, then sync from localStorage on client
   const [viewMode, setViewMode] = React.useState<TaskViewMode>("table");
@@ -51,7 +49,7 @@ export const TasksSection = ({
     saveTaskViewMode(mode);
   };
 
-  if (!ticketHasProject && !tasks.length) {
+  if (!tasks.length) {
     return null;
   }
 
@@ -71,21 +69,12 @@ export const TasksSection = ({
         )}
       </div>
 
-      {!ticketHasProject && (
-        <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 px-4 py-3 text-xs sm:text-sm text-amber-800 dark:text-amber-200">
-          This ticket is not linked to a project. To create tasks, first assign the ticket to a project
-          from the ticket information panel.
-        </div>
-      )}
-
-      {ticketHasProject && (
-        <TaskList
-          ticketId={ticketId}
-          tasks={tasks}
-          viewMode={isReady ? viewMode : "table"}
-          canManage={canManage}
-        />
-      )}
+      <TaskList
+        ticketId={ticketId}
+        tasks={tasks}
+        viewMode={isReady ? viewMode : "table"}
+        canManage={canManage}
+      />
     </div>
   );
 };

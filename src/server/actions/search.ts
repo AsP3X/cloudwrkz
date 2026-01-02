@@ -11,7 +11,7 @@ import { getUserPermissions } from "@/lib/utils/permissions";
 import { formatTimerNumber } from "@/lib/utils/time-tracking";
 
 export type SearchResult = {
-  type: "ticket" | "module" | "user" | "comment" | "timeentry" | "project" | "setting" | "task";
+  type: "ticket" | "module" | "user" | "comment" | "timeentry" | "setting" | "task";
   id: string;
   title: string;
   description?: string;
@@ -42,7 +42,7 @@ export type SearchFilters = {
 
 /**
  * Global search across all enabled modules
- * Supports tickets, users, time entries, and projects
+ * Supports tickets, users, and time entries
  */
 export async function globalSearch(query: string, limit: number = 10): Promise<SearchResponse> {
   const user = await requireAuth();
@@ -57,13 +57,12 @@ export async function globalSearch(query: string, limit: number = 10): Promise<S
 
   // Distribute limit across different result types
   // Priority order: User, Tickets, Task, Timer, Other
-  // 25% users, 30% tickets, 20% tasks, 15% time entries, 10% other (projects + settings)
+  // 25% users, 30% tickets, 20% tasks, 15% time entries, 10% settings
   const userLimit = Math.max(1, Math.floor(limit * 0.25));
   const ticketLimit = Math.max(1, Math.floor(limit * 0.3));
   const taskLimit = Math.max(1, Math.floor(limit * 0.2));
   const timeEntryLimit = Math.max(1, Math.floor(limit * 0.15));
-  const projectLimit = Math.max(1, Math.floor(limit * 0.05));
-  const settingsLimit = Math.max(1, Math.floor(limit * 0.05));
+  const settingsLimit = Math.max(1, Math.floor(limit * 0.1));
 
   // Get user permissions
   const userPermissions = await getUserPermissions(user.id);
@@ -95,14 +94,6 @@ export async function globalSearch(query: string, limit: number = 10): Promise<S
     const timeEntryResults = await searchTimeEntries(searchTerm, user, timeEntryLimit, userPermissions);
     totalCount += timeEntryResults.length;
     results.push(...timeEntryResults);
-  }
-
-  // Search projects if user can view projects module
-  const canViewProjects = await canUserViewModule(user.id, MODULE_KEYS.PROJECTS);
-  if (canViewProjects) {
-    const projectResults = await searchProjects(searchTerm, user, projectLimit, userPermissions);
-    totalCount += projectResults.length;
-    results.push(...projectResults);
   }
 
   // Search settings that are available to the current user
@@ -147,13 +138,6 @@ export async function advancedSearch(filters: SearchFilters): Promise<SearchResp
   if (canViewTimeTracking) {
     const timeEntryResults = await searchTimeEntries(searchTerm, user, filters.limit || 100, userPermissions);
     results.push(...timeEntryResults);
-  }
-
-  // Search projects if user can view projects module
-  const canViewProjects = await canUserViewModule(user.id, MODULE_KEYS.PROJECTS);
-  if (canViewProjects) {
-    const projectResults = await searchProjects(searchTerm, user, filters.limit || 100, userPermissions);
-    results.push(...projectResults);
   }
 
   // Search todos if user can view todos module
@@ -790,14 +774,6 @@ async function searchTimeEntries(
           title: true,
         },
       },
-      projectId: true,
-      project: {
-        select: {
-          id: true,
-          code: true,
-          name: true,
-        },
-      },
     },
     orderBy: {
       updatedAt: "desc",
@@ -825,8 +801,6 @@ async function searchTimeEntries(
         user: formatUserName(entry.user),
         ticketNumber: entry.ticket?.ticketNumber,
         ticketTitle: entry.ticket?.title,
-        projectCode: entry.project?.code,
-        projectName: entry.project?.name,
         createdAt: entry.createdAt,
         updatedAt: entry.updatedAt,
       },
@@ -882,8 +856,6 @@ async function searchTimeEntries(
       user: formatUserName(entry.user),
       ticketNumber: entry.ticket?.ticketNumber,
       ticketTitle: entry.ticket?.title,
-      projectCode: entry.project?.code,
-      projectName: entry.project?.name,
       createdAt: entry.createdAt,
       updatedAt: entry.updatedAt,
     },
@@ -1056,161 +1028,6 @@ async function searchTasks(
       assignedTo: todo.assignedTo ? formatUserName(todo.assignedTo) : undefined,
       createdAt: todo.createdAt,
       updatedAt: todo.updatedAt,
-    },
-  }));
-}
-
-/**
- * Search projects by name, description, code, and client with fuzzy matching
- */
-async function searchProjects(
-  searchTerm: string,
-  user: Awaited<ReturnType<typeof requireAuth>>,
-  limit: number,
-  userPermissions: Set<string>
-): Promise<SearchResult[]> {
-  let where: any = {};
-
-  // Check permissions
-  const canViewAllProjects = userPermissions.has("projects.view_all");
-  const canViewProjects = userPermissions.has("projects.view") || canViewAllProjects;
-
-  if (!canViewProjects) {
-    // User has no permission to view projects
-    return [];
-  }
-
-  if (!canViewAllProjects) {
-    // User can only see projects they're members of
-    const userProjects = await prisma.projectUser.findMany({
-      where: { userId: user.id },
-      select: { projectId: true },
-    });
-    const projectIds = userProjects.map((up) => up.projectId);
-    
-    if (projectIds.length === 0) {
-      return [];
-    }
-    
-    where.id = { in: projectIds };
-  }
-  // Users with view_all permission can see all projects (no filter)
-
-  // Fetch more candidates for fuzzy search (3x the limit, or at least 50)
-  const candidateLimit = Math.max(limit * 3, 50);
-
-  const projects = await prisma.project.findMany({
-    where,
-    select: {
-      id: true,
-      code: true,
-      name: true,
-      description: true,
-      status: true,
-      priority: true,
-      startDate: true,
-      endDate: true,
-      client: true,
-      color: true,
-      icon: true,
-      createdAt: true,
-      updatedAt: true,
-      createdById: true,
-      createdBy: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-        },
-      },
-      _count: {
-        select: {
-          tickets: true,
-          timeEntries: true,
-          members: true,
-        },
-      },
-    },
-    orderBy: {
-      updatedAt: "desc",
-    },
-    take: candidateLimit,
-  });
-
-  // If no search term, return all projects
-  if (!searchTerm || searchTerm.trim().length === 0) {
-    return projects.slice(0, limit).map((project) => ({
-      type: "project" as const,
-      id: project.id,
-      title: project.name,
-      description: project.description || undefined,
-      url: `/dashboard/projects/${project.id}`,
-      metadata: {
-        code: project.code,
-        status: project.status,
-        priority: project.priority,
-        client: project.client,
-        startDate: project.startDate,
-        endDate: project.endDate,
-        createdBy: formatUserName(project.createdBy),
-        ticketCount: project._count.tickets,
-        timeEntryCount: project._count.timeEntries,
-        memberCount: project._count.members,
-        createdAt: project.createdAt,
-        updatedAt: project.updatedAt,
-      },
-    }));
-  }
-
-  // Prepare projects for fuzzy search
-  const projectsForFuzzy = projects.map((project) => ({
-    ...project,
-    searchableText: [
-      project.name,
-      project.description || "",
-      project.code,
-      project.client || "",
-    ].join(" "),
-  }));
-
-  // Apply fuzzy search on project fields
-  const fuzzyResults = fuzzySearch(
-    projectsForFuzzy,
-    searchTerm,
-    {
-      keys: [
-        { name: "name", weight: 0.4 },
-        { name: "description", weight: 0.3 },
-        { name: "code", weight: 0.2 },
-        { name: "client", weight: 0.1 },
-      ],
-      threshold: 0.4,
-      minMatchCharLength: 2,
-    }
-  );
-
-  // Rank and limit results
-  const rankedProjects = rankAndLimit(fuzzyResults, limit);
-
-  return rankedProjects.map((project) => ({
-    type: "project" as const,
-    id: project.id,
-    title: project.name,
-    description: project.description || undefined,
-    url: `/dashboard/projects/${project.id}`,
-    metadata: {
-      code: project.code,
-      status: project.status,
-      priority: project.priority,
-      client: project.client,
-      startDate: project.startDate,
-      endDate: project.endDate,
-      createdBy: formatUserName(project.createdBy),
-      ticketCount: project._count.tickets,
-      timeEntryCount: project._count.timeEntries,
-      memberCount: project._count.members,
-      createdAt: project.createdAt,
-      updatedAt: project.updatedAt,
     },
   }));
 }

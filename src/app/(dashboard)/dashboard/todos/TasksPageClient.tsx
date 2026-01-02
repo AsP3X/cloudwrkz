@@ -92,7 +92,7 @@ export function TasksPageClient({ tasks, canManage, userRole, userTimezone = "UT
             ToDos
           </h1>
           <p className="text-neutral-600 dark:text-neutral-400 mt-1">
-            Create and manage todos across all your projects. Todos can work independently or be linked to tickets when needed.
+            Create and manage todos. Todos can work independently or be linked to tickets when needed.
           </p>
         </div>
         <div className="flex items-center gap-3">

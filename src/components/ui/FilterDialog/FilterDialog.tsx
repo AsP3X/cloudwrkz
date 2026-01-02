@@ -32,7 +32,7 @@ export interface FilterField {
 }
 
 export interface FilterConfig {
-  moduleName: string; // Used for localStorage keys (e.g., "ticket", "project", "time-tracking")
+  moduleName: string; // Used for localStorage keys (e.g., "ticket", "time-tracking")
   baseRoute: string; // Base route for navigation (e.g., "/dashboard/tickets")
   title: string;
   description: string;

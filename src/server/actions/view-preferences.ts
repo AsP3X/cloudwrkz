@@ -74,8 +74,6 @@ export async function saveViewPreference(
       revalidatePath("/dashboard/tickets");
     } else if (moduleName === "timeEntry") {
       revalidatePath("/dashboard/time-tracking");
-    } else if (moduleName === "project") {
-      revalidatePath("/dashboard/projects");
     } else if (moduleName === "tasks") {
       // Tasks live inside the ticket detail page
       // which will be explicitly revalidated by task actions.

@@ -14,18 +14,6 @@ export type PermissionKey =
   | "tickets.comment"
   | "tickets.time_entries.view"
   | "tickets.time_entries.create"
-  // Projects
-  | "projects.view"
-  | "projects.view_all"
-  | "projects.create"
-  | "projects.update"
-  | "projects.delete"
-  | "projects.manage_members"
-  | "projects.manage_groups"
-  | "projects.risks.view"
-  | "projects.risks.create"
-  | "projects.risks.update"
-  | "projects.risks.delete"
   // Time Tracking
   | "time_tracking.view"
   | "time_tracking.view_all"
@@ -69,7 +57,6 @@ export type PermissionKey =
   // Module Visibility
   | "modules.tickets.view"
   | "modules.timetracking.view"
-  | "modules.projects.view"
   | "modules.todos.view";
 
 export interface PermissionDefinition {
@@ -145,84 +132,6 @@ export const PERMISSIONS: PermissionDefinition[] = [
     category: "tickets",
     module: "tickets",
   },
-  // Projects
-  {
-    key: "projects.view",
-    name: "View Projects",
-    description: "View projects user is a member of",
-    category: "projects",
-    module: "projects",
-  },
-  {
-    key: "projects.view_all",
-    name: "View All Projects",
-    description: "View all projects",
-    category: "projects",
-    module: "projects",
-  },
-  {
-    key: "projects.create",
-    name: "Create Projects",
-    description: "Create new projects",
-    category: "projects",
-    module: "projects",
-  },
-  {
-    key: "projects.update",
-    name: "Update Projects",
-    description: "Update project details",
-    category: "projects",
-    module: "projects",
-  },
-  {
-    key: "projects.delete",
-    name: "Delete Projects",
-    description: "Delete projects",
-    category: "projects",
-    module: "projects",
-  },
-  {
-    key: "projects.manage_members",
-    name: "Manage Project Members",
-    description: "Add/remove project members",
-    category: "projects",
-    module: "projects",
-  },
-  {
-    key: "projects.manage_groups",
-    name: "Manage Project Groups",
-    description: "Assign groups to projects",
-    category: "projects",
-    module: "projects",
-  },
-  {
-    key: "projects.risks.view",
-    name: "View Project Risks",
-    description: "View project risks",
-    category: "projects",
-    module: "projects",
-  },
-  {
-    key: "projects.risks.create",
-    name: "Create Project Risks",
-    description: "Create new project risks",
-    category: "projects",
-    module: "projects",
-  },
-  {
-    key: "projects.risks.update",
-    name: "Update Project Risks",
-    description: "Update existing project risks",
-    category: "projects",
-    module: "projects",
-  },
-  {
-    key: "projects.risks.delete",
-    name: "Delete Project Risks",
-    description: "Delete project risks",
-    category: "projects",
-    module: "projects",
-  },
   // Time Tracking
   {
     key: "time_tracking.view",
@@ -263,7 +172,7 @@ export const PERMISSIONS: PermissionDefinition[] = [
   {
     key: "todos.view",
     name: "View Todos",
-    description: "View todos in accessible projects",
+    description: "View todos",
     category: "todos",
     module: "todos",
   },
@@ -294,64 +203,6 @@ export const PERMISSIONS: PermissionDefinition[] = [
     description: "Assign todos to other users",
     category: "todos",
     module: "todos",
-  },
-  // Issues
-  {
-    key: "issues.view",
-    name: "View Issues",
-    description: "View project issues",
-    category: "issues",
-    module: "projects",
-  },
-  {
-    key: "issues.create",
-    name: "Create Issues",
-    description: "Create new issues",
-    category: "issues",
-    module: "projects",
-  },
-  {
-    key: "issues.update",
-    name: "Update Issues",
-    description: "Update existing issues",
-    category: "issues",
-    module: "projects",
-  },
-  {
-    key: "issues.delete",
-    name: "Delete Issues",
-    description: "Delete issues",
-    category: "issues",
-    module: "projects",
-  },
-  // Notes
-  {
-    key: "notes.view",
-    name: "View Notes",
-    description: "View project notes",
-    category: "notes",
-    module: "projects",
-  },
-  {
-    key: "notes.create",
-    name: "Create Notes",
-    description: "Create new notes",
-    category: "notes",
-    module: "projects",
-  },
-  {
-    key: "notes.update",
-    name: "Update Notes",
-    description: "Update existing notes",
-    category: "notes",
-    module: "projects",
-  },
-  {
-    key: "notes.delete",
-    name: "Delete Notes",
-    description: "Delete notes",
-    category: "notes",
-    module: "projects",
   },
   // Admin
   {
@@ -472,13 +323,6 @@ export const PERMISSIONS: PermissionDefinition[] = [
     module: "timetracking",
   },
   {
-    key: "modules.projects.view",
-    name: "View Projects Module",
-    description: "Access to the Projects module in navigation and dashboard",
-    category: "modules",
-    module: "projects",
-  },
-  {
     key: "modules.todos.view",
     name: "View ToDo Module",
     description: "Access to the ToDo module in navigation and dashboard",
@@ -534,18 +378,6 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     "tickets.comment",
     "tickets.time_entries.view",
     "tickets.time_entries.create",
-    // Projects
-    "projects.view",
-    "projects.view_all",
-    "projects.create",
-    "projects.update",
-    "projects.delete",
-    "projects.manage_members",
-    "projects.manage_groups",
-    "projects.risks.view",
-    "projects.risks.create",
-    "projects.risks.update",
-    "projects.risks.delete",
     // Time Tracking
     "time_tracking.view",
     "time_tracking.view_all",
@@ -558,16 +390,6 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     "todos.update",
     "todos.delete",
     "todos.assign",
-    // Issues
-    "issues.view",
-    "issues.create",
-    "issues.update",
-    "issues.delete",
-    // Notes
-    "notes.view",
-    "notes.create",
-    "notes.update",
-    "notes.delete",
     // Admin (limited)
     "admin.users.view",
     "admin.groups.manage",
@@ -577,7 +399,6 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     // Module Visibility
     "modules.tickets.view",
     "modules.timetracking.view",
-    "modules.projects.view",
     "modules.todos.view",
   ],
   AGENT: [
@@ -592,9 +413,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     "time_tracking.view",
     "time_tracking.create",
     "time_tracking.update",
-    // Projects (limited - only assigned)
-    "projects.view",
-    // Todos (limited - only in assigned projects)
+    // Todos
     "todos.view",
     "todos.create",
     "todos.update",
@@ -602,7 +421,6 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     // Module Visibility
     "modules.tickets.view",
     "modules.timetracking.view",
-    "modules.projects.view",
     "modules.todos.view",
   ],
   USER: [

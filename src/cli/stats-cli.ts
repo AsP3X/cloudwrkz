@@ -6,9 +6,8 @@
  * Usage:
  *   pnpm cli stats overview
  *   pnpm cli stats users [--period=WEEK|MONTH|YEAR]
- *   pnpm cli stats projects [--status=STATUS]
  *   pnpm cli stats tickets [--period=PERIOD] [--status=STATUS]
- *   pnpm cli stats time [--user=EMAIL] [--project=PROJECT] [--period=PERIOD]
+ *   pnpm cli stats time [--user=EMAIL] [--period=PERIOD]
  *   pnpm cli stats export [--type=TYPE] [--format=CSV|JSON] [--output=FILE]
  */
 
@@ -45,15 +44,13 @@ Statistics & Analytics CLI Tool
 Commands:
   overview                    System-wide statistics overview
   users [--period=WEEK|MONTH|YEAR]  User statistics
-  projects [--status=STATUS]  Project statistics
   tickets [--period=PERIOD] [--status=STATUS]  Ticket statistics
-  time [--user=EMAIL] [--project=PROJECT] [--period=PERIOD]  Time tracking statistics
+  time [--user=EMAIL] [--period=PERIOD]  Time tracking statistics
   export [--type=TYPE] [--format=CSV|JSON] [--output=FILE]  Export statistics
 
 Examples:
   pnpm cli stats overview
   pnpm cli stats users --period=MONTH
-  pnpm cli stats projects --status=ACTIVE
   pnpm cli stats tickets --period=WEEK
 `);
   process.exit(0);
@@ -70,9 +67,6 @@ if (shouldExecute && command) {
           break;
         case "users":
           await handleUsers();
-          break;
-        case "projects":
-          await handleProjects();
           break;
         case "tickets":
           await handleTickets();
@@ -117,8 +111,6 @@ async function handleOverview() {
     const [
       userCount,
       activeUsers,
-      projectCount,
-      activeProjects,
       ticketCount,
       openTickets,
       timeEntryCount,
@@ -126,8 +118,6 @@ async function handleOverview() {
     ] = await Promise.all([
       prisma.user.count(),
       prisma.user.count({ where: { status: "ACTIVE" } }),
-      prisma.project.count(),
-      prisma.project.count({ where: { status: "ACTIVE" } }),
       prisma.ticket.count(),
       prisma.ticket.count({ where: { status: { in: ["OPEN", "IN_PROGRESS"] } } }),
       prisma.timeEntry.count(),
@@ -142,8 +132,6 @@ async function handleOverview() {
     sectionHeader("System Overview");
     displayKeyValue("Total Users", userCount.toString());
     displayKeyValue("Active Users", activeUsers.toString());
-    displayKeyValue("Total Projects", projectCount.toString());
-    displayKeyValue("Active Projects", activeProjects.toString());
     displayKeyValue("Total Tickets", ticketCount.toString());
     displayKeyValue("Open Tickets", openTickets.toString());
     displayKeyValue("Time Entries", timeEntryCount.toString());
@@ -211,52 +199,6 @@ async function handleUsers() {
     });
   } catch (err) {
     spinner.fail("Failed to calculate user statistics");
-    error(err instanceof Error ? err.message : String(err));
-  }
-}
-
-async function handleProjects() {
-  const parsed = parseArgs(commandArgs.slice(1));
-  const status = parsed.status as string | undefined;
-
-  const spinner = createSpinner("Calculating project statistics...");
-  spinner.start();
-
-  try {
-    const where: any = {};
-    if (status) where.status = status;
-
-    const [total, byStatus, byPriority] = await Promise.all([
-      prisma.project.count({ where }),
-      prisma.project.groupBy({
-        by: ["status"],
-        _count: true,
-      }),
-      prisma.project.groupBy({
-        by: ["priority"],
-        _count: true,
-      }),
-    ]);
-
-    spinner.succeed("Project statistics calculated");
-
-    separator();
-    sectionHeader("Project Statistics");
-    displayKeyValue("Total Projects", total.toString());
-
-    separator();
-    sectionHeader("By Status");
-    byStatus.forEach((item) => {
-      displayKeyValue(item.status, item._count.toString());
-    });
-
-    separator();
-    sectionHeader("By Priority");
-    byPriority.forEach((item) => {
-      displayKeyValue(item.priority, item._count.toString());
-    });
-  } catch (err) {
-    spinner.fail("Failed to calculate project statistics");
     error(err instanceof Error ? err.message : String(err));
   }
 }
@@ -336,7 +278,6 @@ async function handleTickets() {
 async function handleTime() {
   const parsed = parseArgs(commandArgs.slice(1));
   const userEmail = parsed.user as string | undefined;
-  const projectCode = parsed.project as string | undefined;
   const period = parsed.period as string | undefined;
 
   const spinner = createSpinner("Calculating time statistics...");
@@ -350,13 +291,6 @@ async function handleTime() {
         select: { id: true },
       });
       if (user) where.userId = user.id;
-    }
-    if (projectCode) {
-      const project = await prisma.project.findFirst({
-        where: { OR: [{ code: projectCode }, { id: projectCode }] },
-        select: { id: true },
-      });
-      if (project) where.projectId = project.id;
     }
     if (period) {
       const now = new Date();

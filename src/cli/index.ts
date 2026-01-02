@@ -135,11 +135,6 @@ async function runInteractiveMode() {
         description: "Manage user sessions and authentication",
       },
       {
-        key: "p",
-        label: "📁 Project Management",
-        description: "Manage projects and project members",
-      },
-      {
         key: "perm",
         label: "🔑 Permission Management",
         description: "Manage permissions and access control",
@@ -168,9 +163,6 @@ async function runInteractiveMode() {
         break;
       case "s":
         await runSessionInteractive();
-        break;
-      case "p":
-        await runProjectInteractive();
         break;
       case "perm":
         await runPermissionInteractive();
@@ -975,44 +967,6 @@ async function runSessionInteractive() {
   );
 }
 
-async function runProjectInteractive() {
-  const projectCli = await import("./project-cli");
-
-  await runMenu(
-    "Project Management",
-    "Manage projects and project members",
-    [
-      {
-        key: "l",
-        label: "📋 List Projects",
-        description: "View all projects",
-        handler: async () => {
-          clear();
-          await projectCli.handleListInteractive();
-        },
-      },
-      {
-        key: "c",
-        label: "➕ Create Project",
-        description: "Create a new project",
-        handler: async () => {
-          clear();
-          await projectCli.handleCreateInteractive();
-        },
-      },
-      {
-        key: "s",
-        label: "🔍 Show Project Details",
-        description: "View detailed project information",
-        handler: async () => {
-          clear();
-          await projectCli.handleShowInteractive();
-        },
-      },
-    ]
-  );
-}
-
 async function runPermissionInteractive() {
   const permissionCli = await import("./permission-cli");
 
@@ -1141,9 +1095,6 @@ Run 'pnpm cli help' for more information.
     case "session":
       await import("./session-cli");
       break;
-    case "project":
-      await import("./project-cli");
-      break;
     case "todo":
       await import("./todo-cli");
       break;
@@ -1178,12 +1129,11 @@ function showHelp() {
   console.log(chalk.cyan("  group     "), "Group management (create, delete, list, show, update, add-agent, remove-agent, list-agents)");
   console.log(chalk.cyan("  module    "), "Module management (list, enable, disable, show, config, status, sync)");
   console.log(chalk.cyan("  session   "), "Session management (list, show, revoke, revoke-user, revoke-all, cleanup, stats)");
-  console.log(chalk.cyan("  project   "), "Project management (list, create, show)");
   console.log(chalk.cyan("  todo      "), "Todo management (list, show, create, update, assign, complete, delete)");
   console.log(chalk.cyan("  ticket    "), "Ticket management (list, show, create, update, assign, close, reopen, delete)");
   console.log(chalk.cyan("  time      "), "Time tracking (list, show, start, stop, pause, resume, create, update, delete, export, report)");
   console.log(chalk.cyan("  permission"), "Permission management (list, show, grant, revoke, list-group, sync)");
-  console.log(chalk.cyan("  stats     "), "Statistics & analytics (overview, users, projects, tickets, time, export)");
+  console.log(chalk.cyan("  stats     "), "Statistics & analytics (overview, users, tickets, time, export)");
   console.log(chalk.cyan("  db        "), "Database maintenance (status, migrate, seed, cleanup, optimize, stats, validate)");
 
   separator();

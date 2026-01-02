@@ -60,7 +60,7 @@ Examples:
   pnpm cli module list
   pnpm cli module enable tickets
   pnpm cli module disable timetracking
-  pnpm cli module show projects
+  pnpm cli module show tickets
   pnpm cli module config tickets '{"maxTickets": 100}'
   pnpm cli module status
   pnpm cli module sync

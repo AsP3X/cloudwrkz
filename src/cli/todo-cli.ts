@@ -4,9 +4,9 @@
  * Todo Management CLI Tool
  * 
  * Usage:
- *   pnpm cli todo list [--project=PROJECT] [--status=STATUS] [--assignee=EMAIL]
+ *   pnpm cli todo list [--status=STATUS] [--assignee=EMAIL]
  *   pnpm cli todo show <id|number>
- *   pnpm cli todo create <project> <title> [--description=DESC] [--assignee=EMAIL] [--due-date=DATE]
+ *   pnpm cli todo create <title> [--description=DESC] [--assignee=EMAIL] [--due-date=DATE]
  *   pnpm cli todo update <id|number> [--status=STATUS] [--assignee=EMAIL] [--due-date=DATE]
  *   pnpm cli todo assign <id|number> <user>
  *   pnpm cli todo complete <id|number>
@@ -44,9 +44,9 @@ if (isRunDirectly && commandArgs.length === 0) {
 Todo Management CLI Tool
 
 Commands:
-  list [--project=PROJECT] [--status=STATUS] [--assignee=EMAIL]  List todos with filters
-  show <id>                                                       Show todo details
-  create <project> <title> [--description=DESC] [--assignee=EMAIL] [--due-date=DATE]  Create a new todo
+  list [--status=STATUS] [--assignee=EMAIL]  List todos with filters
+  show <id>                                  Show todo details
+  create <title> [--description=DESC] [--assignee=EMAIL] [--due-date=DATE]  Create a new todo
   update <id> [--status=STATUS] [--assignee=EMAIL] [--due-date=DATE]  Update todo
   assign <id> <user>                                             Assign todo to user
   complete <id>                                                  Mark todo as completed
@@ -56,8 +56,8 @@ Status: NOT_STARTED, IN_PROGRESS, COMPLETED, BLOCKED, CANCELLED
 
 Examples:
   pnpm cli todo list
-  pnpm cli todo list --project=PROJ-000001 --status=IN_PROGRESS
-  pnpm cli todo create PROJ-000001 "Todo Title" --assignee=user@example.com
+  pnpm cli todo list --status=IN_PROGRESS
+  pnpm cli todo create "Todo Title" --assignee=user@example.com
 `);
   process.exit(0);
 }
@@ -137,7 +137,6 @@ async function resolveTodo(selection: string) {
 
 async function handleList() {
   const parsed = parseArgs(commandArgs.slice(1));
-  const projectCode = parsed.project as string | undefined;
   const status = parsed.status as string | undefined;
   const assigneeEmail = parsed.assignee as string | undefined;
 
@@ -146,14 +145,6 @@ async function handleList() {
 
   try {
     const where: any = {};
-
-    if (projectCode) {
-      const project = await prisma.project.findFirst({
-        where: { OR: [{ code: projectCode }, { id: projectCode }] },
-        select: { id: true },
-      });
-      if (project) where.projectId = project.id;
-    }
 
     if (status) where.status = status;
     if (assigneeEmail) {
@@ -167,11 +158,6 @@ async function handleList() {
     const todos = await prisma.todo.findMany({
       where,
       include: {
-        milestone: {
-          include: {
-            project: { select: { code: true, name: true } },
-          },
-        },
         assignedTo: { select: { email: true, name: true } },
       },
       orderBy: { createdAt: "desc" },
@@ -188,15 +174,14 @@ async function handleList() {
     separator();
 
     const table = createTable(
-      ["Number", "Title", "Project", "Status", "Assignee", "Due Date"],
-      { colWidths: [14, 30, 15, 15, 25, 15] }
+      ["Number", "Title", "Status", "Assignee", "Due Date"],
+      { colWidths: [14, 30, 15, 25, 15] }
     );
 
     todos.forEach((t) => {
       table.push([
         t.todoNumber || `${t.id.substring(0, 8)}...`,
         t.title.substring(0, 28),
-        t.milestone?.project?.code || "-",
         t.status,
         t.assignedTo?.email || "-",
         t.dueDate?.toLocaleDateString() || "-",
@@ -225,11 +210,6 @@ async function handleShow() {
     const todo = await prisma.todo.findUnique({
       where: { id: resolved.id },
       include: {
-        milestone: {
-          include: {
-            project: { select: { code: true, name: true } },
-          },
-        },
         assignedTo: { select: { email: true, name: true } },
       },
     });
@@ -247,7 +227,6 @@ async function handleShow() {
     displayKeyValue("Number", todo.todoNumber || "(not set)");
     displayKeyValue("Title", todo.title);
     displayKeyValue("Description", todo.description || "-");
-    displayKeyValue("Project", todo.milestone?.project ? `${todo.milestone.project.code} - ${todo.milestone.project.name}` : "-");
     displayKeyValue("Status", todo.status);
     displayKeyValue("Priority", todo.priority);
     displayKeyValue("Assignee", todo.assignedTo ? `${todo.assignedTo.email}${todo.assignedTo.name ? ` (${todo.assignedTo.name})` : ""}` : "-");
@@ -262,14 +241,13 @@ async function handleShow() {
 }
 
 async function handleCreate() {
-  if (commandArgs.length < 3) {
-    console.error("Usage: create <project> <title> [--description=DESC] [--assignee=EMAIL] [--due-date=DATE]");
+  if (commandArgs.length < 2) {
+    console.error("Usage: create <title> [--description=DESC] [--assignee=EMAIL] [--due-date=DATE]");
     process.exit(1);
   }
 
-  const projectCode = commandArgs[1];
-  const title = commandArgs[2];
-  const parsed = parseArgs(commandArgs.slice(3));
+  const title = commandArgs[1];
+  const parsed = parseArgs(commandArgs.slice(2));
   const description = parsed.description as string | undefined;
   const assigneeEmail = parsed.assignee as string | undefined;
   const dueDateStr = parsed["due-date"] as string | undefined;
@@ -278,25 +256,7 @@ async function handleCreate() {
   spinner.start();
 
   try {
-    // Find a milestone for the project (todos are linked to projects via milestones)
-    const milestone = await prisma.milestone.findFirst({
-      where: {
-        project: {
-          OR: [{ code: projectCode }, { id: projectCode }],
-        },
-      },
-      select: { id: true, project: { select: { code: true } } },
-      orderBy: { createdAt: "desc" },
-    });
-
-    if (!milestone) {
-      spinner.fail("No milestone found");
-      error(`No milestone found for project "${projectCode}". Todos must be associated with a milestone.`);
-      process.exit(1);
-    }
-
     const data: any = {
-      milestoneId: milestone.id,
       title: title.trim(),
       description: description?.trim() || null,
     };
@@ -315,20 +275,11 @@ async function handleCreate() {
 
     const todo = await prisma.todo.create({
       data,
-      include: {
-        milestone: {
-          include: {
-            project: { select: { code: true } },
-          },
-        },
-      },
     });
 
     spinner.succeed("Todo created");
     console.log(
-      `\n✅ Todo "${todo.title}" (${todo.todoNumber || todo.id.substring(0, 8) + "..."}) has been created in project ${
-        todo.milestone?.project?.code || projectCode
-      }.`
+      `\n✅ Todo "${todo.title}" (${todo.todoNumber || todo.id.substring(0, 8) + "..."}) has been created.`
     );
   } catch (err) {
     spinner.fail("Failed to create todo");

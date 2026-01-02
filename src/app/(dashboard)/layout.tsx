@@ -103,7 +103,6 @@ export default async function DashboardLayout({
   const modulePermissionMap: Record<string, string> = {
     [MODULE_KEYS.TICKETS]: "modules.tickets.view",
     [MODULE_KEYS.TIMETRACKING]: "modules.timetracking.view",
-    [MODULE_KEYS.PROJECTS]: "modules.projects.view",
     [MODULE_KEYS.TODOS]: "modules.todos.view",
   };
   

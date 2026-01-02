@@ -12,17 +12,11 @@ export interface TicketFilterConfigOptions {
     name: string;
     description: string | null;
   }>;
-  projects?: Array<{
-    id: string;
-    code: string;
-    name: string;
-    color: string | null;
-  }>;
   isAgent: boolean;
 }
 
 export const getTicketFilterConfig = (options: TicketFilterConfigOptions): FilterConfig => {
-  const { users, groups = [], projects = [], isAgent } = options;
+  const { users, groups = [], isAgent } = options;
 
   const userOptions = [
     { value: "", label: "All Users" },
@@ -37,14 +31,6 @@ export const getTicketFilterConfig = (options: TicketFilterConfigOptions): Filte
     ...groups.map((group) => ({
       value: group.id,
       label: group.name,
-    })),
-  ];
-
-  const projectOptions = [
-    { value: "", label: "All Projects" },
-    ...projects.map((project) => ({
-      value: project.id,
-      label: `${project.name} (${project.code})`,
     })),
   ];
 
@@ -97,16 +83,6 @@ export const getTicketFilterConfig = (options: TicketFilterConfigOptions): Filte
         label: "Assigned To Group",
         type: "select",
         options: groupOptions,
-        gridCols: 2,
-      });
-    }
-
-    if (projects.length > 0) {
-      fields.push({
-        key: "projectId",
-        label: "Project",
-        type: "select",
-        options: projectOptions,
         gridCols: 2,
       });
     }

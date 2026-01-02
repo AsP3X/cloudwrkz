@@ -71,7 +71,6 @@ export type TodoInput = {
   startDate?: Date | string;
   dueDate?: Date | string;
   parentTodoId?: string;
-  milestoneId?: string;
   ticketId?: string;
   order?: number;
   dependencyIds?: string[]; // Todo IDs this todo depends on
@@ -128,20 +127,6 @@ export async function createTodo(
         return {
           success: false,
           error: "Parent todo not found",
-        };
-      }
-    }
-
-    // Validate milestone exists (no project validation needed - todos are independent)
-    if (input.milestoneId) {
-      const milestone = await prisma.milestone.findUnique({
-        where: { id: input.milestoneId },
-        select: { id: true },
-      });
-      if (!milestone) {
-        return {
-          success: false,
-          error: "Milestone not found",
         };
       }
     }
@@ -224,9 +209,6 @@ export async function createTodo(
     }
     if (input.parentTodoId !== undefined && input.parentTodoId !== null) {
       todoData.parentTodoId = input.parentTodoId;
-    }
-    if (input.milestoneId !== undefined && input.milestoneId !== null) {
-      todoData.milestoneId = input.milestoneId;
     }
     if (input.ticketId !== undefined && input.ticketId !== null) {
       todoData.ticketId = input.ticketId;
@@ -330,7 +312,7 @@ export async function createTodo(
     if (errorMessage.includes("Foreign key constraint")) {
       return {
         success: false,
-        error: "Invalid reference (user, ticket, or milestone not found).",
+        error: "Invalid reference (user or ticket not found).",
       };
     }
     
@@ -406,13 +388,13 @@ export async function createTicketTodo(
  */
 export async function createSubtodo(
   parentTodoId: string,
-  input: Omit<TodoInput, "parentTodoId" | "ticketId" | "milestoneId">
+  input: Omit<TodoInput, "parentTodoId" | "ticketId">
 ): Promise<ActionResult<{ id: string }>> {
   try {
     // Reuse the same permission/module checks as createTodo
     const parent = await prisma.todo.findUnique({
       where: { id: parentTodoId },
-      select: { id: true, ticketId: true, milestoneId: true },
+      select: { id: true, ticketId: true },
     });
 
     if (!parent) {
@@ -426,7 +408,6 @@ export async function createSubtodo(
       ...input,
       parentTodoId,
       ticketId: parent.ticketId ?? undefined,
-      milestoneId: parent.milestoneId ?? undefined,
     });
 
     if (result.success) {
@@ -595,7 +576,6 @@ export async function updateTodo(
     if (input.dueDate !== undefined) updateData.dueDate = dueDate;
     if (input.completedDate !== undefined) updateData.completedDate = completedDate;
     if (input.parentTodoId !== undefined) updateData.parentTodoId = input.parentTodoId;
-    if (input.milestoneId !== undefined) updateData.milestoneId = input.milestoneId;
     if (input.ticketId !== undefined) updateData.ticketId = input.ticketId;
     if (input.order !== undefined) updateData.order = input.order;
 
@@ -812,11 +792,6 @@ export async function deleteTodo(todoId: string): Promise<ActionResult> {
   }
 }
 
-export async function getProjectTodos(projectId: string) {
-  // Todos are now independent of projects - this function is deprecated
-  // Return empty array since todos no longer belong to projects
-  return [];
-}
 
 /**
  * Get all todos that are linked to a specific ticket.
@@ -876,12 +851,6 @@ export async function getTicketTodos(ticketId: string) {
         select: {
           id: true,
           title: true,
-        },
-      },
-      milestone: {
-        select: {
-          id: true,
-          name: true,
         },
       },
       ticket: {
@@ -1007,12 +976,6 @@ export async function getAllTodos(filters?: {
         select: {
           id: true,
           title: true,
-        },
-      },
-      milestone: {
-        select: {
-          id: true,
-          name: true,
         },
       },
       ticket: {
@@ -1142,12 +1105,6 @@ export async function getTodo(id: string) {
           id: true,
           title: true,
           status: true,
-        },
-      },
-      milestone: {
-        select: {
-          id: true,
-          name: true,
         },
       },
       ticket: {

@@ -652,14 +652,14 @@ export async function handleListInteractive() {
       ]);
 
       if (filterChoice === "category" || filterChoice === "both") {
-        const category = await prompt("Enter category to filter by (e.g. tickets, projects, admin):", {
+        const category = await prompt("Enter category to filter by (e.g. tickets, admin):", {
           required: true,
         });
         flags.push(`--category=${category}`);
       }
 
       if (filterChoice === "module" || filterChoice === "both") {
-        const moduleKey = await prompt("Enter module key to filter by (e.g. tickets, projects, timetracking):", {
+        const moduleKey = await prompt("Enter module key to filter by (e.g. tickets, timetracking):", {
           required: true,
         });
         flags.push(`--module=${moduleKey}`);

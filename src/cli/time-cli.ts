@@ -4,17 +4,17 @@
  * Time Tracking CLI Tool
  * 
  * Usage:
- *   pnpm cli time list [--user=EMAIL] [--project=PROJECT] [--date=DATE] [--status=STATUS]
+ *   pnpm cli time list [--user=EMAIL] [--date=DATE] [--status=STATUS]
  *   pnpm cli time show <id>
- *   pnpm cli time start <project> [--description=DESC] [--task=TASK]
+ *   pnpm cli time start [--description=DESC] [--task=TASK]
  *   pnpm cli time stop [--id=ID]
  *   pnpm cli time pause [--id=ID]
  *   pnpm cli time resume [--id=ID]
- *   pnpm cli time create <project> <duration> [--description=DESC] [--date=DATE] [--task=TASK]
+ *   pnpm cli time create <duration> [--description=DESC] [--date=DATE] [--task=TASK]
  *   pnpm cli time update <id> [--duration=DURATION] [--description=DESC] [--date=DATE]
  *   pnpm cli time delete <id>
- *   pnpm cli time export [--user=EMAIL] [--project=PROJECT] [--start-date=DATE] [--end-date=DATE] [--format=CSV|JSON]
- *   pnpm cli time report [--user=EMAIL] [--project=PROJECT] [--period=WEEK|MONTH|YEAR]
+ *   pnpm cli time export [--user=EMAIL] [--start-date=DATE] [--end-date=DATE] [--format=CSV|JSON]
+ *   pnpm cli time report [--user=EMAIL] [--period=WEEK|MONTH|YEAR]
  */
 
 import { prisma } from "../lib/db/prisma";
@@ -48,26 +48,26 @@ if (isRunDirectly && commandArgs.length === 0) {
 Time Tracking CLI Tool
 
 Commands:
-  list [--user=EMAIL] [--project=PROJECT] [--date=DATE] [--status=STATUS]  List time entries
-  show <id>                                                                 Show time entry details
-  start <project> [--description=DESC] [--task=TASK]                       Start a new time entry
-  stop [--id=ID]                                                            Stop current or specific entry
-  pause [--id=ID]                                                           Pause time entry
-  resume [--id=ID]                                                          Resume paused entry
-  create <project> <duration> [--description=DESC] [--date=DATE] [--task=TASK]  Create manual time entry
-  update <id> [--duration=DURATION] [--description=DESC] [--date=DATE]     Update time entry
-  delete <id>                                                               Delete time entry
-  export [--user=EMAIL] [--project=PROJECT] [--start-date=DATE] [--end-date=DATE] [--format=CSV|JSON]  Export time entries
-  report [--user=EMAIL] [--project=PROJECT] [--period=WEEK|MONTH|YEAR]     Generate time report
+  list [--user=EMAIL] [--date=DATE] [--status=STATUS]  List time entries
+  show <id>                                             Show time entry details
+  start [--description=DESC] [--task=TASK]             Start a new time entry
+  stop [--id=ID]                                        Stop current or specific entry
+  pause [--id=ID]                                       Pause time entry
+  resume [--id=ID]                                      Resume paused entry
+  create <duration> [--description=DESC] [--date=DATE] [--task=TASK]  Create manual time entry
+  update <id> [--duration=DURATION] [--description=DESC] [--date=DATE]  Update time entry
+  delete <id>                                           Delete time entry
+  export [--user=EMAIL] [--start-date=DATE] [--end-date=DATE] [--format=CSV|JSON]  Export time entries
+  report [--user=EMAIL] [--period=WEEK|MONTH|YEAR]      Generate time report
 
 Status: RUNNING, PAUSED, STOPPED, COMPLETED
 Duration format: "2h 30m" or "150" (minutes)
 
 Examples:
   pnpm cli time list
-  pnpm cli time start PROJ-000001 --description="Working on feature"
+  pnpm cli time start --description="Working on feature"
   pnpm cli time stop
-  pnpm cli time create PROJ-000001 "2h 30m" --description="Meeting"
+  pnpm cli time create "2h 30m" --description="Meeting"
 `);
   process.exit(0);
 }
@@ -163,7 +163,6 @@ function formatDuration(seconds: number): string {
 async function handleList() {
   const parsed = parseArgs(commandArgs.slice(1));
   const userEmail = parsed.user as string | undefined;
-  const projectCode = parsed.project as string | undefined;
   const status = parsed.status as string | undefined;
 
   const spinner = createSpinner("Loading time entries...");
@@ -178,20 +177,12 @@ async function handleList() {
       });
       if (user) where.userId = user.id;
     }
-    if (projectCode) {
-      const project = await prisma.project.findFirst({
-        where: { OR: [{ code: projectCode }, { id: projectCode }] },
-        select: { id: true },
-      });
-      if (project) where.projectId = project.id;
-    }
     if (status) where.status = status;
 
     const entries = await prisma.timeEntry.findMany({
       where,
       include: {
         user: { select: { email: true, name: true } },
-        project: { select: { code: true, name: true } },
       },
       orderBy: { createdAt: "desc" },
       take: 100,
@@ -207,8 +198,8 @@ async function handleList() {
     separator();
 
     const table = createTable(
-      ["ID", "Name", "User", "Project", "Duration", "Status", "Date"],
-      { colWidths: [12, 25, 25, 15, 12, 12, 20] }
+      ["ID", "Name", "User", "Duration", "Status", "Date"],
+      { colWidths: [12, 25, 25, 12, 12, 20] }
     );
 
     entries.forEach((e) => {
@@ -216,7 +207,6 @@ async function handleList() {
         e.id.substring(0, 8) + "...",
         e.name.substring(0, 23),
         e.user.email,
-        e.project?.code || "-",
         formatDuration(e.totalDuration),
         e.status,
         e.startedAt.toLocaleDateString(),
@@ -245,7 +235,6 @@ async function handleShow() {
       where: { id: entryId },
       include: {
         user: { select: { email: true, name: true } },
-        project: { select: { code: true, name: true } },
         ticket: { select: { ticketNumber: true, title: true } },
       },
     });
@@ -263,7 +252,6 @@ async function handleShow() {
     displayKeyValue("Name", entry.name);
     displayKeyValue("Description", entry.description || "-");
     displayKeyValue("User", `${entry.user.email}${entry.user.name ? ` (${entry.user.name})` : ""}`);
-    displayKeyValue("Project", entry.project ? `${entry.project.code} - ${entry.project.name}` : "-");
     displayKeyValue("Ticket", entry.ticket ? `${entry.ticket.ticketNumber} - ${entry.ticket.title}` : "-");
     displayKeyValue("Status", entry.status);
     displayKeyValue("Duration", formatDuration(entry.totalDuration));
@@ -277,13 +265,7 @@ async function handleShow() {
 }
 
 async function handleStart() {
-  if (commandArgs.length < 2) {
-    console.error("Usage: start <project> [--description=DESC] [--task=TASK]");
-    process.exit(1);
-  }
-
-  const projectCode = commandArgs[1];
-  const parsed = parseArgs(commandArgs.slice(2));
+  const parsed = parseArgs(commandArgs.slice(1));
   const description = parsed.description as string | undefined;
   const taskId = parsed.task as string | undefined;
 
@@ -291,17 +273,6 @@ async function handleStart() {
   spinner.start();
 
   try {
-    const project = await prisma.project.findFirst({
-      where: { OR: [{ code: projectCode }, { id: projectCode }] },
-      select: { id: true, name: true },
-    });
-
-    if (!project) {
-      spinner.fail("Project not found");
-      error(`Project "${projectCode}" not found`);
-      process.exit(1);
-    }
-
     // For CLI, we'll use a default user (you may want to add authentication)
     const defaultUser = await prisma.user.findFirst({
       where: { role: "ADMIN" },
@@ -316,8 +287,7 @@ async function handleStart() {
 
     const data: any = {
       userId: defaultUser.id,
-      projectId: project.id,
-      name: description || `Time entry for ${project.name}`,
+      name: description || "Time entry",
       description: description || null,
       status: "RUNNING",
       startedAt: new Date(),
@@ -335,13 +305,12 @@ async function handleStart() {
       select: {
         id: true,
         name: true,
-        project: { select: { code: true } },
         status: true,
       },
     });
 
     spinner.succeed("Time entry started");
-    console.log(`\n✅ Time entry started for project ${entry.project?.code || "unknown"}.`);
+    console.log(`\n✅ Time entry started.`);
     console.log(`   Entry ID: ${entry.id}`);
   } catch (err) {
     spinner.fail("Failed to start time entry");
@@ -506,14 +475,13 @@ async function handleResume() {
 }
 
 async function handleCreate() {
-  if (commandArgs.length < 3) {
-    console.error("Usage: create <project> <duration> [--description=DESC] [--date=DATE] [--task=TASK]");
+  if (commandArgs.length < 2) {
+    console.error("Usage: create <duration> [--description=DESC] [--date=DATE] [--task=TASK]");
     process.exit(1);
   }
 
-  const projectCode = commandArgs[1];
-  const durationStr = commandArgs[2];
-  const parsed = parseArgs(commandArgs.slice(3));
+  const durationStr = commandArgs[1];
+  const parsed = parseArgs(commandArgs.slice(2));
   const description = parsed.description as string | undefined;
   const dateStr = parsed.date as string | undefined;
   const taskId = parsed.task as string | undefined;
@@ -522,17 +490,6 @@ async function handleCreate() {
   spinner.start();
 
   try {
-    const project = await prisma.project.findFirst({
-      where: { OR: [{ code: projectCode }, { id: projectCode }] },
-      select: { id: true, name: true },
-    });
-
-    if (!project) {
-      spinner.fail("Project not found");
-      error(`Project "${projectCode}" not found`);
-      process.exit(1);
-    }
-
     const defaultUser = await prisma.user.findFirst({
       where: { role: "ADMIN" },
       select: { id: true },
@@ -549,8 +506,7 @@ async function handleCreate() {
 
     const data: any = {
       userId: defaultUser.id,
-      projectId: project.id,
-      name: description || `Time entry for ${project.name}`,
+      name: description || `Time entry`,
       description: description || null,
       status: "COMPLETED",
       startedAt,
@@ -570,13 +526,12 @@ async function handleCreate() {
       select: {
         id: true,
         name: true,
-        project: { select: { code: true } },
         totalDuration: true,
       },
     });
 
     spinner.succeed("Time entry created");
-    console.log(`\n✅ Time entry created for project ${entry.project?.code || "unknown"}.`);
+    console.log(`\n✅ Time entry created.`);
     console.log(`   Duration: ${formatDuration(entry.totalDuration)}`);
   } catch (err) {
     spinner.fail("Failed to create time entry");

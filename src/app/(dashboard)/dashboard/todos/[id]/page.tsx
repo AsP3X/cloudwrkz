@@ -375,21 +375,6 @@ export default async function TodoDetailPage({ params, searchParams }: TodoDetai
                   </>
                 )}
 
-                {/* Milestone */}
-                {task.milestone && (
-                  <>
-                    <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4"></div>
-                    <div>
-                      <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
-                        Milestone
-                      </label>
-                      <p className="text-sm text-neutral-900 dark:text-neutral-100">
-                        {task.milestone.name}
-                      </p>
-                    </div>
-                  </>
-                )}
-
                 {/* Divider */}
                 <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4"></div>
 

@@ -20,7 +20,6 @@ import { notFound } from "next/navigation";
 import { getAgents } from "@/server/actions/users";
 import { getGroups } from "@/server/actions/groups";
 import { getTimeEntriesForTicket, getAvailableTimeEntriesForAssignment } from "@/server/actions/time-tracking";
-import { getUserProjectsForAssignment, canEditProject } from "@/server/actions/projects";
 import { getTicketTodos } from "@/server/actions/todos";
 import { TasksSection } from "@/components/features/tasks/TasksSection";
 
@@ -99,7 +98,6 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
   const isAgent = user.role === "AGENT" || user.role === "ADMIN" || user.role === "MODERATOR";
   const agents = isAgent ? await getAgents() : [];
   const groups = isAgent ? await getGroups() : [];
-  const projects = isAgent ? await getUserProjectsForAssignment() : [];
 
   // Check if time tracking module is enabled and user has permission to view ticket time entries
   const timeTrackingEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
@@ -133,10 +131,8 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
     ? timeEntries.filter((entry) => entry.status === "RUNNING" || entry.status === "PAUSED")
     : [];
 
-  // Determine if current user can manage tasks for this ticket's project
-  const ticketHasProject = !!ticket.projectId;
-  const canManageTasks =
-    ticketHasProject && user.role !== "USER" && (await canEditProject(user.id, ticket.projectId!));
+  // Determine if current user can manage tasks for this ticket
+  const canManageTasks = user.role !== "USER";
 
   // Load todos linked to this ticket (project permissions are checked internally)
   const ticketTasks = await getTicketTodos(ticket.id);
@@ -305,7 +301,6 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
             ticketId={ticket.id}
             tasks={ticketTasks as any}
             canManage={!!canManageTasks}
-            ticketHasProject={ticketHasProject}
           />
 
           {/* Comments and Activity Section */}
@@ -414,10 +409,8 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                   ticketId={ticket.id}
                   assignedToId={ticket.assignedToId}
                   assignedToGroupId={ticket.assignedToGroupId}
-                  projectId={ticket.projectId}
                   agents={agents}
                   groups={groups}
-                  projects={projects}
                 />
               ) : (
                 <>
@@ -463,34 +456,6 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                       <p className="text-sm text-neutral-500 dark:text-neutral-500 italic">No group assignment</p>
                     </div>
                   )}
-                </>
-              )}
-
-              {/* Project - Only show if project is assigned */}
-              {ticket.project && (
-                <>
-                  {/* Divider */}
-                  <div className="border-t border-neutral-200 pt-4"></div>
-                  <div>
-                    <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
-                      Project
-                    </label>
-                    <Link
-                      href={`/dashboard/projects/${ticket.project.id}`}
-                      className="flex items-center gap-2 text-sm text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
-                    >
-                      {ticket.project.color && (
-                        <div
-                          className="w-3 h-3 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: ticket.project.color }}
-                        />
-                      )}
-                      <span className="font-medium">{ticket.project.name}</span>
-                      <span className="text-neutral-500 dark:text-neutral-500 font-mono text-xs">
-                        ({ticket.project.code})
-                      </span>
-                    </Link>
-                  </div>
                 </>
               )}
 

@@ -6,7 +6,6 @@ import { MODULE_KEYS } from "@/lib/constants/modules";
 import { getTickets } from "@/server/actions/tickets";
 import { getAllUsers } from "@/server/actions/users";
 import { getGroups } from "@/server/actions/groups";
-import { getUserProjectsForAssignment, getProjects } from "@/server/actions/projects";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { TicketFilterButton } from "@/components/features/tickets/TicketFilterButton";
@@ -20,7 +19,6 @@ interface TicketsPageProps {
     status?: string;
     createdBy?: string;
     assignedToGroup?: string;
-    projectId?: string;
     createdFrom?: string;
     createdTo?: string;
     updatedFrom?: string;
@@ -81,9 +79,6 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
   if (params.assignedToGroup) {
     filters.assignedToGroupId = params.assignedToGroup;
   }
-  if (params.projectId) {
-    filters.projectId = params.projectId;
-  }
   if (params.createdFrom) {
     filters.createdFrom = params.createdFrom;
   }
@@ -97,37 +92,14 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
     filters.updatedTo = params.updatedTo;
   }
 
-  // For regular users, show tickets they created OR tickets from projects they own/manage
+  // For regular users, show only tickets they created
   if (user.role !== "AGENT") {
-    // Get all projects the user has access to
-    const userProjects = await getProjects();
-    
-    // Filter projects where user is owner or manager
-    const ownedOrManagedProjects = userProjects.filter((project) => {
-      if (project.createdById === user.id) return true; // Owner
-      const membership = project.members.find((m) => m.user.id === user.id);
-      return membership?.role === "MANAGER"; // Manager
-    });
-    
-    const projectIds = ownedOrManagedProjects.map((p) => p.id);
-    
-    // If user has projects they own/manage, include tickets from those projects
-    // Otherwise, just show tickets they created
-    if (projectIds.length > 0) {
-      // We'll need to modify getTickets to support OR conditions
-      // For now, we'll fetch tickets they created and tickets from their projects separately
-      // and combine them, or we can pass projectIds to getTickets
-      filters.createdById = user.id;
-      filters.projectIds = projectIds; // We'll need to add this to getTickets
-    } else {
-      filters.createdById = user.id;
-    }
+    filters.createdById = user.id;
   }
 
-  // Get users, groups, and projects for filter dropdown (only for agents)
+  // Get users and groups for filter dropdown (only for agents)
   const users = user.role === "AGENT" ? await getAllUsers() : [];
   const groups = user.role === "AGENT" ? await getGroups() : [];
-  const projects = user.role === "AGENT" ? await getUserProjectsForAssignment() : [];
 
   // Get tickets with filters
   const tickets = await getTickets(filters);
@@ -136,7 +108,7 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
     <TicketViewProvider>
       <div className="space-y-6">
           {/* Auto-load filter preset for agents */}
-          <TicketFilterLoader users={users} groups={groups} projects={projects} isAgent={user.role === "AGENT"} />
+          <TicketFilterLoader users={users} groups={groups} isAgent={user.role === "AGENT"} />
           
           {/* Header */}
           <div className="flex items-center justify-between flex-wrap gap-4">
@@ -152,7 +124,7 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
             </div>
             <div className="flex items-center gap-3">
               <TicketViewControls />
-              <TicketFilterButton users={users} groups={groups} projects={projects} isAgent={user.role === "AGENT"} />
+              <TicketFilterButton users={users} groups={groups} isAgent={user.role === "AGENT"} />
               <Link href="/dashboard/tickets/new">
                 <Button variant="primary">Create</Button>
               </Link>

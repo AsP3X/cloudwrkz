@@ -382,23 +382,6 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
         </svg>
       );
     }
-    if (type === "project") {
-      return (
-        <svg
-          className="w-5 h-5 text-blue-600 dark:text-blue-400"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-          />
-        </svg>
-      );
-    }
     if (type === "setting") {
       return (
         <svg
@@ -541,13 +524,6 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                         >
                           {group.ticket.metadata.timerNumber}
                         </Link>
-                      ) : group.ticket.type === "project" && group.ticket.metadata?.code ? (
-                        <Link
-                          href={group.ticket.url}
-                          className="text-sm font-mono font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
-                        >
-                          {group.ticket.metadata.code}
-                        </Link>
                       ) : group.ticket.type === "setting" ? (
                         <span className="text-sm text-neutral-500 dark:text-neutral-400">
                           Settings
@@ -578,13 +554,7 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                           {group.ticket.type === "timeentry" && group.ticket.metadata && (
                             <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
                               {group.ticket.metadata.ticketNumber && `Ticket: ${group.ticket.metadata.ticketNumber} • `}
-                              {group.ticket.metadata.projectCode && `Project: ${group.ticket.metadata.projectCode} • `}
                               {group.ticket.metadata.totalDuration && `${Math.floor((group.ticket.metadata.totalDuration as number) / 3600)}h ${Math.floor(((group.ticket.metadata.totalDuration as number) % 3600) / 60)}m`}
-                            </div>
-                          )}
-                          {group.ticket.type === "project" && group.ticket.metadata && (
-                            <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                              {group.ticket.metadata.ticketCount || 0} tickets • {group.ticket.metadata.timeEntryCount || 0} time entries • {group.ticket.metadata.memberCount || 0} members
                             </div>
                           )}
                           {(isTicket || isTask) && hasComments && (
@@ -619,10 +589,6 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                       ) : group.ticket.type === "timeentry" && group.ticket.metadata?.status ? (
                         <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 capitalize">
                           {group.ticket.metadata.status.toLowerCase()}
-                        </span>
-                      ) : group.ticket.type === "project" && group.ticket.metadata?.status ? (
-                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 capitalize">
-                          {group.ticket.metadata.status.replace("_", " ").toLowerCase()}
                         </span>
                       ) : group.ticket.type === "setting" && group.ticket.metadata?.category ? (
                         <span className="px-2 py-1 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200 capitalize">
@@ -663,14 +629,6 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                         <span className="text-xs text-neutral-600 dark:text-neutral-400">
                           {Math.floor((group.ticket.metadata.totalDuration as number) / 3600)}h {Math.floor(((group.ticket.metadata.totalDuration as number) % 3600) / 60)}m
                         </span>
-                      ) : group.ticket.type === "project" && group.ticket.metadata?.priority ? (
-                        <span
-                          className={`px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(
-                            group.ticket.metadata.priority
-                          )}`}
-                        >
-                          {group.ticket.metadata.priority}
-                        </span>
                       ) : (
                         <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
                       )}
@@ -710,10 +668,6 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                         <div className="text-sm text-neutral-700 dark:text-neutral-300">
                           {group.ticket.metadata.user}
                         </div>
-                      ) : group.ticket.type === "project" && group.ticket.metadata?.createdBy ? (
-                        <div className="text-sm text-neutral-700 dark:text-neutral-300">
-                          {group.ticket.metadata.createdBy}
-                        </div>
                       ) : (
                         <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
                       )}
@@ -734,10 +688,6 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                       ) : group.ticket.type === "timeentry" && group.ticket.metadata?.startedAt ? (
                         <div className="text-sm text-neutral-600 dark:text-neutral-400">
                           {formatDate(group.ticket.metadata.startedAt)}
-                        </div>
-                      ) : group.ticket.type === "project" && group.ticket.metadata?.createdAt ? (
-                        <div className="text-sm text-neutral-600 dark:text-neutral-400">
-                          {formatDate(group.ticket.metadata.createdAt)}
                         </div>
                       ) : (
                         <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>

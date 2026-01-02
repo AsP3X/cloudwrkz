@@ -73,13 +73,7 @@ model User {
   groupMemberships   GroupMembership[]
   permissions        UserPermission[] // User permissions
   timeEntries        TimeEntry[]
-  projectMemberships ProjectUser[]
-  createdProjects    Project[]         @relation("ProjectCreator")
   assignedTodos      Todo[]            @relation("TodoAssignee")
-  ownedRisks         ProjectRisk[]     @relation("RiskOwner")
-  assignedIssues     ProjectIssue[]    @relation("IssueAssignee")
-  reportedIssues     ProjectIssue[]    @relation("IssueReporter")
-  projectNotes       ProjectNote[]     @relation("NoteAuthor")
   unbanRequests      UnbanRequest[]
   locationHistories  LocationHistory[]
 
@@ -161,24 +155,6 @@ enum TimeEntryStatus {
   COMPLETED
 }
 
-// Project Status
-enum ProjectStatus {
-  PLANNING
-  ACTIVE
-  ON_HOLD
-  COMPLETED
-  CANCELLED
-  ARCHIVED
-}
-
-// Project Priority
-enum ProjectPriority {
-  LOW
-  MEDIUM
-  HIGH
-  URGENT
-}
-
 // Permission model - defines all available permissions
 model Permission {
   id          String  @id @default(cuid())
@@ -241,7 +217,6 @@ model Group {
   // Relations
   members            GroupMembership[]
   tickets            Ticket[]
-  projectMemberships ProjectGroup[]
   permissions        GroupPermission[] // Group permissions
 
   // Timestamps
@@ -292,10 +267,6 @@ model Ticket {
   tags        String[] @default([])
   attachments String[] @default([])
 
-  // Project relation
-  projectId String?
-  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-
   // Relations
   comments     TicketComment[]
   activities   TicketActivity[]
@@ -312,7 +283,6 @@ model Ticket {
   @@index([createdById])
   @@index([assignedToId])
   @@index([assignedToGroupId])
-  @@index([projectId])
   @@index([status])
   @@index([priority])
   @@index([type])
@@ -333,8 +303,6 @@ enum TicketActivityType {
   UNASSIGNED_FROM_AGENT
   ASSIGNED_TO_GROUP
   UNASSIGNED_FROM_GROUP
-  ASSIGNED_TO_PROJECT
-  UNASSIGNED_FROM_PROJECT
   TAGS_CHANGED
   RESOLVED
   CLOSED
@@ -412,8 +380,6 @@ model TimeEntry {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   ticketId  String? // Link to ticket
   ticket    Ticket?  @relation(fields: [ticketId], references: [id], onDelete: SetNull)
-  projectId String? // Direct link to project
-  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   // Tags and metadata
   tags     String[] @default([])
@@ -431,7 +397,6 @@ model TimeEntry {
   @@index([userId])
   @@index([status])
   @@index([ticketId])
-  @@index([projectId])
   @@index([createdAt])
   @@map("time_entries")
 }
@@ -474,127 +439,6 @@ model LocationHistory {
   @@unique([userId, address])
   @@index([userId])
   @@map("location_history")
-}
-
-// Project model
-model Project {
-  id          String          @id @default(cuid())
-  code        String          @unique // Project code/identifier (e.g., PROJ-001)
-  name        String
-  description String?
-  status      ProjectStatus   @default(PLANNING)
-  priority    ProjectPriority @default(MEDIUM)
-
-  // Dates
-  startDate DateTime?
-  endDate   DateTime?
-
-  // Budget and client
-  budget Float?
-  client String? // Client/customer name
-
-  // Visual
-  color String? // Hex color code
-  icon  String? // Icon identifier
-
-  // Permissions (stored as JSON for flexibility)
-  permissions Json? // Project-specific permissions configuration
-
-  // Relations
-  createdById String?
-  createdBy   User?   @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: SetNull)
-
-  // Many-to-many relationships
-  members ProjectUser[]
-  groups  ProjectGroup[]
-
-  // One-to-many relationships
-  tickets          Ticket[]
-  timeEntries      TimeEntry[]
-  milestones       Milestone[]
-  risks            ProjectRisk[]
-  issues           ProjectIssue[]
-  notes            ProjectNote[]
-  budgetCategories BudgetCategory[]
-
-  // Timestamps
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([code])
-  @@index([status])
-  @@index([priority])
-  @@index([createdById])
-  @@index([createdAt])
-  @@map("projects")
-}
-
-// Project User Role
-enum ProjectUserRole {
-  MANAGER
-  MEMBER
-}
-
-// Many-to-many relationship between Users and Projects
-model ProjectUser {
-  id        String          @id @default(cuid())
-  userId    String
-  projectId String
-  role      ProjectUserRole @default(MEMBER)
-  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project   Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  createdAt DateTime        @default(now())
-
-  @@unique([userId, projectId])
-  @@index([userId])
-  @@index([projectId])
-  @@index([role])
-  @@map("project_users")
-}
-
-// Many-to-many relationship between Groups and Projects
-model ProjectGroup {
-  id        String   @id @default(cuid())
-  groupId   String
-  projectId String
-  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-
-  @@unique([groupId, projectId])
-  @@index([groupId])
-  @@index([projectId])
-  @@map("project_groups")
-}
-
-// Milestone Status
-enum MilestoneStatus {
-  NOT_STARTED
-  IN_PROGRESS
-  COMPLETED
-  BLOCKED
-  CANCELLED
-}
-
-// Project Milestone
-model Milestone {
-  id            String          @id @default(cuid())
-  projectId     String
-  project       Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  name          String
-  description   String?
-  status        MilestoneStatus @default(NOT_STARTED)
-  targetDate    DateTime?
-  completedDate DateTime?
-  order         Int             @default(0) // For ordering milestones
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  Todo          Todo[]
-
-  @@index([projectId])
-  @@index([status])
-  @@index([targetDate])
-  @@map("milestones")
 }
 
 // Todo Status
@@ -642,10 +486,6 @@ model Todo {
   dueDate       DateTime?
   completedDate DateTime?
 
-  // Milestone relation
-  milestoneId String?
-  milestone   Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
-
   // Ticket relation (optional - todo can be linked to a ticket)
   ticketId String?
   ticket   Ticket? @relation("TodoTicket", fields: [ticketId], references: [id], onDelete: SetNull)
@@ -662,7 +502,6 @@ model Todo {
   @@index([assignedToId])
   @@index([status])
   @@index([priority])
-  @@index([milestoneId])
   @@index([ticketId])
   @@index([todoNumber])
   @@map("todos")
@@ -690,128 +529,6 @@ model TodoDependency {
   @@index([todoId])
   @@index([dependsOnTodoId])
   @@map("todo_dependencies")
-}
-
-// Risk Severity
-enum RiskSeverity {
-  LOW
-  MEDIUM
-  HIGH
-  CRITICAL
-}
-
-// Risk Status
-enum RiskStatus {
-  IDENTIFIED
-  MONITORING
-  MITIGATED
-  RESOLVED
-  ACCEPTED
-}
-
-// Project Risk
-model ProjectRisk {
-  id             String       @id @default(cuid())
-  projectId      String
-  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  title          String
-  description    String?
-  severity       RiskSeverity @default(MEDIUM)
-  status         RiskStatus   @default(IDENTIFIED)
-  probability    Float? // 0.0 to 1.0
-  impact         String? // Description of potential impact
-  mitigationPlan String? // How to mitigate this risk
-  ownerId        String? // User responsible for managing this risk
-  owner          User?        @relation("RiskOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  identifiedDate DateTime     @default(now())
-  resolvedDate   DateTime?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-
-  @@index([projectId])
-  @@index([severity])
-  @@index([status])
-  @@index([ownerId])
-  @@map("project_risks")
-}
-
-// Issue Status
-enum IssueStatus {
-  OPEN
-  IN_PROGRESS
-  RESOLVED
-  CLOSED
-}
-
-// Issue Priority
-enum IssuePriority {
-  LOW
-  MEDIUM
-  HIGH
-  URGENT
-}
-
-// Project Issue
-model ProjectIssue {
-  id           String        @id @default(cuid())
-  projectId    String
-  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  title        String
-  description  String?
-  status       IssueStatus   @default(OPEN)
-  priority     IssuePriority @default(MEDIUM)
-  assignedToId String?
-  assignedTo   User?         @relation("IssueAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
-  reportedById String?
-  reportedBy   User?         @relation("IssueReporter", fields: [reportedById], references: [id], onDelete: SetNull)
-  impact       String? // Impact on timeline, budget, etc.
-  resolution   String? // How it was resolved
-  resolvedDate DateTime?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-
-  @@index([projectId])
-  @@index([status])
-  @@index([priority])
-  @@index([assignedToId])
-  @@index([reportedById])
-  @@map("project_issues")
-}
-
-// Project Note
-model ProjectNote {
-  id        String   @id @default(cuid())
-  projectId String
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  title     String?
-  content   String
-  authorId  String?
-  author    User?    @relation("NoteAuthor", fields: [authorId], references: [id], onDelete: SetNull)
-  isPinned  Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([projectId])
-  @@index([authorId])
-  @@index([isPinned])
-  @@index([createdAt])
-  @@map("project_notes")
-}
-
-// Budget Category
-model BudgetCategory {
-  id             String   @id @default(cuid())
-  projectId      String
-  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  name           String
-  description    String?
-  budgetedAmount Float // Planned budget
-  spentAmount    Float    @default(0) // Actual spent (calculated from time entries or expenses)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  @@index([projectId])
-  @@map("budget_categories")
 }
 
 // Unban Request model for banned users to request account unban
