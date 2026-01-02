@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
@@ -37,6 +37,7 @@ export function UserDetailPage({ user: initialUser }: UserDetailPageProps) {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [effectivePermissions, setEffectivePermissions] = useState<string[]>([]);
   const [loadingPermissions, setLoadingPermissions] = useState(false);
+  const [permissionSearch, setPermissionSearch] = useState("");
 
   React.useEffect(() => {
     if (editDialogOpen) {
@@ -149,6 +150,17 @@ export function UserDetailPage({ user: initialUser }: UserDetailPageProps) {
         return "default";
     }
   };
+
+  // Filter permissions based on search query
+  const filteredPermissions = useMemo(() => {
+    if (!permissionSearch.trim()) {
+      return effectivePermissions;
+    }
+    const searchLower = permissionSearch.toLowerCase();
+    return effectivePermissions.filter((perm) =>
+      perm.toLowerCase().includes(searchLower)
+    );
+  }, [effectivePermissions, permissionSearch]);
 
   return (
     <div className="space-y-6">
@@ -271,25 +283,149 @@ export function UserDetailPage({ user: initialUser }: UserDetailPageProps) {
       )}
 
       {/* Effective Permissions */}
-      <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
-        <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">Effective Permissions</h2>
-        {loadingPermissions ? (
-          <p className="text-neutral-600 dark:text-neutral-400">Loading permissions...</p>
-        ) : effectivePermissions.length > 0 ? (
-          <div className="space-y-2">
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-3">
-              This user has {effectivePermissions.length} permission{effectivePermissions.length !== 1 ? "s" : ""} (from role + groups):
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {effectivePermissions.map((perm) => (
-                <Badge key={perm} variant="default" size="sm">
-                  {perm}
-                </Badge>
-              ))}
+      <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50">
+        <div className="p-6 border-b border-neutral-200 dark:border-neutral-800">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex-1">
+              <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Effective Permissions</h2>
+              <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                This user has {effectivePermissions.length} permission{effectivePermissions.length !== 1 ? "s" : ""} (from role + groups)
+                {permissionSearch.trim() && filteredPermissions.length !== effectivePermissions.length && (
+                  <span className="ml-1">
+                    ({filteredPermissions.length} shown)
+                  </span>
+                )}
+              </p>
             </div>
+            {!loadingPermissions && effectivePermissions.length > 0 && (
+              <div className="w-full sm:w-auto sm:min-w-[400px]">
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <svg
+                      className="h-5 w-5 text-neutral-400 dark:text-neutral-500"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
+                    </svg>
+                  </div>
+                  <Input
+                    placeholder="Search permissions..."
+                    value={permissionSearch}
+                    onChange={(e) => setPermissionSearch(e.target.value)}
+                    className="pl-11 pr-4 py-3 text-base border-2 focus:border-primary-500 dark:focus:border-primary-400 shadow-sm"
+                  />
+                </div>
+              </div>
+            )}
           </div>
+        </div>
+        
+        {loadingPermissions ? (
+          <div className="p-12 text-center">
+            <p className="text-neutral-600 dark:text-neutral-400">Loading permissions...</p>
+          </div>
+        ) : effectivePermissions.length > 0 ? (
+          <>
+            {/* Permissions Table */}
+            {filteredPermissions.length === 0 ? (
+              <div className="p-12 text-center">
+                <svg
+                  className="w-16 h-16 text-neutral-400 dark:text-neutral-600 mx-auto mb-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+                <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
+                  No permissions found
+                </h3>
+                <p className="text-neutral-600 dark:text-neutral-400 mb-4">
+                  No permissions match your search criteria.
+                </p>
+                <Button variant="outline" onClick={() => setPermissionSearch("")}>
+                  Clear Search
+                </Button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-neutral-50 dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                        Permission
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
+                    {filteredPermissions.map((perm) => (
+                      <tr
+                        key={perm}
+                        className="hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+                      >
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="flex-shrink-0">
+                              <svg
+                                className="w-5 h-5 text-neutral-400 dark:text-neutral-500"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                                />
+                              </svg>
+                            </div>
+                            <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                              {perm}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         ) : (
-          <p className="text-neutral-600 dark:text-neutral-400">No permissions assigned.</p>
+          <div className="p-12 text-center">
+            <svg
+              className="w-16 h-16 text-neutral-400 dark:text-neutral-600 mx-auto mb-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+              />
+            </svg>
+            <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
+              No permissions assigned
+            </h3>
+            <p className="text-neutral-600 dark:text-neutral-400">
+              This user has no permissions assigned.
+            </p>
+          </div>
         )}
       </div>
 
