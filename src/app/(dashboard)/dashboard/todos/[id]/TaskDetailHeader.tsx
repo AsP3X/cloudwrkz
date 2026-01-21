@@ -8,6 +8,8 @@ import { formatDateTimeInTimezone } from "@/lib/utils/date";
 import { RichTextDisplay } from "@/components/features/tickets/RichTextDisplay";
 import { deleteTodo } from "@/server/actions/todos";
 import { TaskDeleteDialog } from "@/components/features/tasks/TaskDeleteDialog";
+import { useSidebar } from "./TaskDetailLayout";
+import { cn } from "@/lib/utils/cn";
 
 interface Subtask {
   id: string;
@@ -45,6 +47,7 @@ export const TaskDetailHeader = ({
 }: TaskDetailHeaderProps) => {
   const router = useRouter();
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
+  const { isOpen: sidebarOpen } = useSidebar();
 
   const backHref = parentTaskId ? `/dashboard/todos/${parentTaskId}` : "/dashboard/todos";
   const backLabel = parentTaskId ? "Back to Parent ToDo" : "Back to ToDos";
@@ -154,7 +157,12 @@ export const TaskDetailHeader = ({
       </div>
       {/* Edit Button and Delete Button (desktop only) */}
       {(canEdit || canDelete) && (
-        <div className="hidden sm:flex flex-wrap items-center gap-2 lg:mr-[360px] lg:transition-all lg:duration-700">
+        <div
+          className={cn(
+            "hidden sm:flex flex-wrap items-center gap-2 lg:transition-all lg:duration-300 lg:ease-in-out",
+            sidebarOpen ? "lg:mr-[360px]" : "lg:mr-12"
+          )}
+        >
           {canEdit && (
             <Link href={editHref}>
               <Button variant="primary" size="sm" className="w-full sm:w-auto">

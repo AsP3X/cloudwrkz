@@ -10,6 +10,16 @@ interface TaskDetailLayoutProps {
   children: React.ReactNode;
 }
 
+export const SidebarContext = React.createContext<{
+  isOpen: boolean;
+  setIsOpen: (open: boolean) => void;
+}>({
+  isOpen: true,
+  setIsOpen: () => {},
+});
+
+export const useSidebar = () => React.useContext(SidebarContext);
+
 const ChevronRightIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
     <path
@@ -66,7 +76,9 @@ export const TaskDetailLayout = ({
   sidebar,
   children,
 }: TaskDetailLayoutProps) => {
-  const [desktopSidebarOpen, setDesktopSidebarOpen] = React.useState(defaultSidebarOpen);
+  const sidebarContext = React.useContext(SidebarContext);
+  const desktopSidebarOpen = sidebarContext.isOpen;
+  const setDesktopSidebarOpen = sidebarContext.setIsOpen;
   const [mobileDrawerOpen, setMobileDrawerOpen] = React.useState(false);
 
   React.useEffect(() => {
@@ -135,48 +147,51 @@ export const TaskDetailLayout = ({
           id="task-info-sidebar-desktop"
           className={cn(
             "hidden lg:block shrink-0 fixed right-0 top-16 bottom-0",
+            "transition-[width] duration-300 ease-in-out overflow-hidden",
             desktopSidebarOpen ? "w-[360px]" : "w-12"
           )}
           aria-label="Task information sidebar"
         >
-          {desktopSidebarOpen ? (
-            <div className="h-full flex flex-col bg-white dark:bg-neutral-900 border-l border-neutral-200 dark:border-neutral-800 shadow-lg">
-              {/* Header */}
-              <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-neutral-200 dark:border-neutral-800 shrink-0">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate">
-                    Task information
-                  </p>
+          <div className="h-full w-[360px] flex flex-col bg-white dark:bg-neutral-900 border-l border-neutral-200 dark:border-neutral-800 shadow-lg">
+            {desktopSidebarOpen ? (
+              <>
+                {/* Header */}
+                <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-neutral-200 dark:border-neutral-800 shrink-0">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate">
+                      Task information
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 px-0"
+                    onClick={() => setDesktopSidebarOpen(false)}
+                    aria-expanded={desktopSidebarOpen}
+                    aria-controls="task-info-sidebar-desktop"
+                    title="Collapse sidebar"
+                  >
+                    <ChevronRightIcon className="h-4 w-4" />
+                  </Button>
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 px-0"
-                  onClick={() => setDesktopSidebarOpen(false)}
-                  aria-expanded={desktopSidebarOpen}
-                  aria-controls="task-info-sidebar-desktop"
-                  title="Collapse sidebar"
-                >
-                  <ChevronRightIcon className="h-4 w-4" />
-                </Button>
-              </div>
 
-              {/* Content - scrollable */}
-              <div className="flex-1 overflow-y-auto p-4 min-h-0">{sidebar}</div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setDesktopSidebarOpen(true)}
-              className="h-full w-full flex items-center justify-center bg-white dark:bg-neutral-900 border-l border-neutral-200 dark:border-neutral-800 shadow-lg hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
-              aria-expanded={desktopSidebarOpen}
-              aria-controls="task-info-sidebar-desktop"
-              title="Show task information"
-            >
-              <ChevronLeftIcon className="h-4 w-4 text-neutral-600 dark:text-neutral-400" />
-            </button>
-          )}
+                {/* Content - scrollable */}
+                <div className="flex-1 overflow-y-auto p-4 min-h-0">{sidebar}</div>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setDesktopSidebarOpen(true)}
+                className="h-full w-full flex items-center justify-center hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+                aria-expanded={desktopSidebarOpen}
+                aria-controls="task-info-sidebar-desktop"
+                title="Show task information"
+              >
+                <ChevronLeftIcon className="h-4 w-4 text-neutral-600 dark:text-neutral-400" />
+              </button>
+            )}
+          </div>
         </aside>
       </div>
 

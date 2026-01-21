@@ -16,6 +16,7 @@ import { RichTextDisplay } from "@/components/features/tickets/RichTextDisplay";
 import { TaskDetailHeader } from "./TaskDetailHeader";
 import { TaskDetailContent } from "./TaskDetailContent";
 import { TaskDetailLayout } from "./TaskDetailLayout";
+import { TaskDetailWrapper } from "./TaskDetailWrapper";
 import { TaskEditForm } from "@/components/features/tasks/TaskEditForm";
 import { getTickets } from "@/server/actions/tickets";
 import { TaskStatusPriorityFields } from "@/components/features/tasks/TaskStatusPriorityFields";
@@ -168,22 +169,23 @@ export default async function TodoDetailPage({ params, searchParams }: TodoDetai
 
 
   return (
-    <div className="space-y-6">
-      <TaskDetailHeader
-        taskId={task.id}
-        taskTitle={task.title}
-        createdAt={task.createdAt}
-        canEdit={canEdit}
-        canDelete={canDelete}
-        description={task.description}
-        descriptionHtml={(task as any).descriptionHtml}
-        parentTaskId={(task as any).parentTodo?.id}
-        isEditing={isEditing}
-        userTimezone={userTimezone}
-        subtasks={(task as any).subtodos || []}
-      />
+    <TaskDetailWrapper defaultSidebarOpen={true}>
+      <div className="space-y-6">
+        <TaskDetailHeader
+          taskId={task.id}
+          taskTitle={task.title}
+          createdAt={task.createdAt}
+          canEdit={canEdit}
+          canDelete={canDelete}
+          description={task.description}
+          descriptionHtml={(task as any).descriptionHtml}
+          parentTaskId={(task as any).parentTodo?.id}
+          isEditing={isEditing}
+          userTimezone={userTimezone}
+          subtasks={(task as any).subtodos || []}
+        />
 
-      <TaskDetailLayout
+        <TaskDetailLayout
         sidebar={
           <div className="space-y-4">
             {(task as any).todoNumber && (
@@ -438,6 +440,7 @@ export default async function TodoDetailPage({ params, searchParams }: TodoDetai
           </>
         )}
       </TaskDetailLayout>
-    </div>
+      </div>
+    </TaskDetailWrapper>
   );
 }
