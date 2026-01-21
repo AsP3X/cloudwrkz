@@ -792,6 +792,412 @@ export async function deleteTodo(todoId: string): Promise<ActionResult> {
   }
 }
 
+/**
+ * Bulk update todos.
+ *
+ * Supports bulk status/priority changes from the overview page.
+ */
+export async function bulkUpdateTodos(
+  todoIds: string[],
+  updates: {
+    status?: TodoStatus;
+    priority?: TodoPriority;
+  }
+): Promise<ActionResult<{ updated: number; failed: number }>> {
+  try {
+    const user = await requireAuth();
+
+    if (!todoIds || todoIds.length === 0) {
+      return {
+        success: false,
+        error: "No todos selected",
+      };
+    }
+
+    if (updates.status === undefined && updates.priority === undefined) {
+      return {
+        success: false,
+        error: "No updates provided",
+      };
+    }
+
+    const todos = await prisma.todo.findMany({
+      where: { id: { in: todoIds } },
+      select: {
+        id: true,
+        assignedToId: true,
+        ticketId: true,
+        completedDate: true,
+      },
+    });
+
+    if (todos.length === 0) {
+      return {
+        success: false,
+        error: "No todos found",
+      };
+    }
+
+    // Permission gate (admins/agents/moderators always pass)
+    const { hasPermission } = await import("@/lib/utils/permissions");
+    if (
+      user.role !== "ADMIN" &&
+      user.role !== "AGENT" &&
+      user.role !== "MODERATOR" &&
+      !(await hasPermission(user.id, "todos.update"))
+    ) {
+      return {
+        success: false,
+        error: "You don't have permission to update these todos",
+      };
+    }
+
+    // Role-based access check for all selected todos
+    if (user.role === "ADMIN" || user.role === "MODERATOR") {
+      // ok
+    } else if (user.role === "AGENT") {
+      const uniqueTicketIds = Array.from(
+        new Set(todos.map((t) => t.ticketId).filter(Boolean) as string[])
+      );
+      const ticketAccess = new Map<string, boolean>();
+      await Promise.all(
+        uniqueTicketIds.map(async (ticketId) => {
+          ticketAccess.set(ticketId, await agentHasTicketAccess(user.id, ticketId));
+        })
+      );
+
+      const canUpdateAll = todos.every((t) => {
+        if (t.assignedToId === user.id) return true;
+        if (t.ticketId) return ticketAccess.get(t.ticketId) === true;
+        return false;
+      });
+
+      if (!canUpdateAll) {
+        return {
+          success: false,
+          error:
+            "You can only update todos assigned to you or todos linked to tickets you have access to",
+        };
+      }
+    } else {
+      // USER
+      const canUpdateAll = todos.every((t) => t.assignedToId === user.id);
+      if (!canUpdateAll) {
+        return {
+          success: false,
+          error: "You can only update todos assigned to you",
+        };
+      }
+    }
+
+    const now = new Date();
+
+    await prisma.$transaction(async (tx) => {
+      for (const todo of todos) {
+        const updateData: any = {};
+
+        if (updates.status !== undefined) {
+          updateData.status = updates.status;
+          // Auto-set completedDate for newly completed todos (preserve existing completedDate)
+          if (updates.status === "COMPLETED" && !todo.completedDate) {
+            updateData.completedDate = now;
+          }
+        }
+        if (updates.priority !== undefined) {
+          updateData.priority = updates.priority;
+        }
+
+        if (Object.keys(updateData).length > 0) {
+          await tx.todo.update({
+            where: { id: todo.id },
+            data: updateData,
+          });
+        }
+      }
+    });
+
+    // Todos are independent - only revalidate todos page
+    revalidatePath("/dashboard/todos");
+
+    return {
+      success: true,
+      data: {
+        updated: todos.length,
+        failed: todoIds.length - todos.length,
+      },
+      message: `Successfully updated ${todos.length} todo${todos.length !== 1 ? "s" : ""}`,
+    };
+  } catch (error) {
+    console.error("Bulk update todos error:", error);
+    return {
+      success: false,
+      error: "Failed to update todos. Please try again.",
+    };
+  }
+}
+
+/**
+ * Bulk archive todos.
+ *
+ * "Archive" in the UI means:
+ * - Ensure status is COMPLETED
+ * - Set completedDate if missing
+ * - Set archivedAt (so it disappears from the overview)
+ */
+export async function bulkArchiveTodos(
+  todoIds: string[]
+): Promise<ActionResult<{ archived: number; failed: number }>> {
+  try {
+    const user = await requireAuth();
+
+    if (!todoIds || todoIds.length === 0) {
+      return {
+        success: false,
+        error: "No todos selected",
+      };
+    }
+
+    const todos = await prisma.todo.findMany({
+      where: { id: { in: todoIds } },
+      select: {
+        id: true,
+        assignedToId: true,
+        ticketId: true,
+        completedDate: true,
+      },
+    });
+
+    if (todos.length === 0) {
+      return {
+        success: false,
+        error: "No todos found",
+      };
+    }
+
+    // Permission gate (admins/agents/moderators always pass)
+    const { hasPermission } = await import("@/lib/utils/permissions");
+    if (
+      user.role !== "ADMIN" &&
+      user.role !== "AGENT" &&
+      user.role !== "MODERATOR" &&
+      !(await hasPermission(user.id, "todos.update"))
+    ) {
+      return {
+        success: false,
+        error: "You don't have permission to archive these todos",
+      };
+    }
+
+    // Role-based access check for all selected todos
+    if (user.role === "ADMIN" || user.role === "MODERATOR") {
+      // ok
+    } else if (user.role === "AGENT") {
+      const uniqueTicketIds = Array.from(
+        new Set(todos.map((t) => t.ticketId).filter(Boolean) as string[])
+      );
+      const ticketAccess = new Map<string, boolean>();
+      await Promise.all(
+        uniqueTicketIds.map(async (ticketId) => {
+          ticketAccess.set(ticketId, await agentHasTicketAccess(user.id, ticketId));
+        })
+      );
+
+      const canUpdateAll = todos.every((t) => {
+        if (t.assignedToId === user.id) return true;
+        if (t.ticketId) return ticketAccess.get(t.ticketId) === true;
+        return false;
+      });
+
+      if (!canUpdateAll) {
+        return {
+          success: false,
+          error:
+            "You can only archive todos assigned to you or todos linked to tickets you have access to",
+        };
+      }
+    } else {
+      // USER
+      const canUpdateAll = todos.every((t) => t.assignedToId === user.id);
+      if (!canUpdateAll) {
+        return {
+          success: false,
+          error: "You can only archive todos assigned to you",
+        };
+      }
+    }
+
+    const now = new Date();
+
+    await prisma.$transaction(async (tx) => {
+      for (const todo of todos) {
+        await tx.todo.update({
+          where: { id: todo.id },
+          data: {
+            status: "COMPLETED",
+            archivedAt: now,
+            completedDate: todo.completedDate ?? now,
+          },
+        });
+      }
+    });
+
+    // Todos are independent - revalidate both overview and archive page
+    revalidatePath("/dashboard/todos");
+    revalidatePath("/dashboard/todos/archive");
+
+    return {
+      success: true,
+      data: {
+        archived: todos.length,
+        failed: todoIds.length - todos.length,
+      },
+      message: `Successfully archived ${todos.length} todo${todos.length !== 1 ? "s" : ""}`,
+    };
+  } catch (error) {
+    console.error("Bulk archive todos error:", error);
+    return {
+      success: false,
+      error: "Failed to archive todos. Please try again.",
+    };
+  }
+}
+
+/**
+ * Bulk delete todos (also deletes any nested subtodos).
+ */
+export async function bulkDeleteTodos(
+  todoIds: string[]
+): Promise<ActionResult<{ deleted: number; failed: number }>> {
+  try {
+    const user = await requireAuth();
+
+    if (!todoIds || todoIds.length === 0) {
+      return {
+        success: false,
+        error: "No todos selected",
+      };
+    }
+
+    const todos = await prisma.todo.findMany({
+      where: { id: { in: todoIds } },
+      select: {
+        id: true,
+        assignedToId: true,
+        ticketId: true,
+      },
+    });
+
+    if (todos.length === 0) {
+      return {
+        success: false,
+        error: "No todos found",
+      };
+    }
+
+    // Permission gate (admins/agents/moderators always pass)
+    const { hasPermission } = await import("@/lib/utils/permissions");
+    if (
+      user.role !== "ADMIN" &&
+      user.role !== "AGENT" &&
+      user.role !== "MODERATOR" &&
+      !(await hasPermission(user.id, "todos.delete"))
+    ) {
+      return {
+        success: false,
+        error: "You don't have permission to delete these todos",
+      };
+    }
+
+    // Role-based access check for all selected todos
+    if (user.role === "ADMIN" || user.role === "MODERATOR") {
+      // ok
+    } else if (user.role === "AGENT") {
+      const uniqueTicketIds = Array.from(
+        new Set(todos.map((t) => t.ticketId).filter(Boolean) as string[])
+      );
+      const ticketAccess = new Map<string, boolean>();
+      await Promise.all(
+        uniqueTicketIds.map(async (ticketId) => {
+          ticketAccess.set(ticketId, await agentHasTicketAccess(user.id, ticketId));
+        })
+      );
+
+      const canDeleteAll = todos.every((t) => {
+        if (t.assignedToId === user.id) return true;
+        if (t.ticketId) return ticketAccess.get(t.ticketId) === true;
+        return false;
+      });
+
+      if (!canDeleteAll) {
+        return {
+          success: false,
+          error:
+            "You can only delete todos assigned to you or todos linked to tickets you have access to",
+        };
+      }
+    } else {
+      // USER
+      const canDeleteAll = todos.every((t) => t.assignedToId === user.id);
+      if (!canDeleteAll) {
+        return {
+          success: false,
+          error: "You can only delete todos assigned to you",
+        };
+      }
+    }
+
+    const rootIds = todos.map((t) => t.id);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const idsToDelete = new Set<string>(rootIds);
+      let frontier = [...rootIds];
+
+      while (frontier.length > 0) {
+        const children = await tx.todo.findMany({
+          where: { parentTodoId: { in: frontier } },
+          select: { id: true },
+        });
+
+        const next: string[] = [];
+        for (const child of children) {
+          if (!idsToDelete.has(child.id)) {
+            idsToDelete.add(child.id);
+            next.push(child.id);
+          }
+        }
+        frontier = next;
+      }
+
+      const allIds = Array.from(idsToDelete);
+      const deleted = await tx.todo.deleteMany({
+        where: { id: { in: allIds } },
+      });
+
+      return {
+        deletedCount: deleted.count,
+      };
+    });
+
+    // Todos are independent - only revalidate todos page
+    revalidatePath("/dashboard/todos");
+
+    return {
+      success: true,
+      data: {
+        deleted: result.deletedCount,
+        failed: todoIds.length - todos.length,
+      },
+      message: `Successfully deleted ${result.deletedCount} todo${result.deletedCount !== 1 ? "s" : ""}`,
+    };
+  } catch (error) {
+    console.error("Bulk delete todos error:", error);
+    return {
+      success: false,
+      error: "Failed to delete todos. Please try again.",
+    };
+  }
+}
+
 
 /**
  * Get all todos that are linked to a specific ticket.
@@ -824,7 +1230,7 @@ export async function getTicketTodos(ticketId: string) {
   }
 
   // Build where clause based on user role
-  const whereClause: any = { ticketId };
+  const whereClause: any = { ticketId, archivedAt: null };
   if (user.role === "ADMIN" || user.role === "MODERATOR") {
     // Admins and moderators can see all todos for the ticket
     // No additional filter needed
@@ -920,12 +1326,20 @@ export async function getAllTodos(filters?: {
   assignee?: "all" | "me" | "unassigned";
   link?: "all" | "withTicket" | "withoutTicket";
   kind?: "all" | "root" | "subtodo";
+  archive?: "all" | "archived" | "unarchived";
   sort?: string; // e.g. "createdAt-desc", "dueDate-asc"
 }) {
   const user = await requireAuth();
 
   // Build where clause based on user role
   const whereClause: any = {};
+  // By default, hide archived todos from the overview
+  const archiveMode = filters?.archive || "unarchived";
+  if (archiveMode === "archived") {
+    whereClause.archivedAt = { not: null };
+  } else if (archiveMode === "unarchived") {
+    whereClause.archivedAt = null;
+  }
   
   if (user.role === "ADMIN" || user.role === "MODERATOR") {
     // Admins and moderators can see all todos

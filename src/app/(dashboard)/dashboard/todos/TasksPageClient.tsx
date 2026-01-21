@@ -6,6 +6,7 @@ import { TaskViewToggle, getInitialTaskViewMode, TaskViewMode, saveTaskViewMode 
 import { StandaloneTaskList } from "@/components/features/tasks/StandaloneTaskList";
 import { Button } from "@/components/ui/Button";
 import { TaskFilterButton } from "@/components/features/tasks/TaskFilterButton";
+import { ROUTES } from "@/lib/constants/routes";
 
 type Task = {
   id: string;
@@ -104,6 +105,9 @@ export function TasksPageClient({ tasks, canManage, userRole, userTimezone = "UT
             />
           )}
           <TaskFilterButton />
+          <Link href={ROUTES.TODOS_ARCHIVE}>
+            <Button variant="outline">Archive</Button>
+          </Link>
           {canManage && (
             <Link href="/dashboard/todos/new">
               <Button variant="primary">Create</Button>

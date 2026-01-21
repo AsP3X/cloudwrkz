@@ -914,6 +914,10 @@ async function searchTasks(
   }
   // Admins/Moderators: no extra filter, see all todos
 
+  // Hide archived todos from global search by default
+  // (archived todos are available on /dashboard/todos/archive)
+  where.archivedAt = null;
+
   const candidateLimit = Math.max(limit * 3, 50);
 
   const todos = await prisma.todo.findMany({

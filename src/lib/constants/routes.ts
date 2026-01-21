@@ -28,6 +28,7 @@ export const ROUTES = {
   TIME_TRACKING: "/dashboard/time-tracking",
   // Todos
   TODOS: "/dashboard/todos",
+  TODOS_ARCHIVE: "/dashboard/todos/archive",
 } as const;
 
 // Export individual routes for better tree-shaking and to ensure they're always available

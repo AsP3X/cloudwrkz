@@ -485,6 +485,7 @@ model Todo {
   startDate     DateTime?
   dueDate       DateTime?
   completedDate DateTime?
+  archivedAt    DateTime? // When set, todo is considered archived (hidden from overview)
 
   // Ticket relation (optional - todo can be linked to a ticket)
   ticketId String?
@@ -504,6 +505,7 @@ model Todo {
   @@index([priority])
   @@index([ticketId])
   @@index([todoNumber])
+  @@index([archivedAt])
   @@map("todos")
 }
 

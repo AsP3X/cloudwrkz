@@ -7,10 +7,12 @@ import { formatDateInTimezone } from "@/lib/utils/date";
 import { formatUserName } from "@/lib/utils/users";
 import { TaskViewMode } from "../TaskViewToggle";
 import { cn } from "@/lib/utils/cn";
-import { updateTodo } from "@/server/actions/todos";
+import { bulkArchiveTodos, bulkDeleteTodos, bulkUpdateTodos, updateTodo } from "@/server/actions/todos";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { useRouter } from "next/navigation";
+import { TodoBulkActionsToolbar } from "../TodoBulkActionsToolbar";
+import { TodoBulkDeleteDialog } from "../TodoBulkDeleteDialog";
 
 type StandaloneTask = {
   id: string;
@@ -100,6 +102,17 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
   const [isUpdating, setIsUpdating] = React.useState(false);
   const [selectedTaskId, setSelectedTaskId] = React.useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
+  const [selectedTodos, setSelectedTodos] = React.useState<Set<string>>(new Set());
+  const [isBulkProcessing, setIsBulkProcessing] = React.useState(false);
+  const [bulkError, setBulkError] = React.useState<string | null>(null);
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = React.useState(false);
+  const [mounted, setMounted] = React.useState(false);
+  const selectAllActiveRef = React.useRef<HTMLInputElement>(null);
+  const selectAllCompletedRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleToggleComplete = async (task: StandaloneTask) => {
     const nextStatus = task.status === "COMPLETED" ? "IN_PROGRESS" : "COMPLETED";
@@ -155,6 +168,164 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
   const activeTasks = tasks.filter((task) => task.status !== "COMPLETED");
   const completedTasks = tasks.filter((task) => task.status === "COMPLETED");
 
+  const activeSelectedCount = React.useMemo(() => {
+    if (!mounted) return 0;
+    return activeTasks.reduce((count, t) => (selectedTodos.has(t.id) ? count + 1 : count), 0);
+  }, [activeTasks, mounted, selectedTodos]);
+
+  const completedSelectedCount = React.useMemo(() => {
+    if (!mounted) return 0;
+    return completedTasks.reduce((count, t) => (selectedTodos.has(t.id) ? count + 1 : count), 0);
+  }, [completedTasks, mounted, selectedTodos]);
+
+  const allSelectedActive = activeTasks.length > 0 && activeSelectedCount === activeTasks.length;
+  const someSelectedActive = activeSelectedCount > 0 && activeSelectedCount < activeTasks.length;
+  const allSelectedCompleted = completedTasks.length > 0 && completedSelectedCount === completedTasks.length;
+  const someSelectedCompleted = completedSelectedCount > 0 && completedSelectedCount < completedTasks.length;
+
+  // Set indeterminate state on select all checkboxes
+  React.useEffect(() => {
+    if (selectAllActiveRef.current) {
+      selectAllActiveRef.current.indeterminate = someSelectedActive;
+    }
+  }, [someSelectedActive]);
+
+  React.useEffect(() => {
+    if (selectAllCompletedRef.current) {
+      selectAllCompletedRef.current.indeterminate = someSelectedCompleted;
+    }
+  }, [someSelectedCompleted]);
+
+  const handleSelectTodo = (todoId: string, checked: boolean) => {
+    setSelectedTodos((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(todoId);
+      else next.delete(todoId);
+      return next;
+    });
+  };
+
+  const handleSelectAllActive = (checked: boolean) => {
+    setSelectedTodos((prev) => {
+      const next = new Set(prev);
+      if (checked) {
+        activeTasks.forEach((t) => next.add(t.id));
+      } else {
+        activeTasks.forEach((t) => next.delete(t.id));
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllCompleted = (checked: boolean) => {
+    setSelectedTodos((prev) => {
+      const next = new Set(prev);
+      if (checked) {
+        completedTasks.forEach((t) => next.add(t.id));
+      } else {
+        completedTasks.forEach((t) => next.delete(t.id));
+      }
+      return next;
+    });
+  };
+
+  const handleClearSelection = () => {
+    setSelectedTodos(new Set());
+    setBulkError(null);
+  };
+
+  const handleBulkStatusChange = async (status: string) => {
+    if (selectedTodos.size === 0 || isBulkProcessing) return;
+
+    setIsBulkProcessing(true);
+    setBulkError(null);
+    try {
+      const result = await bulkUpdateTodos(Array.from(selectedTodos), {
+        status: status as any,
+      });
+      if (result.success) {
+        setSelectedTodos(new Set());
+        router.refresh();
+      } else {
+        setBulkError(result.error || "Failed to update todos");
+      }
+    } catch (err) {
+      setBulkError("An unexpected error occurred");
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  const handleBulkPriorityChange = async (priority: string) => {
+    if (selectedTodos.size === 0 || isBulkProcessing) return;
+
+    setIsBulkProcessing(true);
+    setBulkError(null);
+    try {
+      const result = await bulkUpdateTodos(Array.from(selectedTodos), {
+        priority: priority as any,
+      });
+      if (result.success) {
+        setSelectedTodos(new Set());
+        router.refresh();
+      } else {
+        setBulkError(result.error || "Failed to update todos");
+      }
+    } catch (err) {
+      setBulkError("An unexpected error occurred");
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  const handleBulkArchive = async () => {
+    if (selectedTodos.size === 0 || isBulkProcessing) return;
+
+    setIsBulkProcessing(true);
+    setBulkError(null);
+    try {
+      const result = await bulkArchiveTodos(Array.from(selectedTodos));
+      if (result.success) {
+        setSelectedTodos(new Set());
+        router.refresh();
+      } else {
+        setBulkError(result.error || "Failed to archive todos");
+      }
+    } catch (err) {
+      setBulkError("An unexpected error occurred");
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedTodos.size === 0 || isBulkProcessing) return;
+    setShowBulkDeleteDialog(true);
+  };
+
+  const handleBulkDeleteConfirm = async () => {
+    if (selectedTodos.size === 0) return;
+
+    setIsBulkProcessing(true);
+    setBulkError(null);
+    try {
+      const result = await bulkDeleteTodos(Array.from(selectedTodos));
+      if (result.success) {
+        setSelectedTodos(new Set());
+        setShowBulkDeleteDialog(false);
+        router.refresh();
+      } else {
+        setBulkError(result.error || "Failed to delete todos");
+        setShowBulkDeleteDialog(false);
+      }
+    } catch (err) {
+      setBulkError("An unexpected error occurred");
+      setShowBulkDeleteDialog(false);
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
   const STATUS_COLUMNS: Array<{ value: string; label: string; hint?: string }> = [
     { value: "NOT_STARTED", label: "Not Started" },
     { value: "IN_PROGRESS", label: "In Progress" },
@@ -174,10 +345,25 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
     const parentTodoId: string | undefined =
       (task as any).parentTodoId ?? (parentTodo ? parentTodo.id : undefined);
     const isSubTodo = !!parentTodoId;
+    const isSelected = mounted && selectedTodos.has(task.id);
 
     return (
     <div key={task.id} className="p-3 sm:p-4">
       <div className="flex items-start gap-3">
+        {canManage && (
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={(e) => {
+              e.stopPropagation();
+              handleSelectTodo(task.id, e.target.checked);
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-4 h-4 mt-1 text-primary-600 bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 cursor-pointer flex-shrink-0"
+            aria-label="Select todo"
+            suppressHydrationWarning
+          />
+        )}
         {canManage && (
           <button
             type="button"
@@ -291,6 +477,22 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
       key={task.id}
       className="hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
     >
+      {canManage && (
+        <td className="px-6 py-4 whitespace-nowrap w-12" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            checked={mounted && selectedTodos.has(task.id)}
+            onChange={(e) => {
+              e.stopPropagation();
+              handleSelectTodo(task.id, e.target.checked);
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-4 h-4 text-primary-600 bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 cursor-pointer"
+            aria-label="Select todo"
+            suppressHydrationWarning
+          />
+        </td>
+      )}
       {canManage && (
         <td className="px-6 py-4 whitespace-nowrap w-12">
           <button
@@ -427,12 +629,47 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
                 Drag tasks between columns to update their status.
               </span>
             </div>
-            {isUpdating && (
-              <span className="italic text-neutral-500 dark:text-neutral-500">
-                Updating…
-              </span>
-            )}
+            <div className="flex items-center gap-3">
+              {canManage && selectedTodos.size > 0 && (
+                <TodoBulkActionsToolbar
+                  variant="inline"
+                  selectedCount={selectedTodos.size}
+                  onBulkStatusChange={handleBulkStatusChange}
+                  onBulkPriorityChange={handleBulkPriorityChange}
+                  onBulkArchive={handleBulkArchive}
+                  onBulkDelete={handleBulkDelete}
+                  onClearSelection={handleClearSelection}
+                />
+              )}
+              {isUpdating && (
+                <span className="italic text-neutral-500 dark:text-neutral-500">
+                  Updating…
+                </span>
+              )}
+            </div>
           </div>
+          {bulkError && canManage && selectedTodos.size > 0 && (
+            <div className="px-4 md:px-6 py-3 bg-error-50 dark:bg-error-950 border-b border-error-200 dark:border-error-800">
+              <div className="flex items-center gap-2">
+                <svg
+                  className="w-5 h-5 text-error-600 dark:text-error-400 flex-shrink-0"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <p className="text-sm font-medium text-error-800 dark:text-error-200 break-words">
+                  {bulkError}
+                </p>
+              </div>
+            </div>
+          )}
           <div className="flex gap-4 md:gap-6 px-3 md:px-4 pb-4 pt-3 min-w-max">
             {STATUS_COLUMNS.map((column) => {
               const columnTasks = tasksByStatus[column.value] || [];
@@ -704,6 +941,53 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
       {/* Active Tasks */}
       {viewMode !== "kanban" && activeTasks.length > 0 && (
         <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+          {canManage && selectedTodos.size > 0 && completedTasks.length === 0 && (
+            <>
+              <div className="px-6 py-4 border-b border-neutral-200 dark:border-neutral-700 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+                      Active Tasks
+                    </h2>
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                      {activeTasks.length} {activeTasks.length === 1 ? "task" : "tasks"}
+                    </p>
+                  </div>
+                </div>
+                <TodoBulkActionsToolbar
+                  variant="inline"
+                  selectedCount={selectedTodos.size}
+                  onBulkStatusChange={handleBulkStatusChange}
+                  onBulkPriorityChange={handleBulkPriorityChange}
+                  onBulkArchive={handleBulkArchive}
+                  onBulkDelete={handleBulkDelete}
+                  onClearSelection={handleClearSelection}
+                />
+              </div>
+              {bulkError && (
+                <div className="px-6 py-3 bg-error-50 dark:bg-error-950 border-b border-error-200 dark:border-error-800">
+                  <div className="flex items-center gap-2">
+                    <svg
+                      className="w-5 h-5 text-error-600 dark:text-error-400 flex-shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    <p className="text-sm font-medium text-error-800 dark:text-error-200 break-words">
+                      {bulkError}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
           {viewMode === "card" && (
             <div className="divide-y divide-neutral-200 dark:divide-neutral-700">
               {activeTasks.map((task) => (
@@ -722,6 +1006,19 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
               <table className="w-full">
                 <thead className="bg-neutral-50 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700">
                   <tr>
+                    {canManage && (
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider w-12">
+                        <input
+                          type="checkbox"
+                          ref={selectAllActiveRef}
+                          checked={allSelectedActive}
+                          onChange={(e) => handleSelectAllActive(e.target.checked)}
+                          className="w-4 h-4 text-primary-600 bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 cursor-pointer"
+                          aria-label="Select all active todos"
+                          suppressHydrationWarning
+                        />
+                      </th>
+                    )}
                     {canManage && (
                       <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider w-12">
                         Done
@@ -765,14 +1062,51 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
       {/* Completed Tasks */}
       {viewMode !== "kanban" && completedTasks.length > 0 && (
         <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden mt-6">
-          <div className="px-6 py-4 border-b border-neutral-200 dark:border-neutral-700">
-            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-              Completed Tasks
-            </h2>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
-              {completedTasks.length} {completedTasks.length === 1 ? "task" : "tasks"} completed
-            </p>
+          <div className="px-6 py-4 border-b border-neutral-200 dark:border-neutral-700 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+                  Completed Tasks
+                </h2>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                  {completedTasks.length} {completedTasks.length === 1 ? "task" : "tasks"} completed
+                </p>
+              </div>
+            </div>
+            {canManage && selectedTodos.size > 0 && (
+              <TodoBulkActionsToolbar
+                variant="inline"
+                selectedCount={selectedTodos.size}
+                onBulkStatusChange={handleBulkStatusChange}
+                onBulkPriorityChange={handleBulkPriorityChange}
+                onBulkArchive={handleBulkArchive}
+                onBulkDelete={handleBulkDelete}
+                onClearSelection={handleClearSelection}
+              />
+            )}
           </div>
+          {bulkError && canManage && selectedTodos.size > 0 && (
+            <div className="px-6 py-3 bg-error-50 dark:bg-error-950 border-b border-error-200 dark:border-error-800">
+              <div className="flex items-center gap-2">
+                <svg
+                  className="w-5 h-5 text-error-600 dark:text-error-400 flex-shrink-0"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <p className="text-sm font-medium text-error-800 dark:text-error-200 break-words">
+                  {bulkError}
+                </p>
+              </div>
+            </div>
+          )}
           {viewMode === "card" && (
             <div className="divide-y divide-neutral-200 dark:divide-neutral-700">
               {completedTasks.map((task) => (
@@ -791,6 +1125,19 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
               <table className="w-full">
                 <thead className="bg-neutral-50 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700">
                   <tr>
+                    {canManage && (
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider w-12">
+                        <input
+                          type="checkbox"
+                          ref={selectAllCompletedRef}
+                          checked={allSelectedCompleted}
+                          onChange={(e) => handleSelectAllCompleted(e.target.checked)}
+                          className="w-4 h-4 text-primary-600 bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 cursor-pointer"
+                          aria-label="Select all completed todos"
+                          suppressHydrationWarning
+                        />
+                      </th>
+                    )}
                     {canManage && (
                       <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider w-12">
                         Done
@@ -829,6 +1176,14 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
             </div>
           )}
         </div>
+      )}
+      {showBulkDeleteDialog && (
+        <TodoBulkDeleteDialog
+          open={showBulkDeleteDialog}
+          onOpenChange={setShowBulkDeleteDialog}
+          onConfirm={handleBulkDeleteConfirm}
+          selectedCount={selectedTodos.size}
+        />
       )}
     </>
   );

@@ -58,6 +58,8 @@ export default async function TodosPage({ searchParams }: TodosPageProps) {
     link: (params.link as any) || undefined,
     // By default, hide subtasks from the overview unless explicitly requested
     kind: (params.kind as any) || "root",
+    // By default, hide archived todos from the overview
+    archive: "unarchived",
     sort: params.sort,
   });
 
