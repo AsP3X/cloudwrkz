@@ -22,6 +22,18 @@ const ChevronRightIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+const ChevronLeftIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
+    <path
+      d="M15 19l-7-7 7-7"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 const InfoIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
     <circle
@@ -108,71 +120,29 @@ export const TaskDetailLayout = ({
         </Button>
       </div>
 
-      <div
-        className={cn(
-          "flex items-start",
-          desktopSidebarOpen ? "lg:gap-6" : "lg:gap-3"
-        )}
-      >
-        <div className="flex-1 min-w-0 space-y-6">{children}</div>
+      <div className="flex items-start">
+        <div
+          className={cn(
+            "flex-1 min-w-0 space-y-6",
+            desktopSidebarOpen ? "lg:pr-[372px]" : "lg:pr-[60px]"
+          )}
+        >
+          {children}
+        </div>
 
-        {/* Desktop: collapsible sidebar rail that never fully disappears */}
+        {/* Desktop: sidebar from topbar to bottom */}
         <aside
           id="task-info-sidebar-desktop"
           className={cn(
-            "hidden lg:block shrink-0 sticky top-6 self-start relative",
+            "hidden lg:block shrink-0 fixed right-0 top-16 bottom-0",
             desktopSidebarOpen ? "w-[360px]" : "w-12"
           )}
           aria-label="Task information sidebar"
         >
-          {/* Morphing container - extends from squircle to box (right to left, top to down) */}
-          <div
-            className={cn(
-              "absolute top-0 right-0 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden",
-              "transition-all duration-700 ease-[cubic-bezier(0.4,0,0.2,1)]",
-              "flex flex-col",
-              desktopSidebarOpen
-                ? "bg-white dark:bg-neutral-900 w-full"
-                : "bg-blue-600 dark:bg-blue-500 w-12 h-12 group"
-            )}
-            style={{
-              height: desktopSidebarOpen ? "auto" : "48px",
-              minHeight: desktopSidebarOpen ? "auto" : "48px",
-            }}
-            aria-expanded={desktopSidebarOpen}
-            aria-controls="task-info-sidebar-desktop"
-          >
-            {/* Icon button - visible when collapsed, positioned at top-right */}
-            <button
-              type="button"
-              onClick={() => setDesktopSidebarOpen(true)}
-              className={cn(
-                "absolute top-0 right-0 flex items-center justify-center transition-all duration-700",
-                desktopSidebarOpen
-                  ? "opacity-0 scale-0 pointer-events-none"
-                  : "opacity-100 scale-100 w-12 h-12"
-              )}
-              aria-expanded={desktopSidebarOpen}
-              aria-controls="task-info-sidebar-desktop"
-              title="Show task information"
-            >
-              <InfoIcon className="h-6 w-6 text-white" />
-            </button>
-
-            {/* Sidebar content - appears after button expands */}
-            <div
-              className={cn(
-                "transition-all duration-500",
-                desktopSidebarOpen
-                  ? "opacity-100 translate-y-0"
-                  : "opacity-0 translate-y-2 pointer-events-none"
-              )}
-              style={{
-                transitionDelay: desktopSidebarOpen ? "500ms" : "0ms",
-              }}
-            >
+          {desktopSidebarOpen ? (
+            <div className="h-full flex flex-col bg-white dark:bg-neutral-900 border-l border-neutral-200 dark:border-neutral-800 shadow-lg">
               {/* Header */}
-              <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
+              <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-neutral-200 dark:border-neutral-800 shrink-0">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate">
                     Task information
@@ -183,10 +153,7 @@ export const TaskDetailLayout = ({
                   variant="ghost"
                   size="sm"
                   className="h-8 w-8 px-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDesktopSidebarOpen(false);
-                  }}
+                  onClick={() => setDesktopSidebarOpen(false)}
                   aria-expanded={desktopSidebarOpen}
                   aria-controls="task-info-sidebar-desktop"
                   title="Collapse sidebar"
@@ -195,20 +162,21 @@ export const TaskDetailLayout = ({
                 </Button>
               </div>
 
-              {/* Content */}
-              <div className="p-4">{sidebar}</div>
+              {/* Content - scrollable */}
+              <div className="flex-1 overflow-y-auto p-4 min-h-0">{sidebar}</div>
             </div>
-
-            {/* Tooltip for collapsed state */}
-            {!desktopSidebarOpen && (
-              <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
-                <div className="relative bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-xs font-medium px-2 py-1 rounded shadow-lg">
-                  Task info
-                  <div className="absolute right-full top-1/2 -translate-y-1/2 w-0 h-0 border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent border-r-[6px] border-r-neutral-900 dark:border-r-neutral-100"></div>
-                </div>
-              </div>
-            )}
-          </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setDesktopSidebarOpen(true)}
+              className="h-full w-full flex items-center justify-center bg-white dark:bg-neutral-900 border-l border-neutral-200 dark:border-neutral-800 shadow-lg hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+              aria-expanded={desktopSidebarOpen}
+              aria-controls="task-info-sidebar-desktop"
+              title="Show task information"
+            >
+              <ChevronLeftIcon className="h-4 w-4 text-neutral-600 dark:text-neutral-400" />
+            </button>
+          )}
         </aside>
       </div>
 

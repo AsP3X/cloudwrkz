@@ -154,7 +154,7 @@ export const TaskDetailHeader = ({
       </div>
       {/* Edit Button and Delete Button (desktop only) */}
       {(canEdit || canDelete) && (
-        <div className="hidden sm:flex flex-wrap items-center gap-2">
+        <div className="hidden sm:flex flex-wrap items-center gap-2 lg:mr-[360px] lg:transition-all lg:duration-700">
           {canEdit && (
             <Link href={editHref}>
               <Button variant="primary" size="sm" className="w-full sm:w-auto">
