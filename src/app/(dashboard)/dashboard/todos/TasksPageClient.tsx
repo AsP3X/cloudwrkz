@@ -105,7 +105,7 @@ export function TasksPageClient({ tasks, canManage, userRole, userTimezone = "UT
             />
           )}
           <TaskFilterButton />
-          <Link href={ROUTES.TODOS_ARCHIVE}>
+          <Link href={`${ROUTES.ARCHIVE}?type=todos`}>
             <Button variant="outline">Archive</Button>
           </Link>
           {canManage && (

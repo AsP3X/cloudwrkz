@@ -279,6 +279,7 @@ model Ticket {
   updatedAt  DateTime  @updatedAt
   resolvedAt DateTime?
   closedAt   DateTime?
+  archivedAt DateTime? // When set, ticket is considered archived (hidden from default lists)
 
   @@index([createdById])
   @@index([assignedToId])
@@ -288,6 +289,7 @@ model Ticket {
   @@index([type])
   @@index([ticketNumber])
   @@index([createdAt])
+  @@index([archivedAt])
   @@map("tickets")
 }
 
@@ -386,6 +388,7 @@ model TimeEntry {
   billable Boolean  @default(false) // Future: Billable flag
   location String? // Optional location/address
   timezone String? // Optional timezone override (IANA timezone identifier, e.g., "Europe/Berlin")
+  archivedAt DateTime? // When set, time entry is considered archived (hidden from default lists)
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -398,6 +401,7 @@ model TimeEntry {
   @@index([status])
   @@index([ticketId])
   @@index([createdAt])
+  @@index([archivedAt])
   @@map("time_entries")
 }
 

@@ -84,6 +84,7 @@ export type TimeEntryFilters = {
   dateTo?: Date;
   tags?: string[];
   ticketId?: string;
+  archive?: "all" | "archived" | "unarchived";
   sortBy?: "createdAt" | "startedAt" | "totalDuration";
   sortOrder?: "asc" | "desc";
   page?: number;
@@ -1079,6 +1080,14 @@ export async function getTimeEntries(filters: TimeEntryFilters = {}) {
       userId: user.id,
     };
 
+    // Archive filtering (default: hide archived entries)
+    const archiveMode = filters.archive ?? "unarchived";
+    if (archiveMode === "archived") {
+      where.archivedAt = { not: null };
+    } else if (archiveMode === "unarchived") {
+      where.archivedAt = null;
+    }
+
     if (filters.status && filters.status.length > 0) {
       where.status = { in: filters.status };
     }
@@ -1163,6 +1172,7 @@ export async function getActiveTimeEntries(userId?: string) {
     const entries = await prisma.timeEntry.findMany({
       where: {
         userId: user.id,
+        archivedAt: null,
         status: {
           in: ["RUNNING", "PAUSED"],
         },
@@ -1195,6 +1205,118 @@ export async function getActiveTimeEntries(userId?: string) {
   } catch (error: any) {
     console.error("Error fetching active time entries:", error);
     return [];
+  }
+}
+
+/**
+ * Bulk archive time entries.
+ *
+ * "Archive" means:
+ * - Set archivedAt so entry is hidden from default lists/search.
+ * - Does NOT change status.
+ */
+export async function bulkArchiveTimeEntries(ids: string[]): Promise<ActionResult<{ archived: number; failed: number }>> {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
+    if (!moduleEnabled) {
+      return { success: false, error: "Time tracking module is not enabled" };
+    }
+
+    const user = await requireAuth();
+
+    if (!ids || ids.length === 0) {
+      return { success: false, error: "No entries selected" };
+    }
+
+    // Verify ownership (consistent with bulk delete/update)
+    const entries = await prisma.timeEntry.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, userId: true },
+    });
+
+    if (entries.length === 0) {
+      return { success: false, error: "No time entries found" };
+    }
+
+    const unauthorized = entries.filter((e) => e.userId !== user.id);
+    if (unauthorized.length > 0) {
+      return { success: false, error: "Unauthorized: Some entries do not belong to you" };
+    }
+
+    const now = new Date();
+    const result = await prisma.timeEntry.updateMany({
+      where: { id: { in: ids } },
+      data: { archivedAt: now },
+    });
+
+    revalidatePath("/dashboard/time-tracking");
+    revalidatePath("/dashboard/archive");
+
+    for (const id of ids) {
+      emitTimeTrackingEvent(user.id, "ENTRY_UPDATED", { id });
+    }
+
+    return {
+      success: true,
+      data: { archived: result.count, failed: ids.length - result.count },
+      message: `${result.count} time entr${result.count === 1 ? "y" : "ies"} archived successfully`,
+    };
+  } catch (error: any) {
+    console.error("Error bulk archiving time entries:", error);
+    return { success: false, error: error.message || "Failed to archive time entries" };
+  }
+}
+
+/**
+ * Bulk unarchive time entries.
+ */
+export async function bulkUnarchiveTimeEntries(ids: string[]): Promise<ActionResult<{ unarchived: number; failed: number }>> {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.TIMETRACKING);
+    if (!moduleEnabled) {
+      return { success: false, error: "Time tracking module is not enabled" };
+    }
+
+    const user = await requireAuth();
+
+    if (!ids || ids.length === 0) {
+      return { success: false, error: "No entries selected" };
+    }
+
+    const entries = await prisma.timeEntry.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, userId: true },
+    });
+
+    if (entries.length === 0) {
+      return { success: false, error: "No time entries found" };
+    }
+
+    const unauthorized = entries.filter((e) => e.userId !== user.id);
+    if (unauthorized.length > 0) {
+      return { success: false, error: "Unauthorized: Some entries do not belong to you" };
+    }
+
+    const result = await prisma.timeEntry.updateMany({
+      where: { id: { in: ids } },
+      data: { archivedAt: null },
+    });
+
+    revalidatePath("/dashboard/time-tracking");
+    revalidatePath("/dashboard/archive");
+
+    for (const id of ids) {
+      emitTimeTrackingEvent(user.id, "ENTRY_UPDATED", { id });
+    }
+
+    return {
+      success: true,
+      data: { unarchived: result.count, failed: ids.length - result.count },
+      message: `${result.count} time entr${result.count === 1 ? "y" : "ies"} unarchived successfully`,
+    };
+  } catch (error: any) {
+    console.error("Error bulk unarchiving time entries:", error);
+    return { success: false, error: error.message || "Failed to unarchive time entries" };
   }
 }
 
@@ -1427,6 +1549,7 @@ export async function getTimeEntriesForTicket(ticketId: string) {
       where: {
         ticketId,
         userId: user.id, // Only show user's own timers
+        archivedAt: null,
       },
       orderBy: { createdAt: "desc" },
       include: {
@@ -1463,6 +1586,7 @@ export async function getTimerCountForTicket(ticketId: string): Promise<number> 
     const count = await prisma.timeEntry.count({
       where: {
         ticketId,
+        archivedAt: null,
       },
     });
 
@@ -1489,6 +1613,7 @@ export async function getAvailableTimeEntriesForAssignment() {
       where: {
         userId: user.id,
         ticketId: null, // Only timers not assigned to any ticket
+        archivedAt: null,
       },
       orderBy: { createdAt: "desc" },
       take: 50, // Limit to recent 50

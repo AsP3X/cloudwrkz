@@ -304,6 +304,7 @@ export async function getTickets(filters?: {
   updatedTo?: string; // ISO date string
   sortBy?: "createdAt" | "updatedAt";
   sortOrder?: "asc" | "desc";
+  archive?: "all" | "archived" | "unarchived";
 }) {
   const user = await requireAuth();
   
@@ -351,6 +352,14 @@ export async function getTickets(filters?: {
 
   const where: any = {};
   const baseFilters: any = {};
+
+  // Archive filtering (default: hide archived tickets)
+  const archiveMode = filters?.archive ?? "unarchived";
+  if (archiveMode === "archived") {
+    baseFilters.archivedAt = { not: null };
+  } else if (archiveMode === "unarchived") {
+    baseFilters.archivedAt = null;
+  }
 
   // Build base filter conditions (status, priority, type, etc.)
   //
@@ -524,6 +533,7 @@ export async function getTickets(filters?: {
         updatedAt: true,
         resolvedAt: true,
         closedAt: true,
+        archivedAt: true,
         createdById: true,
         createdByName: true,
         createdBy: {
@@ -585,6 +595,7 @@ export async function getTicket(id: string) {
       updatedAt: true,
       resolvedAt: true,
       closedAt: true,
+      archivedAt: true,
       createdById: true,
       createdByName: true,
       createdBy: {
@@ -1733,5 +1744,123 @@ export async function bulkDeleteTickets(
       success: false,
       error: "Failed to delete tickets. Please try again.",
     };
+  }
+}
+
+/**
+ * Bulk archive tickets.
+ *
+ * "Archive" means:
+ * - Set archivedAt so the ticket is hidden from default lists/search.
+ * - Does NOT change status (unlike todos).
+ */
+export async function bulkArchiveTickets(
+  ticketIds: string[]
+): Promise<ActionResult<{ archived: number; failed: number }>> {
+  try {
+    const user = await requireAuth();
+
+    if (!ticketIds || ticketIds.length === 0) {
+      return { success: false, error: "No tickets selected" };
+    }
+
+    // Check permissions for all tickets (same broad rule as bulkUpdateTickets)
+    const tickets = await prisma.ticket.findMany({
+      where: { id: { in: ticketIds } },
+      select: { id: true, createdById: true },
+    });
+
+    if (tickets.length === 0) {
+      return { success: false, error: "No tickets found" };
+    }
+
+    const canUpdateAll = tickets.every(
+      (t) =>
+        t.createdById === user.id ||
+        user.role === "ADMIN" ||
+        user.role === "MODERATOR" ||
+        user.role === "AGENT"
+    );
+
+    if (!canUpdateAll) {
+      return { success: false, error: "You don't have permission to archive all selected tickets" };
+    }
+
+    const now = new Date();
+    const result = await prisma.ticket.updateMany({
+      where: { id: { in: ticketIds } },
+      data: { archivedAt: now },
+    });
+
+    revalidatePath("/dashboard/tickets");
+    revalidatePath("/dashboard/archive");
+
+    return {
+      success: true,
+      data: {
+        archived: result.count,
+        failed: ticketIds.length - result.count,
+      },
+      message: `Successfully archived ${result.count} ticket${result.count !== 1 ? "s" : ""}`,
+    };
+  } catch (error) {
+    console.error("Bulk archive tickets error:", error);
+    return { success: false, error: "Failed to archive tickets. Please try again." };
+  }
+}
+
+/**
+ * Bulk unarchive tickets.
+ */
+export async function bulkUnarchiveTickets(
+  ticketIds: string[]
+): Promise<ActionResult<{ unarchived: number; failed: number }>> {
+  try {
+    const user = await requireAuth();
+
+    if (!ticketIds || ticketIds.length === 0) {
+      return { success: false, error: "No tickets selected" };
+    }
+
+    const tickets = await prisma.ticket.findMany({
+      where: { id: { in: ticketIds } },
+      select: { id: true, createdById: true },
+    });
+
+    if (tickets.length === 0) {
+      return { success: false, error: "No tickets found" };
+    }
+
+    const canUpdateAll = tickets.every(
+      (t) =>
+        t.createdById === user.id ||
+        user.role === "ADMIN" ||
+        user.role === "MODERATOR" ||
+        user.role === "AGENT"
+    );
+
+    if (!canUpdateAll) {
+      return { success: false, error: "You don't have permission to unarchive all selected tickets" };
+    }
+
+    const result = await prisma.ticket.updateMany({
+      where: { id: { in: ticketIds } },
+      data: { archivedAt: null },
+    });
+
+    revalidatePath("/dashboard/tickets");
+    revalidatePath("/dashboard/archive");
+
+    return {
+      success: true,
+      data: {
+        unarchived: result.count,
+        failed: ticketIds.length - result.count,
+      },
+      message: `Successfully unarchived ${result.count} ticket${result.count !== 1 ? "s" : ""}`,
+    };
+  } catch (error) {
+    console.error("Bulk unarchive tickets error:", error);
+    return { success: false, error: "Failed to unarchive tickets. Please try again." };
   }
 }

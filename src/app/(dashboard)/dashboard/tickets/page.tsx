@@ -125,6 +125,9 @@ export default async function TicketsPage({ searchParams }: TicketsPageProps) {
             <div className="flex items-center gap-3">
               <TicketViewControls />
               <TicketFilterButton users={users} groups={groups} isAgent={user.role === "AGENT"} />
+              <Link href={`${ROUTES.ARCHIVE}?type=tickets`}>
+                <Button variant="outline">Archive</Button>
+              </Link>
               <Link href="/dashboard/tickets/new">
                 <Button variant="primary">Create</Button>
               </Link>

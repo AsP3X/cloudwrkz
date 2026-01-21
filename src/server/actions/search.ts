@@ -257,6 +257,8 @@ async function searchTicketsWithFilters(
   userPermissions: Set<string>
 ): Promise<SearchResult[]> {
   const where: any = {};
+  // Hide archived tickets from search by default
+  where.archivedAt = null;
 
   // Apply filters (exact matches)
   if (filters.status) {
@@ -724,6 +726,8 @@ async function searchTimeEntries(
   userPermissions: Set<string>
 ): Promise<SearchResult[]> {
   const where: any = {};
+  // Hide archived time entries from search by default
+  where.archivedAt = null;
 
   // Check permissions
   const canViewAllTimeEntries = userPermissions.has("time_tracking.view_all");
@@ -1272,6 +1276,8 @@ async function searchTickets(
   userPermissions: Set<string>
 ): Promise<SearchResult[]> {
   const where: any = {};
+  // Hide archived tickets from search by default
+  where.archivedAt = null;
 
   // Check if user has any dynamic ticket view permissions
   const { parseTicketPermissionKey } = await import("@/lib/utils/permissions");
@@ -1380,6 +1386,7 @@ async function searchTickets(
         COALESCE("descriptionPlain", '') || ' ' || 
         COALESCE("ticketNumber", '')
       ) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
+      AND "archivedAt" IS NULL
       ${permissionFilterSql ? Prisma.raw(permissionFilterSql) : Prisma.sql``}
       ORDER BY ts_rank(
         to_tsvector('english', 
@@ -1401,16 +1408,20 @@ async function searchTickets(
       const commentLimit = limit * 2;
       const commentSearchQuery = user.role === "USER" 
         ? Prisma.sql`
-          SELECT DISTINCT "ticketId"
-          FROM ticket_comments
-          WHERE to_tsvector('english', COALESCE("contentPlain", content, '')) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
-          AND "isAgentOnly" = false
+          SELECT DISTINCT c."ticketId"
+          FROM ticket_comments c
+          JOIN tickets t ON t.id = c."ticketId"
+          WHERE to_tsvector('english', COALESCE(c."contentPlain", c.content, '')) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
+          AND c."isAgentOnly" = false
+          AND t."archivedAt" IS NULL
           LIMIT ${commentLimit}
         `
         : Prisma.sql`
-          SELECT DISTINCT "ticketId"
-          FROM ticket_comments
-          WHERE to_tsvector('english', COALESCE("contentPlain", content, '')) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
+          SELECT DISTINCT c."ticketId"
+          FROM ticket_comments c
+          JOIN tickets t ON t.id = c."ticketId"
+          WHERE to_tsvector('english', COALESCE(c."contentPlain", c.content, '')) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
+          AND t."archivedAt" IS NULL
           LIMIT ${commentLimit}
         `;
       

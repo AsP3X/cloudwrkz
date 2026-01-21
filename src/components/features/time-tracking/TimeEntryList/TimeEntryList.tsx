@@ -12,7 +12,7 @@ import { useTimeEntryView } from "../TimeEntryViewContext";
 import { getStatusColor, getStatusLabel, canPause, canResume, canStop, formatTimerNumber } from "@/lib/utils/time-tracking";
 import { formatDateTimeInTimezone } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
-import { pauseTimeEntry, resumeTimeEntry, stopTimeEntry, deleteTimeEntry, bulkUpdateTimeEntries, bulkDeleteTimeEntries } from "@/server/actions/time-tracking";
+import { pauseTimeEntry, resumeTimeEntry, stopTimeEntry, deleteTimeEntry, bulkUpdateTimeEntries, bulkDeleteTimeEntries, bulkArchiveTimeEntries } from "@/server/actions/time-tracking";
 import { type TimeEntryStatus } from "@prisma/client";
 import { EditTimeEntryDialog } from "../EditTimeEntryDialog";
 
@@ -275,6 +275,27 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
     setShowDeleteDialog(true);
   };
 
+  const handleBulkArchive = async () => {
+    if (selectedEntries.size === 0) return;
+
+    setIsProcessing(true);
+    setError(null);
+
+    try {
+      const result = await bulkArchiveTimeEntries(Array.from(selectedEntries));
+      if (result.success) {
+        setSelectedEntries(new Set());
+        router.refresh();
+      } else {
+        setError(result.error || "Failed to archive time entries");
+      }
+    } catch (err) {
+      setError("An unexpected error occurred");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const handleBulkDeleteConfirm = async () => {
     if (selectedEntries.size === 0) return;
 
@@ -317,6 +338,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
             selectedCount={selectedEntries.size}
             onBulkStatusChange={handleBulkStatusChange}
             onBulkTag={handleBulkTag}
+            onBulkArchive={handleBulkArchive}
             onBulkDelete={handleBulkDelete}
             onClearSelection={handleClearSelection}
           />

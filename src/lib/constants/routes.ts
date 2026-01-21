@@ -29,6 +29,8 @@ export const ROUTES = {
   // Todos
   TODOS: "/dashboard/todos",
   TODOS_ARCHIVE: "/dashboard/todos/archive",
+  // Global archive
+  ARCHIVE: "/dashboard/archive",
 } as const;
 
 // Export individual routes for better tree-shaking and to ensure they're always available

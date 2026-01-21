@@ -65,6 +65,17 @@ const TimeTrackingIcon = () => (
   </svg>
 );
 
+const ArchiveIcon = () => (
+  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M20 7l-2 12H6L4 7m16 0H4m16 0l-1-3H5L4 7m6 4h4"
+    />
+  </svg>
+);
+
 const SettingsIcon = () => (
   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path
@@ -125,6 +136,11 @@ const NAV_SECTIONS = Object.freeze([
         href: "/dashboard/todos",
         icon: TodosIcon,
         moduleKey: "todos",
+      }),
+      Object.freeze({
+        name: "Archive",
+        href: ROUTES.ARCHIVE,
+        icon: ArchiveIcon,
       }),
     ]),
   }),

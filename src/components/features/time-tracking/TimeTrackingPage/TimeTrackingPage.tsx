@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { TimeEntryList } from "../TimeEntryList";
 import { StartTimerDialog } from "../StartTimerDialog";
@@ -13,6 +14,7 @@ import { useTimeTrackingEvents } from "@/lib/hooks/useTimeTrackingEvents";
 import { type TimeEntryStatus } from "@prisma/client";
 import { calculateElapsedTime } from "@/lib/utils/time-tracking";
 import { formatDateTimeInTimezone } from "@/lib/utils/date";
+import { ROUTES } from "@/lib/constants/routes";
 
 // Client-only component to calculate total time to avoid hydration mismatch
 function TotalTimeDisplay({ entries }: { entries: TimeEntry[] }) {
@@ -130,6 +132,9 @@ function TimeTrackingPageContent({ initialEntries, initialTotal, initialPage, us
         <div className="flex items-center gap-3 flex-wrap">
           {isReady && <TimeEntryViewToggle currentView={viewMode} onViewChange={setViewMode} />}
           <TimeTrackingFilterButton />
+          <Link href={`${ROUTES.ARCHIVE}?type=time`}>
+            <Button variant="outline">Archive</Button>
+          </Link>
           <Button variant="outline" onClick={() => setShowAddDialog(true)}>
             <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

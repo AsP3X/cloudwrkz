@@ -1044,6 +1044,7 @@ export async function bulkArchiveTodos(
     // Todos are independent - revalidate both overview and archive page
     revalidatePath("/dashboard/todos");
     revalidatePath("/dashboard/todos/archive");
+    revalidatePath("/dashboard/archive");
 
     return {
       success: true,
@@ -1059,6 +1060,105 @@ export async function bulkArchiveTodos(
       success: false,
       error: "Failed to archive todos. Please try again.",
     };
+  }
+}
+
+/**
+ * Bulk unarchive todos.
+ *
+ * "Unarchive" means:
+ * - Set archivedAt = null (so it reappears in the overview)
+ * - Does NOT change status/completedDate automatically
+ */
+export async function bulkUnarchiveTodos(
+  todoIds: string[]
+): Promise<ActionResult<{ unarchived: number; failed: number }>> {
+  try {
+    const user = await requireAuth();
+
+    if (!todoIds || todoIds.length === 0) {
+      return { success: false, error: "No todos selected" };
+    }
+
+    const todos = await prisma.todo.findMany({
+      where: { id: { in: todoIds } },
+      select: {
+        id: true,
+        assignedToId: true,
+        ticketId: true,
+      },
+    });
+
+    if (todos.length === 0) {
+      return { success: false, error: "No todos found" };
+    }
+
+    // Permission gate (admins/agents/moderators always pass)
+    const { hasPermission } = await import("@/lib/utils/permissions");
+    if (
+      user.role !== "ADMIN" &&
+      user.role !== "AGENT" &&
+      user.role !== "MODERATOR" &&
+      !(await hasPermission(user.id, "todos.update"))
+    ) {
+      return { success: false, error: "You don't have permission to unarchive these todos" };
+    }
+
+    // Role-based access check for all selected todos (reuse logic from bulkArchiveTodos)
+    if (user.role === "ADMIN" || user.role === "MODERATOR") {
+      // ok
+    } else if (user.role === "AGENT") {
+      const uniqueTicketIds = Array.from(
+        new Set(todos.map((t) => t.ticketId).filter(Boolean) as string[])
+      );
+      const ticketAccess = new Map<string, boolean>();
+      await Promise.all(
+        uniqueTicketIds.map(async (ticketId) => {
+          ticketAccess.set(ticketId, await agentHasTicketAccess(user.id, ticketId));
+        })
+      );
+
+      const canUpdateAll = todos.every((t) => {
+        if (t.assignedToId === user.id) return true;
+        if (t.ticketId) return ticketAccess.get(t.ticketId) === true;
+        return false;
+      });
+
+      if (!canUpdateAll) {
+        return {
+          success: false,
+          error:
+            "You can only unarchive todos assigned to you or todos linked to tickets you have access to",
+        };
+      }
+    } else {
+      // USER
+      const canUpdateAll = todos.every((t) => t.assignedToId === user.id);
+      if (!canUpdateAll) {
+        return { success: false, error: "You can only unarchive todos assigned to you" };
+      }
+    }
+
+    const result = await prisma.todo.updateMany({
+      where: { id: { in: todoIds } },
+      data: { archivedAt: null },
+    });
+
+    revalidatePath("/dashboard/todos");
+    revalidatePath("/dashboard/todos/archive");
+    revalidatePath("/dashboard/archive");
+
+    return {
+      success: true,
+      data: {
+        unarchived: result.count,
+        failed: todoIds.length - result.count,
+      },
+      message: `Successfully unarchived ${result.count} todo${result.count !== 1 ? "s" : ""}`,
+    };
+  } catch (error) {
+    console.error("Bulk unarchive todos error:", error);
+    return { success: false, error: "Failed to unarchive todos. Please try again." };
   }
 }
 

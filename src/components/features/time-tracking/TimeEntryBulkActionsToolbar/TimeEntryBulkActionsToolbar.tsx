@@ -8,6 +8,7 @@ interface TimeEntryBulkActionsToolbarProps {
   selectedCount: number;
   onBulkStatusChange: (status: TimeEntryStatus) => void;
   onBulkTag: () => void;
+  onBulkArchive: () => void;
   onBulkDelete: () => void;
   onClearSelection: () => void;
 }
@@ -21,6 +22,7 @@ export const TimeEntryBulkActionsToolbar = ({
   selectedCount,
   onBulkStatusChange,
   onBulkTag,
+  onBulkArchive,
   onBulkDelete,
   onClearSelection,
 }: TimeEntryBulkActionsToolbarProps) => {
@@ -123,6 +125,29 @@ export const TimeEntryBulkActionsToolbar = ({
               />
             </svg>
             Manage Tags
+          </Button>
+
+          {/* Archive Button */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onBulkArchive}
+            className="text-sm"
+          >
+            <svg
+              className="w-4 h-4 mr-2"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M20 7l-2 12H6L4 7m16 0H4m16 0l-1-3H5L4 7m6 4h4"
+              />
+            </svg>
+            Archive
           </Button>
 
           {/* Delete Button */}

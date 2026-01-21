@@ -9,7 +9,7 @@ import { formatUserName } from "@/lib/utils/users";
 import { formatDate, formatDateTime } from "@/lib/utils/date";
 import { type TicketViewMode } from "../TicketViewToggle";
 import { TicketBulkActionsToolbar } from "../TicketBulkActionsToolbar";
-import { bulkUpdateTickets, bulkDeleteTickets } from "@/server/actions/tickets";
+import { bulkUpdateTickets, bulkDeleteTickets, bulkArchiveTickets } from "@/server/actions/tickets";
 import { TicketBulkAssignDialog } from "../TicketBulkAssignDialog";
 import { TicketBulkDeleteDialog } from "../TicketBulkDeleteDialog";
 import { cn } from "@/lib/utils/cn";
@@ -200,6 +200,27 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
     setShowDeleteDialog(true);
   };
 
+  const handleBulkArchive = async () => {
+    if (selectedTickets.size === 0) return;
+
+    setIsProcessing(true);
+    setError(null);
+
+    try {
+      const result = await bulkArchiveTickets(Array.from(selectedTickets));
+      if (result.success) {
+        setSelectedTickets(new Set());
+        router.refresh();
+      } else {
+        setError(result.error || "Failed to archive tickets");
+      }
+    } catch (err) {
+      setError("An unexpected error occurred");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const handleBulkDeleteConfirm = async () => {
     if (selectedTickets.size === 0) return;
 
@@ -242,6 +263,7 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
             onBulkStatusChange={handleBulkStatusChange}
             onBulkAssign={handleBulkAssign}
             onBulkPriorityChange={handleBulkPriorityChange}
+            onBulkArchive={handleBulkArchive}
             onBulkDelete={handleBulkDelete}
             onClearSelection={handleClearSelection}
           />
