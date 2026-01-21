@@ -24,26 +24,27 @@ const ChevronRightIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 const InfoIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
-    <path
-      d="M12 22a10 10 0 100-20 10 10 0 000 20z"
+    <circle
+      cx="12"
+      cy="12"
+      r="10"
       stroke="currentColor"
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
     />
     <path
-      d="M12 16v-5"
+      d="M12 16v-4"
       stroke="currentColor"
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
     />
-    <path
-      d="M12 8h.01"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+    <circle
+      cx="12"
+      cy="8"
+      r="1"
+      fill="currentColor"
     />
   </svg>
 );
@@ -104,20 +105,6 @@ export const TaskDetailLayout = ({
           <InfoIcon className="h-4 w-4" />
           <span className="ml-2">{mobileDrawerOpen ? "Close info" : "Task info"}</span>
         </Button>
-
-        {/* Desktop toggle (sidebar collapse into rail) */}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="hidden lg:inline-flex"
-          onClick={() => setDesktopSidebarOpen((v) => !v)}
-          aria-expanded={desktopSidebarOpen}
-          aria-controls="task-info-sidebar-desktop"
-        >
-          <InfoIcon className="h-4 w-4" />
-          <span className="ml-2">{desktopSidebarOpen ? "Hide task info" : "Show task info"}</span>
-        </Button>
       </div>
 
       <div
@@ -161,19 +148,25 @@ export const TaskDetailLayout = ({
               <div className="p-4">{sidebar}</div>
             </div>
           ) : (
-            <div className="rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 bg-white/80 dark:bg-neutral-900/70 backdrop-blur p-1">
+            <div className="group relative">
               <Button
                 type="button"
-                variant="ghost"
+                variant="default"
                 size="sm"
-                className="h-10 w-10 px-0"
+                className="h-12 w-12 px-0 rounded-xl shadow-lg bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white transition-all duration-200 hover:scale-105"
                 onClick={() => setDesktopSidebarOpen(true)}
                 aria-expanded={desktopSidebarOpen}
                 aria-controls="task-info-sidebar-desktop"
                 title="Show task information"
               >
-                <InfoIcon className="h-5 w-5" />
+                <InfoIcon className="h-6 w-6" />
               </Button>
+              <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+                <div className="relative bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-xs font-medium px-2 py-1 rounded shadow-lg">
+                  Task info
+                  <div className="absolute right-full top-1/2 -translate-y-1/2 w-0 h-0 border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent border-r-[6px] border-r-neutral-900 dark:border-r-neutral-100"></div>
+                </div>
+              </div>
             </div>
           )}
         </aside>
