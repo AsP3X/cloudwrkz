@@ -1028,13 +1028,47 @@ export async function bulkArchiveTodos(
 
     const now = new Date();
 
+    // Expand the archive set to include all descendant subtodos.
+    // This ensures that when a parent todo is archived, its children (and nested children)
+    // are archived as well.
+    const rootIds = todos.map((t) => t.id);
+    const idsToArchive = new Set<string>(rootIds);
+    let frontier = [...rootIds];
+
+    while (frontier.length > 0) {
+      const children = await prisma.todo.findMany({
+        where: { parentTodoId: { in: frontier } },
+        select: { id: true },
+      });
+
+      const next: string[] = [];
+      for (const child of children) {
+        if (!idsToArchive.has(child.id)) {
+          idsToArchive.add(child.id);
+          next.push(child.id);
+        }
+      }
+      frontier = next;
+    }
+
+    const allIds = Array.from(idsToArchive);
+    const todosToArchive = await prisma.todo.findMany({
+      where: { id: { in: allIds } },
+      select: {
+        id: true,
+        completedDate: true,
+        archivedAt: true,
+      },
+    });
+
     await prisma.$transaction(async (tx) => {
-      for (const todo of todos) {
+      for (const todo of todosToArchive) {
         await tx.todo.update({
           where: { id: todo.id },
           data: {
             status: "COMPLETED",
-            archivedAt: now,
+            // Preserve an existing archivedAt if already archived
+            archivedAt: todo.archivedAt ?? now,
             completedDate: todo.completedDate ?? now,
           },
         });
@@ -1049,10 +1083,10 @@ export async function bulkArchiveTodos(
     return {
       success: true,
       data: {
-        archived: todos.length,
+        archived: todosToArchive.length,
         failed: todoIds.length - todos.length,
       },
-      message: `Successfully archived ${todos.length} todo${todos.length !== 1 ? "s" : ""}`,
+      message: `Successfully archived ${todosToArchive.length} todo${todosToArchive.length !== 1 ? "s" : ""}`,
     };
   } catch (error) {
     console.error("Bulk archive todos error:", error);

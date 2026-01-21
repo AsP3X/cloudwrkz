@@ -7,6 +7,7 @@ import { getAllTodos } from "@/server/actions/todos";
 import { getTickets } from "@/server/actions/tickets";
 import { getTimeEntries } from "@/server/actions/time-tracking";
 import { ArchivePageClient, type ArchiveItemType } from "./ArchivePageClient";
+import { ArchiveFilterLoader } from "./ArchiveFilterLoader";
 
 // Force dynamic rendering to keep permissions in sync
 export const dynamic = "force-dynamic";
@@ -16,6 +17,9 @@ interface ArchivePageProps {
   searchParams: Promise<{
     type?: string;
     q?: string;
+    sort?: string;
+    archivedFrom?: string;
+    archivedTo?: string;
   }>;
 }
 
@@ -34,7 +38,7 @@ export default async function ArchivePage({ searchParams }: ArchivePageProps) {
   ]);
 
   const initialTypeParam = (params.type || "all").toLowerCase();
-  const initialType: ArchiveItemType =
+  const requestedType: ArchiveItemType =
     initialTypeParam === "tickets"
       ? "tickets"
       : initialTypeParam === "todos"
@@ -42,6 +46,31 @@ export default async function ArchivePage({ searchParams }: ArchivePageProps) {
         : initialTypeParam === "time" || initialTypeParam === "timeentries" || initialTypeParam === "time_entries"
           ? "time"
           : "all";
+
+  // If a user doesn't have access to the requested type, ignore it (and drop the param to avoid broken filter UI).
+  const typeAllowed =
+    requestedType === "tickets"
+      ? canViewTickets
+      : requestedType === "todos"
+        ? canViewTodos
+        : requestedType === "time"
+          ? canViewTimeTracking
+          : true;
+
+  if (!typeAllowed && params.type) {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set("q", params.q);
+    if (params.sort) qs.set("sort", params.sort);
+    if (params.archivedFrom) qs.set("archivedFrom", params.archivedFrom);
+    if (params.archivedTo) qs.set("archivedTo", params.archivedTo);
+    redirect(`${ROUTES.ARCHIVE}${qs.toString() ? `?${qs.toString()}` : ""}`);
+  }
+
+  const initialType: ArchiveItemType = typeAllowed ? requestedType : "all";
+
+  const initialSort = params.sort || "archivedAt-desc";
+  const initialArchivedFrom = params.archivedFrom || "";
+  const initialArchivedTo = params.archivedTo || "";
 
   const [archivedTodos, archivedTickets, archivedTimeEntries] = await Promise.all([
     canViewTodos
@@ -106,13 +135,20 @@ export default async function ArchivePage({ searchParams }: ArchivePageProps) {
   ].sort((a, b) => b.archivedAt.getTime() - a.archivedAt.getTime());
 
   return (
-    <ArchivePageClient
-      items={items}
-      canView={{ tickets: canViewTickets, todos: canViewTodos, time: canViewTimeTracking }}
-      initialType={initialType}
-      initialQuery={params.q || ""}
-      userTimezone={user.timezone ?? "UTC"}
-    />
+    <>
+      {/* Auto-load last used archive filters */}
+      <ArchiveFilterLoader canView={{ tickets: canViewTickets, todos: canViewTodos, time: canViewTimeTracking }} />
+      <ArchivePageClient
+        items={items}
+        canView={{ tickets: canViewTickets, todos: canViewTodos, time: canViewTimeTracking }}
+        initialType={initialType}
+        initialQuery={params.q || ""}
+        initialSort={initialSort}
+        initialArchivedFrom={initialArchivedFrom}
+        initialArchivedTo={initialArchivedTo}
+        userTimezone={user.timezone ?? "UTC"}
+      />
+    </>
   );
 }
 

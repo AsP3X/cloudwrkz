@@ -278,6 +278,11 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
     }
   };
 
+  const handleBulkDelete = () => {
+    if (selectedTodos.size === 0 || isBulkProcessing) return;
+    setShowBulkDeleteDialog(true);
+  };
+
   const handleBulkArchive = async () => {
     if (selectedTodos.size === 0 || isBulkProcessing) return;
 
@@ -296,11 +301,6 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
     } finally {
       setIsBulkProcessing(false);
     }
-  };
-
-  const handleBulkDelete = () => {
-    if (selectedTodos.size === 0 || isBulkProcessing) return;
-    setShowBulkDeleteDialog(true);
   };
 
   const handleBulkDeleteConfirm = async () => {

@@ -257,8 +257,6 @@ async function searchTicketsWithFilters(
   userPermissions: Set<string>
 ): Promise<SearchResult[]> {
   const where: any = {};
-  // Hide archived tickets from search by default
-  where.archivedAt = null;
 
   // Apply filters (exact matches)
   if (filters.status) {
@@ -388,6 +386,7 @@ async function searchTicketsWithFilters(
       ticketNumber: true,
       title: true,
       description: true,
+      archivedAt: true,
       status: true,
       priority: true,
       type: true,
@@ -465,6 +464,7 @@ async function searchTicketsWithFilters(
         assignedTo: ticket.assignedTo ? formatUserName(ticket.assignedTo) : undefined,
         assignedToGroup: ticket.assignedToGroup?.name,
         commentCount: ticket._count.comments,
+        archivedAt: ticket.archivedAt,
         createdAt: ticket.createdAt,
         updatedAt: ticket.updatedAt,
       },
@@ -640,6 +640,7 @@ async function searchTicketsWithFilters(
           assignedTo: ticket.assignedTo ? formatUserName(ticket.assignedTo) : undefined,
           assignedToGroup: ticket.assignedToGroup?.name,
           commentCount: ticket._count.comments,
+          archivedAt: ticket.archivedAt,
           createdAt: ticket.createdAt,
           updatedAt: ticket.updatedAt,
         },
@@ -659,6 +660,7 @@ async function searchTicketsWithFilters(
             ticketTitle: ticket.title,
             commentId: comment.id,
             createdAt: comment.createdAt,
+            archivedAt: ticket.archivedAt,
           },
         });
       });
@@ -688,6 +690,7 @@ async function searchTicketsWithFilters(
             assignedTo: ticket.assignedTo ? formatUserName(ticket.assignedTo) : undefined,
             assignedToGroup: ticket.assignedToGroup?.name,
             commentCount: ticket._count.comments,
+            archivedAt: ticket.archivedAt,
             createdAt: ticket.createdAt,
             updatedAt: ticket.updatedAt,
           },
@@ -708,6 +711,7 @@ async function searchTicketsWithFilters(
           ticketTitle: ticket.title,
           commentId: item.id,
           createdAt: item.createdAt,
+          archivedAt: ticket.archivedAt,
         },
       });
     }
@@ -726,8 +730,6 @@ async function searchTimeEntries(
   userPermissions: Set<string>
 ): Promise<SearchResult[]> {
   const where: any = {};
-  // Hide archived time entries from search by default
-  where.archivedAt = null;
 
   // Check permissions
   const canViewAllTimeEntries = userPermissions.has("time_tracking.view_all");
@@ -753,6 +755,7 @@ async function searchTimeEntries(
       id: true,
       name: true,
       description: true,
+      archivedAt: true,
       status: true,
       tags: true,
       location: true,
@@ -805,6 +808,7 @@ async function searchTimeEntries(
         user: formatUserName(entry.user),
         ticketNumber: entry.ticket?.ticketNumber,
         ticketTitle: entry.ticket?.title,
+        archivedAt: entry.archivedAt,
         createdAt: entry.createdAt,
         updatedAt: entry.updatedAt,
       },
@@ -860,6 +864,7 @@ async function searchTimeEntries(
       user: formatUserName(entry.user),
       ticketNumber: entry.ticket?.ticketNumber,
       ticketTitle: entry.ticket?.title,
+      archivedAt: entry.archivedAt,
       createdAt: entry.createdAt,
       updatedAt: entry.updatedAt,
     },
@@ -918,10 +923,6 @@ async function searchTasks(
   }
   // Admins/Moderators: no extra filter, see all todos
 
-  // Hide archived todos from global search by default
-  // (archived todos are available on /dashboard/todos/archive)
-  where.archivedAt = null;
-
   const candidateLimit = Math.max(limit * 3, 50);
 
   const todos = await prisma.todo.findMany({
@@ -932,6 +933,7 @@ async function searchTasks(
       title: true,
       description: true,
       descriptionPlain: true,
+      archivedAt: true,
       status: true,
       priority: true,
       createdAt: true,
@@ -982,6 +984,7 @@ async function searchTasks(
         ticketNumber: todo.ticket?.ticketNumber,
         ticketTitle: todo.ticket?.title,
         assignedTo: todo.assignedTo ? formatUserName(todo.assignedTo) : undefined,
+        archivedAt: todo.archivedAt,
         createdAt: todo.createdAt,
         updatedAt: todo.updatedAt,
       },
@@ -1034,6 +1037,7 @@ async function searchTasks(
       ticketNumber: todo.ticket?.ticketNumber,
       ticketTitle: todo.ticket?.title,
       assignedTo: todo.assignedTo ? formatUserName(todo.assignedTo) : undefined,
+      archivedAt: todo.archivedAt,
       createdAt: todo.createdAt,
       updatedAt: todo.updatedAt,
     },
@@ -1276,8 +1280,6 @@ async function searchTickets(
   userPermissions: Set<string>
 ): Promise<SearchResult[]> {
   const where: any = {};
-  // Hide archived tickets from search by default
-  where.archivedAt = null;
 
   // Check if user has any dynamic ticket view permissions
   const { parseTicketPermissionKey } = await import("@/lib/utils/permissions");
@@ -1386,7 +1388,6 @@ async function searchTickets(
         COALESCE("descriptionPlain", '') || ' ' || 
         COALESCE("ticketNumber", '')
       ) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
-      AND "archivedAt" IS NULL
       ${permissionFilterSql ? Prisma.raw(permissionFilterSql) : Prisma.sql``}
       ORDER BY ts_rank(
         to_tsvector('english', 
@@ -1413,7 +1414,6 @@ async function searchTickets(
           JOIN tickets t ON t.id = c."ticketId"
           WHERE to_tsvector('english', COALESCE(c."contentPlain", c.content, '')) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
           AND c."isAgentOnly" = false
-          AND t."archivedAt" IS NULL
           LIMIT ${commentLimit}
         `
         : Prisma.sql`
@@ -1421,7 +1421,6 @@ async function searchTickets(
           FROM ticket_comments c
           JOIN tickets t ON t.id = c."ticketId"
           WHERE to_tsvector('english', COALESCE(c."contentPlain", c.content, '')) @@ plainto_tsquery('english', ${sanitizedSearchTerm})
-          AND t."archivedAt" IS NULL
           LIMIT ${commentLimit}
         `;
       
@@ -1449,6 +1448,7 @@ async function searchTickets(
       title: true,
       description: true,
       descriptionPlain: true,
+      archivedAt: true,
       status: true,
       priority: true,
       type: true,
@@ -1712,6 +1712,7 @@ async function searchTickets(
           createdBy: formatUserName(ticket.createdBy, ticket.createdByName),
           assignedTo: ticket.assignedTo ? formatUserName(ticket.assignedTo) : undefined,
           commentCount: ticket._count.comments,
+          archivedAt: ticket.archivedAt,
         },
       });
 
@@ -1729,6 +1730,7 @@ async function searchTickets(
             ticketTitle: ticket.title,
             commentId: comment.id,
             createdAt: comment.createdAt,
+            archivedAt: ticket.archivedAt,
           },
         });
       });
@@ -1757,6 +1759,7 @@ async function searchTickets(
             createdBy: formatUserName(ticket.createdBy, ticket.createdByName),
             assignedTo: ticket.assignedTo ? formatUserName(ticket.assignedTo) : undefined,
             commentCount: ticket._count.comments,
+            archivedAt: ticket.archivedAt,
           },
         });
         processedTicketIds.add(item.ticketId);
@@ -1775,6 +1778,7 @@ async function searchTickets(
           ticketTitle: ticket.title,
           commentId: item.id,
           createdAt: item.createdAt,
+          archivedAt: ticket.archivedAt,
         },
       });
     }

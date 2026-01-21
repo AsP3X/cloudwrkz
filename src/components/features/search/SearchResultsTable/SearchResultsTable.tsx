@@ -464,6 +464,7 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
               const hasComments = group.comments.length > 0;
               const isExpanded = expandedTickets.has(group.ticket.id);
               const shouldShowComments = visibleComments.has(group.ticket.id);
+              const isArchived = Boolean((group.ticket.metadata as any)?.archivedAt);
 
               return (
                 <React.Fragment key={`group-${group.ticket.type}-${group.ticket.id}`}>
@@ -540,7 +541,14 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                         className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400"
                       >
                         <div className="max-w-md">
-                          <div className="truncate">{highlightMatch(group.ticket.title, searchQuery)}</div>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="truncate">{highlightMatch(group.ticket.title, searchQuery)}</div>
+                            {isArchived && (
+                              <span className="flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700">
+                                Archived
+                              </span>
+                            )}
+                          </div>
                           {group.ticket.description && (
                             <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 line-clamp-1">
                               {highlightMatch(group.ticket.description, searchQuery)}

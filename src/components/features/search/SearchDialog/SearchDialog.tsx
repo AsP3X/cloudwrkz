@@ -735,6 +735,11 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                                     <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
                                       {highlightMatch(group.ticket.title, query)}
                                     </p>
+                                    {(group.ticket.metadata as any)?.archivedAt && (
+                                      <span className="flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700">
+                                        Archived
+                                      </span>
+                                    )}
                                     {group.ticket.type === "ticket" && group.ticket.metadata?.ticketNumber && (
                                       <span className="text-xs text-neutral-500 dark:text-neutral-400 font-mono flex-shrink-0">
                                         {group.ticket.metadata.ticketNumber}

@@ -317,7 +317,12 @@ export const TodoBulkActionsToolbar = ({
             )}
           </div>
 
-          <Button variant="outline" size="sm" onClick={onBulkArchive} className="text-sm">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onBulkArchive}
+            className="text-sm"
+          >
             Archive
           </Button>
           <Button
