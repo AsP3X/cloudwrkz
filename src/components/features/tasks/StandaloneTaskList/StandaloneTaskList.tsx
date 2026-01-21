@@ -349,7 +349,7 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
 
     return (
     <div key={task.id} className="p-3 sm:p-4">
-      <div className="flex items-start gap-3">
+      <div className="flex items-center gap-3">
         {canManage && (
           <input
             type="checkbox"
@@ -359,7 +359,7 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
               handleSelectTodo(task.id, e.target.checked);
             }}
             onClick={(e) => e.stopPropagation()}
-            className="w-4 h-4 mt-1 text-primary-600 bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 cursor-pointer flex-shrink-0"
+            className="w-4 h-4 text-primary-600 bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 cursor-pointer flex-shrink-0"
             aria-label="Select todo"
             suppressHydrationWarning
           />
@@ -369,7 +369,7 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
             type="button"
             onClick={() => handleToggleComplete(task)}
             className={cn(
-              "mt-1 w-4 h-4 rounded border flex items-center justify-center text-[10px]",
+              "w-4 h-4 rounded border flex items-center justify-center text-[10px]",
               task.status === "COMPLETED"
                 ? "bg-primary-600 border-primary-600 text-white"
                 : "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-transparent"
@@ -479,39 +479,43 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
     >
       {canManage && (
         <td className="px-6 py-4 whitespace-nowrap w-12" onClick={(e) => e.stopPropagation()}>
-          <input
-            type="checkbox"
-            checked={mounted && selectedTodos.has(task.id)}
-            onChange={(e) => {
-              e.stopPropagation();
-              handleSelectTodo(task.id, e.target.checked);
-            }}
-            onClick={(e) => e.stopPropagation()}
-            className="w-4 h-4 text-primary-600 bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 cursor-pointer"
-            aria-label="Select todo"
-            suppressHydrationWarning
-          />
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              checked={mounted && selectedTodos.has(task.id)}
+              onChange={(e) => {
+                e.stopPropagation();
+                handleSelectTodo(task.id, e.target.checked);
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-4 h-4 text-primary-600 bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 cursor-pointer"
+              aria-label="Select todo"
+              suppressHydrationWarning
+            />
+          </div>
         </td>
       )}
       {canManage && (
         <td className="px-6 py-4 whitespace-nowrap w-12">
-          <button
-            type="button"
-            onClick={() => handleToggleComplete(task)}
-            className={cn(
-              "w-4 h-4 rounded border flex items-center justify-center text-[10px]",
-              task.status === "COMPLETED"
-                ? "bg-primary-600 border-primary-600 text-white"
-                : "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-transparent"
-            )}
-            aria-label={
-              task.status === "COMPLETED"
-                ? "Mark task as in progress"
-                : "Mark task as completed"
-            }
-          >
-            ✓
-          </button>
+          <div className="flex items-center">
+            <button
+              type="button"
+              onClick={() => handleToggleComplete(task)}
+              className={cn(
+                "w-4 h-4 rounded border flex items-center justify-center text-[10px]",
+                task.status === "COMPLETED"
+                  ? "bg-primary-600 border-primary-600 text-white"
+                  : "border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-transparent"
+              )}
+              aria-label={
+                task.status === "COMPLETED"
+                  ? "Mark task as in progress"
+                  : "Mark task as completed"
+              }
+            >
+              ✓
+            </button>
+          </div>
         </td>
       )}
       <td className="px-6 py-4">
@@ -1008,15 +1012,17 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
                   <tr>
                     {canManage && (
                       <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider w-12">
-                        <input
-                          type="checkbox"
-                          ref={selectAllActiveRef}
-                          checked={allSelectedActive}
-                          onChange={(e) => handleSelectAllActive(e.target.checked)}
-                          className="w-4 h-4 text-primary-600 bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 cursor-pointer"
-                          aria-label="Select all active todos"
-                          suppressHydrationWarning
-                        />
+                        <div className="flex items-center">
+                          <input
+                            type="checkbox"
+                            ref={selectAllActiveRef}
+                            checked={allSelectedActive}
+                            onChange={(e) => handleSelectAllActive(e.target.checked)}
+                            className="w-4 h-4 text-primary-600 bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 cursor-pointer"
+                            aria-label="Select all active todos"
+                            suppressHydrationWarning
+                          />
+                        </div>
                       </th>
                     )}
                     {canManage && (
@@ -1127,15 +1133,17 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, userTimezone = 
                   <tr>
                     {canManage && (
                       <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider w-12">
-                        <input
-                          type="checkbox"
-                          ref={selectAllCompletedRef}
-                          checked={allSelectedCompleted}
-                          onChange={(e) => handleSelectAllCompleted(e.target.checked)}
-                          className="w-4 h-4 text-primary-600 bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 cursor-pointer"
-                          aria-label="Select all completed todos"
-                          suppressHydrationWarning
-                        />
+                        <div className="flex items-center">
+                          <input
+                            type="checkbox"
+                            ref={selectAllCompletedRef}
+                            checked={allSelectedCompleted}
+                            onChange={(e) => handleSelectAllCompleted(e.target.checked)}
+                            className="w-4 h-4 text-primary-600 bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 rounded focus:ring-primary-500 focus:ring-2 cursor-pointer"
+                            aria-label="Select all completed todos"
+                            suppressHydrationWarning
+                          />
+                        </div>
                       </th>
                     )}
                     {canManage && (
