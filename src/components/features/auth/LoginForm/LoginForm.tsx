@@ -81,7 +81,7 @@ export const LoginForm = ({ initialError, disabled: initialDisabled = false }: L
       onSubmit={handleFormSubmit}
       className="space-y-6"
       noValidate
-      aria-disabled={disabled}
+      {...(disabled && { "aria-disabled": true })}
     >
       {/* Server Error Message */}
       {serverError && (

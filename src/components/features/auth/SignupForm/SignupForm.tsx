@@ -89,7 +89,7 @@ export const SignupForm = ({ disabled: initialDisabled = false }: SignupFormProp
       onSubmit={handleFormSubmit}
       className="space-y-6"
       noValidate
-      aria-disabled={disabled}
+      {...(disabled && { "aria-disabled": true })}
     >
       {/* Success Message */}
       {successMessage && (

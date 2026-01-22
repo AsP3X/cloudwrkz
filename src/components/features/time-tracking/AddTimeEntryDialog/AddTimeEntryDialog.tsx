@@ -51,6 +51,7 @@ export function AddTimeEntryDialog({ open, onOpenChange }: AddTimeEntryDialogPro
   // Set default startedAt on client side only when dialog opens
   React.useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/incompatible-library
       const currentStartedAt = watch("startedAt"); // React Hook Form watch is safe here
       if (!currentStartedAt) {
         reset({

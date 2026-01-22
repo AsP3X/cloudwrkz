@@ -183,7 +183,7 @@ export function useDatabaseHealth(options?: {
   // Expose manual refresh function
   const refresh = useCallback(() => {
     checkHealth();
-  }, [checkHealth, context]);
+  }, [checkHealth]);
 
   // Pause/resume polling
   const pausePolling = useCallback(() => {

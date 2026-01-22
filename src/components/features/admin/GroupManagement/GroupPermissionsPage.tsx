@@ -21,7 +21,7 @@ export function GroupPermissionsPage({ group: initialGroup }: GroupPermissionsPa
   // Sync group state when initialGroup changes (e.g., after router.refresh())
   React.useEffect(() => {
     setGroup(initialGroup);
-  }, [initialGroup.id, initialGroup.permissions?.length, initialGroup._count?.permissions]);
+  }, [initialGroup]);
 
   return (
     <div className="space-y-6">

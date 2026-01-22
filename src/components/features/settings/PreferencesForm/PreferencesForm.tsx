@@ -126,6 +126,7 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
 
   // Watch theme changes and apply immediately
   // Skip if we're syncing from context to prevent feedback loop
+  // eslint-disable-next-line react-hooks/incompatible-library
   const watchedTheme = watch("theme");
   React.useEffect(() => {
     if (mounted && watchedTheme && watchedTheme !== theme && setTheme && !isSyncingFromContext.current) {

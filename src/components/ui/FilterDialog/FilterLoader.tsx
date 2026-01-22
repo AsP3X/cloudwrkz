@@ -140,6 +140,7 @@ export const FilterLoader = ({ config, enabled = true }: FilterLoaderProps) => {
     };
 
     loadFilters();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, config, router]); // Removed searchParams from dependencies to prevent reload loops
 
   return null; // This component doesn't render anything

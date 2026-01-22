@@ -117,6 +117,7 @@ export const ImageFormatDialog: React.FC<ImageFormatDialogProps> = ({
         setCropArea({ x: newX, y: newY, width: newWidth, height: newHeight });
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displaySize, cropMode]);
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -301,6 +302,7 @@ export const ImageFormatDialog: React.FC<ImageFormatDialogProps> = ({
             onMouseLeave={handleMouseUp}
           >
             {imageUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
               <img
                 ref={imageRef}
                 src={imageUrl}

@@ -55,6 +55,7 @@ export function TimeEntryBreaks({ timeEntryId, userTimezone, entryTimezone, init
 
   React.useEffect(() => {
     loadBreaks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeEntryId]);
 
   // Update breaks when initialBreaks prop changes (after timezone update)

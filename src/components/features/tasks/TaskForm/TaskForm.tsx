@@ -191,6 +191,7 @@ export const TaskForm = ({ users = [], tickets = [], canAssign = false }: TaskFo
           placeholder="Provide detailed information about the ToDo..."
           error={errors.description?.message}
           helperText="Include any relevant details, requirements, or context"
+          // eslint-disable-next-line react-hooks/incompatible-library
           value={watch("description") || ""}
           onChange={(html) => {
             setValue("description", html, { shouldValidate: true });

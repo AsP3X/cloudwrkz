@@ -189,6 +189,7 @@ export const TicketForm = ({ isAgent = false, users = [], agents = [], groups = 
           placeholder="Provide detailed information about your issue, request, or question..."
           error={errors.description?.message}
           helperText="Include any relevant details, steps to reproduce, or context that would help us assist you"
+          // eslint-disable-next-line react-hooks/incompatible-library
           value={watch("description") || ""}
           onChange={(html) => {
             setValue("description", html, { shouldValidate: true });

@@ -39,12 +39,12 @@ export const FloatingTooltip: React.FC<FloatingTooltipProps> = ({
 
   // Use controlled or internal state
   const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen;
-  const setIsOpen = (value: boolean) => {
+  const setIsOpen = React.useCallback((value: boolean) => {
     if (controlledOpen === undefined) {
       setInternalOpen(value);
     }
     onOpenChange?.(value);
-  };
+  }, [controlledOpen, onOpenChange]);
 
   // Calculate tooltip position
   React.useEffect(() => {
@@ -164,7 +164,7 @@ export const FloatingTooltip: React.FC<FloatingTooltipProps> = ({
         document.removeEventListener("keydown", handleEscape);
       }
     };
-  }, [isOpen, triggerMode]);
+  }, [isOpen, triggerMode, setIsOpen]);
 
   // Handle scroll and resize
   React.useEffect(() => {

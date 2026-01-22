@@ -29,7 +29,7 @@ export function UserPermissionsPage({ user: initialUser }: UserPermissionsPagePr
         groupMemberships: initialUser.groupMemberships?.map(gm => gm.group.name),
       });
     }
-  }, [initialUser.id, initialUser._count?.groupMemberships, initialUser.groupMemberships?.length]);
+  }, [initialUser]);
 
   // Get user permissions count and IDs
   const [permissionsCount, setPermissionsCount] = React.useState(0);

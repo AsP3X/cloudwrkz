@@ -122,6 +122,7 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
         responseTime: initialDbHealth.responseTime,
       }]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Get the most recent data points (page response time)

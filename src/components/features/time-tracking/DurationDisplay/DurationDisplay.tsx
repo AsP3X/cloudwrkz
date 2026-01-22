@@ -47,7 +47,7 @@ export function DurationDisplay({ entry, className }: DurationDisplayProps) {
     const interval = setInterval(updateDuration, 1000);
 
     return () => clearInterval(interval);
-  }, [entry.status, entry.totalDuration, entry.lastResumedAt, entry.startedAt, entry.breaks, mounted]);
+  }, [entry, mounted]);
 
   // For running timers, suppress hydration warning since the value will differ between server and client
   // Server renders totalDuration (static), client calculates actual elapsed time (dynamic)
