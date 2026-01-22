@@ -439,14 +439,19 @@ async function handleSync() {
   notice("Permission sync functionality - use seed-permissions script: pnpm db:seed-permissions", "info");
 }
 
-async function handleGrantUser() {
-  if (commandArgs.length < 3) {
-    console.error("Usage: grant-user <user-email> <permission>");
-    process.exit(1);
-  }
+async function handleGrantUser(userEmailArg?: string, permissionKeyArg?: string) {
+  const userEmail = userEmailArg ?? commandArgs[1];
+  const permissionKey = permissionKeyArg ?? commandArgs[2];
 
-  const userEmail = commandArgs[1];
-  const permissionKey = commandArgs[2];
+  if (!userEmail || !permissionKey) {
+    const errorMsg = "Usage: grant-user <user-email> <permission>";
+    console.error(errorMsg);
+    if (!userEmailArg) {
+      // Called from command line, exit
+      process.exit(1);
+    }
+    throw new Error(errorMsg);
+  }
 
   const spinner = createSpinner("Granting permission...");
   spinner.start();
@@ -459,8 +464,13 @@ async function handleGrantUser() {
 
     if (!user) {
       spinner.fail("User not found");
-      error(`User with email "${userEmail}" not found`);
-      process.exit(1);
+      const errorMsg = `User with email "${userEmail}" not found`;
+      error(errorMsg);
+      if (!userEmailArg) {
+        // Called from command line, exit
+        process.exit(1);
+      }
+      throw new Error(errorMsg);
     }
 
     const permission = await prisma.permission.findUnique({
@@ -470,8 +480,13 @@ async function handleGrantUser() {
 
     if (!permission) {
       spinner.fail("Permission not found");
-      error(`Permission "${permissionKey}" not found`);
-      process.exit(1);
+      const errorMsg = `Permission "${permissionKey}" not found`;
+      error(errorMsg);
+      if (!permissionKeyArg) {
+        // Called from command line, exit
+        process.exit(1);
+      }
+      throw new Error(errorMsg);
     }
 
     const existing = await prisma.userPermission.findUnique({
@@ -501,18 +516,27 @@ async function handleGrantUser() {
   } catch (err) {
     spinner.fail("Failed to grant permission");
     error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+    if (!userEmailArg) {
+      // Called from command line, exit
+      process.exit(1);
+    }
+    throw err;
   }
 }
 
-async function handleRevokeUser() {
-  if (commandArgs.length < 3) {
-    console.error("Usage: revoke-user <user-email> <permission>");
-    process.exit(1);
-  }
+async function handleRevokeUser(userEmailArg?: string, permissionKeyArg?: string) {
+  const userEmail = userEmailArg ?? commandArgs[1];
+  const permissionKey = permissionKeyArg ?? commandArgs[2];
 
-  const userEmail = commandArgs[1];
-  const permissionKey = commandArgs[2];
+  if (!userEmail || !permissionKey) {
+    const errorMsg = "Usage: revoke-user <user-email> <permission>";
+    console.error(errorMsg);
+    if (!userEmailArg) {
+      // Called from command line, exit
+      process.exit(1);
+    }
+    throw new Error(errorMsg);
+  }
 
   const spinner = createSpinner("Revoking permission...");
   spinner.start();
@@ -525,8 +549,13 @@ async function handleRevokeUser() {
 
     if (!user) {
       spinner.fail("User not found");
-      error(`User with email "${userEmail}" not found`);
-      process.exit(1);
+      const errorMsg = `User with email "${userEmail}" not found`;
+      error(errorMsg);
+      if (!userEmailArg) {
+        // Called from command line, exit
+        process.exit(1);
+      }
+      throw new Error(errorMsg);
     }
 
     const permission = await prisma.permission.findUnique({
@@ -536,8 +565,13 @@ async function handleRevokeUser() {
 
     if (!permission) {
       spinner.fail("Permission not found");
-      error(`Permission "${permissionKey}" not found`);
-      process.exit(1);
+      const errorMsg = `Permission "${permissionKey}" not found`;
+      error(errorMsg);
+      if (!permissionKeyArg) {
+        // Called from command line, exit
+        process.exit(1);
+      }
+      throw new Error(errorMsg);
     }
 
     await prisma.userPermission.delete({
@@ -555,20 +589,30 @@ async function handleRevokeUser() {
     spinner.fail("Failed to revoke permission");
     if (err instanceof Error && err.message.includes("Record to delete does not exist")) {
       notice(`User "${userEmail}" does not have permission "${permissionKey}"`, "info");
+      return;
     } else {
       error(err instanceof Error ? err.message : String(err));
+      if (!userEmailArg) {
+        // Called from command line, exit
+        process.exit(1);
+      }
+      throw err;
     }
-    process.exit(1);
   }
 }
 
-async function handleListUser() {
-  if (commandArgs.length < 2) {
-    console.error("Usage: list-user <user-email>");
-    process.exit(1);
-  }
+async function handleListUser(userEmailArg?: string) {
+  const userEmail = userEmailArg ?? commandArgs[1];
 
-  const userEmail = commandArgs[1];
+  if (!userEmail) {
+    const errorMsg = "Usage: list-user <user-email>";
+    console.error(errorMsg);
+    if (!userEmailArg) {
+      // Called from command line, exit
+      process.exit(1);
+    }
+    throw new Error(errorMsg);
+  }
   const spinner = createSpinner("Loading user permissions...");
   spinner.start();
 
@@ -580,8 +624,13 @@ async function handleListUser() {
 
     if (!user) {
       spinner.fail("User not found");
-      error(`User with email "${userEmail}" not found`);
-      process.exit(1);
+      const errorMsg = `User with email "${userEmail}" not found`;
+      error(errorMsg);
+      if (!userEmailArg) {
+        // Called from command line, exit
+        process.exit(1);
+      }
+      throw new Error(errorMsg);
     }
 
     const userPermissions = await prisma.userPermission.findMany({
@@ -631,6 +680,11 @@ async function handleListUser() {
   } catch (err) {
     spinner.fail("Failed to load user permissions");
     error(err instanceof Error ? err.message : String(err));
+    if (!userEmailArg) {
+      // Called from command line, exit
+      process.exit(1);
+    }
+    throw err;
   }
 }
 
@@ -915,6 +969,205 @@ export async function handleSyncInteractive() {
     }
 
     await handleSync();
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleGrantUserInteractive() {
+  try {
+    header("Grant Permission to User", "Assign a permission to a user");
+
+    const spinner = createSpinner("Loading users and permissions...");
+    spinner.start();
+
+    const [users, permissions] = await Promise.all([
+      prisma.user.findMany({
+        orderBy: { email: "asc" },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+        },
+      }),
+      prisma.permission.findMany({
+        orderBy: [{ category: "asc" }, { key: "asc" }],
+      }),
+    ]);
+
+    spinner.succeed("Loaded users and permissions");
+
+    if (users.length === 0) {
+      notice("No users found. Create a user first using the User Management CLI.", "warning");
+      return;
+    }
+
+    if (permissions.length === 0) {
+      notice("No permissions found. Run the seed-permissions script first.", "warning");
+      return;
+    }
+
+    const user = await paginatedSelect(
+      "Select a user:",
+      users,
+      (u, index) => `${index + 1}. ${u.email}${u.name ? ` (${u.name})` : ""}`
+    );
+
+    if (!user) {
+      notice("No user selected.", "warning");
+      return;
+    }
+
+    const selectedPermissions = await paginatedCheckbox(
+      "Select permission(s) to grant (use Space to toggle, Enter to confirm):",
+      permissions,
+      (p, index) => `${index + 1}. [${p.category}] ${p.name} (${p.key})`
+    );
+
+    if (!selectedPermissions || selectedPermissions.length === 0) {
+      notice("No permissions selected.", "warning");
+      return;
+    }
+
+    const confirmed = await confirm(
+      `Grant ${selectedPermissions.length} permission(s) to user "${user.email}"?`,
+      true
+    );
+
+    if (!confirmed) {
+      notice("Permission grant cancelled.", "info");
+      return;
+    }
+
+    for (const permission of selectedPermissions) {
+      await handleGrantUser(user.email, permission.key);
+    }
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleRevokeUserInteractive() {
+  try {
+    header("Revoke Permission from User", "Remove a permission from a user");
+
+    const spinner = createSpinner("Loading users...");
+    spinner.start();
+
+    const users = await prisma.user.findMany({
+      orderBy: { email: "asc" },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+      },
+    });
+
+    spinner.succeed(`Loaded ${users.length} user(s)`);
+
+    if (users.length === 0) {
+      notice("No users found. Create a user first using the User Management CLI.", "warning");
+      return;
+    }
+
+    const user = await paginatedSelect(
+      "Select a user:",
+      users,
+      (u, index) => `${index + 1}. ${u.email}${u.name ? ` (${u.name})` : ""}`
+    );
+
+    if (!user) {
+      notice("No user selected.", "warning");
+      return;
+    }
+
+    const permSpinner = createSpinner("Loading user permissions...");
+    permSpinner.start();
+
+    const userPermissions = await prisma.userPermission.findMany({
+      where: { userId: user.id },
+      include: {
+        permission: true,
+      },
+      orderBy: {
+        permission: {
+          category: "asc",
+        },
+      },
+    });
+
+    permSpinner.succeed(`Loaded ${userPermissions.length} permission(s)`);
+
+    if (userPermissions.length === 0) {
+      notice(`User "${user.email}" has no direct permissions to revoke.`, "info");
+      return;
+    }
+
+    const selectedPermissions = await paginatedCheckbox(
+      "Select permission(s) to revoke (use Space to toggle, Enter to confirm):",
+      userPermissions,
+      (up, index) =>
+        `${index + 1}. [${up.permission.category}] ${up.permission.name} (${up.permission.key})`
+    );
+
+    if (!selectedPermissions || selectedPermissions.length === 0) {
+      notice("No permissions selected.", "warning");
+      return;
+    }
+
+    const confirmed = await confirm(
+      `Revoke ${selectedPermissions.length} permission(s) from user "${user.email}"?`,
+      true
+    );
+
+    if (!confirmed) {
+      notice("Permission revoke cancelled.", "info");
+      return;
+    }
+
+    for (const selected of selectedPermissions) {
+      await handleRevokeUser(user.email, selected.permission.key);
+    }
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleListUserInteractive() {
+  try {
+    header("List User Permissions", "View permissions assigned to a user");
+
+    const spinner = createSpinner("Loading users...");
+    spinner.start();
+
+    const users = await prisma.user.findMany({
+      orderBy: { email: "asc" },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+      },
+    });
+
+    spinner.succeed(`Loaded ${users.length} user(s)`);
+
+    if (users.length === 0) {
+      notice("No users found. Create a user first using the User Management CLI.", "warning");
+      return;
+    }
+
+    const user = await paginatedSelect(
+      "Select a user:",
+      users,
+      (u, index) => `${index + 1}. ${u.email}${u.name ? ` (${u.name})` : ""}`
+    );
+
+    if (!user) {
+      notice("No user selected.", "warning");
+      return;
+    }
+
+    await handleListUser(user.email);
   } catch (err) {
     error(err instanceof Error ? err.message : String(err));
   }

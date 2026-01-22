@@ -146,13 +146,16 @@ export const TaskDetailLayout = ({
         <aside
           id="task-info-sidebar-desktop"
           className={cn(
-            "hidden lg:block shrink-0 fixed right-0 top-16 bottom-0",
+            "hidden lg:block shrink-0 fixed right-0 top-16 bottom-0 z-40",
             "transition-[width] duration-300 ease-in-out overflow-hidden",
             desktopSidebarOpen ? "w-[360px]" : "w-12"
           )}
           aria-label="Task information sidebar"
         >
-          <div className="h-full w-[360px] flex flex-col bg-white dark:bg-neutral-900 border-l border-neutral-200 dark:border-neutral-800 shadow-lg">
+          <div className={cn(
+            "h-full flex flex-col bg-white dark:bg-neutral-900 border-l border-neutral-200 dark:border-neutral-800 shadow-lg",
+            desktopSidebarOpen ? "w-[360px]" : "w-12"
+          )}>
             {desktopSidebarOpen ? (
               <>
                 {/* Header */}
@@ -166,13 +169,17 @@ export const TaskDetailLayout = ({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-8 w-8 px-0"
+                    className="h-8 w-8 px-0 min-h-[44px] min-w-[44px] flex items-center justify-center"
                     onClick={() => setDesktopSidebarOpen(false)}
                     aria-expanded={desktopSidebarOpen}
                     aria-controls="task-info-sidebar-desktop"
                     title="Collapse sidebar"
+                    style={{
+                      touchAction: 'manipulation',
+                      WebkitTapHighlightColor: 'transparent'
+                    }}
                   >
-                    <ChevronRightIcon className="h-4 w-4" />
+                    <ChevronRightIcon className="h-4 w-4 pointer-events-none" />
                   </Button>
                 </div>
 
@@ -183,12 +190,18 @@ export const TaskDetailLayout = ({
               <button
                 type="button"
                 onClick={() => setDesktopSidebarOpen(true)}
-                className="h-full w-full flex items-center justify-center hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+                className="h-full w-full flex items-center justify-center hover:bg-neutral-50 dark:hover:bg-neutral-800 active:bg-neutral-100 dark:active:bg-neutral-700 transition-colors cursor-pointer"
                 aria-expanded={desktopSidebarOpen}
                 aria-controls="task-info-sidebar-desktop"
                 title="Show task information"
+                style={{ 
+                  minHeight: '44px', 
+                  minWidth: '44px',
+                  touchAction: 'manipulation',
+                  WebkitTapHighlightColor: 'transparent'
+                }}
               >
-                <ChevronLeftIcon className="h-4 w-4 text-neutral-600 dark:text-neutral-400" />
+                <ChevronLeftIcon className="h-4 w-4 text-neutral-600 dark:text-neutral-400 pointer-events-none" />
               </button>
             )}
           </div>

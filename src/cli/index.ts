@@ -1020,6 +1020,33 @@ async function runPermissionInteractive() {
         },
       },
       {
+        key: "gu",
+        label: "➕ Grant Permission to User",
+        description: "Assign a permission to a user",
+        handler: async () => {
+          clear();
+          await permissionCli.handleGrantUserInteractive();
+        },
+      },
+      {
+        key: "ru",
+        label: "➖ Revoke Permission from User",
+        description: "Remove a permission from a user",
+        handler: async () => {
+          clear();
+          await permissionCli.handleRevokeUserInteractive();
+        },
+      },
+      {
+        key: "lu",
+        label: "👤 List User Permissions",
+        description: "View permissions assigned to a user",
+        handler: async () => {
+          clear();
+          await permissionCli.handleListUserInteractive();
+        },
+      },
+      {
         key: "sync",
         label: "🔄 Sync Permissions",
         description: "Show how to sync permission definitions",
