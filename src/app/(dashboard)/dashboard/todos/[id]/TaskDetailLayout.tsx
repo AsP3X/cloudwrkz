@@ -89,7 +89,7 @@ export const TaskDetailLayout = ({
 
   return (
     <div className="relative">
-      {/* Mobile arrow toggle at top - fixed position */}
+      {/* Mobile arrow toggle - fixed on RIGHT side, simple tab shape */}
       <button
         type="button"
         onClick={() => setMobileDrawerOpen((v) => !v)}
@@ -97,11 +97,14 @@ export const TaskDetailLayout = ({
         aria-controls="task-info-sidebar-mobile"
         aria-label={mobileDrawerOpen ? "Close task information" : "Open task information"}
         className={cn(
-          "lg:hidden fixed top-32 right-4 z-40",
+          "lg:hidden fixed top-32 right-0 z-40",
           "flex items-center justify-center",
-          "w-12 h-12 rounded-full",
+          // Even taller and slimmer bevel tab
+          "w-8 h-20",
           "bg-white dark:bg-neutral-800",
-          "border-2 border-neutral-300 dark:border-neutral-600",
+          // Attached to right edge, rounded on content side
+          "border border-l border-y border-r-0 border-neutral-300 dark:border-neutral-600",
+          "rounded-l-full",
           "shadow-lg hover:shadow-xl",
           "hover:bg-neutral-50 dark:hover:bg-neutral-700",
           "active:bg-neutral-100 dark:active:bg-neutral-600",
@@ -109,7 +112,7 @@ export const TaskDetailLayout = ({
           "touch-manipulation"
         )}
         style={{
-          WebkitTapHighlightColor: 'transparent'
+          WebkitTapHighlightColor: "transparent",
         }}
       >
         {mobileDrawerOpen ? (
