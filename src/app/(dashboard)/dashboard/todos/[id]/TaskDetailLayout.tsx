@@ -44,33 +44,6 @@ const ChevronLeftIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
-const InfoIcon = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
-    <circle
-      cx="12"
-      cy="12"
-      r="10"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <path
-      d="M12 16v-4"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <circle
-      cx="12"
-      cy="8"
-      r="1"
-      fill="currentColor"
-    />
-  </svg>
-);
-
 export const TaskDetailLayout = ({
   defaultSidebarOpen = true,
   sidebar,
@@ -116,21 +89,35 @@ export const TaskDetailLayout = ({
 
   return (
     <div className="relative">
-      <div className="flex justify-end gap-2 mb-4">
-        {/* Mobile toggle (drawer) */}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="lg:hidden"
-          onClick={() => setMobileDrawerOpen((v) => !v)}
-          aria-expanded={mobileDrawerOpen}
-          aria-controls="task-info-sidebar-mobile"
-        >
-          <InfoIcon className="h-4 w-4" />
-          <span className="ml-2">{mobileDrawerOpen ? "Close info" : "Task info"}</span>
-        </Button>
-      </div>
+      {/* Mobile arrow toggle at top - fixed position */}
+      <button
+        type="button"
+        onClick={() => setMobileDrawerOpen((v) => !v)}
+        aria-expanded={mobileDrawerOpen}
+        aria-controls="task-info-sidebar-mobile"
+        aria-label={mobileDrawerOpen ? "Close task information" : "Open task information"}
+        className={cn(
+          "lg:hidden fixed top-32 right-4 z-40",
+          "flex items-center justify-center",
+          "w-12 h-12 rounded-full",
+          "bg-white dark:bg-neutral-800",
+          "border-2 border-neutral-300 dark:border-neutral-600",
+          "shadow-lg hover:shadow-xl",
+          "hover:bg-neutral-50 dark:hover:bg-neutral-700",
+          "active:bg-neutral-100 dark:active:bg-neutral-600",
+          "transition-all duration-200",
+          "touch-manipulation"
+        )}
+        style={{
+          WebkitTapHighlightColor: 'transparent'
+        }}
+      >
+        {mobileDrawerOpen ? (
+          <ChevronRightIcon className="h-6 w-6 text-neutral-700 dark:text-neutral-300" />
+        ) : (
+          <ChevronLeftIcon className="h-6 w-6 text-neutral-700 dark:text-neutral-300" />
+        )}
+      </button>
 
       <div className="flex items-start">
         <div
