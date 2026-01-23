@@ -10,12 +10,13 @@ import { formatDateTimeInTimezone } from "@/lib/utils/date";
 import { bulkUnarchiveTodos } from "@/server/actions/todos";
 import { bulkUnarchiveTickets } from "@/server/actions/tickets";
 import { bulkUnarchiveTimeEntries } from "@/server/actions/time-tracking";
+import { bulkUnarchiveLinks } from "@/server/actions/links";
 import { ArchiveFilterButton } from "./ArchiveFilterButton";
 
-export type ArchiveItemType = "all" | "tickets" | "todos" | "time";
+export type ArchiveItemType = "all" | "tickets" | "todos" | "time" | "links";
 
 export type ArchiveItem = {
-  type: "ticket" | "todo" | "timeEntry";
+  type: "ticket" | "todo" | "timeEntry" | "link";
   id: string;
   title: string;
   description: string | null;
@@ -26,7 +27,7 @@ export type ArchiveItem = {
 
 interface ArchivePageClientProps {
   items: ArchiveItem[];
-  canView: { tickets: boolean; todos: boolean; time: boolean };
+  canView: { tickets: boolean; todos: boolean; time: boolean; links: boolean };
   initialType: ArchiveItemType;
   initialQuery: string;
   initialSort: string;
@@ -43,6 +44,8 @@ const typePill = (type: ArchiveItem["type"]) => {
       return { label: "ToDo", className: "bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300" };
     case "timeEntry":
       return { label: "Time", className: "bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300" };
+    case "link":
+      return { label: "Link", className: "bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300" };
   }
 };
 
@@ -94,6 +97,7 @@ export function ArchivePageClient({
       if (activeType === "tickets" && item.type !== "ticket") return false;
       if (activeType === "todos" && item.type !== "todo") return false;
       if (activeType === "time" && item.type !== "timeEntry") return false;
+      if (activeType === "links" && item.type !== "link") return false;
 
       const archivedAtMs = new Date(item.archivedAt).getTime();
       if (from && !Number.isNaN(from.getTime()) && archivedAtMs < from.getTime()) return false;
@@ -171,12 +175,14 @@ export function ArchivePageClient({
     const todos = itemsToUnarchive.filter((i) => i.type === "todo").map((i) => i.id);
     const tickets = itemsToUnarchive.filter((i) => i.type === "ticket").map((i) => i.id);
     const timeEntries = itemsToUnarchive.filter((i) => i.type === "timeEntry").map((i) => i.id);
+    const links = itemsToUnarchive.filter((i) => i.type === "link").map((i) => i.id);
 
     try {
       const results = await Promise.all([
         todos.length ? bulkUnarchiveTodos(todos) : Promise.resolve({ success: true as const }),
         tickets.length ? bulkUnarchiveTickets(tickets) : Promise.resolve({ success: true as const }),
         timeEntries.length ? bulkUnarchiveTimeEntries(timeEntries) : Promise.resolve({ success: true as const }),
+        links.length ? bulkUnarchiveLinks(links) : Promise.resolve({ success: true as const }),
       ]);
 
       const firstError = results.find((r) => (r as any)?.success === false) as any;
@@ -237,7 +243,7 @@ export function ArchivePageClient({
             No archived items
           </h3>
           <p className="text-neutral-600 dark:text-neutral-400">
-            Archived tickets, todos, and time entries will show up here.
+            Archived tickets, todos, time entries, and links will show up here.
           </p>
         </div>
       ) : (

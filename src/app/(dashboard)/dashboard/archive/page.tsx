@@ -6,6 +6,7 @@ import { MODULE_KEYS } from "@/lib/constants/modules";
 import { getAllTodos } from "@/server/actions/todos";
 import { getTickets } from "@/server/actions/tickets";
 import { getTimeEntries } from "@/server/actions/time-tracking";
+import { getLinks } from "@/server/actions/links";
 import { ArchivePageClient, type ArchiveItemType } from "./ArchivePageClient";
 import { ArchiveFilterLoader } from "./ArchiveFilterLoader";
 
@@ -31,10 +32,11 @@ export default async function ArchivePage({ searchParams }: ArchivePageProps) {
     redirect(ROUTES.LOGIN);
   }
 
-  const [canViewTickets, canViewTodos, canViewTimeTracking] = await Promise.all([
+  const [canViewTickets, canViewTodos, canViewTimeTracking, canViewLinks] = await Promise.all([
     canUserViewModule(user.id, MODULE_KEYS.TICKETS),
     canUserViewModule(user.id, MODULE_KEYS.TODOS),
     canUserViewModule(user.id, MODULE_KEYS.TIMETRACKING),
+    canUserViewModule(user.id, MODULE_KEYS.LINKS),
   ]);
 
   const initialTypeParam = (params.type || "all").toLowerCase();
@@ -45,7 +47,9 @@ export default async function ArchivePage({ searchParams }: ArchivePageProps) {
         ? "todos"
         : initialTypeParam === "time" || initialTypeParam === "timeentries" || initialTypeParam === "time_entries"
           ? "time"
-          : "all";
+          : initialTypeParam === "links"
+            ? "links"
+            : "all";
 
   // If a user doesn't have access to the requested type, ignore it (and drop the param to avoid broken filter UI).
   const typeAllowed =
@@ -55,7 +59,9 @@ export default async function ArchivePage({ searchParams }: ArchivePageProps) {
         ? canViewTodos
         : requestedType === "time"
           ? canViewTimeTracking
-          : true;
+          : requestedType === "links"
+            ? canViewLinks
+            : true;
 
   if (!typeAllowed && params.type) {
     const qs = new URLSearchParams();
@@ -72,7 +78,7 @@ export default async function ArchivePage({ searchParams }: ArchivePageProps) {
   const initialArchivedFrom = params.archivedFrom || "";
   const initialArchivedTo = params.archivedTo || "";
 
-  const [archivedTodos, archivedTickets, archivedTimeEntries] = await Promise.all([
+  const [archivedTodos, archivedTickets, archivedTimeEntries, archivedLinks] = await Promise.all([
     canViewTodos
       ? getAllTodos({
           kind: "all",
@@ -95,6 +101,13 @@ export default async function ArchivePage({ searchParams }: ArchivePageProps) {
           sortBy: "createdAt",
           sortOrder: "desc",
         }).then((r) => r.entries)
+      : Promise.resolve([]),
+    canViewLinks
+      ? getLinks({
+          archived: true,
+          sortBy: "createdAt",
+          sortOrder: "desc",
+        })
       : Promise.resolve([]),
   ]);
 
@@ -132,15 +145,26 @@ export default async function ArchivePage({ searchParams }: ArchivePageProps) {
         archivedAt: e.archivedAt as Date,
         subtitle: e.ticket?.ticketNumber ? (e.ticket.ticketNumber as string) : "Time entry",
       })),
+    ...archivedLinks
+      .filter((l: any) => l.archivedAt)
+      .map((l: any) => ({
+        type: "link" as const,
+        id: l.id as string,
+        title: l.title as string,
+        description: (l.description ?? null) as string | null,
+        url: `/dashboard/links/${l.id}`,
+        archivedAt: l.archivedAt as Date,
+        subtitle: l.url as string,
+      })),
   ].sort((a, b) => b.archivedAt.getTime() - a.archivedAt.getTime());
 
   return (
     <>
       {/* Auto-load last used archive filters */}
-      <ArchiveFilterLoader canView={{ tickets: canViewTickets, todos: canViewTodos, time: canViewTimeTracking }} />
+      <ArchiveFilterLoader canView={{ tickets: canViewTickets, todos: canViewTodos, time: canViewTimeTracking, links: canViewLinks }} />
       <ArchivePageClient
         items={items}
-        canView={{ tickets: canViewTickets, todos: canViewTodos, time: canViewTimeTracking }}
+        canView={{ tickets: canViewTickets, todos: canViewTodos, time: canViewTimeTracking, links: canViewLinks }}
         initialType={initialType}
         initialQuery={params.q || ""}
         initialSort={initialSort}

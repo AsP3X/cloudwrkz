@@ -1,6 +1,6 @@
 import { type FilterConfig } from "@/components/ui/FilterDialog";
 
-type ArchiveCanView = { tickets: boolean; todos: boolean; time: boolean };
+type ArchiveCanView = { tickets: boolean; todos: boolean; time: boolean; links: boolean };
 
 export const getArchiveFilterConfig = (canView: ArchiveCanView): FilterConfig => {
   const fields: FilterConfig["fields"] = [
@@ -13,6 +13,7 @@ export const getArchiveFilterConfig = (canView: ArchiveCanView): FilterConfig =>
         ...(canView.tickets ? [{ value: "tickets", label: "Tickets" }] : []),
         ...(canView.todos ? [{ value: "todos", label: "ToDos" }] : []),
         ...(canView.time ? [{ value: "time", label: "Time entries" }] : []),
+        ...(canView.links ? [{ value: "links", label: "Links" }] : []),
       ],
       gridCols: 2,
     },

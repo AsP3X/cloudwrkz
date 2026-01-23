@@ -7,8 +7,6 @@ import { getCollection } from "@/server/actions/collections";
 import { formatDate } from "@/lib/utils/date";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { EditCollectionDialog } from "@/components/features/links/EditCollectionDialog";
-import { ShareCollectionDialog } from "@/components/features/links/ShareCollectionDialog";
 import { LinkListView } from "@/components/features/links/LinkListView";
 import { LinkViewProvider } from "@/components/features/links/LinkViewContext";
 import { LinkViewControls } from "@/components/features/links/LinkViewControls";
@@ -146,43 +144,5 @@ export default async function CollectionDetailPage({ params }: CollectionDetailP
         )}
       </div>
     </LinkViewProvider>
-  );
-}
-
-function EditCollectionButton({ collection }: { collection: any }) {
-  const [open, setOpen] = React.useState(false);
-  return (
-    <>
-      <Button variant="outline" onClick={() => setOpen(true)}>
-        Edit
-      </Button>
-      <EditCollectionDialog
-        open={open}
-        onOpenChange={setOpen}
-        collection={{
-          id: collection.id,
-          name: collection.name,
-          description: collection.description,
-          color: collection.color,
-        }}
-      />
-    </>
-  );
-}
-
-function ShareCollectionButton({ collection }: { collection: any }) {
-  const [open, setOpen] = React.useState(false);
-  return (
-    <>
-      <Button variant="outline" onClick={() => setOpen(true)}>
-        Share
-      </Button>
-      <ShareCollectionDialog
-        open={open}
-        onOpenChange={setOpen}
-        collectionId={collection.id}
-        members={collection.members || []}
-      />
-    </>
   );
 }

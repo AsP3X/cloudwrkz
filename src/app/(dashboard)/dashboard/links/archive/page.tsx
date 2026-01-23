@@ -18,6 +18,7 @@ interface LinksArchivePageProps {
     linkType?: string;
     search?: string;
     sort?: string;
+    archived?: string;
   }>;
 }
 
@@ -50,11 +51,15 @@ export default async function LinksArchivePage({ searchParams }: LinksArchivePag
   const [sortBy, sortOrder] = sortParam.split("-") as ["createdAt" | "updatedAt" | "title" | "rating", "asc" | "desc"];
 
   // Build filters - only archived links
+  // Always force archived: true, even if URL params try to override it
   const filters: any = {
     sortBy: sortBy || "createdAt",
     sortOrder: sortOrder || "desc",
-    archived: true,
+    archived: true, // Always show archived links on archive page
   };
+  
+  // If archived param is explicitly false in URL, ignore it (archive page should always show archived)
+  // This prevents filter presets from overriding the archive page behavior
 
   if (params.linkType) {
     filters.linkType = params.linkType;
@@ -69,7 +74,7 @@ export default async function LinksArchivePage({ searchParams }: LinksArchivePag
   return (
     <LinkViewProvider>
       <div className="space-y-6">
-        <LinkFilterLoader collections={collections} />
+        <LinkFilterLoader collections={collections} isArchivePage={true} />
 
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
@@ -78,7 +83,7 @@ export default async function LinksArchivePage({ searchParams }: LinksArchivePag
           </div>
           <div className="flex items-center gap-3">
             <LinkViewControls />
-            <LinkFilterButton collections={collections} />
+            <LinkFilterButton collections={collections} isArchivePage={true} />
             <Link href={ROUTES.LINKS}>
               <Button variant="outline">Back to Links</Button>
             </Link>

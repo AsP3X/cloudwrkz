@@ -196,8 +196,8 @@ export async function createLink(input: LinkInput): Promise<ActionResult<{ id: s
     }
 
     // Validate rating
-    let rating = input.rating;
-    if (rating !== undefined && (rating < 1 || rating > 5)) {
+    let rating: number | null | undefined = input.rating;
+    if (rating !== undefined && rating !== null && (rating < 1 || rating > 5)) {
       rating = null;
     }
 
@@ -356,8 +356,8 @@ export async function updateLink(
     }
 
     // Validate rating
-    let rating = input.rating;
-    if (rating !== undefined && (rating < 1 || rating > 5)) {
+    let rating: number | null | undefined = input.rating;
+    if (rating !== undefined && rating !== null && (rating < 1 || rating > 5)) {
       rating = null;
     }
 
@@ -529,6 +529,7 @@ export async function archiveLink(id: string): Promise<ActionResult> {
     });
 
     revalidatePath("/dashboard/links");
+    revalidatePath("/dashboard/links/archive");
     return {
       success: true,
     };
@@ -582,6 +583,7 @@ export async function unarchiveLink(id: string): Promise<ActionResult> {
     });
 
     revalidatePath("/dashboard/links");
+    revalidatePath("/dashboard/links/archive");
     return {
       success: true,
     };
@@ -590,6 +592,73 @@ export async function unarchiveLink(id: string): Promise<ActionResult> {
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to unarchive link",
+    };
+  }
+}
+
+/**
+ * Bulk unarchive links
+ */
+export async function bulkUnarchiveLinks(
+  linkIds: string[]
+): Promise<ActionResult<{ unarchived: number; failed: number }>> {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.LINKS);
+    if (!moduleEnabled) {
+      return {
+        success: false,
+        error: "Links module is not enabled",
+      };
+    }
+
+    const user = await requireAuth();
+    await requireAnyPermission("links.update");
+
+    if (!linkIds || linkIds.length === 0) {
+      return { success: false, error: "No links selected" };
+    }
+
+    // Verify ownership
+    const links = await prisma.link.findMany({
+      where: {
+        id: { in: linkIds },
+        userId: user.id,
+      },
+      select: { id: true },
+    });
+
+    if (links.length !== linkIds.length) {
+      return {
+        success: false,
+        error: "Some links were not found or you don't have permission to unarchive them",
+      };
+    }
+
+    const result = await prisma.link.updateMany({
+      where: {
+        id: { in: linkIds },
+        userId: user.id,
+      },
+      data: { archivedAt: null },
+    });
+
+    revalidatePath("/dashboard/links");
+    revalidatePath("/dashboard/links/archive");
+    revalidatePath("/dashboard/archive");
+
+    return {
+      success: true,
+      data: {
+        unarchived: result.count,
+        failed: linkIds.length - result.count,
+      },
+      message: `Successfully unarchived ${result.count} link${result.count !== 1 ? "s" : ""}`,
+    };
+  } catch (error) {
+    console.error("Bulk unarchive links error:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to unarchive links",
     };
   }
 }
@@ -618,10 +687,13 @@ export async function getLinks(filters: LinkFilters = {}) {
 
     // Archive filter
     if (filters.archived === true) {
+      // Show only archived links (archivedAt is not null)
       where.archivedAt = { not: null };
     } else if (filters.archived === false) {
+      // Show only non-archived links (archivedAt is null)
       where.archivedAt = null;
     }
+    // If archived is undefined, don't filter by archive status (show all)
 
     // Link type filter
     if (filters.linkType) {
@@ -937,6 +1009,7 @@ export async function bulkArchiveLinks(ids: string[]): Promise<ActionResult> {
     });
 
     revalidatePath("/dashboard/links");
+    revalidatePath("/dashboard/links/archive");
     return {
       success: true,
     };

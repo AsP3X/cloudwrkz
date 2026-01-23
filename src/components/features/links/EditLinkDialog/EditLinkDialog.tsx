@@ -175,209 +175,272 @@ export function EditLinkDialog({ open, onOpenChange, link }: EditLinkDialogProps
       description="Update link information"
       className="max-w-2xl"
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="px-4 sm:px-6 py-4 sm:py-6">
         {error && (
-          <div className="p-3 bg-error-50 dark:bg-error-950 border border-error-200 dark:border-error-800 rounded-md">
-            <p className="text-sm text-error-800 dark:text-error-200">{error}</p>
+          <div className="mb-6 p-4 bg-error-50 dark:bg-error-950/50 border border-error-200 dark:border-error-800 rounded-lg">
+            <p className="text-sm font-medium text-error-800 dark:text-error-200">{error}</p>
           </div>
         )}
 
-        <div>
-          <label htmlFor="url" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-            URL <span className="text-error-600">*</span>
-          </label>
-          <Input
-            id="url"
-            type="url"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://example.com"
-            required
-          />
-        </div>
-
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <label htmlFor="title" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-              Title
-            </label>
-            <button
-              type="button"
-              onClick={handleRefreshMetadata}
-              disabled={extractingMetadata}
-              className="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 disabled:opacity-50"
-            >
-              {extractingMetadata ? "Extracting..." : "Refresh Metadata"}
-            </button>
-          </div>
-          <Input
-            id="title"
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Link title"
-          />
-          {link.metadataExtractedAt && (
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-              Metadata extracted: {formatDate(link.metadataExtractedAt)}
-            </p>
-          )}
-        </div>
-
-        <div>
-          <label htmlFor="description" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-            Description
-          </label>
-          <Textarea
-            id="description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Link description"
-            rows={3}
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label htmlFor="linkType" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-              Type
-            </label>
-            <Select
-              id="linkType"
-              value={linkType}
-              onChange={(e) => setLinkType(e.target.value as any)}
-              options={[
-                { value: "WEBSITE", label: "Website" },
-                { value: "FILE", label: "File" },
-                { value: "DOCUMENT", label: "Document" },
-                { value: "VIDEO", label: "Video" },
-                { value: "IMAGE", label: "Image" },
-                { value: "OTHER", label: "Other" },
-              ]}
-            />
-          </div>
-
-          <div>
-            <label htmlFor="rating" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-              Rating
-            </label>
-            <Select
-              id="rating"
-              value={rating?.toString() || ""}
-              onChange={(e) => setRating(e.target.value ? parseInt(e.target.value) : null)}
-              options={[
-                { value: "", label: "No rating" },
-                { value: "1", label: "1 Star" },
-                { value: "2", label: "2 Stars" },
-                { value: "3", label: "3 Stars" },
-                { value: "4", label: "4 Stars" },
-                { value: "5", label: "5 Stars" },
-              ]}
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-            Tags
-          </label>
-          <div className="flex gap-2 mb-2">
-            <Input
-              type="text"
-              value={tagInput}
-              onChange={(e) => setTagInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleAddTag();
-                }
-              }}
-              placeholder="Add a tag"
-              className="flex-1"
-            />
-            <Button type="button" onClick={handleAddTag} variant="outline">
-              Add
-            </Button>
-          </div>
-          {tags.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center gap-1 px-2 py-1 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded text-sm"
-                >
-                  {tag}
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveTag(tag)}
-                    className="hover:text-primary-900 dark:hover:text-primary-100"
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
+        <div className="space-y-6">
+          {/* Basic Information Section */}
+          <div className="space-y-4">
+            <div className="pb-2 border-b border-neutral-200 dark:border-neutral-800">
+              <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 uppercase tracking-wide">
+                Basic Information
+              </h3>
             </div>
-          )}
-        </div>
 
-        {collections.length > 0 && (
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-              Collections
-            </label>
-            <div className="space-y-2 max-h-32 overflow-y-auto border border-neutral-200 dark:border-neutral-700 rounded-md p-2">
-              {collections.map((collection) => (
-                <label key={collection.id} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selectedCollections.includes(collection.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedCollections([...selectedCollections, collection.id]);
-                      } else {
-                        setSelectedCollections(selectedCollections.filter((id) => id !== collection.id));
-                      }
-                    }}
-                    className="w-4 h-4 text-primary-600 rounded"
-                  />
-                  <span className="text-sm text-neutral-700 dark:text-neutral-300">{collection.name}</span>
+            <div>
+              <label htmlFor="url" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                URL <span className="text-error-600 dark:text-error-400">*</span>
+              </label>
+              <Input
+                id="url"
+                type="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://example.com"
+                required
+              />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label htmlFor="title" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                  Title
                 </label>
-              ))}
+                <button
+                  type="button"
+                  onClick={handleRefreshMetadata}
+                  disabled={extractingMetadata}
+                  className="text-xs font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+                >
+                  {extractingMetadata ? (
+                    <>
+                      <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Extracting...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Refresh Metadata
+                    </>
+                  )}
+                </button>
+              </div>
+              <Input
+                id="title"
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Link title"
+              />
+              {link.metadataExtractedAt && (
+                <p className="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                  Metadata extracted: {formatDate(link.metadataExtractedAt)}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="description" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                Description
+              </label>
+              <Textarea
+                id="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Link description"
+                rows={3}
+                className="resize-none"
+              />
             </div>
           </div>
-        )}
 
-        <div>
-          <label htmlFor="notes" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-            Notes
-          </label>
-          <Textarea
-            id="notes"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Personal notes or annotations..."
-            rows={3}
-          />
+          {/* Classification Section */}
+          <div className="space-y-4">
+            <div className="pb-2 border-b border-neutral-200 dark:border-neutral-800">
+              <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 uppercase tracking-wide">
+                Classification
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="linkType" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                  Type
+                </label>
+                <Select
+                  id="linkType"
+                  value={linkType}
+                  onChange={(e) => setLinkType(e.target.value as any)}
+                  options={[
+                    { value: "WEBSITE", label: "Website" },
+                    { value: "FILE", label: "File" },
+                    { value: "DOCUMENT", label: "Document" },
+                    { value: "VIDEO", label: "Video" },
+                    { value: "IMAGE", label: "Image" },
+                    { value: "OTHER", label: "Other" },
+                  ]}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="rating" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                  Rating
+                </label>
+                <Select
+                  id="rating"
+                  value={rating?.toString() || ""}
+                  onChange={(e) => setRating(e.target.value ? parseInt(e.target.value) : null)}
+                  options={[
+                    { value: "", label: "No rating" },
+                    { value: "1", label: "1 Star" },
+                    { value: "2", label: "2 Stars" },
+                    { value: "3", label: "3 Stars" },
+                    { value: "4", label: "4 Stars" },
+                    { value: "5", label: "5 Stars" },
+                  ]}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                Tags
+              </label>
+              <div className="flex gap-2 mb-3">
+                <Input
+                  type="text"
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddTag();
+                    }
+                  }}
+                  placeholder="Add a tag and press Enter"
+                  className="flex-1"
+                />
+                <Button type="button" onClick={handleAddTag} variant="outline" size="sm">
+                  Add
+                </Button>
+              </div>
+              {tags.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 rounded-full text-sm font-medium border border-primary-200 dark:border-primary-800"
+                    >
+                      {tag}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveTag(tag)}
+                        className="hover:text-primary-900 dark:hover:text-primary-100 transition-colors"
+                        aria-label={`Remove ${tag} tag`}
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Organization Section */}
+          <div className="space-y-4">
+            <div className="pb-2 border-b border-neutral-200 dark:border-neutral-800">
+              <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 uppercase tracking-wide">
+                Organization
+              </h3>
+            </div>
+
+            {collections.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                  Collections
+                </label>
+                <div className="space-y-2 max-h-40 overflow-y-auto border border-neutral-200 dark:border-neutral-700 rounded-lg p-3 bg-neutral-50 dark:bg-neutral-800/50">
+                  {collections.map((collection) => (
+                    <label key={collection.id} className="flex items-center gap-3 cursor-pointer p-2 rounded-md hover:bg-white dark:hover:bg-neutral-700 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={selectedCollections.includes(collection.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedCollections([...selectedCollections, collection.id]);
+                          } else {
+                            setSelectedCollections(selectedCollections.filter((id) => id !== collection.id));
+                          }
+                        }}
+                        className="w-4 h-4 text-primary-600 dark:text-primary-400 rounded border-neutral-300 dark:border-neutral-600 focus:ring-primary-500 focus:ring-2"
+                      />
+                      <span className="text-sm text-neutral-700 dark:text-neutral-300 flex-1">{collection.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label htmlFor="notes" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                Personal Notes
+              </label>
+              <Textarea
+                id="notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Add personal notes or annotations..."
+                rows={3}
+                className="resize-none"
+              />
+            </div>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="flex items-center gap-6 pt-2">
+            <label className="flex items-center gap-2.5 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={isFavorite}
+                onChange={(e) => setIsFavorite(e.target.checked)}
+                className="w-4 h-4 text-primary-600 dark:text-primary-400 rounded border-neutral-300 dark:border-neutral-600 focus:ring-primary-500 focus:ring-2"
+              />
+              <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300 group-hover:text-neutral-900 dark:group-hover:text-neutral-100 transition-colors">
+                Mark as Favorite
+              </span>
+            </label>
+          </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={isFavorite}
-              onChange={(e) => setIsFavorite(e.target.checked)}
-              className="w-4 h-4 text-primary-600 rounded"
-            />
-            <span className="text-sm text-neutral-700 dark:text-neutral-300">Favorite</span>
-          </label>
-        </div>
-
-        <div className="flex justify-end gap-3 pt-4">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+        {/* Footer Actions */}
+        <div className="flex justify-end gap-3 pt-6 mt-6 border-t border-neutral-200 dark:border-neutral-800">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
             Cancel
           </Button>
           <Button type="submit" variant="primary" disabled={isSubmitting}>
-            {isSubmitting ? "Updating..." : "Update Link"}
+            {isSubmitting ? (
+              <span className="flex items-center gap-2">
+                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Updating...
+              </span>
+            ) : (
+              "Update Link"
+            )}
           </Button>
         </div>
       </form>

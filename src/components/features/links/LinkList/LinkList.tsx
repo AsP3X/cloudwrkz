@@ -270,21 +270,34 @@ export const LinkList = ({ links, viewMode }: LinkListProps) => {
                       )}
                       <div className="flex-1 min-w-0">
                         <Link
-                          href={link.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                          href={`/dashboard/links/${link.id}`}
                           className="block font-semibold text-sm text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400 mb-1 line-clamp-2"
                         >
                           {link.title}
                         </Link>
-                        <a
-                          href={link.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-neutral-500 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 truncate block"
-                        >
-                          {domain}
-                        </a>
+                        <div className="flex items-center gap-2">
+                          <a
+                            href={link.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-neutral-500 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 truncate block"
+                          >
+                            {domain}
+                          </a>
+                          <a
+                            href={link.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-medium flex items-center gap-1"
+                            title="Open link in new tab"
+                          >
+                            Open
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                            </svg>
+                          </a>
+                        </div>
                       </div>
                       {link.isFavorite && (
                         <svg className="w-4 h-4 text-yellow-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
@@ -413,9 +426,7 @@ export const LinkList = ({ links, viewMode }: LinkListProps) => {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <Link
-                        href={link.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                        href={`/dashboard/links/${link.id}`}
                         className="font-semibold text-sm text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400 truncate"
                       >
                         {link.title}
@@ -445,14 +456,29 @@ export const LinkList = ({ links, viewMode }: LinkListProps) => {
                         </div>
                       )}
                     </div>
-                    <a
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-neutral-500 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 truncate block"
-                    >
-                      {domain}
-                    </a>
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-neutral-500 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 truncate block"
+                      >
+                        {domain}
+                      </a>
+                      <a
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-medium flex items-center gap-1"
+                        title="Open link in new tab"
+                      >
+                        Open
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </a>
+                    </div>
                     <div className="flex items-center gap-2 mt-1">
                       <Badge className={cn(getLinkTypeColor(link.linkType), "text-[10px] px-1.5 py-0.5")}>
                         {getLinkTypeLabel(link.linkType)}
@@ -557,9 +583,7 @@ export const LinkList = ({ links, viewMode }: LinkListProps) => {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <Link
-                              href={link.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                              href={`/dashboard/links/${link.id}`}
                               className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400 truncate"
                             >
                               {link.title}
@@ -584,14 +608,29 @@ export const LinkList = ({ links, viewMode }: LinkListProps) => {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <a
-                        href={link.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-neutral-600 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 truncate block max-w-md"
-                      >
-                        {domain}
-                      </a>
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-neutral-600 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 truncate block max-w-md"
+                        >
+                          {domain}
+                        </a>
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-medium flex items-center gap-1 whitespace-nowrap"
+                          title="Open link in new tab"
+                        >
+                          Open
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                          </svg>
+                        </a>
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap hidden md:table-cell">
                       <Badge className={getLinkTypeColor(link.linkType)}>

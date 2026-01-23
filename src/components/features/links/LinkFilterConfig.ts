@@ -8,8 +8,17 @@ export interface LinkFilterConfigOptions {
   }>;
 }
 
+export interface LinkFilterConfigOptions {
+  collections?: Array<{
+    id: string;
+    name: string;
+    color: string | null;
+  }>;
+  isArchivePage?: boolean;
+}
+
 export const getLinkFilterConfig = (options: LinkFilterConfigOptions = {}): FilterConfig => {
-  const { collections = [] } = options;
+  const { collections = [], isArchivePage = false } = options;
 
   const collectionOptions = [
     { value: "", label: "All Collections" },
@@ -98,12 +107,12 @@ export const getLinkFilterConfig = (options: LinkFilterConfigOptions = {}): Filt
   });
 
   return {
-    moduleName: "link",
-    baseRoute: "/dashboard/links",
-    title: "Filter Links",
+    moduleName: isArchivePage ? "link_archive" : "link",
+    baseRoute: isArchivePage ? "/dashboard/links/archive" : "/dashboard/links",
+    title: isArchivePage ? "Filter Archived Links" : "Filter Links",
     description: "Create, edit, and save filter presets to quickly find links",
     defaultSort: "createdAt-desc",
-    defaultFilters: {},
+    defaultFilters: isArchivePage ? { archived: "true" } : {},
     fields,
     enablePresets: true,
     enableDateFilters: false,
