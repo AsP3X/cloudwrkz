@@ -137,11 +137,6 @@ const NAV_SECTIONS = Object.freeze([
         icon: TodosIcon,
         moduleKey: "todos",
       }),
-      Object.freeze({
-        name: "Archive",
-        href: ROUTES.ARCHIVE,
-        icon: ArchiveIcon,
-      }),
     ]),
   }),
   Object.freeze({
@@ -173,6 +168,11 @@ const NAV_SECTIONS = Object.freeze([
         name: "Settings",
         href: "/dashboard/settings",
         icon: SettingsIcon,
+      }),
+      Object.freeze({
+        name: "Archive",
+        href: ROUTES.ARCHIVE,
+        icon: ArchiveIcon,
       }),
     ]),
   }),

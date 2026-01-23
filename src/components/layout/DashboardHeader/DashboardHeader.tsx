@@ -29,6 +29,8 @@ export const DashboardHeader = ({ user, databaseAvailable: initialDatabaseAvaila
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const { isMobileOpen, setIsMobileOpen } = useSidebar();
+  const menuButtonRef = React.useRef<HTMLButtonElement>(null);
+  const [menuPosition, setMenuPosition] = React.useState<{ top: number; right: number } | null>(null);
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -46,6 +48,19 @@ export const DashboardHeader = ({ user, databaseAvailable: initialDatabaseAvaila
       setIsLoggingOut(false);
     }
   };
+
+  // Calculate dropdown position when menu opens
+  React.useEffect(() => {
+    if (isMenuOpen && menuButtonRef.current) {
+      const rect = menuButtonRef.current.getBoundingClientRect();
+      setMenuPosition({
+        top: rect.bottom + 8, // 8px = mt-2 equivalent
+        right: window.innerWidth - rect.right,
+      });
+    } else {
+      setMenuPosition(null);
+    }
+  }, [isMenuOpen]);
 
   // When the database is unavailable, render the warning banner instead of navigation
   if (!databaseAvailable) {
@@ -93,6 +108,7 @@ export const DashboardHeader = ({ user, databaseAvailable: initialDatabaseAvaila
             {/* User menu */}
             <div className="relative">
             <button
+              ref={menuButtonRef}
               onClick={() => setIsMenuOpen(!isMenuOpen)}
               className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
             >
@@ -123,13 +139,19 @@ export const DashboardHeader = ({ user, databaseAvailable: initialDatabaseAvaila
             </button>
 
             {/* Dropdown menu */}
-            {isMenuOpen && (
+            {isMenuOpen && menuPosition && (
               <>
                 <div
-                  className="fixed inset-0 z-40"
+                  className="fixed inset-0 z-[45]"
                   onClick={() => setIsMenuOpen(false)}
                 />
-                <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-neutral-900 rounded-xl shadow-lg border border-neutral-200 dark:border-neutral-800 py-2 z-50">
+                <div 
+                  className="fixed w-56 bg-white dark:bg-neutral-900 rounded-xl shadow-lg border border-neutral-200 dark:border-neutral-800 py-2 z-[100]"
+                  style={{
+                    top: `${menuPosition.top}px`,
+                    right: `${menuPosition.right}px`,
+                  }}
+                >
                   <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
                     <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{user.name || "User"}</p>
                     <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">{user.email}</p>
