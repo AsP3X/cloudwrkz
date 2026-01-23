@@ -55,6 +55,11 @@ export function CreateCollectionDialog({ open, onOpenChange }: CreateCollectionD
       return;
     }
 
+    if (color && !isValidHexColor(color)) {
+      setError("Please enter a valid hex color code (e.g., #3B82F6)");
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {

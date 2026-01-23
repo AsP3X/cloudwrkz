@@ -49,31 +49,51 @@ export function CollectionFilterBar({ collections, canCreate, onCreateCollection
       </Link>
 
       {/* Collections */}
-      {collections.map((collection) => (
-        <Link
-          key={collection.id}
-          href={`/dashboard/links?collection=${collection.id}`}
-          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-            currentCollectionId === collection.id
-              ? "bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 border border-primary-300 dark:border-primary-700"
-              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-          }`}
-          style={
-            currentCollectionId === collection.id && collection.color
-              ? {
-                  backgroundColor: `${collection.color}20`,
-                  borderColor: collection.color,
-                  color: collection.color,
-                }
-              : undefined
-          }
-        >
-          <span>{collection.name}</span>
-          <Badge className="text-xs bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300">
-            {collection._count.links}
-          </Badge>
-        </Link>
-      ))}
+      {collections.map((collection) => {
+        const isActive = currentCollectionId === collection.id;
+        const hasColor = collection.color && /^#[0-9A-Fa-f]{6}$/.test(collection.color);
+        const colorValue = hasColor ? collection.color : null;
+        
+        return (
+          <Link
+            key={collection.id}
+            href={`/dashboard/links?collection=${collection.id}`}
+            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              isActive
+                ? hasColor
+                  ? "border-2"
+                  : "bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 border border-primary-300 dark:border-primary-700"
+                : hasColor
+                  ? "border hover:opacity-80"
+                  : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+            }`}
+            style={
+              hasColor && colorValue
+                ? {
+                    backgroundColor: isActive ? `${colorValue}20` : `${colorValue}15`,
+                    borderColor: colorValue,
+                    color: colorValue,
+                  }
+                : undefined
+            }
+          >
+            <span>{collection.name}</span>
+            <Badge 
+              className="text-xs"
+              style={
+                hasColor && colorValue
+                  ? {
+                      backgroundColor: isActive ? `${colorValue}30` : `${colorValue}25`,
+                      color: colorValue,
+                    }
+                  : undefined
+              }
+            >
+              {collection._count.links}
+            </Badge>
+          </Link>
+        );
+      })}
 
       {/* Create Collection Button */}
       {canCreate && onCreateCollection && (

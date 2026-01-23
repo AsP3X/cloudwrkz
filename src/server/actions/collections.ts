@@ -51,11 +51,26 @@ export async function createCollection(
       };
     }
 
+    // Validate color format if provided
+    let colorValue = null;
+    if (input.color && input.color.trim()) {
+      const trimmedColor = input.color.trim();
+      if (/^#[0-9A-Fa-f]{6}$/.test(trimmedColor)) {
+        colorValue = trimmedColor;
+      } else {
+        return {
+          success: false,
+          error: "Invalid color format. Please use a valid hex color code (e.g., #3B82F6)",
+          fieldErrors: { color: ["Invalid hex color format"] },
+        };
+      }
+    }
+
     const collection = await prisma.collection.create({
       data: {
         name: input.name.trim(),
         description: input.description?.trim() || null,
-        color: input.color || null,
+        color: colorValue,
         ownerId: user.id,
       },
     });
@@ -131,7 +146,20 @@ export async function updateCollection(
       updateData.description = input.description?.trim() || null;
     }
     if (input.color !== undefined) {
-      updateData.color = input.color || null;
+      if (input.color && input.color.trim()) {
+        const trimmedColor = input.color.trim();
+        if (/^#[0-9A-Fa-f]{6}$/.test(trimmedColor)) {
+          updateData.color = trimmedColor;
+        } else {
+          return {
+            success: false,
+            error: "Invalid color format. Please use a valid hex color code (e.g., #3B82F6)",
+            fieldErrors: { color: ["Invalid hex color format"] },
+          };
+        }
+      } else {
+        updateData.color = null;
+      }
     }
 
     await prisma.collection.update({
