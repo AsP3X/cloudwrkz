@@ -15,6 +15,7 @@ import { LinkDetailHeader } from "./LinkDetailHeader";
 import { LinkDetailLayout } from "./LinkDetailLayout";
 import { cn } from "@/lib/utils/cn";
 import { handleArchiveLink, handleUnarchiveLink } from "./actions";
+import { LinkMetadataDisplay } from "@/components/features/links/LinkMetadataDisplay";
 
 interface LinkDetailPageProps {
   params: Promise<{ id: string }>;
@@ -334,11 +335,9 @@ export default async function LinkDetailPage({ params }: LinkDetailPageProps) {
             {/* Metadata */}
             {link.metadata && typeof link.metadata === 'object' && Object.keys(link.metadata).length > 0 && (
               <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
-                <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">Metadata</h2>
-                <div className="bg-neutral-50 dark:bg-neutral-800 rounded-md p-4">
-                  <pre className="text-xs text-neutral-600 dark:text-neutral-400 overflow-x-auto">
-                    {JSON.stringify(link.metadata, null, 2)}
-                  </pre>
+                <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">Extracted Metadata</h2>
+                <div className="bg-neutral-50 dark:bg-neutral-800 rounded-lg p-6">
+                  <LinkMetadataDisplay metadata={link.metadata as any} />
                 </div>
               </div>
             )}
