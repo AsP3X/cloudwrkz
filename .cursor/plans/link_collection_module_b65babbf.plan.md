@@ -29,6 +29,21 @@ todos:
   - id: link-utils
     content: Create links.ts utility file with URL validation and helpers
     status: pending
+  - id: metadata-extraction
+    content: Implement link metadata extraction (title, description, og tags) on save
+    status: pending
+  - id: favorites-ratings
+    content: Add favorites and ratings functionality (UI and server actions)
+    status: pending
+  - id: link-notes
+    content: Add personal notes/annotations field to links
+    status: pending
+  - id: duplicate-detection
+    content: Implement duplicate URL detection when creating/updating links
+    status: pending
+  - id: import-export
+    content: Implement browser bookmark import/export functionality
+    status: pending
   - id: link-list-component
     content: Create LinkList component supporting table, list, and card views
     status: pending
@@ -97,6 +112,11 @@ model Link {
   
   // Metadata
   tags        String[] @default([])
+  notes       String? // Personal annotations/notes for the link
+  isFavorite  Boolean  @default(false) // Favorite flag
+  rating      Int? // Rating 1-5 (optional)
+  metadata    Json? // Extracted metadata (og:title, og:description, og:image, etc.)
+  metadataExtractedAt DateTime? // When metadata was last fetched
   
   // Relations
   userId      String
@@ -114,6 +134,9 @@ model Link {
   @@index([linkType])
   @@index([archivedAt])
   @@index([createdAt])
+  @@index([isFavorite])
+  @@index([rating])
+  @@index([url]) // For duplicate detection
   @@map("links")
 }
 
@@ -362,13 +385,17 @@ export const PERMISSIONS: PermissionDefinition[] = [
 export type LinkType = "WEBSITE" | "FILE" | "DOCUMENT" | "VIDEO" | "IMAGE" | "OTHER";
 
 export type LinkInput = {
-  title: string;
+  title?: string; // Optional if metadata extraction will populate it
   url: string;
   description?: string;
   favicon?: string;
   linkType?: LinkType;
   tags?: string[];
+  notes?: string; // Personal annotations
+  isFavorite?: boolean;
+  rating?: number; // 1-5
   collectionIds?: string[]; // Collections to add link to
+  extractMetadata?: boolean; // Flag to trigger metadata extraction
 };
 
 export type LinkUpdateInput = Partial<LinkInput> & {
@@ -382,7 +409,9 @@ export type LinkFilters = {
   collectionId?: string; // Filter by collection
   search?: string;
   archived?: boolean;
-  sortBy?: "createdAt" | "updatedAt" | "title";
+  isFavorite?: boolean; // Filter by favorites
+  minRating?: number; // Filter by minimum rating (1-5)
+  sortBy?: "createdAt" | "updatedAt" | "title" | "rating";
   sortOrder?: "asc" | "desc";
 };
 
@@ -405,7 +434,16 @@ export type CollectionShareInput = {
 ### 3.2 Link Actions
 
 - `createLink(input: LinkInput)` - Create new bookmark
+  - Normalize URL for duplicate detection
+  - Check for existing links with same normalized URL (same user)
+  - If duplicate found, return warning but allow creation (user can choose to proceed)
+  - If `extractMetadata` is true or title/description missing, fetch metadata
+  - Auto-populate title, description, favicon from metadata if not provided
+  - Store extracted metadata in `metadata` JSON field
+  - Set `metadataExtractedAt` timestamp
 - `updateLink(id: string, input: LinkUpdateInput)` - Update existing bookmark
+  - If URL changed, check for duplicates (excluding current link)
+  - If metadata refresh requested, re-extract metadata
 - `deleteLink(id: string)` - Delete bookmark
 - `archiveLink(id: string)` - Archive bookmark
 - `unarchiveLink(id: string)` - Unarchive bookmark
@@ -416,6 +454,12 @@ export type CollectionShareInput = {
 - `bulkArchiveLinks(ids: string[])` - Bulk archive
 - `addLinkToCollection(linkId: string, collectionId: string)` - Add link to collection
 - `removeLinkFromCollection(linkId: string, collectionId: string)` - Remove link from collection
+- `toggleFavorite(linkId: string)` - Toggle favorite status
+- `updateRating(linkId: string, rating: number | null)` - Update link rating (1-5 or null)
+- `extractLinkMetadata(url: string)` - Extract metadata from URL (title, description, og tags)
+- `checkDuplicateUrl(url: string, userId: string, excludeLinkId?: string)` - Check for duplicate URLs
+- `importBrowserBookmarks(file: File)` - Import browser bookmarks (HTML/JSON)
+- `exportLinks(filters?: LinkFilters, format?: "html" | "json")` - Export links as browser bookmarks
 
 ### 3.3 Collection Actions
 
@@ -512,9 +556,12 @@ src/components/features/links/
 
 #### Table View
 
-- Columns: Checkbox, Title, URL, Type, Tags, Created, Actions
-- Sortable columns
+- Columns: Checkbox, Favorite, Title, URL, Type, Rating, Tags, Notes, Created, Actions
+- Sortable columns (including by rating)
 - Responsive (hide some columns on mobile)
+- Favorite column shows star icon (filled/outline)
+- Rating column shows star display
+- Notes column shows indicator if notes exist
 
 #### List View
 
@@ -526,8 +573,9 @@ src/components/features/links/
 #### Card Grid View
 
 - Grid layout (responsive: 1 col mobile, 2-3 cols tablet, 3-4 cols desktop)
-- Each card shows: favicon, title, description, tags, metadata
+- Each card shows: favorite star, rating, favicon, title, description, tags, notes indicator, metadata
 - Click to open link, hover for actions
+- Favorite and rating visible on card
 
 ### 4.3 LinkList Component
 
@@ -539,6 +587,8 @@ Similar to `TicketList.tsx`:
 - Responsive design
 - Empty states
 - Show collection badges/tags on links
+- Display favorite stars and ratings
+- Show notes indicator if link has notes
 
 ### 4.4 Collection Components
 
@@ -546,6 +596,48 @@ Similar to `TicketList.tsx`:
 - **CollectionCard**: Display collection with link count, color, description
 - **CollectionSelector**: Multi-select component for adding links to collections
 - **ShareCollectionDialog**: Manage collection members and permissions
+
+### 4.5 Link Enhancement Components
+
+- **LinkFavoriteButton**: Toggle favorite status (star icon)
+- **LinkRating**: Star rating component (1-5 stars, optional)
+- **LinkNotes**: Text area for personal annotations/notes
+- **ImportBookmarksDialog**: Dialog for importing browser bookmarks (file upload, preview, mapping)
+- **ExportBookmarksButton**: Button to export links as browser bookmarks (HTML/JSON format)
+
+### 4.6 AddLinkDialog and EditLinkDialog Details
+
+**AddLinkDialog**:
+
+- URL input (required) - triggers metadata extraction on blur/change
+- Title input (auto-populated from metadata, editable)
+- Description textarea (auto-populated from metadata, editable)
+- Link type selector (auto-detected from URL, editable)
+- Tags input (multi-select or comma-separated)
+- Notes textarea (personal annotations)
+- Favorite toggle (star button)
+- Rating selector (1-5 stars, optional)
+- Collection selector (multi-select)
+- "Extract metadata" button (manual trigger)
+- Duplicate warning (if URL already exists)
+- Loading state during metadata extraction
+
+**EditLinkDialog**:
+
+- Same fields as AddLinkDialog
+- Pre-populated with existing link data
+- "Refresh metadata" button to re-extract metadata
+- Show when metadata was last extracted
+- Duplicate warning (if URL changed to existing URL)
+
+**Metadata Extraction UI Flow**:
+
+1. User enters URL
+2. On blur or after delay, show "Extracting metadata..." indicator
+3. Server extracts metadata (title, description, favicon, og tags)
+4. Auto-populate form fields (user can still edit)
+5. Show extracted metadata preview (optional)
+6. If extraction fails, show warning but allow manual entry
 
 ## 5. Pages
 
@@ -558,6 +650,8 @@ Similar to `TicketList.tsx`:
 - Handle search params for filters
 - Show collection filter/sidebar
 - Collection selection in URL params (e.g., `?collection=id`)
+- Include import/export buttons in header
+- Filter by favorites and ratings
 
 ### 5.2 Detail Page (`src/app/(dashboard)/dashboard/links/[id]/page.tsx`)
 
@@ -589,6 +683,28 @@ Similar to `TicketList.tsx`:
 - `getFaviconUrl(url: string)` - Generate favicon URL (e.g., Google's favicon service)
 - `getLinkTypeFromUrl(url: string)` - Auto-detect link type from URL
 - `formatLinkUrl(url: string)` - Normalize URL format
+- `normalizeUrl(url: string)` - Normalize URL for duplicate detection (remove trailing slashes, www, etc.)
+- `areUrlsDuplicate(url1: string, url2: string)` - Check if two URLs are duplicates
+
+### 6.2 Metadata Extraction (`src/lib/utils/link-metadata.ts`)
+
+- `extractLinkMetadata(url: string)` - Fetch and extract metadata from URL
+  - Uses server-side fetch to get HTML
+  - Extracts: `<title>`, `<meta name="description">`, Open Graph tags (`og:title`, `og:description`, `og:image`), Twitter Card tags
+  - Returns structured metadata object
+  - Handles errors gracefully (returns partial data if fetch fails)
+- `extractFaviconFromUrl(url: string)` - Extract favicon URL from page
+- `sanitizeMetadata(metadata: any)` - Sanitize extracted metadata (remove HTML, limit length)
+
+### 6.3 Import/Export Utilities (`src/lib/utils/link-import-export.ts`)
+
+- `parseBrowserBookmarksHtml(html: string)` - Parse browser bookmarks HTML export
+  - Supports Chrome, Firefox, Safari bookmark formats
+  - Extracts title, URL, description, folders (as collections)
+- `parseBrowserBookmarksJson(json: string)` - Parse browser bookmarks JSON export
+  - Supports Chrome JSON export format
+- `generateBrowserBookmarksHtml(links: Link[])` - Generate HTML bookmarks file
+- `generateBrowserBookmarksJson(links: Link[])` - Generate JSON bookmarks file
 
 ## 7. Features
 
@@ -605,15 +721,21 @@ Similar to `TicketList.tsx`:
 - **Collection Sharing**: Share collections with other users (VIEWER or EDITOR role)
 - **Collection Filtering**: Filter links by collection
 - **Multi-collection Links**: Links can belong to multiple collections
+- **Link Metadata Extraction**: Auto-populate title, description, favicon, and Open Graph metadata on save
+- **Favorites**: Mark links as favorites with boolean flag
+- **Ratings**: Rate links 1-5 stars (optional)
+- **Link Notes**: Personal annotations/notes for each link
+- **Duplicate Detection**: Warn when creating links with duplicate URLs (normalized comparison)
+- **Import/Export**: Import browser bookmarks (HTML/JSON) and export links as browser bookmarks
 
 ### 7.2 Advanced Features (Future)
 
-- Link preview/metadata fetching
-- Import/export (browser bookmarks, CSV)
-- Link validation/health checks
+- Link validation/health checks (check if URLs are still accessible)
 - Collection templates
 - Collection nesting (sub-collections)
 - Public collection links (shareable URLs)
+- CSV import/export
+- Link preview cards with rich metadata display
 
 ## 8. Navigation Integration
 
@@ -627,20 +749,26 @@ Add links module to navigation (similar to tickets/todos):
 
 ## 9. Implementation Order
 
-1. Database schema and migration (Links + Collections)
+1. Database schema and migration (Links + Collections + new fields)
 2. Module configuration and permissions
-3. Server actions for links (CRUD operations)
-4. Server actions for collections (CRUD + sharing)
-5. Basic components (LinkList with one view mode)
-6. Collection components (list, create, edit)
-7. View toggle and multiple view modes
-8. Collection integration (selector in link forms, filtering)
-9. Collection sharing functionality
-10. Filtering and search (including collection filter)
-11. Bulk operations
-12. Archive functionality
-13. Navigation integration
-14. Polish and testing
+3. Link utilities (validation, normalization, duplicate detection helpers)
+4. Metadata extraction utilities (server-side fetch and parsing)
+5. Server actions for links (CRUD operations with metadata extraction and duplicate detection)
+6. Server actions for collections (CRUD + sharing)
+7. Favorites and ratings server actions
+8. Import/export utilities and server actions
+9. Basic components (LinkList with one view mode)
+10. Collection components (list, create, edit)
+11. Link enhancement components (favorites, ratings, notes)
+12. View toggle and multiple view modes
+13. Collection integration (selector in link forms, filtering)
+14. Collection sharing functionality
+15. Filtering and search (including collection, favorites, ratings filters)
+16. Bulk operations
+17. Archive functionality
+18. Import/export UI components
+19. Navigation integration
+20. Polish and testing
 
 ## 10. Collection Access Control
 
@@ -668,7 +796,128 @@ When accessing collections or links:
 - Members receive access to all links in the collection
 - When link is removed from collection, it's still accessible to original owner
 
-## 11. Testing Considerations
+## 11. Metadata Extraction Implementation
+
+### 11.1 Extraction Process
+
+When creating or updating a link with `extractMetadata: true` or when title/description is missing:
+
+1. Server-side fetch of the URL (with timeout, e.g., 5 seconds)
+2. Parse HTML to extract:
+
+   - `<title>` tag
+   - `<meta name="description">` tag
+   - Open Graph tags: `og:title`, `og:description`, `og:image`, `og:type`
+   - Twitter Card tags: `twitter:title`, `twitter:description`, `twitter:image`
+   - Favicon: `<link rel="icon">` or `/favicon.ico`
+
+3. Priority order: Open Graph > Twitter Card > Meta tags > Title tag
+4. Store extracted data in `metadata` JSON field
+5. Auto-populate `title`, `description`, `favicon` fields if not provided
+6. Set `metadataExtractedAt` timestamp
+
+### 11.2 Error Handling
+
+- If fetch fails (timeout, network error, 404), use URL as title fallback
+- If parsing fails, store partial metadata
+- Don't block link creation if metadata extraction fails
+- Allow manual refresh of metadata later
+
+### 11.3 Performance
+
+- Cache metadata extraction results (optional, by URL hash)
+- Use background job for bulk metadata extraction (future enhancement)
+- Limit metadata extraction to avoid rate limiting
+
+## 12. Duplicate Detection Implementation
+
+### 12.1 Normalization
+
+Before comparing URLs for duplicates:
+
+1. Remove protocol (http/https)
+2. Remove `www.` prefix
+3. Remove trailing slashes
+4. Remove query parameters and fragments (optional, configurable)
+5. Convert to lowercase
+6. Remove default ports (80, 443)
+
+Example: `https://www.example.com/path/` → `example.com/path`
+
+### 12.2 Detection Flow
+
+When creating a link:
+
+1. Normalize the new URL
+2. Query existing links for user with normalized URL match
+3. If duplicates found:
+
+   - Return warning in `ActionResult` with duplicate link IDs
+   - Show dialog in UI: "This URL already exists. Do you want to proceed?"
+   - Allow user to proceed or cancel
+
+4. Store normalized URL in database (optional, for faster future lookups)
+
+### 12.3 UI Feedback
+
+- Show duplicate warning dialog before creating
+- Option to view existing duplicate link
+- Option to merge/update existing link instead of creating new one
+
+## 13. Import/Export Implementation
+
+### 13.1 Import Formats
+
+**Browser Bookmarks HTML** (Netscape format):
+
+- Parse `<DT><A HREF="...">` tags
+- Extract title, URL, description, add date
+- Support nested folders (create collections)
+
+**Chrome JSON**:
+
+- Parse `bookmarks.json` structure
+- Extract bookmarks bar, other bookmarks, mobile bookmarks
+- Map folders to collections
+
+### 13.2 Import Process
+
+1. User uploads bookmarks file
+2. Parse file format (detect HTML vs JSON)
+3. Extract links and folder structure
+4. Show preview dialog:
+
+   - List of links to import
+   - Folder → Collection mapping
+   - Duplicate detection (show which links already exist)
+
+5. User confirms import
+6. Create collections for folders
+7. Create links (with metadata extraction)
+8. Show import summary (X links imported, Y duplicates skipped)
+
+### 13.3 Export Formats
+
+**HTML (Netscape format)**:
+
+- Generate standard browser bookmarks HTML
+- Include collections as folders
+- Include metadata (title, description, add date)
+
+**JSON (Chrome format)**:
+
+- Generate Chrome-compatible JSON structure
+- Include collections as folders
+
+### 13.4 Export Process
+
+1. User clicks export button
+2. Apply current filters (export filtered links only)
+3. Choose format (HTML or JSON)
+4. Generate file
+5. Download file
+
+## 14. Testing Considerations
 
 - URL validation
 - Permission checks
@@ -682,3 +931,9 @@ When accessing collections or links:
 - Collection sharing and member management
 - Multi-collection link assignment
 - Collection filtering
+- **Metadata extraction**: Test with various websites, handle failures gracefully
+- **Duplicate detection**: Test URL normalization, edge cases (www, trailing slashes, protocols)
+- **Favorites and ratings**: Test filtering, sorting by rating
+- **Notes**: Test text input, display in different view modes
+- **Import/export**: Test with Chrome, Firefox, Safari bookmarks, handle malformed files
+- **Performance**: Test metadata extraction with slow/timeout URLs, bulk import performance
