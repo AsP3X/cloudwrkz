@@ -29,6 +29,10 @@ export const ROUTES = {
   // Todos
   TODOS: "/dashboard/todos",
   TODOS_ARCHIVE: "/dashboard/todos/archive",
+  // Links
+  LINKS: "/dashboard/links",
+  LINKS_ARCHIVE: "/dashboard/links/archive",
+  LINKS_COLLECTION: "/dashboard/links/collections",
   // Global archive
   ARCHIVE: "/dashboard/archive",
 } as const;

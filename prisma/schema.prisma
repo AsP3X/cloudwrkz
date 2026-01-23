@@ -65,17 +65,20 @@ model User {
   banReason String? // Reason for the ban
 
   // Relations
-  sessions           Session[]
-  createdTickets     Ticket[]          @relation("TicketCreator")
-  assignedTickets    Ticket[]          @relation("TicketAssignee")
-  ticketComments     TicketComment[]
-  ticketActivities   TicketActivity[]  @relation("TicketActivityChanger")
-  groupMemberships   GroupMembership[]
-  permissions        UserPermission[] // User permissions
-  timeEntries        TimeEntry[]
-  assignedTodos      Todo[]            @relation("TodoAssignee")
-  unbanRequests      UnbanRequest[]
-  locationHistories  LocationHistory[]
+  sessions              Session[]
+  createdTickets        Ticket[]           @relation("TicketCreator")
+  assignedTickets       Ticket[]           @relation("TicketAssignee")
+  ticketComments        TicketComment[]
+  ticketActivities      TicketActivity[]   @relation("TicketActivityChanger")
+  groupMemberships      GroupMembership[]
+  permissions           UserPermission[] // User permissions
+  timeEntries           TimeEntry[]
+  assignedTodos         Todo[]             @relation("TodoAssignee")
+  unbanRequests         UnbanRequest[]
+  locationHistories     LocationHistory[]
+  links                 Link[]
+  ownedCollections      Collection[]       @relation("CollectionOwner")
+  collectionMemberships CollectionMember[] @relation("CollectionMember")
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -166,7 +169,7 @@ model Permission {
 
   // Relations
   groupPermissions GroupPermission[]
-  userPermissions UserPermission[]
+  userPermissions  UserPermission[]
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -215,9 +218,9 @@ model Group {
   description String?
 
   // Relations
-  members            GroupMembership[]
-  tickets            Ticket[]
-  permissions        GroupPermission[] // Group permissions
+  members     GroupMembership[]
+  tickets     Ticket[]
+  permissions GroupPermission[] // Group permissions
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -378,16 +381,16 @@ model TimeEntry {
   lastResumedAt DateTime? // When timer was last resumed (for calculating running time)
 
   // Relations
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  ticketId  String? // Link to ticket
-  ticket    Ticket?  @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  userId   String
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ticketId String? // Link to ticket
+  ticket   Ticket? @relation(fields: [ticketId], references: [id], onDelete: SetNull)
 
   // Tags and metadata
-  tags     String[] @default([])
-  billable Boolean  @default(false) // Future: Billable flag
-  location String? // Optional location/address
-  timezone String? // Optional timezone override (IANA timezone identifier, e.g., "Europe/Berlin")
+  tags       String[]  @default([])
+  billable   Boolean   @default(false) // Future: Billable flag
+  location   String? // Optional location/address
+  timezone   String? // Optional timezone override (IANA timezone identifier, e.g., "Europe/Berlin")
   archivedAt DateTime? // When set, time entry is considered archived (hidden from default lists)
 
   // Timestamps
@@ -556,4 +559,117 @@ model UnbanRequest {
   @@index([status])
   @@index([createdAt])
   @@map("unban_requests")
+}
+
+// Link Type
+enum LinkType {
+  WEBSITE
+  FILE
+  DOCUMENT
+  VIDEO
+  IMAGE
+  OTHER
+}
+
+// Link model for the link collection module
+model Link {
+  id          String   @id @default(cuid())
+  title       String
+  url         String
+  description String?
+  favicon     String? // URL to favicon or stored favicon path
+  linkType    LinkType @default(WEBSITE) // WEBSITE, FILE, DOCUMENT, etc.
+
+  // Metadata
+  tags                String[]  @default([])
+  notes               String? // Personal annotations/notes for the link
+  isFavorite          Boolean   @default(false) // Favorite flag
+  rating              Int? // Rating 1-5 (optional)
+  metadata            Json? // Extracted metadata (og:title, og:description, og:image, etc.)
+  metadataExtractedAt DateTime? // When metadata was last fetched
+
+  // Relations
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  collections LinkCollection[] // Many-to-many with collections
+
+  // Archiving
+  archivedAt DateTime? // When set, link is considered archived
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([linkType])
+  @@index([archivedAt])
+  @@index([createdAt])
+  @@index([isFavorite])
+  @@index([rating])
+  @@index([url]) // For duplicate detection
+  @@map("links")
+}
+
+// Collection Role
+enum CollectionRole {
+  VIEWER // Can view links in collection
+  EDITOR // Can add/remove links and edit collection
+}
+
+// Collection model for organizing links
+model Collection {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  color       String? // Optional color for UI (hex code)
+
+  // Relations
+  ownerId String
+  owner   User               @relation("CollectionOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  links   LinkCollection[] // Many-to-many with links
+  members CollectionMember[] // Users with access to this collection
+
+  // Archiving
+  archivedAt DateTime?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([archivedAt])
+  @@index([createdAt])
+  @@map("collections")
+}
+
+// LinkCollection - Many-to-many relationship between Links and Collections
+model LinkCollection {
+  id           String     @id @default(cuid())
+  linkId       String
+  link         Link       @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  collectionId String
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([linkId, collectionId])
+  @@index([linkId])
+  @@index([collectionId])
+  @@map("link_collections")
+}
+
+// CollectionMember - Model for sharing collections with other users
+model CollectionMember {
+  id           String         @id @default(cuid())
+  collectionId String
+  collection   Collection     @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User           @relation("CollectionMember", fields: [userId], references: [id], onDelete: Cascade)
+  role         CollectionRole @default(VIEWER) // VIEWER, EDITOR
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@unique([collectionId, userId])
+  @@index([collectionId])
+  @@index([userId])
+  @@map("collection_members")
 }

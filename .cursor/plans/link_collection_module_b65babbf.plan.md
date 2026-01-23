@@ -4,19 +4,19 @@ overview: Create a link (bookmark) collection module where users can store links
 todos:
   - id: schema
     content: Add Link model to Prisma schema with LinkType enum and User relation
-    status: pending
+    status: in_progress
   - id: migration
     content: Create and run database migration for links table
-    status: pending
+    status: in_progress
   - id: module-config
     content: Add LINKS module key and config to modules.ts
-    status: pending
+    status: completed
   - id: routes
     content: Add link routes to routes.ts constants
-    status: pending
+    status: completed
   - id: permissions
     content: Add link permissions to permissions.ts and update role defaults
-    status: pending
+    status: completed
   - id: server-actions
     content: Create links.ts server actions file with CRUD operations
     status: pending
@@ -28,7 +28,7 @@ todos:
     status: pending
   - id: link-utils
     content: Create links.ts utility file with URL validation and helpers
-    status: pending
+    status: in_progress
   - id: metadata-extraction
     content: Implement link metadata extraction (title, description, og tags) on save
     status: pending
@@ -46,22 +46,22 @@ todos:
     status: pending
   - id: link-list-component
     content: Create LinkList component supporting table, list, and card views
-    status: pending
+    status: completed
   - id: view-toggle
     content: Create LinkViewToggle component for switching between view modes
-    status: pending
+    status: completed
   - id: view-context
     content: Create LinkViewContext for managing view mode state
-    status: pending
+    status: completed
   - id: filter-components
     content: Create LinkFilterButton and LinkFilterLoader components
-    status: pending
+    status: completed
   - id: bulk-actions
     content: Create bulk action components (toolbar, delete dialog, archive dialog)
-    status: pending
+    status: completed
   - id: add-edit-dialogs
     content: Create AddLinkDialog and EditLinkDialog components
-    status: pending
+    status: in_progress
   - id: collection-components
     content: Create collection components (list, card, create/edit dialogs, selector)
     status: pending
@@ -85,7 +85,7 @@ todos:
     status: pending
   - id: navigation
     content: Add Links module to sidebar navigation
-    status: pending
+    status: completed
 isProject: false
 ---
 

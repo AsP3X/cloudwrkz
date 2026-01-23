@@ -54,10 +54,22 @@ export type PermissionKey =
   | "admin.db.edit_entries"
   | "admin.db.delete_entries"
   | "admin.db.query"
+  // Links
+  | "links.view"
+  | "links.create"
+  | "links.update"
+  | "links.delete"
+  // Collections
+  | "collections.view"
+  | "collections.create"
+  | "collections.update"
+  | "collections.delete"
+  | "collections.share"
   // Module Visibility
   | "modules.tickets.view"
   | "modules.timetracking.view"
-  | "modules.todos.view";
+  | "modules.todos.view"
+  | "modules.links.view";
 
 export interface PermissionDefinition {
   key: PermissionKey;
@@ -329,6 +341,77 @@ export const PERMISSIONS: PermissionDefinition[] = [
     category: "modules",
     module: "todos",
   },
+  // Links
+  {
+    key: "links.view",
+    name: "View Links",
+    description: "View bookmarks and links",
+    category: "links",
+    module: "links",
+  },
+  {
+    key: "links.create",
+    name: "Create Links",
+    description: "Create new bookmarks",
+    category: "links",
+    module: "links",
+  },
+  {
+    key: "links.update",
+    name: "Update Links",
+    description: "Update existing bookmarks",
+    category: "links",
+    module: "links",
+  },
+  {
+    key: "links.delete",
+    name: "Delete Links",
+    description: "Delete bookmarks",
+    category: "links",
+    module: "links",
+  },
+  {
+    key: "collections.view",
+    name: "View Collections",
+    description: "View link collections",
+    category: "links",
+    module: "links",
+  },
+  {
+    key: "collections.create",
+    name: "Create Collections",
+    description: "Create new link collections",
+    category: "links",
+    module: "links",
+  },
+  {
+    key: "collections.update",
+    name: "Update Collections",
+    description: "Update existing collections",
+    category: "links",
+    module: "links",
+  },
+  {
+    key: "collections.delete",
+    name: "Delete Collections",
+    description: "Delete collections",
+    category: "links",
+    module: "links",
+  },
+  {
+    key: "collections.share",
+    name: "Share Collections",
+    description: "Share collections with other users",
+    category: "links",
+    module: "links",
+  },
+  {
+    key: "modules.links.view",
+    name: "View Links Module",
+    description: "Access to the Links module in navigation and dashboard",
+    category: "modules",
+    module: "links",
+  },
 ];
 
 /**
@@ -390,6 +473,16 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     "todos.update",
     "todos.delete",
     "todos.assign",
+    // Links
+    "links.view",
+    "links.create",
+    "links.update",
+    "links.delete",
+    "collections.view",
+    "collections.create",
+    "collections.update",
+    "collections.delete",
+    "collections.share",
     // Admin (limited)
     "admin.users.view",
     "admin.groups.manage",
@@ -400,6 +493,7 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     "modules.tickets.view",
     "modules.timetracking.view",
     "modules.todos.view",
+    "modules.links.view",
   ],
   AGENT: [
     // Tickets
@@ -418,10 +512,21 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     "todos.create",
     "todos.update",
     "todos.assign",
+    // Links
+    "links.view",
+    "links.create",
+    "links.update",
+    "links.delete",
+    "collections.view",
+    "collections.create",
+    "collections.update",
+    "collections.delete",
+    "collections.share",
     // Module Visibility
     "modules.tickets.view",
     "modules.timetracking.view",
     "modules.todos.view",
+    "modules.links.view",
   ],
   USER: [
     // Default users have no permissions - they must be added to groups to get permissions
