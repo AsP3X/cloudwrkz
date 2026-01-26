@@ -38,7 +38,7 @@ export const LinkListView = ({ links }: LinkListViewProps) => {
   }
 
   return (
-    <div suppressHydrationWarning>
+    <div>
       <LinkList links={links} viewMode={viewMode} />
     </div>
   );

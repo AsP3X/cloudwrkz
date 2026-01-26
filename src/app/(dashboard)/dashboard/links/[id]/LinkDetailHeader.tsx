@@ -8,7 +8,7 @@ import { formatDateTimeInTimezone } from "@/lib/utils/date";
 import { deleteLink } from "@/server/actions/links";
 import { useSidebar } from "./LinkDetailLayout";
 import { cn } from "@/lib/utils/cn";
-import { EditLinkDialog } from "@/components/features/links/EditLinkDialog";
+import { handleArchiveLink, handleUnarchiveLink } from "./actions";
 
 interface LinkDetailHeaderProps {
   linkId: string;
@@ -33,6 +33,10 @@ interface LinkDetailHeaderProps {
   }>;
   metadataExtractedAt?: Date | null;
   userTimezone?: string;
+  onEditClick?: () => void;
+  isEditMode?: boolean;
+  renderRatingInput?: () => React.ReactNode;
+  archivedAt?: Date | null;
 }
 
 export const LinkDetailHeader = ({ 
@@ -52,10 +56,13 @@ export const LinkDetailHeader = ({
   collections = [],
   metadataExtractedAt = null,
   userTimezone = "UTC",
+  onEditClick,
+  isEditMode = false,
+  renderRatingInput,
+  archivedAt = null,
 }: LinkDetailHeaderProps) => {
   const router = useRouter();
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
-  const [editDialogOpen, setEditDialogOpen] = React.useState(false);
   const { isOpen: sidebarOpen } = useSidebar();
 
   const handleDelete = async () => {
@@ -97,10 +104,10 @@ export const LinkDetailHeader = ({
           </Button>
         </Link>
         
-        {/* Edit Button and Delete Button (mobile only) */}
+        {/* Edit Button, Archive Button, and Delete Button (mobile only) */}
         <div className="flex items-center gap-2 sm:hidden">
-          {canEdit && (
-            <Button variant="primary" size="sm" onClick={() => setEditDialogOpen(true)}>
+          {canEdit && !isEditMode && (
+            <Button variant="primary" size="sm" onClick={onEditClick}>
               <svg
                 className="w-4 h-4 mr-2"
                 fill="none"
@@ -116,6 +123,21 @@ export const LinkDetailHeader = ({
               </svg>
               Edit
             </Button>
+          )}
+          {archivedAt ? (
+            <form action={handleUnarchiveLink}>
+              <input type="hidden" name="linkId" value={linkId} />
+              <Button type="submit" variant="outline" size="sm">
+                Unarchive
+              </Button>
+            </form>
+          ) : (
+            <form action={handleArchiveLink}>
+              <input type="hidden" name="linkId" value={linkId} />
+              <Button type="submit" variant="outline" size="sm">
+                Archive
+              </Button>
+            </form>
           )}
           {canDelete && (
             <Button 
@@ -141,15 +163,15 @@ export const LinkDetailHeader = ({
           )}
         </div>
         
-        {/* Edit Button and Delete Button (desktop only) */}
+        {/* Edit Button, Archive Button, and Delete Button (desktop only) */}
         <div
           className={cn(
             "hidden sm:flex flex-wrap items-center gap-2 flex-shrink-0 lg:transition-all lg:duration-300 lg:ease-in-out",
             sidebarOpen ? "lg:mr-[360px]" : "lg:mr-12"
           )}
         >
-          {canEdit && (
-            <Button variant="primary" size="sm" onClick={() => setEditDialogOpen(true)}>
+          {canEdit && !isEditMode && (
+            <Button variant="primary" size="sm" onClick={onEditClick}>
               <svg
                 className="w-4 h-4 mr-2"
                 fill="none"
@@ -165,6 +187,21 @@ export const LinkDetailHeader = ({
               </svg>
               Edit Link
             </Button>
+          )}
+          {archivedAt ? (
+            <form action={handleUnarchiveLink}>
+              <input type="hidden" name="linkId" value={linkId} />
+              <Button type="submit" variant="outline" size="sm">
+                Unarchive
+              </Button>
+            </form>
+          ) : (
+            <form action={handleArchiveLink}>
+              <input type="hidden" name="linkId" value={linkId} />
+              <Button type="submit" variant="outline" size="sm">
+                Archive
+              </Button>
+            </form>
           )}
           {canDelete && (
             <Button 
@@ -227,9 +264,34 @@ export const LinkDetailHeader = ({
           >
             {linkUrl} ↗
           </a>
-          <p className="text-sm sm:text-base text-neutral-600 dark:text-neutral-400 mb-3 sm:mb-0">
+          <p className="text-sm sm:text-base text-neutral-600 dark:text-neutral-400 mb-2">
             Created {formatDateTimeInTimezone(createdAt, userTimezone)}
           </p>
+          {/* Rating */}
+          {isEditMode && renderRatingInput && typeof renderRatingInput === 'function' ? (
+            <div className="mb-3 sm:mb-0">
+              {renderRatingInput()}
+            </div>
+          ) : rating ? (
+            <div className="flex items-center justify-center gap-1 mb-3 sm:mb-0">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <svg
+                  key={star}
+                  className={`w-4 h-4 ${
+                    star <= rating!
+                      ? "text-yellow-500 fill-current"
+                      : "text-neutral-400 dark:text-neutral-500 fill-none"
+                  }`}
+                  fill={star <= rating! ? "currentColor" : "none"}
+                  viewBox="0 0 20 20"
+                  stroke={star <= rating! ? "none" : "currentColor"}
+                  strokeWidth={1.5}
+                >
+                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                </svg>
+              ))}
+            </div>
+          ) : null}
           {/* Description on mobile - shown directly under title */}
           {description && (
             <div className="sm:hidden mt-4 text-left">
@@ -238,27 +300,6 @@ export const LinkDetailHeader = ({
           )}
         </div>
       </div>
-
-      {/* Edit Dialog */}
-      {canEdit && (
-        <EditLinkDialog
-          open={editDialogOpen}
-          onOpenChange={setEditDialogOpen}
-          link={{
-            id: linkId,
-            url: linkUrl,
-            title: linkTitle,
-            description: description || null,
-            linkType: linkType as any,
-            tags: tags,
-            notes: notes,
-            isFavorite: isFavorite,
-            rating: rating,
-            collections: collections,
-            metadataExtractedAt: metadataExtractedAt,
-          }}
-        />
-      )}
 
       {/* Delete Confirmation Dialog */}
       {canDelete && deleteDialogOpen && (

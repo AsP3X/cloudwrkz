@@ -49,9 +49,8 @@ export const TicketListView = ({ tickets }: TicketListViewProps) => {
     return null;
   }
   
-  // Suppress hydration warning since server and client may render different views initially
   return (
-    <div suppressHydrationWarning>
+    <div>
       <TicketList tickets={tickets} viewMode={viewMode} />
     </div>
   );

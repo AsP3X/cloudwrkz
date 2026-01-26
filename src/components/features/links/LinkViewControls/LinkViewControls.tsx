@@ -12,7 +12,7 @@ export const LinkViewControls = () => {
   }
 
   return (
-    <div suppressHydrationWarning>
+    <div>
       <LinkViewToggle currentView={viewMode} onViewChange={setViewMode} />
     </div>
   );

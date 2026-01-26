@@ -36,7 +36,7 @@ const viewModes: Array<{ value: TicketViewMode; label: string; icon: React.React
 
 export const TicketViewToggle = ({ currentView, onViewChange }: TicketViewToggleProps) => {
   return (
-    <div className="inline-flex rounded-lg border-2 border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-1" role="group" aria-label="Ticket view options" suppressHydrationWarning>
+    <div className="inline-flex rounded-lg border-2 border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-1" role="group" aria-label="Ticket view options">
       {viewModes.map((mode) => (
         <button
           key={mode.value}
@@ -50,7 +50,6 @@ export const TicketViewToggle = ({ currentView, onViewChange }: TicketViewToggle
               : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 active:bg-neutral-100 dark:active:bg-neutral-700"
           )}
           aria-pressed={currentView === mode.value}
-          suppressHydrationWarning
         >
           {mode.icon}
           <span className="hidden sm:inline">{mode.label}</span>

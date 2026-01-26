@@ -405,6 +405,23 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
         </svg>
       );
     }
+    if (type === "link") {
+      return (
+        <svg
+          className="w-5 h-5 text-blue-600 dark:text-blue-400"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+          />
+        </svg>
+      );
+    }
     return (
       <svg
         className="w-5 h-5 text-neutral-400"
@@ -525,6 +542,10 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                         >
                           {group.ticket.metadata.timerNumber}
                         </Link>
+                      ) : group.ticket.type === "link" && group.ticket.metadata?.linkUrl ? (
+                        <span className="text-sm text-neutral-500 dark:text-neutral-400 truncate max-w-xs">
+                          {new URL(group.ticket.metadata.linkUrl).hostname}
+                        </span>
                       ) : group.ticket.type === "setting" ? (
                         <span className="text-sm text-neutral-500 dark:text-neutral-400">
                           Settings
@@ -565,6 +586,21 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                               {group.ticket.metadata.totalDuration && `${Math.floor((group.ticket.metadata.totalDuration as number) / 3600)}h ${Math.floor(((group.ticket.metadata.totalDuration as number) % 3600) / 60)}m`}
                             </div>
                           )}
+                          {group.ticket.type === "link" && group.ticket.metadata && (
+                            <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 flex items-center gap-2">
+                              {group.ticket.metadata.linkUrl && (
+                                <span className="truncate max-w-md">{group.ticket.metadata.linkUrl}</span>
+                              )}
+                              {group.ticket.metadata.rating !== null && group.ticket.metadata.rating !== undefined && (
+                                <span className="flex items-center gap-1 flex-shrink-0">
+                                  <svg className="w-3 h-3 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                  </svg>
+                                  <span className="font-medium text-yellow-600 dark:text-yellow-400">{group.ticket.metadata.rating}</span>
+                                </span>
+                              )}
+                            </div>
+                          )}
                           {(isTicket || isTask) && hasComments && (
                             <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
                               ({group.comments.length} {isTask ? "subtask" : "comment"}{group.comments.length !== 1 ? "s" : ""})
@@ -602,6 +638,10 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                         <span className="px-2 py-1 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200 capitalize">
                           {group.ticket.metadata.category}
                         </span>
+                      ) : group.ticket.type === "link" && group.ticket.metadata?.linkType ? (
+                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 capitalize">
+                          {group.ticket.metadata.linkType}
+                        </span>
                       ) : (
                         <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>
                       )}
@@ -636,6 +676,10 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                       ) : group.ticket.type === "timeentry" && group.ticket.metadata?.totalDuration ? (
                         <span className="text-xs text-neutral-600 dark:text-neutral-400">
                           {Math.floor((group.ticket.metadata.totalDuration as number) / 3600)}h {Math.floor(((group.ticket.metadata.totalDuration as number) % 3600) / 60)}m
+                        </span>
+                      ) : group.ticket.type === "link" && group.ticket.metadata?.isFavorite ? (
+                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200">
+                          Favorite
                         </span>
                       ) : (
                         <span className="text-xs text-neutral-400 dark:text-neutral-500">-</span>

@@ -36,7 +36,7 @@ const viewModes: Array<{ value: TimeEntryViewMode; label: string; icon: React.Re
 
 export const TimeEntryViewToggle = ({ currentView, onViewChange }: TimeEntryViewToggleProps) => {
   return (
-    <div className="inline-flex rounded-lg border-2 border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-1" role="group" aria-label="Time entry view options" suppressHydrationWarning>
+    <div className="inline-flex rounded-lg border-2 border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-1" role="group" aria-label="Time entry view options">
       {viewModes.map((mode) => (
         <button
           key={mode.value}

@@ -11,7 +11,7 @@ import { getUserPermissions } from "@/lib/utils/permissions";
 import { formatTimerNumber } from "@/lib/utils/time-tracking";
 
 export type SearchResult = {
-  type: "ticket" | "module" | "user" | "comment" | "timeentry" | "setting" | "task";
+  type: "ticket" | "module" | "user" | "comment" | "timeentry" | "setting" | "task" | "link";
   id: string;
   title: string;
   description?: string;
@@ -56,13 +56,14 @@ export async function globalSearch(query: string, limit: number = 10): Promise<S
   let totalCount = 0;
 
   // Distribute limit across different result types
-  // Priority order: User, Tickets, Task, Timer, Other
-  // 25% users, 30% tickets, 20% tasks, 15% time entries, 10% settings
-  const userLimit = Math.max(1, Math.floor(limit * 0.25));
-  const ticketLimit = Math.max(1, Math.floor(limit * 0.3));
-  const taskLimit = Math.max(1, Math.floor(limit * 0.2));
-  const timeEntryLimit = Math.max(1, Math.floor(limit * 0.15));
-  const settingsLimit = Math.max(1, Math.floor(limit * 0.1));
+  // Priority order: User, Tickets, Task, Timer, Links, Other
+  // 20% users, 25% tickets, 15% tasks, 12% time entries, 15% links, 13% settings
+  const userLimit = Math.max(1, Math.floor(limit * 0.2));
+  const ticketLimit = Math.max(1, Math.floor(limit * 0.25));
+  const taskLimit = Math.max(1, Math.floor(limit * 0.15));
+  const timeEntryLimit = Math.max(1, Math.floor(limit * 0.12));
+  const linkLimit = Math.max(1, Math.floor(limit * 0.15));
+  const settingsLimit = Math.max(1, Math.floor(limit * 0.13));
 
   // Get user permissions
   const userPermissions = await getUserPermissions(user.id);
@@ -94,6 +95,14 @@ export async function globalSearch(query: string, limit: number = 10): Promise<S
     const timeEntryResults = await searchTimeEntries(searchTerm, user, timeEntryLimit, userPermissions);
     totalCount += timeEntryResults.length;
     results.push(...timeEntryResults);
+  }
+
+  // Search links if user can view links module
+  const canViewLinks = await canUserViewModule(user.id, MODULE_KEYS.LINKS);
+  if (canViewLinks) {
+    const linkResults = await searchLinks(searchTerm, user, linkLimit, userPermissions);
+    totalCount += linkResults.length;
+    results.push(...linkResults);
   }
 
   // Search settings that are available to the current user
@@ -145,6 +154,13 @@ export async function advancedSearch(filters: SearchFilters): Promise<SearchResp
   if (canViewTasks && searchTerm) {
     const taskResults = await searchTasks(searchTerm, user, filters.limit || 100, userPermissions);
     results.push(...taskResults);
+  }
+
+  // Search links if user can view links module
+  const canViewLinks = await canUserViewModule(user.id, MODULE_KEYS.LINKS);
+  if (canViewLinks && searchTerm) {
+    const linkResults = await searchLinks(searchTerm, user, filters.limit || 100, userPermissions);
+    results.push(...linkResults);
   }
 
   // Search settings that are available to the current user
@@ -1040,6 +1056,203 @@ async function searchTasks(
       archivedAt: todo.archivedAt,
       createdAt: todo.createdAt,
       updatedAt: todo.updatedAt,
+    },
+  }));
+}
+
+/**
+ * Search links by title, description, url, tags, and notes with fuzzy matching.
+ * Visibility rules:
+ * - Users can see their own links
+ * - Users can see links in collections they have access to (as owner or member)
+ */
+async function searchLinks(
+  searchTerm: string,
+  user: Awaited<ReturnType<typeof requireAuth>>,
+  limit: number,
+  userPermissions: Set<string>
+): Promise<SearchResult[]> {
+  const where: any = {};
+
+  // Check permissions
+  const canViewAllLinks = userPermissions.has("links.view_all");
+  const canViewLinks = userPermissions.has("links.view") || canViewAllLinks;
+
+  if (!canViewLinks) {
+    // User has no permission to view links
+    return [];
+  }
+
+  // Build permission filter: user's own links OR links in collections they have access to
+  if (!canViewAllLinks) {
+    // Get collections where user is owner or member
+    const accessibleCollections = await prisma.collection.findMany({
+      where: {
+        OR: [
+          { ownerId: user.id },
+          {
+            members: {
+              some: {
+                userId: user.id,
+              },
+            },
+          },
+        ],
+      },
+      select: { id: true },
+    });
+
+    const accessibleCollectionIds = accessibleCollections.map((c) => c.id);
+
+    // Links owned by user OR links in accessible collections
+    where.OR = [
+      { userId: user.id },
+      ...(accessibleCollectionIds.length > 0
+        ? [
+            {
+              collections: {
+                some: {
+                  collectionId: { in: accessibleCollectionIds },
+                },
+              },
+            },
+          ]
+        : []),
+    ];
+  }
+  // Users with view_all permission can see all links (no filter)
+
+  // Exclude archived links by default
+  where.archivedAt = null;
+
+  // Fetch more candidates for fuzzy search (3x the limit, or at least 50)
+  const candidateLimit = Math.max(limit * 3, 50);
+
+  const links = await prisma.link.findMany({
+    where,
+    select: {
+      id: true,
+      title: true,
+      url: true,
+      description: true,
+      tags: true,
+      notes: true,
+      favicon: true,
+      linkType: true,
+      isFavorite: true,
+      rating: true,
+      archivedAt: true,
+      createdAt: true,
+      updatedAt: true,
+      userId: true,
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      collections: {
+        select: {
+          collection: {
+            select: {
+              id: true,
+              name: true,
+              color: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: {
+      updatedAt: "desc",
+    },
+    take: candidateLimit,
+  });
+
+  // If no search term, return recent links (top N)
+  if (!searchTerm || searchTerm.trim().length === 0) {
+    return links.slice(0, limit).map((link) => ({
+      type: "link" as const,
+      id: link.id,
+      title: link.title,
+      description: link.description || undefined,
+      url: `/dashboard/links/${link.id}`,
+      metadata: {
+        linkUrl: link.url,
+        favicon: link.favicon,
+        linkType: link.linkType,
+        tags: link.tags,
+        isFavorite: link.isFavorite,
+        rating: link.rating,
+        collections: link.collections.map((lc) => ({
+          id: lc.collection.id,
+          name: lc.collection.name,
+          color: lc.collection.color,
+        })),
+        createdBy: formatUserName(link.user),
+        archivedAt: link.archivedAt,
+        createdAt: link.createdAt,
+        updatedAt: link.updatedAt,
+      },
+    }));
+  }
+
+  const trimmed = searchTerm.trim();
+
+  // Prepare links for fuzzy search on title, description, url, tags, and notes
+  const linksForFuzzy = links.map((link) => ({
+    ...link,
+    searchableText: [
+      link.title,
+      link.description || "",
+      link.url,
+      link.notes || "",
+      ...link.tags,
+    ].join(" "),
+    tagsString: link.tags.join(" "),
+  }));
+
+  const linkFuzzyResults = fuzzySearch(
+    linksForFuzzy,
+    trimmed,
+    {
+      keys: [
+        { name: "title", weight: 0.4 },
+        { name: "description", weight: 0.25 },
+        { name: "url", weight: 0.2 },
+        { name: "notes", weight: 0.1 },
+        { name: "tagsString", weight: 0.05 },
+      ],
+      threshold: 0.4,
+      minMatchCharLength: 2,
+    }
+  );
+
+  const topLinks = rankAndLimit(linkFuzzyResults, limit);
+
+  return topLinks.map((link) => ({
+    type: "link" as const,
+    id: link.id,
+    title: link.title,
+    description: link.description || undefined,
+    url: `/dashboard/links/${link.id}`,
+    metadata: {
+      linkUrl: link.url,
+      favicon: link.favicon,
+      linkType: link.linkType,
+      tags: link.tags,
+      isFavorite: link.isFavorite,
+      rating: link.rating,
+      collections: link.collections.map((lc) => ({
+        id: lc.collection.id,
+        name: lc.collection.name,
+        color: lc.collection.color,
+      })),
+      createdBy: formatUserName(link.user),
+      archivedAt: link.archivedAt,
+      createdAt: link.createdAt,
+      updatedAt: link.updatedAt,
     },
   }));
 }
