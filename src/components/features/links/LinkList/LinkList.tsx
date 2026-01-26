@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/Badge";
 import { formatDate } from "@/lib/utils/date";
@@ -259,10 +260,13 @@ export const LinkList = ({ links, viewMode }: LinkListProps) => {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start gap-2 mb-2">
                       {link.favicon && (
-                        <img
+                        <Image
                           src={link.favicon}
                           alt=""
+                          width={20}
+                          height={20}
                           className="w-5 h-5 flex-shrink-0 mt-0.5"
+                          unoptimized
                           onError={(e) => {
                             (e.target as HTMLImageElement).style.display = "none";
                           }}
@@ -414,10 +418,13 @@ export const LinkList = ({ links, viewMode }: LinkListProps) => {
                     suppressHydrationWarning
                   />
                   {link.favicon && (
-                    <img
+                    <Image
                       src={link.favicon}
                       alt=""
+                      width={20}
+                      height={20}
                       className="w-5 h-5 flex-shrink-0"
+                      unoptimized
                       onError={(e) => {
                         (e.target as HTMLImageElement).style.display = "none";
                       }}
@@ -571,10 +578,13 @@ export const LinkList = ({ links, viewMode }: LinkListProps) => {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         {link.favicon && (
-                          <img
+                          <Image
                             src={link.favicon}
                             alt=""
+                            width={20}
+                            height={20}
                             className="w-5 h-5 flex-shrink-0"
+                            unoptimized
                             onError={(e) => {
                               (e.target as HTMLImageElement).style.display = "none";
                             }}

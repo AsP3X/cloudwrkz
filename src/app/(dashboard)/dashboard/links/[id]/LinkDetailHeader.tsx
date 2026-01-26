@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { formatDateTimeInTimezone } from "@/lib/utils/date";
@@ -240,10 +241,13 @@ export const LinkDetailHeader = ({
         <div className="text-center w-full max-w-4xl">
           <div className="flex items-center justify-center gap-3 mb-2">
             {favicon && (
-              <img
+              <Image
                 src={favicon}
                 alt=""
+                width={32}
+                height={32}
                 className="w-8 h-8 flex-shrink-0 rounded"
+                unoptimized
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.display = "none";
                 }}

@@ -13,7 +13,7 @@ import { formatDateTimeInTimezone } from "@/lib/utils/date";
 import { extractDomain } from "@/lib/utils/links";
 import { LinkMetadataDisplay } from "@/components/features/links/LinkMetadataDisplay";
 import { RichTextDisplay } from "@/components/features/tickets/RichTextDisplay";
-import { useFormContext } from "react-hook-form";
+import { Dialog } from "@/components/ui/Dialog";
 
 interface LinkDetailContentProps {
   link: {
@@ -61,7 +61,9 @@ export const LinkDetailContent = ({
   const [isEditMode, setIsEditMode] = React.useState(false);
   const ratingInputRef = React.useRef<((props: { watch: any; setValue: any }) => React.ReactNode) | null>(null);
   const [formMethods, setFormMethods] = React.useState<{ watch: any; setValue: any } | null>(null);
+  const [isRatingInputReady, setIsRatingInputReady] = React.useState(false);
   const [, forceUpdate] = React.useReducer(x => x + 1, 0);
+  const [showMetadataDialog, setShowMetadataDialog] = React.useState(false);
 
   const domain = extractDomain(link.url);
 
@@ -105,10 +107,12 @@ export const LinkDetailContent = ({
 
   const handleCancelEdit = () => {
     setIsEditMode(false);
+    setIsRatingInputReady(false);
   };
 
   const handleSaveSuccess = () => {
     setIsEditMode(false);
+    setIsRatingInputReady(false);
     router.refresh();
   };
 
@@ -141,7 +145,7 @@ export const LinkDetailContent = ({
             formMethods.setValue("isFavorite", !currentValue, { shouldValidate: true });
             forceUpdate(); // Force re-render to update the star
           } : undefined}
-          renderRatingInput={ratingInputRef.current && formMethods && typeof ratingInputRef.current === 'function' ? () => {
+          renderRatingInput={isRatingInputReady && formMethods ? () => {
             if (!ratingInputRef.current || typeof ratingInputRef.current !== 'function') {
               return null;
             }
@@ -173,9 +177,11 @@ export const LinkDetailContent = ({
             onRatingInputReady={(renderFn) => {
               if (typeof renderFn === 'function') {
                 ratingInputRef.current = renderFn;
+                setIsRatingInputReady(true);
                 forceUpdate();
               } else {
                 console.error('onRatingInputReady received non-function:', renderFn);
+                setIsRatingInputReady(false);
               }
             }}
             onFormMethodsReady={(methods) => {
@@ -214,17 +220,51 @@ export const LinkDetailContent = ({
       <LinkDetailLayout
         sidebar={
           <div className="space-y-4">
-            {/* Link Type */}
+            {/* Link Information Section */}
             <div>
-              <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
-                Type
-              </label>
-              <Badge className={cn(getLinkTypeColor(link.linkType), "text-sm")}>
-                {getLinkTypeLabel(link.linkType)}
-              </Badge>
-            </div>
+              <h3 className="text-xs font-semibold text-neutral-900 dark:text-neutral-100 uppercase tracking-wide mb-3">
+                Link Information
+              </h3>
+              
+              {/* Link Type */}
+              <div className="mb-4">
+                <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
+                  Type
+                </label>
+                <Badge className={cn(getLinkTypeColor(link.linkType), "text-sm")}>
+                  {getLinkTypeLabel(link.linkType)}
+                </Badge>
+              </div>
 
-            <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4"></div>
+              <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4 mt-4"></div>
+
+              {/* Metadata Button */}
+              {link.metadata && typeof link.metadata === 'object' && Object.keys(link.metadata).length > 0 && (
+                <div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowMetadataDialog(true)}
+                    className="w-full justify-start"
+                  >
+                    <svg
+                      className="w-4 h-4 mr-2"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    View Metadata
+                  </Button>
+                </div>
+              )}
+            </div>
 
             {/* URL */}
             <div>
@@ -361,8 +401,12 @@ export const LinkDetailContent = ({
             </div>
           )}
 
-          {/* Notes */}
-          {link.notes && (
+          {/* Notes - only show if notes exist and are not empty */}
+          {link.notes && (() => {
+            // Remove HTML tags and check if there's actual content
+            const textContent = link.notes.replace(/<[^>]*>/g, '').trim();
+            return textContent.length > 0;
+          })() && (
             <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
               <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">Personal Notes</h2>
               <div className="bg-neutral-50 dark:bg-neutral-800 rounded-md p-4">
@@ -371,18 +415,25 @@ export const LinkDetailContent = ({
             </div>
           )}
 
-          {/* Metadata */}
-          {link.metadata && typeof link.metadata === 'object' && Object.keys(link.metadata).length > 0 && (
-            <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
-              <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">Extracted Metadata</h2>
-              <div className="bg-neutral-50 dark:bg-neutral-800 rounded-lg p-6">
-                <LinkMetadataDisplay metadata={link.metadata as any} />
-              </div>
-            </div>
-          )}
-
         </div>
       </LinkDetailLayout>
+
+      {/* Metadata Dialog */}
+      {link.metadata && typeof link.metadata === 'object' && Object.keys(link.metadata).length > 0 && (
+        <Dialog
+          open={showMetadataDialog}
+          onOpenChange={setShowMetadataDialog}
+          title="Extracted Metadata"
+          description="Metadata automatically extracted from the link"
+          className="sm:max-w-4xl"
+        >
+          <div className="p-6">
+            <div className="bg-neutral-50 dark:bg-neutral-800 rounded-lg p-6">
+              <LinkMetadataDisplay metadata={link.metadata as any} />
+            </div>
+          </div>
+        </Dialog>
+      )}
     </div>
   );
 };

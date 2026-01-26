@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Image from "next/image";
 import { LinkMetadata } from "@/lib/utils/link-metadata";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/utils/cn";
@@ -104,13 +105,16 @@ export function LinkMetadataDisplay({ metadata }: LinkMetadataDisplayProps) {
           </a>
           {(key.includes("Image") || key.includes("favicon")) && (
             <div className="flex-shrink-0">
-              <img
+              <Image
                 src={value}
                 alt={key.includes("Image") ? "Preview" : "Favicon"}
+                width={key.includes("Image") ? 96 : 24}
+                height={key.includes("Image") ? 96 : 24}
                 className={cn(
                   "rounded-lg border-2 border-neutral-200 dark:border-neutral-700 shadow-sm",
                   key.includes("Image") ? "w-24 h-24 object-cover" : "w-6 h-6"
                 )}
+                unoptimized
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.display = "none";
                 }}
