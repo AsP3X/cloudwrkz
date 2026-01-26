@@ -17,7 +17,7 @@ export const RichTextDisplay = ({ content, className, maxHeight }: RichTextDispl
   return (
     <div
       className={cn(
-        "prose prose-sm max-w-none",
+        "prose prose-sm max-w-none break-words",
         "prose-headings:text-neutral-900 dark:prose-headings:text-neutral-100",
         "prose-p:text-neutral-700 dark:prose-p:text-neutral-300",
         "prose-strong:text-neutral-900 dark:prose-strong:text-neutral-100",
@@ -36,6 +36,8 @@ export const RichTextDisplay = ({ content, className, maxHeight }: RichTextDispl
         "prose-img:rounded-lg prose-img:max-w-full prose-img:h-auto",
         "prose-ul:list-disc prose-ol:list-decimal",
         "prose-li:marker:text-neutral-500 dark:prose-li:marker:text-neutral-400",
+        // Ensure text doesn't get truncated
+        "prose-p:break-words prose-p:whitespace-normal",
         className
       )}
       style={maxHeight ? { maxHeight, overflowY: "auto" } : undefined}

@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/Button";
 import Link from "next/link";
 import { cn } from "@/lib/utils/cn";
 import { formatDateTimeInTimezone } from "@/lib/utils/date";
-import { extractDomain } from "@/lib/utils/links";
+import { extractDomain, isYouTubeUrl, extractYouTubeVideoId } from "@/lib/utils/links";
 import { LinkMetadataDisplay } from "@/components/features/links/LinkMetadataDisplay";
 import { RichTextDisplay } from "@/components/features/tickets/RichTextDisplay";
 import { Dialog } from "@/components/ui/Dialog";
@@ -66,6 +66,30 @@ export const LinkDetailContent = ({
   const [showMetadataDialog, setShowMetadataDialog] = React.useState(false);
 
   const domain = extractDomain(link.url);
+
+  // Memoize YouTube embed to prevent remounting when sidebar state changes
+  const youtubeEmbed = React.useMemo(() => {
+    if (!isYouTubeUrl(link.url)) return null;
+    const videoId = extractYouTubeVideoId(link.url);
+    if (!videoId) return null;
+    
+    return (
+      <div 
+        key={`youtube-embed-${videoId}`} // Stable key to preserve the entire embed structure
+        className="relative w-full rounded-xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-soft-lg"
+        style={{ paddingBottom: "56.25%" }}
+      >
+        <iframe
+          key={videoId} // Stable key based on videoId to preserve iframe state
+          className="absolute top-0 left-0 w-full h-full rounded-xl"
+          src={`https://www.youtube.com/embed/${videoId}`}
+          title="YouTube video player"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+        />
+      </div>
+    );
+  }, [link.url]); // Only recreate if the URL changes
 
   const getLinkTypeColor = (type: string) => {
     switch (type) {
@@ -397,9 +421,14 @@ export const LinkDetailContent = ({
           {link.description && (
             <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
               <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">Description</h2>
-              <RichTextDisplay content={link.description} />
+              <div className="w-full break-words">
+                <RichTextDisplay content={link.description} />
+              </div>
             </div>
           )}
+
+          {/* YouTube Video Embed */}
+          {youtubeEmbed}
 
           {/* Notes - only show if notes exist and are not empty */}
           {link.notes && (() => {

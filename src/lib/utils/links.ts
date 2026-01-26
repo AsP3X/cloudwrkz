@@ -163,3 +163,59 @@ export function formatLinkUrl(url: string): string {
   // Add https:// by default
   return `https://${trimmed}`;
 }
+
+/**
+ * Check if a URL is a YouTube link
+ */
+export function isYouTubeUrl(url: string): boolean {
+  if (!url) return false;
+  const lowerUrl = url.toLowerCase();
+  return /(youtube\.com|youtu\.be)/i.test(lowerUrl);
+}
+
+/**
+ * Extract YouTube video ID from various YouTube URL formats
+ * Supports:
+ * - https://www.youtube.com/watch?v=VIDEO_ID
+ * - https://youtube.com/watch?v=VIDEO_ID
+ * - https://www.youtube.com/embed/VIDEO_ID
+ * - https://youtu.be/VIDEO_ID
+ * - https://www.youtube.com/v/VIDEO_ID
+ * - https://youtube.com/shorts/VIDEO_ID
+ */
+export function extractYouTubeVideoId(url: string): string | null {
+  if (!url) return null;
+
+  try {
+    // Handle youtu.be short URLs
+    const youtuBeMatch = url.match(/(?:youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/);
+    if (youtuBeMatch) {
+      return youtuBeMatch[1];
+    }
+
+    // Handle standard YouTube URLs with v parameter
+    const urlObj = new URL(url);
+    const videoId = urlObj.searchParams.get("v");
+    if (videoId) {
+      return videoId;
+    }
+
+    // Handle embed URLs: youtube.com/embed/VIDEO_ID
+    const embedMatch = url.match(/youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/);
+    if (embedMatch) {
+      return embedMatch[1];
+    }
+
+    // Handle v URLs: youtube.com/v/VIDEO_ID
+    const vMatch = url.match(/youtube\.com\/v\/([a-zA-Z0-9_-]{11})/);
+    if (vMatch) {
+      return vMatch[1];
+    }
+
+    return null;
+  } catch {
+    // If URL parsing fails, try regex directly
+    const regexMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/);
+    return regexMatch ? regexMatch[1] : null;
+  }
+}
