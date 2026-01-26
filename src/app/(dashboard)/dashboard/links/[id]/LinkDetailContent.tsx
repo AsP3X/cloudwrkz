@@ -15,6 +15,33 @@ import { LinkMetadataDisplay } from "@/components/features/links/LinkMetadataDis
 import { RichTextDisplay } from "@/components/features/tickets/RichTextDisplay";
 import { Dialog } from "@/components/ui/Dialog";
 
+// Memoized YouTube embed component to prevent reloading when parent re-renders
+const YouTubeEmbed = React.memo(({ url }: { url: string }) => {
+  if (!isYouTubeUrl(url)) return null;
+  const videoId = extractYouTubeVideoId(url);
+  if (!videoId) return null;
+  
+  return (
+    <div 
+      className="relative w-full rounded-xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-soft-lg"
+      style={{ paddingBottom: "56.25%" }}
+    >
+      <iframe
+        className="absolute top-0 left-0 w-full h-full rounded-xl"
+        src={`https://www.youtube.com/embed/${videoId}`}
+        title="YouTube video player"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowFullScreen
+      />
+    </div>
+  );
+}, (prevProps, nextProps) => {
+  // Only re-render if the URL actually changes
+  return prevProps.url === nextProps.url;
+});
+
+YouTubeEmbed.displayName = "YouTubeEmbed";
+
 interface LinkDetailContentProps {
   link: {
     id: string;
@@ -66,30 +93,6 @@ export const LinkDetailContent = ({
   const [showMetadataDialog, setShowMetadataDialog] = React.useState(false);
 
   const domain = extractDomain(link.url);
-
-  // Memoize YouTube embed to prevent remounting when sidebar state changes
-  const youtubeEmbed = React.useMemo(() => {
-    if (!isYouTubeUrl(link.url)) return null;
-    const videoId = extractYouTubeVideoId(link.url);
-    if (!videoId) return null;
-    
-    return (
-      <div 
-        key={`youtube-embed-${videoId}`} // Stable key to preserve the entire embed structure
-        className="relative w-full rounded-xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-soft-lg"
-        style={{ paddingBottom: "56.25%" }}
-      >
-        <iframe
-          key={videoId} // Stable key based on videoId to preserve iframe state
-          className="absolute top-0 left-0 w-full h-full rounded-xl"
-          src={`https://www.youtube.com/embed/${videoId}`}
-          title="YouTube video player"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          allowFullScreen
-        />
-      </div>
-    );
-  }, [link.url]); // Only recreate if the URL changes
 
   const getLinkTypeColor = (type: string) => {
     switch (type) {
@@ -428,7 +431,7 @@ export const LinkDetailContent = ({
           )}
 
           {/* YouTube Video Embed */}
-          {youtubeEmbed}
+          <YouTubeEmbed url={link.url} />
 
           {/* Notes - only show if notes exist and are not empty */}
           {link.notes && (() => {
