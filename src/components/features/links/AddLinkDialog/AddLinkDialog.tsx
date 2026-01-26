@@ -175,7 +175,7 @@ export function AddLinkDialog({ open, onOpenChange }: AddLinkDialogProps) {
 
   const handleProceedWithDuplicate = async () => {
     setShowDuplicateDialog(false);
-    // Proceed with creation anyway
+    // Proceed with creation anyway, bypassing duplicate check
     const formattedUrl = formatLinkUrl(url);
     setIsSubmitting(true);
 
@@ -191,6 +191,7 @@ export function AddLinkDialog({ open, onOpenChange }: AddLinkDialogProps) {
         rating: rating || undefined,
         collectionIds: selectedCollections,
         extractMetadata: false, // Don't extract again
+        allowDuplicates: true, // Allow creating duplicate
       });
 
       if (result.success) {

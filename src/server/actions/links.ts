@@ -29,6 +29,7 @@ export type LinkInput = {
   rating?: number; // 1-5
   collectionIds?: string[]; // Collections to add link to
   extractMetadata?: boolean; // Flag to trigger metadata extraction
+  allowDuplicates?: boolean; // Flag to allow creating duplicate links
 };
 
 export type LinkUpdateInput = Partial<LinkInput> & {
@@ -138,14 +139,16 @@ export async function createLink(input: LinkInput): Promise<ActionResult<{ id: s
       };
     }
 
-    // Check for duplicates
-    const duplicateIds = await checkDuplicateUrl(formattedUrl, user.id);
-    if (duplicateIds.length > 0) {
-      return {
-        success: false,
-        error: "A link with this URL already exists",
-        duplicateLinkIds: duplicateIds,
-      };
+    // Check for duplicates (unless explicitly allowed)
+    if (!input.allowDuplicates) {
+      const duplicateIds = await checkDuplicateUrl(formattedUrl, user.id);
+      if (duplicateIds.length > 0) {
+        return {
+          success: false,
+          error: "A link with this URL already exists",
+          duplicateLinkIds: duplicateIds,
+        };
+      }
     }
 
     // Extract metadata if requested or if title/description missing
