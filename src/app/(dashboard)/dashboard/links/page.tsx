@@ -97,7 +97,7 @@ export default async function LinksPage({ searchParams }: LinksPageProps) {
 
   return (
     <LinkViewProvider>
-      <LinksPageProvider canCreate={canCreateLinks}>
+      <LinksPageProvider canCreate={canCreateLinks} collections={collections}>
         <div className="space-y-6">
           {/* Auto-load last used link filters */}
           <LinkFilterLoader collections={collections} />

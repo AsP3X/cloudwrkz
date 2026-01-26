@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useSearchParams } from "next/navigation";
 import { AddLinkDialog } from "@/components/features/links/AddLinkDialog";
 import { CollectionList } from "@/components/features/links/CollectionList";
 import { CreateCollectionDialog } from "@/components/features/links/CreateCollectionDialog";
@@ -23,11 +24,14 @@ export const useLinksPage = () => {
 interface LinksPageProviderProps {
   children: React.ReactNode;
   canCreate: boolean;
+  collections?: Array<{ id: string; name: string; color: string | null }>;
 }
 
-export function LinksPageProvider({ children, canCreate }: LinksPageProviderProps) {
+export function LinksPageProvider({ children, canCreate, collections = [] }: LinksPageProviderProps) {
   const [addLinkOpen, setAddLinkOpen] = React.useState(false);
   const [createCollectionOpen, setCreateCollectionOpen] = React.useState(false);
+  const searchParams = useSearchParams();
+  const selectedCollectionId = searchParams.get("collection") || undefined;
 
   const openAddLink = React.useCallback(() => {
     if (canCreate) {
@@ -41,12 +45,22 @@ export function LinksPageProvider({ children, canCreate }: LinksPageProviderProp
     }
   }, [canCreate]);
 
+  // Find the selected collection name
+  const selectedCollection = selectedCollectionId 
+    ? collections.find(c => c.id === selectedCollectionId)
+    : null;
+
   return (
     <LinksPageContext.Provider value={{ openAddLink, openCreateCollection }}>
       {children}
       {canCreate && (
         <>
-          <AddLinkDialog open={addLinkOpen} onOpenChange={setAddLinkOpen} />
+          <AddLinkDialog 
+            open={addLinkOpen} 
+            onOpenChange={setAddLinkOpen}
+            selectedCollectionId={selectedCollectionId}
+            selectedCollectionName={selectedCollection?.name}
+          />
           <CreateCollectionDialog open={createCollectionOpen} onOpenChange={setCreateCollectionOpen} />
         </>
       )}

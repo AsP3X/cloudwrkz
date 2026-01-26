@@ -13,9 +13,11 @@ import { formatLinkUrl, validateUrl } from "@/lib/utils/links";
 interface AddLinkDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  selectedCollectionId?: string;
+  selectedCollectionName?: string;
 }
 
-export function AddLinkDialog({ open, onOpenChange }: AddLinkDialogProps) {
+export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, selectedCollectionName }: AddLinkDialogProps) {
   const router = useRouter();
   const [url, setUrl] = React.useState("");
   const [title, setTitle] = React.useState("");
@@ -25,24 +27,11 @@ export function AddLinkDialog({ open, onOpenChange }: AddLinkDialogProps) {
   const [tagInput, setTagInput] = React.useState("");
   const [isFavorite, setIsFavorite] = React.useState(false);
   const [rating, setRating] = React.useState<number | null>(null);
-  const [selectedCollections, setSelectedCollections] = React.useState<string[]>([]);
-  const [collections, setCollections] = React.useState<Array<{ id: string; name: string; color: string | null }>>([]);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [extractingMetadata, setExtractingMetadata] = React.useState(false);
   const [duplicateWarning, setDuplicateWarning] = React.useState<string[]>([]);
   const [showDuplicateDialog, setShowDuplicateDialog] = React.useState(false);
-
-  // Load collections
-  React.useEffect(() => {
-    if (open) {
-      import("@/server/actions/collections").then(({ getUserCollections }) => {
-        getUserCollections("").then((cols) => {
-          setCollections(cols.map((c) => ({ id: c.id, name: c.name, color: c.color })));
-        });
-      });
-    }
-  }, [open]);
 
   // Reset form when dialog closes
   React.useEffect(() => {
@@ -55,7 +44,6 @@ export function AddLinkDialog({ open, onOpenChange }: AddLinkDialogProps) {
       setTagInput("");
       setIsFavorite(false);
       setRating(null);
-      setSelectedCollections([]);
       setError(null);
       setDuplicateWarning([]);
       setShowDuplicateDialog(false);
@@ -143,7 +131,7 @@ export function AddLinkDialog({ open, onOpenChange }: AddLinkDialogProps) {
         tags,
         isFavorite,
         rating: rating || undefined,
-        collectionIds: selectedCollections,
+        collectionIds: selectedCollectionId ? [selectedCollectionId] : [],
         extractMetadata: true,
       });
 
@@ -185,7 +173,7 @@ export function AddLinkDialog({ open, onOpenChange }: AddLinkDialogProps) {
         tags,
         isFavorite,
         rating: rating || undefined,
-        collectionIds: selectedCollections,
+        collectionIds: selectedCollectionId ? [selectedCollectionId] : [],
         extractMetadata: false, // Don't extract again
         allowDuplicates: true, // Allow creating duplicate
       });
@@ -234,6 +222,16 @@ export function AddLinkDialog({ open, onOpenChange }: AddLinkDialogProps) {
           {error && (
             <div className="mb-6 p-4 bg-error-50 dark:bg-error-950/50 border border-error-200 dark:border-error-800 rounded-lg">
               <p className="text-sm font-medium text-error-800 dark:text-error-200">{error}</p>
+            </div>
+          )}
+
+          {/* Collection Info */}
+          {selectedCollectionName && (
+            <div className="mb-6 flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400 p-3 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg">
+              <svg className="w-4 h-4 text-primary-600 dark:text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+              <span>This link will be saved to <span className="font-medium text-primary-700 dark:text-primary-300">{selectedCollectionName}</span></span>
             </div>
           )}
 
@@ -395,42 +393,6 @@ export function AddLinkDialog({ open, onOpenChange }: AddLinkDialogProps) {
                   </div>
                 )}
               </div>
-            </div>
-
-            {/* Organization Section */}
-            <div className="space-y-4">
-              <div className="pb-2 border-b border-neutral-200 dark:border-neutral-800">
-                <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 uppercase tracking-wide">
-                  Organization
-                </h3>
-              </div>
-
-              {collections.length > 0 && (
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                    Collections
-                  </label>
-                  <div className="space-y-2 max-h-40 overflow-y-auto border border-neutral-200 dark:border-neutral-700 rounded-lg p-3 bg-neutral-50 dark:bg-neutral-800/50">
-                    {collections.map((collection) => (
-                      <label key={collection.id} className="flex items-center gap-3 cursor-pointer p-2 rounded-md hover:bg-white dark:hover:bg-neutral-700 transition-colors">
-                        <input
-                          type="checkbox"
-                          checked={selectedCollections.includes(collection.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedCollections([...selectedCollections, collection.id]);
-                            } else {
-                              setSelectedCollections(selectedCollections.filter((id) => id !== collection.id));
-                            }
-                          }}
-                          className="w-4 h-4 text-primary-600 dark:text-primary-400 rounded border-neutral-300 dark:border-neutral-600 focus:ring-primary-500 focus:ring-2"
-                        />
-                        <span className="text-sm text-neutral-700 dark:text-neutral-300 flex-1">{collection.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 
