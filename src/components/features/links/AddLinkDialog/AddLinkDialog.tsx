@@ -477,17 +477,67 @@ export function AddLinkDialog({ open, onOpenChange }: AddLinkDialogProps) {
           onOpenChange={setShowDuplicateDialog}
           title="Duplicate Link Detected"
           description="A link with this URL already exists. Do you want to proceed anyway?"
+          headerIcon={
+            <div className="w-8 h-8 rounded-full bg-warning-100 dark:bg-warning-900/30 flex items-center justify-center">
+              <svg
+                className="w-5 h-5 text-warning-600 dark:text-warning-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+            </div>
+          }
         >
-          <div className="space-y-4">
-            <p className="text-sm text-neutral-600 dark:text-neutral-400">
-              This URL appears to be a duplicate of an existing link in your collection.
-            </p>
-            <div className="flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setShowDuplicateDialog(false)}>
+            <div className="p-6 space-y-6">
+              {/* Warning Message */}
+              <div className="space-y-4">
+                <div className="text-center space-y-2">
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                    This URL appears to be a duplicate of an existing link in your collection.
+                  </p>
+                </div>
+
+                {/* URL Display */}
+                <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-lg border border-neutral-200 dark:border-neutral-700 p-4">
+                  <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-2 uppercase tracking-wide">
+                    URL
+                  </p>
+                  <p className="text-sm text-neutral-700 dark:text-neutral-300 break-all font-mono">
+                    {formatLinkUrl(url)}
+                  </p>
+                </div>
+
+                {/* Info Message */}
+                <div className="rounded-lg bg-warning-50 dark:bg-warning-950/50 border border-warning-200 dark:border-warning-800 p-4">
+                  <p className="text-sm text-warning-800 dark:text-warning-200">
+                    You can still create this link if needed, but consider updating the existing one instead.
+                  </p>
+                </div>
+              </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-neutral-200 dark:border-neutral-800">
+              <Button
+                variant="outline"
+                onClick={() => setShowDuplicateDialog(false)}
+                disabled={isSubmitting}
+              >
                 Cancel
               </Button>
-              <Button variant="primary" onClick={handleProceedWithDuplicate}>
-                Create Anyway
+              <Button
+                variant="primary"
+                onClick={handleProceedWithDuplicate}
+                disabled={isSubmitting}
+                loading={isSubmitting}
+              >
+                {isSubmitting ? "Creating..." : "Create Anyway"}
               </Button>
             </div>
           </div>

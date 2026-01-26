@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils/cn";
 import type { DialogProps } from "./Dialog.types";
 
 export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
-  ({ open, onOpenChange, children, title, description, className, ...props }, ref) => {
+  ({ open, onOpenChange, children, title, description, infoIcon, headerIcon, className, ...props }, ref) => {
     const dialogRef = React.useRef<HTMLDivElement | null>(null);
     const internalRef = React.useCallback((node: HTMLDivElement | null) => {
       dialogRef.current = node;
@@ -171,7 +171,7 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
             className={cn(
               "bg-white dark:bg-neutral-900 rounded-xl shadow-soft-xl border border-neutral-200 dark:border-neutral-800",
               "w-full max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-hidden overflow-x-hidden",
-              "animate-slide-in",
+              "animate-slide-in relative",
               className
             )}
             style={{ touchAction: 'pan-y' }}
@@ -181,19 +181,32 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
             aria-labelledby={title ? "dialog-title" : undefined}
             {...props}
           >
-            {/* Header */}
-            {(title || description) && (
-              <div className="px-4 sm:px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 flex items-start justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  {title && (
-                    <h2 id="dialog-title" className="text-xl font-bold text-neutral-900 dark:text-neutral-100 break-words">
-                      {title}
-                    </h2>
-                  )}
-                  {description && (
-                    <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1 break-words">{description}</p>
-                  )}
-                </div>
+            {/* Info Icon - Left of Dialog */}
+            {infoIcon && (
+              <div className="absolute -left-10 sm:-left-12 top-4 z-10">
+                {infoIcon}
+              </div>
+            )}
+              {/* Header */}
+              {(title || description) && (
+                <div className="px-4 sm:px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1 flex items-start gap-3">
+                    {headerIcon && (
+                      <div className="flex-shrink-0 mt-1">
+                        {headerIcon}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      {title && (
+                        <h2 id="dialog-title" className="text-xl font-bold text-neutral-900 dark:text-neutral-100 break-words">
+                          {title}
+                        </h2>
+                      )}
+                      {description && (
+                        <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1 break-words">{description}</p>
+                      )}
+                    </div>
+                  </div>
                 <button
                   onClick={() => onOpenChange?.(false)}
                   className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
