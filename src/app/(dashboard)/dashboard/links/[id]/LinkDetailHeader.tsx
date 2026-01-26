@@ -37,6 +37,7 @@ interface LinkDetailHeaderProps {
   isEditMode?: boolean;
   renderRatingInput?: () => React.ReactNode;
   archivedAt?: Date | null;
+  onFavoriteToggle?: () => void;
 }
 
 export const LinkDetailHeader = ({ 
@@ -60,6 +61,7 @@ export const LinkDetailHeader = ({
   isEditMode = false,
   renderRatingInput,
   archivedAt = null,
+  onFavoriteToggle,
 }: LinkDetailHeaderProps) => {
   const router = useRouter();
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
@@ -104,8 +106,23 @@ export const LinkDetailHeader = ({
           </Button>
         </Link>
         
-        {/* Edit Button, Archive Button, and Delete Button (mobile only) */}
+        {/* Archive Button, Edit Button, and Delete Button (mobile only) */}
         <div className="flex items-center gap-2 sm:hidden">
+          {archivedAt ? (
+            <form action={handleUnarchiveLink}>
+              <input type="hidden" name="linkId" value={linkId} />
+              <Button type="submit" variant="outline" size="sm">
+                Unarchive
+              </Button>
+            </form>
+          ) : (
+            <form action={handleArchiveLink}>
+              <input type="hidden" name="linkId" value={linkId} />
+              <Button type="submit" variant="outline" size="sm">
+                Archive
+              </Button>
+            </form>
+          )}
           {canEdit && !isEditMode && (
             <Button variant="primary" size="sm" onClick={onEditClick}>
               <svg
@@ -123,21 +140,6 @@ export const LinkDetailHeader = ({
               </svg>
               Edit
             </Button>
-          )}
-          {archivedAt ? (
-            <form action={handleUnarchiveLink}>
-              <input type="hidden" name="linkId" value={linkId} />
-              <Button type="submit" variant="outline" size="sm">
-                Unarchive
-              </Button>
-            </form>
-          ) : (
-            <form action={handleArchiveLink}>
-              <input type="hidden" name="linkId" value={linkId} />
-              <Button type="submit" variant="outline" size="sm">
-                Archive
-              </Button>
-            </form>
           )}
           {canDelete && (
             <Button 
@@ -163,13 +165,28 @@ export const LinkDetailHeader = ({
           )}
         </div>
         
-        {/* Edit Button, Archive Button, and Delete Button (desktop only) */}
+        {/* Archive Button, Edit Button, and Delete Button (desktop only) */}
         <div
           className={cn(
             "hidden sm:flex flex-wrap items-center gap-2 flex-shrink-0 lg:transition-all lg:duration-300 lg:ease-in-out",
             sidebarOpen ? "lg:mr-[360px]" : "lg:mr-12"
           )}
         >
+          {archivedAt ? (
+            <form action={handleUnarchiveLink}>
+              <input type="hidden" name="linkId" value={linkId} />
+              <Button type="submit" variant="outline" size="sm">
+                Unarchive
+              </Button>
+            </form>
+          ) : (
+            <form action={handleArchiveLink}>
+              <input type="hidden" name="linkId" value={linkId} />
+              <Button type="submit" variant="outline" size="sm">
+                Archive
+              </Button>
+            </form>
+          )}
           {canEdit && !isEditMode && (
             <Button variant="primary" size="sm" onClick={onEditClick}>
               <svg
@@ -187,21 +204,6 @@ export const LinkDetailHeader = ({
               </svg>
               Edit Link
             </Button>
-          )}
-          {archivedAt ? (
-            <form action={handleUnarchiveLink}>
-              <input type="hidden" name="linkId" value={linkId} />
-              <Button type="submit" variant="outline" size="sm">
-                Unarchive
-              </Button>
-            </form>
-          ) : (
-            <form action={handleArchiveLink}>
-              <input type="hidden" name="linkId" value={linkId} />
-              <Button type="submit" variant="outline" size="sm">
-                Archive
-              </Button>
-            </form>
           )}
           {canDelete && (
             <Button 
@@ -250,11 +252,28 @@ export const LinkDetailHeader = ({
             <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-neutral-100 break-words">
               {linkTitle}
             </h1>
-            {isFavorite && (
+            {isEditMode && onFavoriteToggle ? (
+              <button
+                type="button"
+                onClick={onFavoriteToggle}
+                className="p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors flex items-center justify-center flex-shrink-0"
+                aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+              >
+                <svg
+                  className={isFavorite ? "w-6 h-6 text-yellow-500 fill-current" : "w-6 h-6 text-neutral-400 hover:text-yellow-500 transition-colors"}
+                  fill={isFavorite ? "currentColor" : "none"}
+                  viewBox="0 0 20 20"
+                  stroke={isFavorite ? "none" : "currentColor"}
+                  strokeWidth={isFavorite ? 0 : 1.5}
+                >
+                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                </svg>
+              </button>
+            ) : isFavorite ? (
               <svg className="w-6 h-6 text-yellow-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
               </svg>
-            )}
+            ) : null}
           </div>
           <a
             href={linkUrl}

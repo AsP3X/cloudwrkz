@@ -7,8 +7,10 @@ import { Input } from "@/components/ui/Input";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
+import { Dialog } from "@/components/ui/Dialog";
 import { updateLink, extractLinkMetadataAction } from "@/server/actions/links";
 import { formatLinkUrl, validateUrl } from "@/lib/utils/links";
+import { cn } from "@/lib/utils/cn";
 
 const LINK_TYPE_OPTIONS = [
   { value: "WEBSITE", label: "Website" },
@@ -67,6 +69,8 @@ export const LinkEditForm = ({ link, collections, onCancel, onSaveSuccess, rende
   );
   const [extractingMetadata, setExtractingMetadata] = React.useState(false);
   const [hoveredRating, setHoveredRating] = React.useState<number | null>(null);
+  const [showCollectionDialog, setShowCollectionDialog] = React.useState(false);
+  const [availableCollections, setAvailableCollections] = React.useState<Array<{ id: string; name: string; color: string | null }>>([]);
 
   const methods = useForm({
     defaultValues: {
@@ -199,6 +203,28 @@ export const LinkEditForm = ({ link, collections, onCancel, onSaveSuccess, rende
     setTags(tags.filter((tag) => tag !== tagToRemove));
   };
 
+  // Load collections when collection dialog opens
+  React.useEffect(() => {
+    if (showCollectionDialog) {
+      import("@/server/actions/collections").then(({ getUserCollections }) => {
+        getUserCollections("").then((cols) => {
+          setAvailableCollections(cols.map((c) => ({ id: c.id, name: c.name, color: c.color })));
+        });
+      });
+    }
+  }, [showCollectionDialog]);
+
+  const handleSelectCollection = (collectionId: string) => {
+    if (!selectedCollections.includes(collectionId)) {
+      setSelectedCollections([...selectedCollections, collectionId]);
+    }
+    setShowCollectionDialog(false);
+  };
+
+  const handleRemoveCollection = (collectionId: string) => {
+    setSelectedCollections(selectedCollections.filter((id) => id !== collectionId));
+  };
+
   const onSubmit = async (data: any) => {
     setServerError(null);
 
@@ -274,17 +300,6 @@ export const LinkEditForm = ({ link, collections, onCancel, onSaveSuccess, rende
         </div>
       )}
 
-      {/* URL Field */}
-      <Input
-        label="URL"
-        type="url"
-        placeholder="https://example.com"
-        error={errors.url?.message as string}
-        helperText="The web address for this link"
-        required
-        {...register("url", { required: "URL is required" })}
-      />
-
       {/* Title Field */}
       <div>
         <div className="flex items-center justify-between mb-2">
@@ -322,6 +337,95 @@ export const LinkEditForm = ({ link, collections, onCancel, onSaveSuccess, rende
           error={errors.title?.message as string}
           {...register("title")}
         />
+      </div>
+
+      {/* URL Field and Collections Label */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <Input
+            label="URL"
+            type="url"
+            placeholder="https://example.com"
+            error={errors.url?.message as string}
+            helperText="The web address for this link"
+            required
+            {...register("url", { required: "URL is required" })}
+          />
+        </div>
+        
+        <div>
+          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3">
+            Collections
+          </label>
+          
+          {/* Selected Collections Display */}
+          {selectedCollections.length > 0 && (
+            <div className="space-y-2 mb-3">
+              {selectedCollections.map((collectionId) => {
+                const collection = collections.find((c) => c.id === collectionId);
+                if (!collection) return null;
+                
+                const hasColor = collection.color && /^#[0-9A-Fa-f]{6}$/.test(collection.color);
+                const colorValue = hasColor ? collection.color : null;
+                
+                return (
+                  <div
+                    key={collectionId}
+                    className={cn(
+                      "flex items-center justify-between gap-2 text-sm p-3 rounded-lg border",
+                      !hasColor && "bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800 text-primary-600 dark:text-primary-400"
+                    )}
+                    style={
+                      hasColor && colorValue
+                        ? {
+                            backgroundColor: `${colorValue}15`,
+                            borderColor: colorValue,
+                            color: colorValue,
+                          }
+                        : undefined
+                    }
+                  >
+                    <div className="flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                      </svg>
+                      <span className="font-medium">{collection.name}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveCollection(collectionId)}
+                      className={cn(
+                        "p-1 rounded-md transition-colors",
+                        !hasColor && "hover:bg-primary-100 dark:hover:bg-primary-900/40 text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
+                      )}
+                      style={
+                        hasColor && colorValue
+                          ? {
+                              color: colorValue,
+                            }
+                          : undefined
+                      }
+                      aria-label="Remove collection assignment"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Assign Collection Button */}
+          <button
+            type="button"
+            onClick={() => setShowCollectionDialog(true)}
+            className="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 underline transition-colors"
+          >
+            {selectedCollections.length > 0 ? "Add another collection" : "Assign collection"}
+          </button>
+        </div>
       </div>
 
       {/* Description Field */}
@@ -384,92 +488,70 @@ export const LinkEditForm = ({ link, collections, onCancel, onSaveSuccess, rende
       {/* Rating Field - removed, only shown in header */}
       <input type="hidden" {...register("rating")} />
 
-      {/* Tags Field */}
-      <div>
-        <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-          Tags
-        </label>
-        <div className="flex gap-2 mb-3">
-          <Input
-            type="text"
-            value={tagInput}
-            onChange={(e) => setTagInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleAddTag();
-              }
-            }}
-            placeholder="Add a tag and press Enter"
-            className="flex-1"
-          />
-          <Button type="button" onClick={handleAddTag} variant="outline" size="sm">
-            Add
-          </Button>
-        </div>
-        {tags.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {tags.map((tag) => (
-              <span
-                key={tag}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 rounded-full text-sm font-medium border border-primary-200 dark:border-primary-800"
-              >
-                {tag}
-                <button
-                  type="button"
-                  onClick={() => handleRemoveTag(tag)}
-                  className="hover:text-primary-900 dark:hover:text-primary-100 transition-colors"
-                  aria-label={`Remove ${tag} tag`}
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </span>
-            ))}
+      {/* Collection Selection Dialog */}
+      {showCollectionDialog && (
+        <Dialog
+          open={showCollectionDialog}
+          onOpenChange={setShowCollectionDialog}
+          title="Select Collection"
+          description="Choose a collection to add this link to"
+          zIndex={60}
+        >
+          <div className="p-6">
+            {availableCollections.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                  No collections available. Create a collection first.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {availableCollections
+                  .filter((c) => !selectedCollections.includes(c.id))
+                  .map((collection) => {
+                    const hasColor = collection.color && /^#[0-9A-Fa-f]{6}$/.test(collection.color);
+                    return (
+                      <button
+                        key={collection.id}
+                        type="button"
+                        onClick={() => handleSelectCollection(collection.id)}
+                        className="w-full flex items-center gap-3 p-3 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors text-left"
+                      >
+                        {hasColor && (
+                          <div
+                            className="w-4 h-4 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: collection.color! }}
+                          />
+                        )}
+                        <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100 flex-1">
+                          {collection.name}
+                        </span>
+                        <svg className="w-5 h-5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </button>
+                    );
+                  })}
+                {availableCollections.filter((c) => !selectedCollections.includes(c.id)).length === 0 && (
+                  <div className="text-center py-8">
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                      All available collections have been added.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="flex justify-end gap-3 pt-6 mt-6 border-t border-neutral-200 dark:border-neutral-800">
+              <Button variant="outline" onClick={() => setShowCollectionDialog(false)}>
+                Cancel
+              </Button>
+            </div>
           </div>
-        )}
-      </div>
-
-      {/* Collections Field */}
-      {collections.length > 0 && (
-        <div>
-          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-            Collections
-          </label>
-          <div className="space-y-2 max-h-40 overflow-y-auto border border-neutral-200 dark:border-neutral-700 rounded-lg p-3 bg-neutral-50 dark:bg-neutral-800/50">
-            {collections.map((collection) => (
-              <label key={collection.id} className="flex items-center gap-3 cursor-pointer p-2 rounded-md hover:bg-white dark:hover:bg-neutral-700 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={selectedCollections.includes(collection.id)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedCollections([...selectedCollections, collection.id]);
-                    } else {
-                      setSelectedCollections(selectedCollections.filter((id) => id !== collection.id));
-                    }
-                  }}
-                  className="w-4 h-4 text-primary-600 dark:text-primary-400 rounded border-neutral-300 dark:border-neutral-600 focus:ring-primary-500 focus:ring-2"
-                />
-                <span className="text-sm text-neutral-700 dark:text-neutral-300 flex-1">{collection.name}</span>
-              </label>
-            ))}
-          </div>
-        </div>
+        </Dialog>
       )}
 
-      {/* Favorite Checkbox */}
-      <div className="flex items-center gap-2.5">
-        <input
-          type="checkbox"
-          {...register("isFavorite")}
-          className="w-4 h-4 text-primary-600 dark:text-primary-400 rounded border-neutral-300 dark:border-neutral-600 focus:ring-primary-500 focus:ring-2"
-        />
-        <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300 cursor-pointer">
-          Mark as Favorite
-        </label>
-      </div>
+      {/* Favorite Toggle - moved to header */}
+      <input type="hidden" {...register("isFavorite")} />
 
       {/* Submit Buttons */}
       <div className="flex items-center justify-end gap-4 pt-4 border-t border-neutral-200 dark:border-neutral-800">

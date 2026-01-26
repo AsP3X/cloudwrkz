@@ -112,6 +112,7 @@ export const LinkDetailContent = ({
     router.refresh();
   };
 
+
   if (isEditMode) {
     return (
       <div className="space-y-6">
@@ -124,7 +125,7 @@ export const LinkDetailContent = ({
           canDelete={canDelete}
           description={link.description}
           favicon={link.favicon}
-          isFavorite={link.isFavorite}
+          isFavorite={isEditMode && formMethods ? formMethods.watch("isFavorite") : link.isFavorite}
           linkType={link.linkType}
           tags={link.tags}
           notes={link.notes}
@@ -135,6 +136,11 @@ export const LinkDetailContent = ({
           onEditClick={handleEditClick}
           isEditMode={isEditMode}
           archivedAt={link.archivedAt}
+          onFavoriteToggle={formMethods ? () => {
+            const currentValue = formMethods.watch("isFavorite");
+            formMethods.setValue("isFavorite", !currentValue, { shouldValidate: true });
+            forceUpdate(); // Force re-render to update the star
+          } : undefined}
           renderRatingInput={ratingInputRef.current && formMethods && typeof ratingInputRef.current === 'function' ? () => {
             if (!ratingInputRef.current || typeof ratingInputRef.current !== 'function') {
               return null;
@@ -217,21 +223,6 @@ export const LinkDetailContent = ({
                 {getLinkTypeLabel(link.linkType)}
               </Badge>
             </div>
-
-            {/* Favorite */}
-            {link.isFavorite && (
-              <div>
-                <label className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1 block">
-                  Favorite
-                </label>
-                <div className="flex items-center gap-2">
-                  <svg className="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                  </svg>
-                  <span className="text-sm text-neutral-900 dark:text-neutral-100">Yes</span>
-                </div>
-              </div>
-            )}
 
             <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4"></div>
 
