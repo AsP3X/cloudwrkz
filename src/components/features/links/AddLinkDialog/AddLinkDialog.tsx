@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/Textarea";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { createLink, extractLinkMetadataAction, checkDuplicateUrl } from "@/server/actions/links";
-import { formatLinkUrl, validateUrl } from "@/lib/utils/links";
+import { formatLinkUrl, validateUrl, isYouTubeUrl } from "@/lib/utils/links";
 import { cn } from "@/lib/utils/cn";
 
 interface AddLinkDialogProps {
@@ -86,7 +86,11 @@ export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, select
       try {
         const result = await extractLinkMetadataAction(formattedUrl);
         if (result.success && result.data) {
-          if (!title && result.data.title) {
+          // For YouTube URLs, always use the video title
+          if (isYouTubeUrl(formattedUrl) && result.data.title) {
+            setTitle(result.data.title);
+          } else if (!title && result.data.title) {
+            // For other URLs, only set title if it's empty
             setTitle(result.data.title);
           }
           if (!description && result.data.description) {
