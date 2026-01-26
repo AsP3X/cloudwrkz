@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils/cn";
 import type { DialogProps } from "./Dialog.types";
 
 export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
-  ({ open, onOpenChange, children, title, description, infoIcon, headerIcon, headerRightContent, className, ...props }, ref) => {
+  ({ open, onOpenChange, children, title, description, infoIcon, headerIcon, headerRightContent, className, zIndex, ...props }, ref) => {
     const dialogRef = React.useRef<HTMLDivElement | null>(null);
     const internalRef = React.useCallback((node: HTMLDivElement | null) => {
       dialogRef.current = node;
@@ -151,14 +151,18 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
       <>
         {/* Backdrop */}
         <div
-          className="fixed inset-0 bg-black/50 z-40 animate-fade-in"
+          className="fixed inset-0 bg-black/50 animate-fade-in"
+          style={{ zIndex: zIndex ? zIndex - 10 : 40 }}
           onClick={() => onOpenChange?.(false)}
         />
         
         {/* Dialog */}
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 overflow-x-hidden sm:overflow-x-auto touch-none sm:touch-auto"
-          style={{ touchAction: 'pan-y' }}
+          className="fixed inset-0 flex items-center justify-center p-2 sm:p-4 overflow-x-hidden sm:overflow-x-auto touch-none sm:touch-auto"
+          style={{ 
+            zIndex: zIndex || 50,
+            touchAction: 'pan-y' 
+          }}
           onClick={(e) => {
             // Close when clicking backdrop
             if (e.target === e.currentTarget) {
@@ -169,7 +173,8 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
           <div
             ref={internalRef}
             className={cn(
-              "bg-white dark:bg-neutral-900 rounded-xl shadow-soft-xl border border-neutral-200 dark:border-neutral-800",
+              "bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800",
+              zIndex ? "shadow-2xl" : "shadow-soft-xl",
               "w-full max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-hidden overflow-x-hidden",
               "animate-slide-in relative",
               className

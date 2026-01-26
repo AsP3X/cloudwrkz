@@ -60,6 +60,7 @@ export function LinksPageProvider({ children, canCreate, collections = [] }: Lin
             onOpenChange={setAddLinkOpen}
             selectedCollectionId={selectedCollectionId}
             selectedCollectionName={selectedCollection?.name}
+            selectedCollectionColor={selectedCollection?.color}
           />
           <CreateCollectionDialog open={createCollectionOpen} onOpenChange={setCreateCollectionOpen} />
         </>

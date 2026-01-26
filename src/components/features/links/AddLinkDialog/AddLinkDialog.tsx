@@ -9,15 +9,17 @@ import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { createLink, extractLinkMetadataAction, checkDuplicateUrl } from "@/server/actions/links";
 import { formatLinkUrl, validateUrl } from "@/lib/utils/links";
+import { cn } from "@/lib/utils/cn";
 
 interface AddLinkDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   selectedCollectionId?: string;
   selectedCollectionName?: string;
+  selectedCollectionColor?: string | null;
 }
 
-export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, selectedCollectionName }: AddLinkDialogProps) {
+export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, selectedCollectionName, selectedCollectionColor }: AddLinkDialogProps) {
   const router = useRouter();
   const [url, setUrl] = React.useState("");
   const [title, setTitle] = React.useState("");
@@ -26,10 +28,16 @@ export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, select
   const [tagInput, setTagInput] = React.useState("");
   const [isFavorite, setIsFavorite] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [collectionRemoved, setCollectionRemoved] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [extractingMetadata, setExtractingMetadata] = React.useState(false);
   const [duplicateWarning, setDuplicateWarning] = React.useState<string[]>([]);
   const [showDuplicateDialog, setShowDuplicateDialog] = React.useState(false);
+  const [showCollectionDialog, setShowCollectionDialog] = React.useState(false);
+  const [collections, setCollections] = React.useState<Array<{ id: string; name: string; color: string | null }>>([]);
+  const [manuallySelectedCollectionId, setManuallySelectedCollectionId] = React.useState<string | null>(null);
+  const [manuallySelectedCollectionName, setManuallySelectedCollectionName] = React.useState<string | null>(null);
+  const [manuallySelectedCollectionColor, setManuallySelectedCollectionColor] = React.useState<string | null>(null);
 
   // Reset form when dialog closes
   React.useEffect(() => {
@@ -40,9 +48,14 @@ export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, select
       setTags([]);
       setTagInput("");
       setIsFavorite(false);
+      setCollectionRemoved(false);
+      setManuallySelectedCollectionId(null);
+      setManuallySelectedCollectionName(null);
+      setManuallySelectedCollectionColor(null);
       setError(null);
       setDuplicateWarning([]);
       setShowDuplicateDialog(false);
+      setShowCollectionDialog(false);
     }
   }, [open]);
 
@@ -101,6 +114,25 @@ export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, select
     setTags(tags.filter((tag) => tag !== tagToRemove));
   };
 
+  // Load collections when collection dialog opens
+  React.useEffect(() => {
+    if (showCollectionDialog) {
+      import("@/server/actions/collections").then(({ getUserCollections }) => {
+        getUserCollections("").then((cols) => {
+          setCollections(cols.map((c) => ({ id: c.id, name: c.name, color: c.color })));
+        });
+      });
+    }
+  }, [showCollectionDialog]);
+
+  const handleSelectCollection = (collectionId: string, collectionName: string, collectionColor: string | null) => {
+    setManuallySelectedCollectionId(collectionId);
+    setManuallySelectedCollectionName(collectionName);
+    setManuallySelectedCollectionColor(collectionColor);
+    setCollectionRemoved(false);
+    setShowCollectionDialog(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -119,13 +151,14 @@ export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, select
     setIsSubmitting(true);
 
     try {
+      const finalCollectionId = manuallySelectedCollectionId || (!collectionRemoved && selectedCollectionId ? selectedCollectionId : null);
       const result = await createLink({
         url: formattedUrl,
         title: title.trim() || undefined,
         description: description.trim() || undefined,
         tags,
         isFavorite,
-        collectionIds: selectedCollectionId ? [selectedCollectionId] : [],
+        collectionIds: finalCollectionId ? [finalCollectionId] : [],
         extractMetadata: true,
       });
 
@@ -159,13 +192,14 @@ export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, select
     setIsSubmitting(true);
 
     try {
+      const finalCollectionId = manuallySelectedCollectionId || (!collectionRemoved && selectedCollectionId ? selectedCollectionId : null);
       const result = await createLink({
         url: formattedUrl,
         title: title.trim() || undefined,
         description: description.trim() || undefined,
         tags,
         isFavorite,
-        collectionIds: selectedCollectionId ? [selectedCollectionId] : [],
+        collectionIds: finalCollectionId ? [finalCollectionId] : [],
         extractMetadata: false, // Don't extract again
         allowDuplicates: true, // Allow creating duplicate
       });
@@ -218,12 +252,73 @@ export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, select
           )}
 
           {/* Collection Info */}
-          {selectedCollectionName && (
-            <div className="mb-6 flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400 p-3 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg">
-              <svg className="w-4 h-4 text-primary-600 dark:text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-              </svg>
-              <span>This link will be saved to <span className="font-medium text-primary-700 dark:text-primary-300">{selectedCollectionName}</span></span>
+          {(manuallySelectedCollectionName || (selectedCollectionName && !collectionRemoved)) && (() => {
+            const currentCollectionName = manuallySelectedCollectionName || selectedCollectionName;
+            const currentCollectionColor = manuallySelectedCollectionColor || selectedCollectionColor;
+            const hasColor = currentCollectionColor && /^#[0-9A-Fa-f]{6}$/.test(currentCollectionColor);
+            const colorValue = hasColor ? currentCollectionColor : null;
+            
+            return (
+              <div 
+                className={cn(
+                  "mb-6 flex items-center justify-between gap-2 text-sm p-3 rounded-lg border",
+                  !hasColor && "bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800 text-primary-600 dark:text-primary-400"
+                )}
+                style={
+                  hasColor && colorValue
+                    ? {
+                        backgroundColor: `${colorValue}15`,
+                        borderColor: colorValue,
+                        color: colorValue,
+                      }
+                    : undefined
+                }
+              >
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  </svg>
+                  <span>This link will be saved to <span className="font-medium">{currentCollectionName}</span></span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCollectionRemoved(true);
+                    setManuallySelectedCollectionId(null);
+                    setManuallySelectedCollectionName(null);
+                    setManuallySelectedCollectionColor(null);
+                  }}
+                  className={cn(
+                    "p-1 rounded-md transition-colors",
+                    !hasColor && "hover:bg-primary-100 dark:hover:bg-primary-900/40 text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
+                  )}
+                  style={
+                    hasColor && colorValue
+                      ? {
+                          color: colorValue,
+                        }
+                      : undefined
+                  }
+                  aria-label="Remove collection assignment"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            );
+          })()}
+
+          {/* Assign Collection Link */}
+          {collectionRemoved && !manuallySelectedCollectionId && (
+            <div className="mb-6">
+              <button
+                type="button"
+                onClick={() => setShowCollectionDialog(true)}
+                className="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 underline transition-colors"
+              >
+                Assign collection
+              </button>
             </div>
           )}
 
@@ -437,6 +532,59 @@ export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, select
                 loading={isSubmitting}
               >
                 {isSubmitting ? "Creating..." : "Create Anyway"}
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      )}
+
+      {/* Collection Selection Dialog */}
+      {showCollectionDialog && (
+        <Dialog
+          open={showCollectionDialog}
+          onOpenChange={setShowCollectionDialog}
+          title="Select Collection"
+          description="Choose a collection to save this link to"
+          zIndex={60}
+        >
+          <div className="p-6">
+            {collections.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                  No collections available. Create a collection first.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {collections.map((collection) => {
+                  const hasColor = collection.color && /^#[0-9A-Fa-f]{6}$/.test(collection.color);
+                  return (
+                    <button
+                      key={collection.id}
+                      type="button"
+                      onClick={() => handleSelectCollection(collection.id, collection.name, collection.color)}
+                      className="w-full flex items-center gap-3 p-3 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors text-left"
+                    >
+                      {hasColor && (
+                        <div
+                          className="w-4 h-4 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: collection.color! }}
+                        />
+                      )}
+                      <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100 flex-1">
+                        {collection.name}
+                      </span>
+                      <svg className="w-5 h-5 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <div className="flex justify-end gap-3 pt-6 mt-6 border-t border-neutral-200 dark:border-neutral-800">
+              <Button variant="outline" onClick={() => setShowCollectionDialog(false)}>
+                Cancel
               </Button>
             </div>
           </div>
