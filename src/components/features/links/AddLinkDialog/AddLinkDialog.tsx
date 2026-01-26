@@ -22,11 +22,9 @@ export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, select
   const [url, setUrl] = React.useState("");
   const [title, setTitle] = React.useState("");
   const [description, setDescription] = React.useState("");
-  const [linkType, setLinkType] = React.useState<"WEBSITE" | "FILE" | "DOCUMENT" | "VIDEO" | "IMAGE" | "OTHER">("WEBSITE");
   const [tags, setTags] = React.useState<string[]>([]);
   const [tagInput, setTagInput] = React.useState("");
   const [isFavorite, setIsFavorite] = React.useState(false);
-  const [rating, setRating] = React.useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [extractingMetadata, setExtractingMetadata] = React.useState(false);
@@ -39,11 +37,9 @@ export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, select
       setUrl("");
       setTitle("");
       setDescription("");
-      setLinkType("WEBSITE");
       setTags([]);
       setTagInput("");
       setIsFavorite(false);
-      setRating(null);
       setError(null);
       setDuplicateWarning([]);
       setShowDuplicateDialog(false);
@@ -127,10 +123,8 @@ export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, select
         url: formattedUrl,
         title: title.trim() || undefined,
         description: description.trim() || undefined,
-        linkType,
         tags,
         isFavorite,
-        rating: rating || undefined,
         collectionIds: selectedCollectionId ? [selectedCollectionId] : [],
         extractMetadata: true,
       });
@@ -169,10 +163,8 @@ export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, select
         url: formattedUrl,
         title: title.trim() || undefined,
         description: description.trim() || undefined,
-        linkType,
         tags,
         isFavorite,
-        rating: rating || undefined,
         collectionIds: selectedCollectionId ? [selectedCollectionId] : [],
         extractMetadata: false, // Don't extract again
         allowDuplicates: true, // Allow creating duplicate
@@ -300,52 +292,12 @@ export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, select
               </div>
             </div>
 
-            {/* Classification Section */}
+            {/* Tags Section */}
             <div className="space-y-4">
               <div className="pb-2 border-b border-neutral-200 dark:border-neutral-800">
                 <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 uppercase tracking-wide">
-                  Classification
+                  Tags
                 </h3>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="linkType" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                    Type
-                  </label>
-                  <Select
-                    id="linkType"
-                    value={linkType}
-                    onChange={(e) => setLinkType(e.target.value as any)}
-                    options={[
-                      { value: "WEBSITE", label: "Website" },
-                      { value: "FILE", label: "File" },
-                      { value: "DOCUMENT", label: "Document" },
-                      { value: "VIDEO", label: "Video" },
-                      { value: "IMAGE", label: "Image" },
-                      { value: "OTHER", label: "Other" },
-                    ]}
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="rating" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                    Rating
-                  </label>
-                  <Select
-                    id="rating"
-                    value={rating?.toString() || ""}
-                    onChange={(e) => setRating(e.target.value ? parseInt(e.target.value) : null)}
-                    options={[
-                      { value: "", label: "No rating" },
-                      { value: "1", label: "1 Star" },
-                      { value: "2", label: "2 Stars" },
-                      { value: "3", label: "3 Stars" },
-                      { value: "4", label: "4 Stars" },
-                      { value: "5", label: "5 Stars" },
-                    ]}
-                  />
-                </div>
               </div>
 
               <div>
