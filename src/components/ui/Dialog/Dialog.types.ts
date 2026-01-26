@@ -7,4 +7,5 @@ export interface DialogProps extends HTMLAttributes<HTMLDivElement> {
   description?: string;
   infoIcon?: ReactNode;
   headerIcon?: ReactNode;
+  headerRightContent?: ReactNode;
 }

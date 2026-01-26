@@ -23,7 +23,6 @@ export function AddLinkDialog({ open, onOpenChange }: AddLinkDialogProps) {
   const [linkType, setLinkType] = React.useState<"WEBSITE" | "FILE" | "DOCUMENT" | "VIDEO" | "IMAGE" | "OTHER">("WEBSITE");
   const [tags, setTags] = React.useState<string[]>([]);
   const [tagInput, setTagInput] = React.useState("");
-  const [notes, setNotes] = React.useState("");
   const [isFavorite, setIsFavorite] = React.useState(false);
   const [rating, setRating] = React.useState<number | null>(null);
   const [selectedCollections, setSelectedCollections] = React.useState<string[]>([]);
@@ -54,7 +53,6 @@ export function AddLinkDialog({ open, onOpenChange }: AddLinkDialogProps) {
       setLinkType("WEBSITE");
       setTags([]);
       setTagInput("");
-      setNotes("");
       setIsFavorite(false);
       setRating(null);
       setSelectedCollections([]);
@@ -143,7 +141,6 @@ export function AddLinkDialog({ open, onOpenChange }: AddLinkDialogProps) {
         description: description.trim() || undefined,
         linkType,
         tags,
-        notes: notes.trim() || undefined,
         isFavorite,
         rating: rating || undefined,
         collectionIds: selectedCollections,
@@ -186,7 +183,6 @@ export function AddLinkDialog({ open, onOpenChange }: AddLinkDialogProps) {
         description: description.trim() || undefined,
         linkType,
         tags,
-        notes: notes.trim() || undefined,
         isFavorite,
         rating: rating || undefined,
         collectionIds: selectedCollections,
@@ -215,6 +211,24 @@ export function AddLinkDialog({ open, onOpenChange }: AddLinkDialogProps) {
         title="Add Link"
         description="Save a new bookmark to your collection"
         className="max-w-2xl"
+        headerRightContent={
+          <button
+            type="button"
+            onClick={() => setIsFavorite(!isFavorite)}
+            className="p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors flex items-center justify-center"
+            aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+          >
+            <svg
+              className={isFavorite ? "w-5 h-5 text-yellow-500 fill-current" : "w-5 h-5 text-neutral-400 hover:text-yellow-500 transition-colors"}
+              fill={isFavorite ? "currentColor" : "none"}
+              viewBox="0 0 20 20"
+              stroke={isFavorite ? "none" : "currentColor"}
+              strokeWidth={isFavorite ? 0 : 1.5}
+            >
+              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+            </svg>
+          </button>
+        }
       >
         <form onSubmit={handleSubmit} className="px-4 sm:px-6 py-4 sm:py-6">
           {error && (
@@ -417,35 +431,6 @@ export function AddLinkDialog({ open, onOpenChange }: AddLinkDialogProps) {
                   </div>
                 </div>
               )}
-
-              <div>
-                <label htmlFor="notes" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                  Personal Notes
-                </label>
-                <Textarea
-                  id="notes"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Add personal notes or annotations..."
-                  rows={3}
-                  className="resize-none"
-                />
-              </div>
-            </div>
-
-            {/* Quick Actions */}
-            <div className="flex items-center gap-6 pt-2">
-              <label className="flex items-center gap-2.5 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={isFavorite}
-                  onChange={(e) => setIsFavorite(e.target.checked)}
-                  className="w-4 h-4 text-primary-600 dark:text-primary-400 rounded border-neutral-300 dark:border-neutral-600 focus:ring-primary-500 focus:ring-2"
-                />
-                <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300 group-hover:text-neutral-900 dark:group-hover:text-neutral-100 transition-colors">
-                  Mark as Favorite
-                </span>
-              </label>
             </div>
           </div>
 

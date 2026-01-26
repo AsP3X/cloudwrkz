@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils/cn";
 import type { DialogProps } from "./Dialog.types";
 
 export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
-  ({ open, onOpenChange, children, title, description, infoIcon, headerIcon, className, ...props }, ref) => {
+  ({ open, onOpenChange, children, title, description, infoIcon, headerIcon, headerRightContent, className, ...props }, ref) => {
     const dialogRef = React.useRef<HTMLDivElement | null>(null);
     const internalRef = React.useCallback((node: HTMLDivElement | null) => {
       dialogRef.current = node;
@@ -189,10 +189,10 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
             )}
               {/* Header */}
               {(title || description) && (
-                <div className="px-4 sm:px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 flex items-start justify-between gap-4">
-                  <div className="min-w-0 flex-1 flex items-start gap-3">
+                <div className="px-4 sm:px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-4">
+                  <div className="min-w-0 flex-1 flex items-center gap-3">
                     {headerIcon && (
-                      <div className="flex-shrink-0 mt-1">
+                      <div className="flex-shrink-0">
                         {headerIcon}
                       </div>
                     )}
@@ -207,27 +207,30 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
                       )}
                     </div>
                   </div>
-                <button
-                  onClick={() => onOpenChange?.(false)}
-                  className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
-                  aria-label="Close dialog"
-                >
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
-              </div>
-            )}
+                  <div className="flex items-center gap-1">
+                    {headerRightContent}
+                    <button
+                      onClick={() => onOpenChange?.(false)}
+                      className="p-1.5 rounded-md text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                      aria-label="Close dialog"
+                    >
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              )}
 
             {/* Content */}
             <div 
