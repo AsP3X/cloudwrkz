@@ -239,3 +239,59 @@ export function isWikipediaUrl(url: string): boolean {
   }
 }
 
+/**
+ * Check if a URL is a GitHub repository or file page
+ */
+export function isGitHubUrl(url: string): boolean {
+  if (!url) return false;
+  try {
+    const normalized = url.trim();
+    const withProtocol =
+      normalized.startsWith("http://") || normalized.startsWith("https://")
+        ? normalized
+        : `https://${normalized}`;
+    const u = new URL(withProtocol);
+    return u.hostname.toLowerCase() === "github.com";
+  } catch {
+    return /github\.com/i.test(url);
+  }
+}
+
+/**
+ * Check if a URL is a Stack Overflow question or answer
+ */
+export function isStackOverflowUrl(url: string): boolean {
+  if (!url) return false;
+  try {
+    const normalized = url.trim();
+    const withProtocol =
+      normalized.startsWith("http://") || normalized.startsWith("https://")
+        ? normalized
+        : `https://${normalized}`;
+    const u = new URL(withProtocol);
+    return u.hostname.toLowerCase() === "stackoverflow.com";
+  } catch {
+    return /stackoverflow\.com/i.test(url);
+  }
+}
+
+/**
+ * Check if a URL is an X/Twitter status or profile
+ */
+export function isXUrl(url: string): boolean {
+  if (!url) return false;
+  try {
+    const normalized = url.trim();
+    const withProtocol =
+      normalized.startsWith("http://") || normalized.startsWith("https://")
+        ? normalized
+        : `https://${normalized}`;
+    const u = new URL(withProtocol);
+    const host = u.hostname.toLowerCase();
+    return host === "twitter.com" || host === "x.com";
+  } catch {
+    return /(twitter\.com|x\.com)/i.test(url);
+  }
+}
+
+

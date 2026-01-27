@@ -3,7 +3,13 @@
  * Fetches and extracts metadata from URLs (title, description, Open Graph tags, etc.)
  */
 
-import { isYouTubeUrl, isWikipediaUrl } from "@/lib/utils/links";
+import {
+  isGitHubUrl,
+  isStackOverflowUrl,
+  isXUrl,
+  isYouTubeUrl,
+  isWikipediaUrl,
+} from "@/lib/utils/links";
 
 export interface LinkMetadata {
   title?: string;
@@ -419,6 +425,54 @@ export async function extractLinkMetadata(url: string): Promise<LinkMetadata | n
       } catch {
         // If the Wikipedia-specific extractor fails for any reason,
         // gracefully fall back to the generic HTML-based extractor.
+      }
+    }
+
+    // GitHub links: use dedicated extractor so we can later
+    // augment with repo-specific metadata.
+    if (isGitHubUrl(url)) {
+      try {
+        const { extractGitHubMetadata } = await import(
+          "@/lib/utils/link-metadata-github"
+        );
+        const githubMetadata = await extractGitHubMetadata(url);
+        if (githubMetadata && githubMetadata.title) {
+          return prioritizeMetadata(githubMetadata, githubMetadata.ogUrl || url);
+        }
+      } catch {
+        // Fallback to generic extraction on failure
+      }
+    }
+
+    // Stack Overflow links: dedicated extractor to make it easy
+    // to later pull in question/answer specific data.
+    if (isStackOverflowUrl(url)) {
+      try {
+        const { extractStackOverflowMetadata } = await import(
+          "@/lib/utils/link-metadata-stackoverflow"
+        );
+        const soMetadata = await extractStackOverflowMetadata(url);
+        if (soMetadata && soMetadata.title) {
+          return prioritizeMetadata(soMetadata, soMetadata.ogUrl || url);
+        }
+      } catch {
+        // Fallback to generic extraction on failure
+      }
+    }
+
+    // X (Twitter) links: dedicated extractor in case you later
+    // decide to enrich with authenticated API data.
+    if (isXUrl(url)) {
+      try {
+        const { extractXMetadata } = await import(
+          "@/lib/utils/link-metadata-x"
+        );
+        const xMetadata = await extractXMetadata(url);
+        if (xMetadata && xMetadata.title) {
+          return prioritizeMetadata(xMetadata, xMetadata.ogUrl || url);
+        }
+      } catch {
+        // Fallback to generic extraction on failure
       }
     }
 
