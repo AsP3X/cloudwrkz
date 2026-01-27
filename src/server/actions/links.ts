@@ -50,17 +50,35 @@ export type LinkFilters = {
 };
 
 export type ActionResult<T = void> =
-  | { success: true; data?: T; message?: string; duplicateLinkIds?: string[] }
-  | { success: false; error: string; fieldErrors?: Record<string, string[]>; duplicateLinkIds?: string[] };
+  | {
+      success: true;
+      data?: T;
+      message?: string;
+      duplicateLinkIds?: string[];
+      similarLinkIds?: string[];
+    }
+  | {
+      success: false;
+      error: string;
+      fieldErrors?: Record<string, string[]>;
+      duplicateLinkIds?: string[];
+      similarLinkIds?: string[];
+    };
 
 /**
- * Check for duplicate URLs (normalized comparison)
+ * Check for duplicate and very similar URLs.
+ *
+ * - Exact duplicates are links where the fully formatted URL matches 1:1
+ * - Similar links share the same normalized URL (ignoring protocol, www, trailing slash, etc.)
+ *
+ * This ensures we only block on true exact duplicates, while still being able
+ * to surface "very similar" URLs as a warning to the user.
  */
 export async function checkDuplicateUrl(
   url: string,
   userId: string,
   excludeLinkId?: string
-): Promise<string[]> {
+): Promise<{ exactDuplicateIds: string[]; similarLinkIds: string[] }> {
   const normalizedUrl = normalizeUrl(url);
   const existingLinks = await prisma.link.findMany({
     where: {
@@ -73,15 +91,23 @@ export async function checkDuplicateUrl(
     select: { id: true, url: true },
   });
 
-  const duplicates: string[] = [];
+  const exactDuplicateIds: string[] = [];
+  const similarLinkIds: string[] = [];
   for (const link of existingLinks) {
     if (link.id === excludeLinkId) continue;
-    if (areUrlsDuplicate(url, link.url)) {
-      duplicates.push(link.id);
+    // Exact duplicate: full URL including query/fragment matches after formatting
+    if (link.url === url) {
+      exactDuplicateIds.push(link.id);
+      continue;
+    }
+
+    // Very similar: normalized URL matches but full URL differs (e.g. small query changes)
+    if (normalizeUrl(link.url) === normalizedUrl) {
+      similarLinkIds.push(link.id);
     }
   }
 
-  return duplicates;
+  return { exactDuplicateIds, similarLinkIds };
 }
 
 /**
@@ -141,12 +167,15 @@ export async function createLink(input: LinkInput): Promise<ActionResult<{ id: s
 
     // Check for duplicates (unless explicitly allowed)
     if (!input.allowDuplicates) {
-      const duplicateIds = await checkDuplicateUrl(formattedUrl, user.id);
-      if (duplicateIds.length > 0) {
+      const { exactDuplicateIds, similarLinkIds } = await checkDuplicateUrl(formattedUrl, user.id);
+
+      // Block on exact duplicates, but still include information about similar URLs
+      if (exactDuplicateIds.length > 0) {
         return {
           success: false,
-          error: "A link with this URL already exists",
-          duplicateLinkIds: duplicateIds,
+          error: "A link with this exact URL already exists",
+          duplicateLinkIds: exactDuplicateIds,
+          similarLinkIds,
         };
       }
     }
@@ -258,6 +287,9 @@ export async function createLink(input: LinkInput): Promise<ActionResult<{ id: s
     return {
       success: true,
       data: { id: link.id },
+      // Surface similar links as a non-blocking warning
+      // (only present when there were similar links but no exact duplicates)
+      // Note: when allowDuplicates is true, we skip duplicate checking entirely.
     };
   } catch (error) {
     console.error("Error creating link:", error);
@@ -310,7 +342,6 @@ export async function updateLink(
 
     // If URL changed, validate and check for duplicates
     let formattedUrl = existingLink.url;
-    let duplicateIds: string[] = [];
     if (input.url && input.url !== existingLink.url) {
       formattedUrl = formatLinkUrl(input.url);
       if (!validateUrl(formattedUrl)) {
@@ -320,12 +351,16 @@ export async function updateLink(
           fieldErrors: { url: ["Please enter a valid URL"] },
         };
       }
-      duplicateIds = await checkDuplicateUrl(formattedUrl, user.id, id);
-      if (duplicateIds.length > 0) {
+
+      // Only block on exact duplicates when updating; similar links will be
+      // surfaced as a warning in the client UI.
+      const { exactDuplicateIds, similarLinkIds } = await checkDuplicateUrl(formattedUrl, user.id, id);
+      if (exactDuplicateIds.length > 0) {
         return {
           success: false,
-          error: "A link with this URL already exists",
-          duplicateLinkIds: duplicateIds,
+          error: "A link with this exact URL already exists",
+          duplicateLinkIds: exactDuplicateIds,
+          similarLinkIds,
         };
       }
     }

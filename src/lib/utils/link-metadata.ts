@@ -535,12 +535,15 @@ export async function extractLinkMetadata(url: string): Promise<LinkMetadata | n
     }
   } catch (error) {
     console.error("Error fetching metadata for URL:", url, error);
-    // Return minimal metadata with URL as title
+    // Return minimal metadata with URL as title and a best-effort favicon
     try {
-      const urlObj = new URL(url.startsWith("http") ? url : `https://${url}`);
+      const formattedUrl = url.startsWith("http://") || url.startsWith("https://") ? url : `https://${url}`;
+      const urlObj = new URL(formattedUrl);
       return {
         title: urlObj.hostname.replace(/^www\./, ""),
-        favicon: extractFaviconFromUrl(url),
+        // Use the normalized URL when deriving the favicon so we don't fail
+        // on inputs without an explicit protocol (e.g. example.com).
+        favicon: extractFaviconFromUrl(formattedUrl),
       };
     } catch {
       return {

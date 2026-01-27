@@ -38,6 +38,7 @@ export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, select
   const [manuallySelectedCollectionId, setManuallySelectedCollectionId] = React.useState<string | null>(null);
   const [manuallySelectedCollectionName, setManuallySelectedCollectionName] = React.useState<string | null>(null);
   const [manuallySelectedCollectionColor, setManuallySelectedCollectionColor] = React.useState<string | null>(null);
+  const [hasExactDuplicate, setHasExactDuplicate] = React.useState(false);
 
   // Reset form when dialog closes
   React.useEffect(() => {
@@ -54,6 +55,7 @@ export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, select
       setManuallySelectedCollectionColor(null);
       setError(null);
       setDuplicateWarning([]);
+      setHasExactDuplicate(false);
       setShowDuplicateDialog(false);
       setShowCollectionDialog(false);
     }
@@ -167,16 +169,16 @@ export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, select
       });
 
       if (result.success) {
-        if (result.duplicateLinkIds && result.duplicateLinkIds.length > 0) {
-          setDuplicateWarning(result.duplicateLinkIds);
-          setShowDuplicateDialog(true);
-        } else {
-          onOpenChange(false);
-          router.refresh();
-        }
+        onOpenChange(false);
+        router.refresh();
       } else {
-        if (result.duplicateLinkIds && result.duplicateLinkIds.length > 0) {
-          setDuplicateWarning(result.duplicateLinkIds);
+        const hasDuplicates = !!(result.duplicateLinkIds && result.duplicateLinkIds.length > 0);
+        const hasSimilar = !!(result.similarLinkIds && result.similarLinkIds.length > 0);
+
+        // Show a confirmation dialog when we have either exact duplicates or very similar links
+        if (hasDuplicates || hasSimilar) {
+          setHasExactDuplicate(hasDuplicates);
+          setDuplicateWarning(result.duplicateLinkIds || result.similarLinkIds || []);
           setShowDuplicateDialog(true);
         } else {
           setError(result.error || "Failed to create link");
@@ -473,8 +475,12 @@ export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, select
         <Dialog
           open={showDuplicateDialog}
           onOpenChange={setShowDuplicateDialog}
-          title="Duplicate Link Detected"
-          description="A link with this URL already exists. Do you want to proceed anyway?"
+        title={hasExactDuplicate ? "Duplicate Link Detected" : "Similar Link Detected"}
+        description={
+          hasExactDuplicate
+            ? "A link with this exact URL already exists. Do you want to proceed anyway?"
+            : "A very similar link already exists. Do you want to proceed anyway?"
+        }
           headerIcon={
             <div className="w-8 h-8 rounded-full bg-warning-100 dark:bg-warning-900/30 flex items-center justify-center">
               <svg
@@ -498,7 +504,9 @@ export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, select
               <div className="space-y-4">
                 <div className="text-center space-y-2">
                   <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                    This URL appears to be a duplicate of an existing link in your collection.
+                    {hasExactDuplicate
+                      ? "This URL appears to be a duplicate of an existing link in your collection."
+                      : "This URL is very similar to an existing link in your collection (for example, only a few characters differ)."}
                   </p>
                 </div>
 
