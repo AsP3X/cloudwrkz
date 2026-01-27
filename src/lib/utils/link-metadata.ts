@@ -3,7 +3,7 @@
  * Fetches and extracts metadata from URLs (title, description, Open Graph tags, etc.)
  */
 
-import { isYouTubeUrl, extractYouTubeVideoId } from "@/lib/utils/links";
+import { isYouTubeUrl, isWikipediaUrl } from "@/lib/utils/links";
 
 export interface LinkMetadata {
   title?: string;
@@ -399,66 +399,44 @@ export function extractMetadataFromHtml(html: string, url: string): LinkMetadata
 }
 
 /**
- * Fetch YouTube video metadata using oEmbed API
- */
-async function fetchYouTubeMetadata(url: string): Promise<LinkMetadata | null> {
-  try {
-    const videoId = extractYouTubeVideoId(url);
-    
-    if (!videoId) {
-      return null;
-    }
-
-    // Use YouTube oEmbed API (no API key required)
-    const oEmbedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-
-    try {
-      const response = await fetch(oEmbedUrl, {
-        signal: controller.signal,
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        },
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        return null;
-      }
-
-      const data = await response.json() as { title?: string; author_name?: string; thumbnail_url?: string };
-      
-      return {
-        title: data.title || undefined,
-        author: data.author_name || undefined,
-        image: data.thumbnail_url || undefined,
-        favicon: "https://www.google.com/s2/favicons?domain=youtube.com&sz=64",
-      };
-    } catch (fetchError) {
-      clearTimeout(timeoutId);
-      return null;
-    }
-  } catch (error) {
-    return null;
-  }
-}
-
-/**
  * Fetch and extract metadata from a URL
  * This should be called server-side only
  */
 export async function extractLinkMetadata(url: string): Promise<LinkMetadata | null> {
   try {
-    // Check if this is a YouTube URL and use oEmbed API for better results
-    if (isYouTubeUrl(url)) {
-      const youtubeMetadata = await fetchYouTubeMetadata(url);
-      if (youtubeMetadata && youtubeMetadata.title) {
-        return youtubeMetadata;
+    // Wikipedia links: use dedicated extractor for richer metadata,
+    // keeping Wikipedia-specific logic in a separate module so this
+    // file stays focused on generic metadata extraction.
+    if (isWikipediaUrl(url)) {
+      try {
+        const { extractWikipediaMetadata } = await import(
+          "@/lib/utils/link-metadata-wikipedia"
+        );
+        const wikipediaMetadata = await extractWikipediaMetadata(url);
+        if (wikipediaMetadata && wikipediaMetadata.title) {
+          return prioritizeMetadata(wikipediaMetadata, wikipediaMetadata.ogUrl || url);
+        }
+      } catch {
+        // If the Wikipedia-specific extractor fails for any reason,
+        // gracefully fall back to the generic HTML-based extractor.
       }
-      // If oEmbed fails, fall through to regular extraction
+    }
+
+    // Check if this is a YouTube URL and use the dedicated extractor
+    // for richer, YouTube-specific metadata.
+    if (isYouTubeUrl(url)) {
+      try {
+        const { extractYouTubeMetadata } = await import(
+          "@/lib/utils/link-metadata-youtube"
+        );
+        const youtubeMetadata = await extractYouTubeMetadata(url);
+        if (youtubeMetadata && youtubeMetadata.title) {
+          return prioritizeMetadata(youtubeMetadata, youtubeMetadata.ogUrl || url);
+        }
+      } catch {
+        // If the YouTube-specific extractor fails for any reason,
+        // gracefully fall back to the generic HTML-based extractor.
+      }
     }
 
     // Validate and normalize URL

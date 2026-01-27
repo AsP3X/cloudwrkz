@@ -219,3 +219,23 @@ export function extractYouTubeVideoId(url: string): string | null {
     return regexMatch ? regexMatch[1] : null;
   }
 }
+
+/**
+ * Check if a URL is a Wikipedia article
+ */
+export function isWikipediaUrl(url: string): boolean {
+  if (!url) return false;
+  try {
+    const normalized = url.trim();
+    const withProtocol =
+      normalized.startsWith("http://") || normalized.startsWith("https://")
+        ? normalized
+        : `https://${normalized}`;
+    const u = new URL(withProtocol);
+    return /\.wikipedia\.org$/i.test(u.hostname);
+  } catch {
+    // Fallback to a simple hostname check if URL parsing fails
+    return /wikipedia\.org/i.test(url);
+  }
+}
+
