@@ -8,7 +8,7 @@ import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
-import { updateLink, extractLinkMetadataAction } from "@/server/actions/links";
+import { updateLink, extractLinkMetadataAction, refetchLinkFavicon } from "@/server/actions/links";
 import { formatLinkUrl, validateUrl } from "@/lib/utils/links";
 import { cn } from "@/lib/utils/cn";
 
@@ -28,6 +28,7 @@ interface LinkEditFormProps {
     url: string;
     title: string;
     description: string | null;
+    favicon: string | null;
     linkType: string;
     tags: string[];
     notes: string | null;
@@ -81,6 +82,7 @@ export const LinkEditForm = ({ link, collections, onCancel, onSaveSuccess, rende
       linkType: link.linkType as "WEBSITE" | "FILE" | "DOCUMENT" | "VIDEO" | "IMAGE" | "OTHER",
       rating: link.rating?.toString() || "",
       isFavorite: link.isFavorite,
+      favicon: link.favicon || "",
     },
   });
 
@@ -183,11 +185,75 @@ export const LinkEditForm = ({ link, collections, onCancel, onSaveSuccess, rende
         if (result.data.description) {
           setValue("description", result.data.description);
         }
+        if (result.data.favicon) {
+          setValue("favicon", result.data.favicon);
+        }
       }
     } catch (error) {
       setServerError("Failed to extract metadata");
     } finally {
       setExtractingMetadata(false);
+    }
+  };
+
+  const handleRefetchFavicon = async () => {
+    const url = watch("url");
+    if (!url.trim()) return;
+
+    const formattedUrl = formatLinkUrl(url);
+    if (!validateUrl(formattedUrl)) {
+      setServerError("Invalid URL");
+      return;
+    }
+
+    setExtractingMetadata(true);
+    setServerError(null);
+
+    try {
+      const result = await refetchLinkFavicon(link.id, formattedUrl);
+      if (result.success && result.data) {
+        setValue("favicon", result.data.favicon || "");
+      } else if (!result.success) {
+        setServerError(result.error || "Failed to refetch favicon");
+      }
+    } catch (error) {
+      setServerError("Failed to refetch favicon");
+    } finally {
+      setExtractingMetadata(false);
+    }
+  };
+
+  const handleUploadFavicon = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setExtractingMetadata(true);
+    setServerError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/links/upload-favicon", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || "Failed to upload favicon");
+      }
+
+      const data = await response.json();
+      if (data.url) {
+        setValue("favicon", data.url);
+      }
+    } catch (error) {
+      console.error("Favicon upload error:", error);
+      setServerError(error instanceof Error ? error.message : "Failed to upload favicon");
+    } finally {
+      setExtractingMetadata(false);
+      event.target.value = "";
     }
   };
 
@@ -245,6 +311,7 @@ export const LinkEditForm = ({ link, collections, onCancel, onSaveSuccess, rende
         url: formattedUrl,
         title: data.title.trim() || undefined,
         description: data.description || undefined,
+        favicon: data.favicon?.trim() || undefined,
         linkType: data.linkType,
         tags,
         notes: data.notes || undefined,
@@ -351,6 +418,63 @@ export const LinkEditForm = ({ link, collections, onCancel, onSaveSuccess, rende
             required
             {...register("url", { required: "URL is required" })}
           />
+
+          {/* Favicon Controls */}
+          <div className="mt-4 space-y-2">
+            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+              Favicon
+            </label>
+            <div className="flex items-center gap-3 mb-1">
+              {watch("favicon") ? (
+                <img
+                  src={watch("favicon")}
+                  alt="Favicon preview"
+                  className="w-6 h-6 rounded border border-neutral-200 dark:border-neutral-700"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = "none";
+                  }}
+                />
+              ) : (
+                <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                  No favicon set
+                </span>
+              )}
+              {watch("favicon") && (
+                <span className="text-xs text-neutral-500 dark:text-neutral-400 truncate max-w-[200px]">
+                  {watch("favicon")}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <div>
+                <input
+                  id="link-edit-upload-favicon-input"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleUploadFavicon}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => document.getElementById("link-edit-upload-favicon-input")?.click()}
+                  disabled={isSubmitting}
+                >
+                  Choose Favicon
+                </Button>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleRefetchFavicon}
+                disabled={isSubmitting || extractingMetadata}
+              >
+                Refetch from URL
+              </Button>
+            </div>
+          </div>
         </div>
         
         <div>

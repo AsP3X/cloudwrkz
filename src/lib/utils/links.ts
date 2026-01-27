@@ -104,6 +104,14 @@ export function extractDomain(url: string): string {
 export function getFaviconUrl(url: string): string {
   try {
     const domain = extractDomain(url);
+
+    // Prefer official favicons for certain sites to avoid
+    // low-quality/generated icons with solid backgrounds.
+    if (domain === "github.com") {
+      // GitHub's official transparent favicon
+      return "https://github.githubassets.com/favicons/favicon.svg";
+    }
+
     return `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
   } catch {
     return "";

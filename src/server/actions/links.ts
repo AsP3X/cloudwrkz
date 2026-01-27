@@ -13,6 +13,7 @@ import {
   getFaviconUrl,
   getLinkTypeFromUrl,
 } from "@/lib/utils/links";
+import { cacheFavicon } from "@/lib/utils/favicon-cache";
 import { extractLinkMetadata } from "@/lib/utils/link-metadata";
 
 export type LinkType = "WEBSITE" | "FILE" | "DOCUMENT" | "VIDEO" | "IMAGE" | "OTHER";
@@ -129,6 +130,107 @@ export async function extractLinkMetadataAction(url: string) {
 }
 
 /**
+ * Refetch and cache favicon for a link based on its URL.
+ * Always returns the cached path when possible and updates the link record.
+ */
+export async function refetchLinkFavicon(
+  linkId: string,
+  url: string
+): Promise<ActionResult<{ favicon: string | null }>> {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.LINKS);
+    if (!moduleEnabled) {
+      return {
+        success: false,
+        error: "Links module is not enabled",
+      };
+    }
+
+    const user = await requireAuth();
+    await requireAnyPermission("links.update");
+
+    const existingLink = await prisma.link.findUnique({
+      where: { id: linkId },
+      select: { id: true, userId: true },
+    });
+
+    if (!existingLink || existingLink.userId !== user.id) {
+      return {
+        success: false,
+        error: "Link not found or you don't have permission",
+      };
+    }
+
+    const formattedUrl = formatLinkUrl(url);
+    if (!validateUrl(formattedUrl)) {
+      return {
+        success: false,
+        error: "Invalid URL format",
+        fieldErrors: { url: ["Please enter a valid URL"] },
+      };
+    }
+
+    // Try to extract metadata and use its favicon if it is a real URL
+    let faviconUrl: string | undefined;
+    try {
+      const metadata = await extractLinkMetadata(formattedUrl);
+      if (
+        metadata?.favicon &&
+        (metadata.favicon.startsWith("http://") || metadata.favicon.startsWith("https://"))
+      ) {
+        faviconUrl = metadata.favicon;
+      }
+    } catch (error) {
+      console.error("Metadata extraction failed while refetching favicon:", error);
+    }
+
+    // Fallback to generic favicon helper if metadata didn't yield one
+    if (!faviconUrl) {
+      faviconUrl = getFaviconUrl(formattedUrl) || undefined;
+    }
+
+    if (!faviconUrl) {
+      // Clear favicon if we can't determine a new one
+      await prisma.link.update({
+        where: { id: linkId },
+        data: { favicon: null },
+      });
+      return {
+        success: true,
+        data: { favicon: null },
+      };
+    }
+
+    // Cache favicon locally and always prefer the cached path
+    let finalFavicon = faviconUrl;
+    try {
+      const cached = await cacheFavicon(faviconUrl);
+      if (cached) {
+        finalFavicon = cached;
+      }
+    } catch (error) {
+      console.error("Favicon caching failed while refetching:", error);
+    }
+
+    await prisma.link.update({
+      where: { id: linkId },
+      data: { favicon: finalFavicon },
+    });
+
+    return {
+      success: true,
+      data: { favicon: finalFavicon },
+    };
+  } catch (error) {
+    console.error("Error refetching favicon:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to refetch favicon",
+    };
+  }
+}
+
+/**
  * Create a new link
  */
 export async function createLink(input: LinkInput): Promise<ActionResult<{ id: string }>> {
@@ -225,6 +327,30 @@ export async function createLink(input: LinkInput): Promise<ActionResult<{ id: s
     // Get favicon if not provided
     if (!favicon) {
       favicon = getFaviconUrl(formattedUrl);
+    }
+
+    // Cache favicon locally so we don't have to rely on the remote
+    // site (or Google's favicon service) on every render.
+    if (favicon) {
+      try {
+        let cachedFavicon = await cacheFavicon(favicon);
+
+        // If caching the extracted favicon failed (for example because it's a data: URL),
+        // fall back to a generic favicon URL derived from the site and cache that instead.
+        if (!cachedFavicon && !favicon.startsWith("/uploads/")) {
+          const fallbackFavicon = getFaviconUrl(formattedUrl);
+          if (fallbackFavicon) {
+            cachedFavicon = await cacheFavicon(fallbackFavicon);
+          }
+        }
+
+        if (cachedFavicon) {
+          favicon = cachedFavicon;
+        }
+      } catch (error) {
+        // Favicon caching should never block link creation
+        console.error("Favicon caching failed:", error);
+      }
     }
 
     // Validate rating
@@ -390,6 +516,32 @@ export async function updateLink(
         }
       } catch (error) {
         console.error("Metadata extraction failed:", error);
+      }
+    }
+
+    // If we still don't have a favicon, fall back to the generic helper
+    if (!favicon && formattedUrl) {
+      favicon = getFaviconUrl(formattedUrl);
+    }
+
+    // Cache favicon locally so we can serve it from our own domain
+    // and avoid re-fetching it from the original site.
+    if (favicon) {
+      try {
+        let cachedFavicon = await cacheFavicon(favicon);
+
+        if (!cachedFavicon && !favicon.startsWith("/uploads/") && formattedUrl) {
+          const fallbackFavicon = getFaviconUrl(formattedUrl);
+          if (fallbackFavicon) {
+            cachedFavicon = await cacheFavicon(fallbackFavicon);
+          }
+        }
+
+        if (cachedFavicon) {
+          favicon = cachedFavicon;
+        }
+      } catch (error) {
+        console.error("Favicon caching failed:", error);
       }
     }
 

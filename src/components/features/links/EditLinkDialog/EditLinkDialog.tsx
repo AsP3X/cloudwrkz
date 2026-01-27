@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
-import { updateLink, extractLinkMetadataAction } from "@/server/actions/links";
+import { updateLink, extractLinkMetadataAction, refetchLinkFavicon } from "@/server/actions/links";
 import { formatLinkUrl, validateUrl } from "@/lib/utils/links";
 import { formatDate } from "@/lib/utils/date";
 
@@ -19,6 +19,7 @@ interface EditLinkDialogProps {
     url: string;
     title: string;
     description: string | null;
+    favicon: string | null;
     linkType: string;
     tags: string[];
     notes: string | null;
@@ -40,6 +41,7 @@ export function EditLinkDialog({ open, onOpenChange, link }: EditLinkDialogProps
   const [url, setUrl] = React.useState(link.url);
   const [title, setTitle] = React.useState(link.title);
   const [description, setDescription] = React.useState(link.description || "");
+  const [favicon, setFavicon] = React.useState(link.favicon || "");
   const [linkType, setLinkType] = React.useState<"WEBSITE" | "FILE" | "DOCUMENT" | "VIDEO" | "IMAGE" | "OTHER">(
     link.linkType as any
   );
@@ -55,6 +57,7 @@ export function EditLinkDialog({ open, onOpenChange, link }: EditLinkDialogProps
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [extractingMetadata, setExtractingMetadata] = React.useState(false);
+  const [updatingFavicon, setUpdatingFavicon] = React.useState(false);
 
   // Load collections
   React.useEffect(() => {
@@ -73,6 +76,7 @@ export function EditLinkDialog({ open, onOpenChange, link }: EditLinkDialogProps
       setUrl(link.url);
       setTitle(link.title);
       setDescription(link.description || "");
+      setFavicon(link.favicon || "");
       setLinkType(link.linkType as any);
       setTags(link.tags);
       setNotes(link.notes || "");
@@ -103,11 +107,76 @@ export function EditLinkDialog({ open, onOpenChange, link }: EditLinkDialogProps
         if (result.data.description) {
           setDescription(result.data.description);
         }
+        if (result.data.favicon) {
+          setFavicon(result.data.favicon);
+        }
       }
     } catch (error) {
       setError("Failed to extract metadata");
     } finally {
       setExtractingMetadata(false);
+    }
+  };
+
+  const handleRefetchFavicon = async () => {
+    if (!url.trim()) return;
+
+    const formattedUrl = formatLinkUrl(url);
+    if (!validateUrl(formattedUrl)) {
+      setError("Invalid URL");
+      return;
+    }
+
+    setUpdatingFavicon(true);
+    setError(null);
+
+    try {
+      const result = await refetchLinkFavicon(link.id, formattedUrl);
+      if (result.success && result.data) {
+        setFavicon(result.data.favicon || "");
+      } else if (!result.success) {
+        setError(result.error || "Failed to refetch favicon");
+      }
+    } catch (err) {
+      console.error("Refetch favicon error:", err);
+      setError("Failed to refetch favicon");
+    } finally {
+      setUpdatingFavicon(false);
+    }
+  };
+
+  const handleUploadFavicon = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUpdatingFavicon(true);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/links/upload-favicon", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || "Failed to upload favicon");
+      }
+
+      const data = await response.json();
+      if (data.url) {
+        setFavicon(data.url);
+      }
+    } catch (err) {
+      console.error("Favicon upload error:", err);
+      setError(err instanceof Error ? err.message : "Failed to upload favicon");
+    } finally {
+      setUpdatingFavicon(false);
+      // Reset the input so the same file can be selected again if needed
+      event.target.value = "";
     }
   };
 
@@ -145,6 +214,7 @@ export function EditLinkDialog({ open, onOpenChange, link }: EditLinkDialogProps
         url: formattedUrl,
         title: title.trim() || undefined,
         description: description.trim() || undefined,
+        favicon: favicon.trim() || undefined,
         linkType,
         tags,
         notes: notes.trim() || undefined,
@@ -203,6 +273,63 @@ export function EditLinkDialog({ open, onOpenChange, link }: EditLinkDialogProps
                 placeholder="https://example.com"
                 required
               />
+            </div>
+
+            {/* Favicon Controls */}
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                Favicon
+              </label>
+              <div className="flex items-center gap-3 mb-2">
+                {favicon ? (
+                  <img
+                    src={favicon}
+                    alt="Favicon preview"
+                    className="w-6 h-6 rounded border border-neutral-200 dark:border-neutral-700"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = "none";
+                    }}
+                  />
+                ) : (
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                    No favicon set
+                  </span>
+                )}
+                {favicon && (
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400 truncate max-w-[200px]">
+                    {favicon}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <div>
+                  <input
+                    id="upload-favicon-input"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleUploadFavicon}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => document.getElementById("upload-favicon-input")?.click()}
+                    disabled={updatingFavicon}
+                  >
+                    Choose Favicon
+                  </Button>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleRefetchFavicon}
+                  disabled={updatingFavicon || extractingMetadata}
+                >
+                  {updatingFavicon ? "Updating..." : "Refetch from URL"}
+                </Button>
+              </div>
             </div>
 
             <div>

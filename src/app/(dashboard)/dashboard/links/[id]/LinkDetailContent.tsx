@@ -191,6 +191,7 @@ export const LinkDetailContent = ({
               url: link.url,
               title: link.title,
               description: link.description,
+              favicon: link.favicon,
               linkType: link.linkType,
               tags: link.tags,
               notes: link.notes,
