@@ -38,3 +38,6 @@ next-env.d.ts
 
 # prisma
 /prisma/migrations
+
+# user uploads (favicons, task/ticket attachments, etc.)
+/public/uploads/
