@@ -1424,6 +1424,185 @@ export async function removeLinkFromCollection(
 }
 
 /**
+ * Bulk add links to a collection
+ */
+export async function bulkAddLinksToCollection(
+  linkIds: string[],
+  collectionId: string
+): Promise<ActionResult> {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.LINKS);
+    if (!moduleEnabled) {
+      return {
+        success: false,
+        error: "Links module is not enabled",
+      };
+    }
+
+    const user = await requireAuth();
+    await requireAnyPermission("links.update");
+
+    if (!linkIds.length) {
+      return {
+        success: false,
+        error: "No links selected",
+      };
+    }
+
+    // Verify all links belong to user
+    const links = await prisma.link.findMany({
+      where: { id: { in: linkIds }, userId: user.id },
+      select: { id: true },
+    });
+    if (links.length !== linkIds.length) {
+      return {
+        success: false,
+        error: "Some links were not found or you don't have permission",
+      };
+    }
+
+    // Verify collection access
+    const collection = await prisma.collection.findFirst({
+      where: {
+        id: collectionId,
+        OR: [
+          { ownerId: user.id },
+          {
+            members: {
+              some: {
+                userId: user.id,
+                role: { in: ["VIEWER", "EDITOR"] },
+              },
+            },
+          },
+        ],
+      },
+      select: { id: true },
+    });
+
+    if (!collection) {
+      return {
+        success: false,
+        error: "Collection not found or you don't have access",
+      };
+    }
+
+    // Get existing link-collection pairs to avoid unique constraint violation
+    const existing = await prisma.linkCollection.findMany({
+      where: {
+        collectionId,
+        linkId: { in: linkIds },
+      },
+      select: { linkId: true },
+    });
+    const existingLinkIds = new Set(existing.map((e) => e.linkId));
+    const toAdd = linkIds.filter((id) => !existingLinkIds.has(id));
+
+    if (toAdd.length > 0) {
+      await prisma.linkCollection.createMany({
+        data: toAdd.map((linkId) => ({ linkId, collectionId })),
+      });
+    }
+
+    revalidatePath("/dashboard/links");
+    return {
+      success: true,
+    };
+  } catch (error) {
+    console.error("Error bulk adding links to collection:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to add links to collection",
+    };
+  }
+}
+
+/**
+ * Create a new collection and add selected links to it
+ */
+export async function bulkCreateCollectionWithLinks(
+  linkIds: string[],
+  name: string,
+  color?: string
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.LINKS);
+    if (!moduleEnabled) {
+      return {
+        success: false,
+        error: "Links module is not enabled",
+      };
+    }
+
+    const user = await requireAuth();
+    await requireAnyPermission("collections.create", "links.update");
+
+    if (!linkIds.length) {
+      return {
+        success: false,
+        error: "No links selected",
+      };
+    }
+
+    if (!name || name.trim().length === 0) {
+      return {
+        success: false,
+        error: "Collection name is required",
+        fieldErrors: { name: ["Collection name cannot be empty"] },
+      };
+    }
+
+    // Verify all links belong to user
+    const links = await prisma.link.findMany({
+      where: { id: { in: linkIds }, userId: user.id },
+      select: { id: true },
+    });
+    if (links.length !== linkIds.length) {
+      return {
+        success: false,
+        error: "Some links were not found or you don't have permission",
+      };
+    }
+
+    const { createCollection } = await import("./collections");
+    const createResult = await createCollection({
+      name: name.trim(),
+      color: color?.trim() || undefined,
+    });
+    if (!createResult.success) {
+      return {
+        success: false,
+        error: createResult.error ?? "Failed to create collection",
+        fieldErrors: createResult.fieldErrors,
+      };
+    }
+    if (!createResult.data) {
+      return {
+        success: false,
+        error: "Failed to create collection",
+      };
+    }
+
+    const collectionId = createResult.data.id;
+    await prisma.linkCollection.createMany({
+      data: linkIds.map((linkId) => ({ linkId, collectionId })),
+    });
+
+    revalidatePath("/dashboard/links");
+    return {
+      success: true,
+      data: { id: collectionId },
+    };
+  } catch (error) {
+    console.error("Error creating collection with links:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to create collection",
+    };
+  }
+}
+
+/**
  * Toggle favorite status
  */
 export async function toggleFavorite(linkId: string): Promise<ActionResult> {

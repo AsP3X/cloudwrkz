@@ -7,7 +7,17 @@ import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/Badge";
 import { formatDate } from "@/lib/utils/date";
 import { type LinkViewMode } from "../LinkViewContext";
-import { bulkUpdateLinks, bulkDeleteLinks, bulkArchiveLinks, bulkUnarchiveLinks } from "@/server/actions/links";
+import {
+  bulkDeleteLinks,
+  bulkArchiveLinks,
+  bulkUnarchiveLinks,
+  bulkAddLinksToCollection,
+  bulkCreateCollectionWithLinks,
+} from "@/server/actions/links";
+import { getUserCollections } from "@/server/actions/collections";
+import { Dialog } from "@/components/ui/Dialog";
+import { Select } from "@/components/ui/Select";
+import { Input } from "@/components/ui/Input";
 import { cn } from "@/lib/utils/cn";
 import { extractDomain } from "@/lib/utils/links";
 
@@ -57,6 +67,24 @@ const getLinkTypeColor = (type: string) => {
   }
 };
 
+// Predefined color options for collection creation (matches CreateCollectionDialog)
+const COLLECTION_COLOR_OPTIONS = [
+  { value: "#3B82F6", label: "Blue" },
+  { value: "#10B981", label: "Green" },
+  { value: "#F59E0B", label: "Amber" },
+  { value: "#EF4444", label: "Red" },
+  { value: "#8B5CF6", label: "Purple" },
+  { value: "#EC4899", label: "Pink" },
+  { value: "#06B6D4", label: "Cyan" },
+  { value: "#84CC16", label: "Lime" },
+  { value: "#F97316", label: "Orange" },
+  { value: "#6366F1", label: "Indigo" },
+  { value: "#14B8A6", label: "Teal" },
+  { value: "#A855F7", label: "Violet" },
+];
+
+const isValidHexColor = (value: string) => /^#[0-9A-Fa-f]{6}$/.test(value);
+
 const getLinkTypeLabel = (type: string) => {
   switch (type) {
     case "WEBSITE":
@@ -80,12 +108,40 @@ export const LinkList = ({ links, viewMode, isArchivePage = false }: LinkListPro
   const [isProcessing, setIsProcessing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false);
+  const [showCollectionDialog, setShowCollectionDialog] = React.useState(false);
+  const [collectionDialogMode, setCollectionDialogMode] = React.useState<"add" | "create">("add");
+  const [selectedCollectionId, setSelectedCollectionId] = React.useState("");
+  const [newCollectionName, setNewCollectionName] = React.useState("");
+  const [newCollectionColor, setNewCollectionColor] = React.useState("");
+  const [collections, setCollections] = React.useState<Array<{ id: string; name: string; color: string | null }>>([]);
+  const [loadingCollections, setLoadingCollections] = React.useState(false);
+  const [collectionError, setCollectionError] = React.useState<string | null>(null);
+  const [newCollectionError, setNewCollectionError] = React.useState<string | null>(null);
   const selectAllRef = React.useRef<HTMLInputElement>(null);
   const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => {
     setMounted(true);
   }, []);
+
+  React.useEffect(() => {
+    if (showCollectionDialog) {
+      setLoadingCollections(true);
+      setCollectionError(null);
+      setNewCollectionError(null);
+      setSelectedCollectionId("");
+      setNewCollectionName("");
+      setNewCollectionColor("");
+      setCollectionDialogMode("add");
+      getUserCollections("")
+        .then((cols) => {
+          setCollections(cols);
+          setCollectionDialogMode(cols.length === 0 ? "create" : "add");
+        })
+        .catch(() => setCollectionError("Failed to load collections"))
+        .finally(() => setLoadingCollections(false));
+    }
+  }, [showCollectionDialog]);
 
   const allSelected = links.length > 0 && selectedLinks.size === links.length;
   const someSelected = selectedLinks.size > 0 && selectedLinks.size < links.length;
@@ -190,6 +246,72 @@ export const LinkList = ({ links, viewMode, isArchivePage = false }: LinkListPro
     setError(null);
   };
 
+  const handleCollectionClick = () => {
+    if (selectedLinks.size === 0) return;
+    setShowCollectionDialog(true);
+  };
+
+  const handleCollectionDialogModeChange = (mode: "add" | "create") => {
+    setCollectionDialogMode(mode);
+    setCollectionError(null);
+    setNewCollectionError(null);
+  };
+
+  const handleAddToCollectionSubmit = async () => {
+    if (!selectedCollectionId || selectedLinks.size === 0) return;
+    setIsProcessing(true);
+    setCollectionError(null);
+    try {
+      const result = await bulkAddLinksToCollection(Array.from(selectedLinks), selectedCollectionId);
+      if (result.success) {
+        setShowCollectionDialog(false);
+        setSelectedCollectionId("");
+        setSelectedLinks(new Set());
+        router.refresh();
+      } else {
+        setCollectionError(result.error || "Failed to add to collection");
+      }
+    } catch (err) {
+      setCollectionError("An unexpected error occurred");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleNewCollectionSubmit = async () => {
+    if (selectedLinks.size === 0) return;
+    const name = newCollectionName.trim();
+    if (!name) {
+      setNewCollectionError("Collection name is required");
+      return;
+    }
+    if (newCollectionColor && !isValidHexColor(newCollectionColor)) {
+      setNewCollectionError("Please enter a valid hex color code (e.g., #3B82F6)");
+      return;
+    }
+    setIsProcessing(true);
+    setNewCollectionError(null);
+    try {
+      const result = await bulkCreateCollectionWithLinks(
+        Array.from(selectedLinks),
+        name,
+        newCollectionColor.trim() || undefined
+      );
+      if (result.success) {
+        setShowCollectionDialog(false);
+        setNewCollectionName("");
+        setSelectedLinks(new Set());
+        router.refresh();
+      } else {
+        setNewCollectionError(result.error || "Failed to create collection");
+      }
+    } catch (err) {
+      setNewCollectionError("An unexpected error occurred");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   if (links.length === 0) {
     return null;
   }
@@ -212,6 +334,15 @@ export const LinkList = ({ links, viewMode, isArchivePage = false }: LinkListPro
                 </button>
               </div>
               <div className="flex items-center gap-2">
+                {!isArchivePage && (
+                  <button
+                    onClick={handleCollectionClick}
+                    disabled={isProcessing}
+                    className="px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md disabled:opacity-50"
+                  >
+                    Collection
+                  </button>
+                )}
                 {isArchivePage ? (
                   <button
                     onClick={handleBulkUnarchive}
@@ -757,6 +888,215 @@ export const LinkList = ({ links, viewMode, isArchivePage = false }: LinkListPro
           </div>
         </div>
       )}
+
+      <Dialog
+        open={showCollectionDialog}
+        onOpenChange={setShowCollectionDialog}
+        title="Add to collection"
+        description={`Choose how to add ${selectedLinks.size} selected link${selectedLinks.size !== 1 ? "s" : ""} to a collection.`}
+      >
+        <div className="px-4 sm:px-6 pb-6 space-y-5">
+          {/* Mode selector */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => !loadingCollections && collections.length > 0 && handleCollectionDialogModeChange("add")}
+              disabled={loadingCollections || collections.length === 0}
+              className={cn(
+                "rounded-lg border-2 p-4 text-left transition-all",
+                collectionDialogMode === "add"
+                  ? "border-primary-500 bg-primary-50 dark:bg-primary-900/20 dark:border-primary-500"
+                  : "border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600",
+                (loadingCollections || collections.length === 0) && "opacity-60 cursor-not-allowed"
+              )}
+            >
+              <div className="flex items-start gap-3">
+                <span
+                  className={cn(
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+                    collectionDialogMode === "add"
+                      ? "bg-primary-100 dark:bg-primary-800/50 text-primary-600 dark:text-primary-400"
+                      : "bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400"
+                  )}
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12a2.25 2.25 0 012.25-2.25h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+                  </svg>
+                </span>
+                <div className="min-w-0 flex-1">
+                  <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 block">
+                    Add to existing
+                  </span>
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 block">
+                    {collections.length === 0 && !loadingCollections
+                      ? "No collections yet"
+                      : "Put links into a collection you already have"}
+                  </span>
+                </div>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleCollectionDialogModeChange("create")}
+              className={cn(
+                "rounded-lg border-2 p-4 text-left transition-all",
+                collectionDialogMode === "create"
+                  ? "border-primary-500 bg-primary-50 dark:bg-primary-900/20 dark:border-primary-500"
+                  : "border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600"
+              )}
+            >
+              <div className="flex items-start gap-3">
+                <span
+                  className={cn(
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+                    collectionDialogMode === "create"
+                      ? "bg-primary-100 dark:bg-primary-800/50 text-primary-600 dark:text-primary-400"
+                      : "bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400"
+                  )}
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                  </svg>
+                </span>
+                <div className="min-w-0 flex-1">
+                  <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 block">
+                    Create new collection
+                  </span>
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 block">
+                    Create a collection and add these links to it
+                  </span>
+                </div>
+              </div>
+            </button>
+          </div>
+
+          {/* Form for selected mode */}
+          <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50/50 dark:bg-neutral-800/30 p-4">
+            {loadingCollections ? (
+              <p className="text-sm text-neutral-500 dark:text-neutral-400 py-2">Loading collections...</p>
+            ) : collectionDialogMode === "add" ? (
+              <div className="space-y-3">
+                <Select
+                  label="Choose collection"
+                  options={collections.map((c) => ({ value: c.id, label: c.name }))}
+                  placeholder="Select a collection"
+                  value={selectedCollectionId}
+                  onChange={(e) => setSelectedCollectionId(e.target.value)}
+                />
+                {collectionError && (
+                  <p className="text-sm text-error-600 dark:text-error-400">{collectionError}</p>
+                )}
+                {collections.length === 0 && (
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                    You don&apos;t have any collections yet. Choose &quot;Create new collection&quot; above.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <Input
+                  label="Collection name"
+                  name="newCollectionName"
+                  value={newCollectionName}
+                  onChange={(e) => setNewCollectionName(e.target.value)}
+                  placeholder="e.g. Research, Bookmarks, Work"
+                  autoFocus
+                />
+                <div>
+                  <label htmlFor="newCollectionColor" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                    Color
+                  </label>
+                  <div className="mb-2">
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">Quick select</p>
+                    <div className="flex flex-wrap gap-2">
+                      {COLLECTION_COLOR_OPTIONS.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setNewCollectionColor(option.value)}
+                          className={cn(
+                            "w-9 h-9 rounded-lg border-2 transition-all",
+                            newCollectionColor === option.value
+                              ? "border-neutral-900 dark:border-neutral-100 scale-110 shadow-md"
+                              : "border-neutral-300 dark:border-neutral-600 hover:border-neutral-400 dark:hover:border-neutral-500 hover:scale-105"
+                          )}
+                          style={{ backgroundColor: option.value }}
+                          title={option.label}
+                          aria-label={`Select ${option.label} color`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex gap-2 items-start">
+                    <div className="flex-1 min-w-0">
+                      <Input
+                        id="newCollectionColor"
+                        type="text"
+                        name="newCollectionColor"
+                        value={newCollectionColor}
+                        onChange={(e) => setNewCollectionColor(e.target.value)}
+                        placeholder="#3B82F6"
+                        className={newCollectionColor && !isValidHexColor(newCollectionColor) ? "border-error-300 dark:border-error-700" : ""}
+                      />
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1.5">
+                        {newCollectionColor && !isValidHexColor(newCollectionColor) ? (
+                          <span className="text-error-600 dark:text-error-400">Invalid hex color format</span>
+                        ) : (
+                          "Or enter a custom hex color (e.g., #3B82F6)"
+                        )}
+                      </p>
+                    </div>
+                    {newCollectionColor && isValidHexColor(newCollectionColor) && (
+                      <div
+                        className="w-10 h-10 rounded-lg border-2 border-neutral-300 dark:border-neutral-600 flex-shrink-0"
+                        style={{ backgroundColor: newCollectionColor }}
+                        title="Selected color"
+                      />
+                    )}
+                  </div>
+                </div>
+                {newCollectionError && (
+                  <p className="text-sm text-error-600 dark:text-error-400">{newCollectionError}</p>
+                )}
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                  A new collection will be created and {selectedLinks.size} link{selectedLinks.size !== 1 ? "s" : ""} will be added to it.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-1">
+            <button
+              onClick={() => setShowCollectionDialog(false)}
+              className="px-4 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md"
+            >
+              Cancel
+            </button>
+            {collectionDialogMode === "add" ? (
+              <button
+                onClick={handleAddToCollectionSubmit}
+                disabled={isProcessing || loadingCollections || !selectedCollectionId || collections.length === 0}
+                className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-md disabled:opacity-50"
+              >
+                {isProcessing ? "Adding..." : "Add to collection"}
+              </button>
+            ) : (
+              <button
+                onClick={handleNewCollectionSubmit}
+                disabled={
+                  isProcessing ||
+                  !newCollectionName.trim() ||
+                  (newCollectionColor.length > 0 && !isValidHexColor(newCollectionColor))
+                }
+                className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-md disabled:opacity-50"
+              >
+                {isProcessing ? "Creating..." : "Create collection"}
+              </button>
+            )}
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 };
