@@ -8,9 +8,10 @@ import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
-import { updateLink, extractLinkMetadataAction, refetchLinkFavicon } from "@/server/actions/links";
+import { updateLink, extractLinkMetadataAction, refetchLinkFavicon, getLinkTagSuggestions } from "@/server/actions/links";
 import { formatLinkUrl, validateUrl } from "@/lib/utils/links";
 import { formatDate } from "@/lib/utils/date";
+import { cn } from "@/lib/utils/cn";
 
 interface EditLinkDialogProps {
   open: boolean;
@@ -59,6 +60,9 @@ export function EditLinkDialog({ open, onOpenChange, link }: EditLinkDialogProps
   const [error, setError] = React.useState<string | null>(null);
   const [extractingMetadata, setExtractingMetadata] = React.useState(false);
   const [updatingFavicon, setUpdatingFavicon] = React.useState(false);
+  const [tagSuggestions, setTagSuggestions] = React.useState<string[]>([]);
+  const [showTagSuggestions, setShowTagSuggestions] = React.useState(false);
+  const tagInputContainerRef = React.useRef<HTMLDivElement>(null);
 
   // Load collections
   React.useEffect(() => {
@@ -186,12 +190,51 @@ export function EditLinkDialog({ open, onOpenChange, link }: EditLinkDialogProps
     if (trimmed && !tags.includes(trimmed)) {
       setTags([...tags, trimmed]);
       setTagInput("");
+      setShowTagSuggestions(false);
     }
+  };
+
+  const handleSelectTagSuggestion = (tag: string) => {
+    if (!tags.includes(tag)) {
+      setTags([...tags, tag]);
+    }
+    setTagInput("");
+    setTagSuggestions([]);
+    setShowTagSuggestions(false);
   };
 
   const handleRemoveTag = (tagToRemove: string) => {
     setTags(tags.filter((tag) => tag !== tagToRemove));
   };
+
+  // Fetch tag suggestions when typing (debounced)
+  React.useEffect(() => {
+    const q = tagInput.trim();
+    if (!q) {
+      setTagSuggestions([]);
+      setShowTagSuggestions(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      getLinkTagSuggestions(q).then((suggestions) => {
+        const filtered = suggestions.filter((s) => !tags.includes(s));
+        setTagSuggestions(filtered);
+        setShowTagSuggestions(filtered.length > 0);
+      });
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [tagInput, tags]);
+
+  // Close tag suggestions when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (tagInputContainerRef.current && !tagInputContainerRef.current.contains(e.target as Node)) {
+        setShowTagSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -442,28 +485,65 @@ export function EditLinkDialog({ open, onOpenChange, link }: EditLinkDialogProps
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                Tags
-              </label>
-              <div className="flex gap-2 mb-3">
-                <Input
-                  type="text"
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      handleAddTag();
-                    }
-                  }}
-                  placeholder="Add a tag and press Enter"
-                  className="flex-1"
-                />
-                <Button type="button" onClick={handleAddTag} variant="outline" size="sm">
-                  Add
-                </Button>
-              </div>
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                  Tags
+                </label>
+                <div ref={tagInputContainerRef} className="relative flex gap-2 mb-3">
+                  <div className="relative flex-1">
+                    <Input
+                      type="text"
+                      value={tagInput}
+                      onChange={(e) => setTagInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          if (showTagSuggestions && tagSuggestions.length > 0) {
+                            handleSelectTagSuggestion(tagSuggestions[0]);
+                          } else {
+                            handleAddTag();
+                          }
+                        }
+                      }}
+                      onFocus={() => tagSuggestions.length > 0 && setShowTagSuggestions(true)}
+                      placeholder="Add a tag and press Enter"
+                      className="flex-1 w-full"
+                    />
+                    {showTagSuggestions && tagSuggestions.length > 0 && (
+                      <div
+                        className="absolute z-50 mt-1.5 w-full rounded-lg border-2 border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 p-3 shadow-md"
+                        role="listbox"
+                      >
+                        <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-2">
+                          Suggested tags
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {tagSuggestions.map((suggestion) => (
+                            <button
+                              key={suggestion}
+                              type="button"
+                              role="option"
+                              className={cn(
+                                "inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium border cursor-pointer transition-colors",
+                                "bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300",
+                                "hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-200 dark:hover:border-primary-800 hover:text-primary-700 dark:hover:text-primary-300"
+                              )}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                handleSelectTagSuggestion(suggestion);
+                              }}
+                            >
+                              {suggestion}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <Button type="button" onClick={handleAddTag} variant="outline" size="sm">
+                    Add
+                  </Button>
+                </div>
               {tags.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {tags.map((tag) => (

@@ -129,6 +129,60 @@ export async function extractLinkMetadataAction(url: string) {
   }
 }
 
+const LINK_TAG_SUGGESTIONS_LIMIT = 15;
+
+/**
+ * Get existing link tags for the current user that match the given query.
+ * Used to suggest tags while typing in link forms.
+ */
+export async function getLinkTagSuggestions(query: string): Promise<string[]> {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.LINKS);
+    if (!moduleEnabled) {
+      return [];
+    }
+
+    const user = await requireAuth();
+    await requireAnyPermission("links.view");
+
+    const q = query.trim().toLowerCase();
+    if (!q) {
+      return [];
+    }
+
+    const links = await prisma.link.findMany({
+      where: { userId: user.id },
+      select: { tags: true },
+    });
+
+    const allTags = new Set<string>();
+    for (const link of links) {
+      for (const tag of link.tags) {
+        if (tag.trim()) {
+          allTags.add(tag.trim());
+        }
+      }
+    }
+
+    const filtered = [...allTags]
+      .filter((tag) => tag.toLowerCase().includes(q))
+      .sort((a, b) => {
+        // Prefer tags that start with the query
+        const aStarts = a.toLowerCase().startsWith(q);
+        const bStarts = b.toLowerCase().startsWith(q);
+        if (aStarts && !bStarts) return -1;
+        if (!aStarts && bStarts) return 1;
+        return a.localeCompare(b);
+      })
+      .slice(0, LINK_TAG_SUGGESTIONS_LIMIT);
+
+    return filtered;
+  } catch (error) {
+    console.error("Error fetching link tag suggestions:", error);
+    return [];
+  }
+}
+
 /**
  * Refetch and cache favicon for a link based on its URL.
  * Always returns the cached path when possible and updates the link record.
