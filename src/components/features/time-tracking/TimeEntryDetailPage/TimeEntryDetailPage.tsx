@@ -13,6 +13,7 @@ import { pauseTimeEntry, resumeTimeEntry, stopTimeEntry, completeTimeEntry, dele
 import { type TimeEntryStatus } from "@prisma/client";
 import { TimeEntryEditForm } from "../TimeEntryEditForm";
 import { TimeEntryBreaks } from "../TimeEntryBreaks";
+import { TimeEntryDeleteDialog } from "../TimeEntryDeleteDialog";
 import { cn } from "@/lib/utils/cn";
 
 type TimeEntry = {
@@ -62,6 +63,7 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
   const router = useRouter();
   const [entry, setEntry] = React.useState<TimeEntry>(initialEntry);
   const [isEditing, setIsEditing] = React.useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
   const [processing, setProcessing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -179,26 +181,23 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
     }
   };
 
-  const handleDelete = async () => {
-    if (!confirm("Are you sure you want to delete this time entry? This action cannot be undone.")) {
-      return;
-    }
-
+  const handleDeleteConfirm = React.useCallback(async () => {
     setProcessing(true);
     setError(null);
     try {
       const result = await deleteTimeEntry(entry.id);
       if (result.success) {
+        setDeleteDialogOpen(false);
         router.push("/dashboard/time-tracking");
       } else {
         setError(result.error || "Failed to delete time entry");
       }
-    } catch (error: any) {
-      setError(error.message || "Failed to delete time entry");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to delete time entry");
     } finally {
       setProcessing(false);
     }
-  };
+  }, [entry.id, router]);
 
   return (
     <div className="space-y-6">
@@ -272,7 +271,7 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleDelete}
+                onClick={() => setDeleteDialogOpen(true)}
                 disabled={processing}
                 className="text-error-600 hover:text-error-700 dark:text-error-400 dark:hover:text-error-300"
               >
@@ -291,6 +290,13 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
           <p className="text-error-700 dark:text-error-300 text-sm break-words">{error}</p>
         </div>
       )}
+
+      <TimeEntryDeleteDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        onConfirm={handleDeleteConfirm}
+        entryName={formatTimerNumber(entry.name)}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}

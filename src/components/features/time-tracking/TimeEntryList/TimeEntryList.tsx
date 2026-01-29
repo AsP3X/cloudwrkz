@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { DurationDisplay } from "../DurationDisplay";
 import { TimeEntryBulkActionsToolbar } from "../TimeEntryBulkActionsToolbar";
 import { TimeEntryBulkDeleteDialog } from "../TimeEntryBulkDeleteDialog";
+import { TimeEntryDeleteDialog } from "../TimeEntryDeleteDialog";
 import { TimeEntryBulkTagDialog } from "../TimeEntryBulkTagDialog";
 import { useTimeEntryView } from "../TimeEntryViewContext";
 import { getStatusColor, getStatusLabel, canPause, canResume, canStop, formatTimerNumber } from "@/lib/utils/time-tracking";
@@ -60,6 +61,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
   const [isProcessing, setIsProcessing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false);
+  const [entryToDelete, setEntryToDelete] = React.useState<TimeEntry | null>(null);
   const [showTagDialog, setShowTagDialog] = React.useState(false);
   const [editingEntry, setEditingEntry] = React.useState<TimeEntry | null>(null);
   const [mounted, setMounted] = React.useState(false);
@@ -158,14 +160,18 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
     }
   }, [router]);
 
-  const handleDelete = React.useCallback(async (entryId: string) => {
-    if (!confirm("Are you sure you want to delete this time entry?")) {
-      return;
-    }
+  const handleDeleteClick = React.useCallback((entry: TimeEntry) => {
+    setEntryToDelete(entry);
+  }, []);
+
+  const handleSingleDeleteConfirm = React.useCallback(async () => {
+    if (!entryToDelete) return;
+    const entryId = entryToDelete.id;
     setProcessing((prev) => new Set(prev).add(entryId));
     try {
       const result = await deleteTimeEntry(entryId);
       if (result.success) {
+        setEntryToDelete(null);
         router.refresh();
       }
     } catch (error) {
@@ -177,7 +183,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
         return next;
       });
     }
-  }, [router]);
+  }, [entryToDelete, router]);
 
   // Early return after all hooks
   if (entries.length === 0) {
@@ -500,7 +506,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleDelete(entry.id);
+                    handleDeleteClick(entry);
                   }}
                   disabled={isProcessingEntry || isProcessing}
                   className="px-3 py-2 text-error-600 dark:text-error-400 hover:text-error-700 dark:hover:text-error-300 disabled:opacity-50"
@@ -713,7 +719,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleDelete(entry.id);
+                          handleDeleteClick(entry);
                         }}
                         disabled={isProcessingEntry || isProcessing}
                         className="p-2 text-neutral-600 dark:text-neutral-400 hover:text-error-600 dark:hover:text-error-400 disabled:opacity-50"
@@ -738,6 +744,14 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
           onOpenChange={setShowDeleteDialog}
           onConfirm={handleBulkDeleteConfirm}
           selectedCount={selectedEntries.size}
+        />
+      )}
+      {entryToDelete && (
+        <TimeEntryDeleteDialog
+          open={true}
+          onOpenChange={(open) => !open && setEntryToDelete(null)}
+          onConfirm={handleSingleDeleteConfirm}
+          entryName={formatTimerNumber(entryToDelete.name)}
         />
       )}
       {showTagDialog && (
