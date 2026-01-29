@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { type SearchResult } from "@/server/actions/search";
 import { getTicketTypeLabel, type TicketType } from "@/lib/utils/tickets";
 import { formatDate, formatDateTime } from "@/lib/utils/date";
@@ -19,6 +20,7 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
   const [visibleLevel2Subtasks, setVisibleLevel2Subtasks] = React.useState<Set<string>>(new Set());
   const [expandedLevel2Subtasks, setExpandedLevel2Subtasks] = React.useState<Set<string>>(new Set());
   const [visibleLevel3Subtasks, setVisibleLevel3Subtasks] = React.useState<Set<string>>(new Set());
+  const [failedFaviconIds, setFailedFaviconIds] = React.useState<Set<string>>(new Set());
 
   const toggleTicketExpansion = (ticketId: string) => {
     const isCurrentlyExpanded = expandedTickets.has(ticketId);
@@ -513,7 +515,23 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                             </svg>
                           </button>
                         )}
-                        {getResultIcon(group.ticket.type)}
+                        {group.ticket.type === "link" &&
+                        group.ticket.metadata?.favicon &&
+                        !failedFaviconIds.has(group.ticket.id) ? (
+                          <Image
+                            src={group.ticket.metadata.favicon}
+                            alt=""
+                            width={20}
+                            height={20}
+                            className="w-5 h-5 rounded object-contain flex-shrink-0"
+                            unoptimized
+                            onError={() =>
+                              setFailedFaviconIds((prev) => new Set(prev).add(group.ticket.id))
+                            }
+                          />
+                        ) : (
+                          getResultIcon(group.ticket.type)
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
