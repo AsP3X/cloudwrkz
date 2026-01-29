@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Dialog } from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/Input";
@@ -282,9 +283,12 @@ export function EditLinkDialog({ open, onOpenChange, link }: EditLinkDialogProps
               </label>
               <div className="flex items-center gap-3 mb-2">
                 {favicon ? (
-                  <img
+                  <Image
                     src={favicon}
                     alt="Favicon preview"
+                    width={24}
+                    height={24}
+                    unoptimized
                     className="w-6 h-6 rounded border border-neutral-200 dark:border-neutral-700"
                     onError={(e) => {
                       (e.target as HTMLImageElement).style.display = "none";

@@ -5,12 +5,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { Dialog } from "@/components/ui/Dialog";
 import { cn } from "@/lib/utils/cn";
 import { formatDateTimeInTimezone } from "@/lib/utils/date";
-import { bulkUnarchiveTodos } from "@/server/actions/todos";
-import { bulkUnarchiveTickets } from "@/server/actions/tickets";
-import { bulkUnarchiveTimeEntries } from "@/server/actions/time-tracking";
-import { bulkUnarchiveLinks } from "@/server/actions/links";
+import { bulkUnarchiveTodos, bulkDeleteTodos } from "@/server/actions/todos";
+import { bulkUnarchiveTickets, bulkDeleteTickets } from "@/server/actions/tickets";
+import { bulkUnarchiveTimeEntries, bulkDeleteTimeEntries } from "@/server/actions/time-tracking";
+import { bulkUnarchiveLinks, bulkDeleteLinks } from "@/server/actions/links";
 import { ArchiveFilterButton } from "./ArchiveFilterButton";
 
 export type ArchiveItemType = "all" | "tickets" | "todos" | "time" | "links";
@@ -69,6 +70,7 @@ export function ArchivePageClient({
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [isWorking, setIsWorking] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [itemsToDeletePermanently, setItemsToDeletePermanently] = React.useState<ArchiveItem[] | null>(null);
 
   const itemKey = (item: ArchiveItem) => `${item.type}:${item.id}`;
 
@@ -200,6 +202,41 @@ export function ArchivePageClient({
     }
   };
 
+  const handleDeletePermanently = async (itemsToDelete: ArchiveItem[]) => {
+    if (itemsToDelete.length === 0 || isWorking) return;
+
+    setIsWorking(true);
+    setError(null);
+    setItemsToDeletePermanently(null);
+
+    const todos = itemsToDelete.filter((i) => i.type === "todo").map((i) => i.id);
+    const tickets = itemsToDelete.filter((i) => i.type === "ticket").map((i) => i.id);
+    const timeEntries = itemsToDelete.filter((i) => i.type === "timeEntry").map((i) => i.id);
+    const links = itemsToDelete.filter((i) => i.type === "link").map((i) => i.id);
+
+    try {
+      const results = await Promise.all([
+        todos.length ? bulkDeleteTodos(todos) : Promise.resolve({ success: true as const }),
+        tickets.length ? bulkDeleteTickets(tickets) : Promise.resolve({ success: true as const }),
+        timeEntries.length ? bulkDeleteTimeEntries(timeEntries) : Promise.resolve({ success: true as const }),
+        links.length ? bulkDeleteLinks(links) : Promise.resolve({ success: true as const }),
+      ]);
+
+      const firstError = results.find((r) => (r as { success?: boolean })?.success === false) as { error?: string } | undefined;
+      if (firstError) {
+        setError(firstError.error ?? "Failed to delete some items permanently");
+        return;
+      }
+
+      setSelected(new Set());
+      router.refresh();
+    } catch (e) {
+      setError("An unexpected error occurred");
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
   const selectedItems = React.useMemo(() => {
     if (selected.size === 0) return [];
     const byKey = new Map(items.map((i) => [itemKey(i), i]));
@@ -208,6 +245,43 @@ export function ArchivePageClient({
 
   return (
     <div className="space-y-6">
+      {/* Delete permanently confirmation */}
+      <Dialog
+        open={itemsToDeletePermanently !== null}
+        onOpenChange={(open) => {
+          if (!open && !isWorking) setItemsToDeletePermanently(null);
+        }}
+        title="Delete permanently?"
+        description="The selected items will be removed forever. This cannot be undone."
+      >
+        <div className="px-6 py-4 space-y-4">
+          <p className="text-sm text-neutral-600 dark:text-neutral-400">
+            {itemsToDeletePermanently?.length === 1
+              ? "This item will be permanently deleted."
+              : `${itemsToDeletePermanently?.length ?? 0} items will be permanently deleted.`}
+          </p>
+          <div className="flex items-center justify-end gap-3 pt-2 border-t border-neutral-200 dark:border-neutral-800">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setItemsToDeletePermanently(null)}
+              disabled={isWorking}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              onClick={() => itemsToDeletePermanently && handleDeletePermanently(itemsToDeletePermanently)}
+              disabled={isWorking || !itemsToDeletePermanently?.length}
+              loading={isWorking}
+            >
+              {isWorking ? "Deleting…" : "Delete permanently"}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
@@ -266,6 +340,15 @@ export function ArchivePageClient({
                       className="text-sm"
                     >
                       Unarchive
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      disabled={isWorking}
+                      onClick={() => setItemsToDeletePermanently(selectedItems)}
+                      className="text-sm"
+                    >
+                      Delete permanently
                     </Button>
                   </div>
                 </div>

@@ -30,29 +30,14 @@ function getInitialViewMode(): LinkViewMode {
 }
 
 export function LinkViewProvider({ children }: { children: React.ReactNode }) {
-  // Initialize state: always start with isReady: false for SSR/hydration consistency
-  // Both server and client will render nothing initially (isReady: false)
-  // Then on client, useLayoutEffect will load from localStorage and set isReady: true
+  // Initialize state: same on server and client for hydration (viewMode "table", isReady false).
+  // Then on client, useLayoutEffect loads from localStorage and sets isReady: true.
   const [viewState, setViewState] = React.useState<{
     viewMode: LinkViewMode;
     isReady: boolean;
-  }>(() => {
-    // On server, always use "table" and not ready
-    if (typeof window === "undefined") {
-      return {
-        viewMode: "table",
-        isReady: false,
-      };
-    }
-    
-    // On client, also start with isReady: false to match server
-    // We'll load from localStorage in useLayoutEffect to prevent hydration mismatch
-    // But we can still read the value now to initialize viewMode correctly
-    const localViewMode = getInitialViewMode();
-    return {
-      viewMode: localViewMode, // Initialize with correct value
-      isReady: false, // But don't render until after hydration
-    };
+  }>({
+    viewMode: "table",
+    isReady: false,
   });
 
   React.useLayoutEffect(() => {

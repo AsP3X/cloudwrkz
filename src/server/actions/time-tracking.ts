@@ -1672,6 +1672,7 @@ export async function bulkDeleteTimeEntries(ids: string[]): Promise<ActionResult
     });
 
     revalidatePath("/dashboard/time-tracking");
+    revalidatePath("/dashboard/archive");
     // Emit events for all deleted entries
     for (const id of ids) {
       emitTimeTrackingEvent(user.id, "ENTRY_DELETED", { id });

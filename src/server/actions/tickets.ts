@@ -1729,6 +1729,7 @@ export async function bulkDeleteTickets(
 
     revalidatePath("/dashboard/tickets");
     revalidatePath("/dashboard");
+    revalidatePath("/dashboard/archive");
 
     return {
       success: true,

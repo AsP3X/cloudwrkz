@@ -118,7 +118,7 @@ export default async function LinksArchivePage({ searchParams }: LinksArchivePag
             </Link>
           </div>
         ) : (
-          <LinkListView links={links as any} />
+          <LinkListView links={links as any} isArchivePage />
         )}
       </div>
     </LinkViewProvider>

@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/Badge";
 import { formatDate } from "@/lib/utils/date";
 import { type LinkViewMode } from "../LinkViewContext";
-import { bulkUpdateLinks, bulkDeleteLinks, bulkArchiveLinks } from "@/server/actions/links";
+import { bulkUpdateLinks, bulkDeleteLinks, bulkArchiveLinks, bulkUnarchiveLinks } from "@/server/actions/links";
 import { cn } from "@/lib/utils/cn";
 import { extractDomain } from "@/lib/utils/links";
 
@@ -36,6 +36,8 @@ type LinkItem = {
 interface LinkListProps {
   links: LinkItem[];
   viewMode: LinkViewMode;
+  /** When true, show Unarchive and Delete permanently instead of Archive and Delete */
+  isArchivePage?: boolean;
 }
 
 const getLinkTypeColor = (type: string) => {
@@ -72,7 +74,7 @@ const getLinkTypeLabel = (type: string) => {
   }
 };
 
-export const LinkList = ({ links, viewMode }: LinkListProps) => {
+export const LinkList = ({ links, viewMode, isArchivePage = false }: LinkListProps) => {
   const router = useRouter();
   const [selectedLinks, setSelectedLinks] = React.useState<Set<string>>(new Set());
   const [isProcessing, setIsProcessing] = React.useState(false);
@@ -125,6 +127,27 @@ export const LinkList = ({ links, viewMode }: LinkListProps) => {
         router.refresh();
       } else {
         setError(result.error || "Failed to archive links");
+      }
+    } catch (err) {
+      setError("An unexpected error occurred");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleBulkUnarchive = async () => {
+    if (selectedLinks.size === 0) return;
+
+    setIsProcessing(true);
+    setError(null);
+
+    try {
+      const result = await bulkUnarchiveLinks(Array.from(selectedLinks));
+      if (result.success) {
+        setSelectedLinks(new Set());
+        router.refresh();
+      } else {
+        setError(result.error || "Failed to unarchive links");
       }
     } catch (err) {
       setError("An unexpected error occurred");
@@ -189,19 +212,29 @@ export const LinkList = ({ links, viewMode }: LinkListProps) => {
                 </button>
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={handleBulkArchive}
-                  disabled={isProcessing}
-                  className="px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md disabled:opacity-50"
-                >
-                  Archive
-                </button>
+                {isArchivePage ? (
+                  <button
+                    onClick={handleBulkUnarchive}
+                    disabled={isProcessing}
+                    className="px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md disabled:opacity-50"
+                  >
+                    Unarchive
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleBulkArchive}
+                    disabled={isProcessing}
+                    className="px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md disabled:opacity-50"
+                  >
+                    Archive
+                  </button>
+                )}
                 <button
                   onClick={handleBulkDelete}
                   disabled={isProcessing}
                   className="px-3 py-1.5 text-sm font-medium text-error-600 dark:text-error-400 hover:bg-error-50 dark:hover:bg-error-900/20 rounded-md disabled:opacity-50"
                 >
-                  Delete
+                  {isArchivePage ? "Delete permanently" : "Delete"}
                 </button>
               </div>
             </div>
@@ -701,10 +734,10 @@ export const LinkList = ({ links, viewMode }: LinkListProps) => {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-lg p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
-              Delete Links
+              {isArchivePage ? "Delete permanently" : "Delete Links"}
             </h3>
             <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
-              Are you sure you want to delete {selectedLinks.size} link{selectedLinks.size !== 1 ? "s" : ""}? This action cannot be undone.
+              Are you sure you want to {isArchivePage ? "permanently delete" : "delete"} {selectedLinks.size} link{selectedLinks.size !== 1 ? "s" : ""}? This action cannot be undone.
             </p>
             <div className="flex justify-end gap-3">
               <button
@@ -718,7 +751,7 @@ export const LinkList = ({ links, viewMode }: LinkListProps) => {
                 disabled={isProcessing}
                 className="px-4 py-2 text-sm font-medium text-white bg-error-600 hover:bg-error-700 rounded-md disabled:opacity-50"
               >
-                {isProcessing ? "Deleting..." : "Delete"}
+                {isProcessing ? "Deleting..." : isArchivePage ? "Delete permanently" : "Delete"}
               </button>
             </div>
           </div>

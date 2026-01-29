@@ -1146,6 +1146,7 @@ export async function bulkDeleteLinks(ids: string[]): Promise<ActionResult> {
     });
 
     revalidatePath("/dashboard/links");
+    revalidatePath("/dashboard/archive");
     return {
       success: true,
     };

@@ -1312,8 +1312,9 @@ export async function bulkDeleteTodos(
       };
     });
 
-    // Todos are independent - only revalidate todos page
+    // Todos are independent - revalidate todos and archive page
     revalidatePath("/dashboard/todos");
+    revalidatePath("/dashboard/archive");
 
     return {
       success: true,

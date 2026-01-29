@@ -28,9 +28,11 @@ type LinkItem = {
 
 interface LinkListViewProps {
   links: LinkItem[];
+  /** When true, show Unarchive and Delete permanently (for archived links page) */
+  isArchivePage?: boolean;
 }
 
-export const LinkListView = ({ links }: LinkListViewProps) => {
+export const LinkListView = ({ links, isArchivePage = false }: LinkListViewProps) => {
   const { viewMode, isReady } = useLinkView();
 
   if (!isReady) {
@@ -39,7 +41,7 @@ export const LinkListView = ({ links }: LinkListViewProps) => {
 
   return (
     <div>
-      <LinkList links={links} viewMode={viewMode} />
+      <LinkList links={links} viewMode={viewMode} isArchivePage={isArchivePage} />
     </div>
   );
 };

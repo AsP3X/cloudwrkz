@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Image from "next/image";
 import { useForm, FormProvider } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/Input";
@@ -426,9 +427,12 @@ export const LinkEditForm = ({ link, collections, onCancel, onSaveSuccess, rende
             </label>
             <div className="flex items-center gap-3 mb-1">
               {watch("favicon") ? (
-                <img
+                <Image
                   src={watch("favicon")}
                   alt="Favicon preview"
+                  width={24}
+                  height={24}
+                  unoptimized
                   className="w-6 h-6 rounded border border-neutral-200 dark:border-neutral-700"
                   onError={(e) => {
                     (e.target as HTMLImageElement).style.display = "none";
