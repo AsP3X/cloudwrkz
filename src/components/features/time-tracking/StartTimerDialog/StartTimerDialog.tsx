@@ -11,6 +11,7 @@ import { createTimeEntrySchema, type CreateTimeEntryInput } from "@/lib/validati
 import { createTimeEntry } from "@/server/actions/time-tracking";
 import { useRouter } from "next/navigation";
 import { LocationAutocompleteInput } from "@/components/ui/LocationAutocompleteInput";
+import { toDatetimeLocalValue } from "@/lib/utils/date";
 
 interface StartTimerDialogProps {
   open: boolean;
@@ -29,6 +30,8 @@ export function StartTimerDialog({ open, onOpenChange }: StartTimerDialogProps) 
     formState: { errors, isSubmitting },
     reset,
     control,
+    watch,
+    setValue,
   } = useForm<CreateTimeEntryInput>({
     resolver: zodResolver(createTimeEntrySchema),
     defaultValues: {
@@ -36,6 +39,8 @@ export function StartTimerDialog({ open, onOpenChange }: StartTimerDialogProps) 
       description: "",
       tags: [],
       billable: false,
+      // startedAt will be set on dialog open on the client to avoid hydration issues
+      startedAt: undefined,
     },
   });
 
@@ -47,6 +52,17 @@ export function StartTimerDialog({ open, onOpenChange }: StartTimerDialogProps) 
       setServerError(null);
     }
   }, [open, reset]);
+
+  // When the dialog opens, set a default startedAt to "now" on the client if not already set.
+  React.useEffect(() => {
+    if (open) {
+      // eslint-disable-next-line react-hooks/incompatible-library
+      const currentStartedAt = watch("startedAt"); // React Hook Form watch is safe here
+      if (!currentStartedAt) {
+        setValue("startedAt", new Date());
+      }
+    }
+  }, [open, watch, setValue]);
 
   const handleAddTag = () => {
     const trimmed = tagInput.trim();
@@ -82,6 +98,8 @@ export function StartTimerDialog({ open, onOpenChange }: StartTimerDialogProps) 
     }
   };
 
+  const startedAt = watch("startedAt");
+
   return (
     <Dialog
       open={open}
@@ -110,6 +128,31 @@ export function StartTimerDialog({ open, onOpenChange }: StartTimerDialogProps) 
           {...register("description")}
           error={errors.description?.message}
         />
+
+        <div>
+          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+            Start Time
+          </label>
+          <Controller
+            name="startedAt"
+            control={control}
+            render={({ field }) => (
+              <input
+                type="datetime-local"
+                value={field.value && !isNaN(new Date(field.value).getTime()) ? toDatetimeLocalValue(new Date(field.value)) : ""}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (!value) {
+                    field.onChange(undefined);
+                    return;
+                  }
+                  field.onChange(new Date(value));
+                }}
+                className="w-full px-4 py-2 rounded-lg border-2 border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              />
+            )}
+          />
+        </div>
 
         <Controller
           name="location"

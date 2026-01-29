@@ -64,6 +64,8 @@ export type CreateTimeEntryInput = {
   ticketId?: string; // Future
   billable?: boolean; // Future
   location?: string;
+  // Optional custom start time for newly created running timer
+  startedAt?: Date;
 };
 
 export type UpdateTimeEntryInput = {
@@ -197,6 +199,9 @@ export async function createTimeEntry(
       }
     }
 
+    const now = new Date();
+    const startedAt = input.startedAt ?? now;
+
     const entry = await prisma.timeEntry.create({
       data: {
         name,
@@ -208,8 +213,8 @@ export async function createTimeEntry(
         location: input.location?.trim() || null,
         timezone: userTimezone, // Set user's current timezone on new entry
         status: "RUNNING",
-        startedAt: new Date(),
-        lastResumedAt: new Date(),
+        startedAt,
+        lastResumedAt: startedAt,
         totalDuration: 0,
       },
     });

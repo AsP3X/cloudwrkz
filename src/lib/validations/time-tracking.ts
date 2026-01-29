@@ -7,6 +7,8 @@ export const createTimeEntrySchema = z.object({
   ticketId: z.string().optional(),
   billable: z.boolean().optional(),
   location: z.string().optional(),
+  // Optional custom start time when creating a running timer
+  startedAt: z.date().optional(),
 });
 
 export const addTimeEntrySchema = z.object({

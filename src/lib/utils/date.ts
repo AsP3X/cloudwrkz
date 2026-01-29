@@ -29,6 +29,20 @@ function padZero(num: number): string {
 }
 
 /**
+ * Format a Date for use as the value of an <input type="datetime-local" />.
+ * Uses local time (not UTC) so the displayed value matches what the user types
+ * and does not flip (e.g. "20" → "02") on each keystroke.
+ */
+export function toDatetimeLocalValue(date: Date): string {
+  const y = date.getFullYear();
+  const m = padZero(date.getMonth() + 1);
+  const d = padZero(date.getDate());
+  const h = padZero(date.getHours());
+  const min = padZero(date.getMinutes());
+  return `${y}-${m}-${d}T${h}:${min}`;
+}
+
+/**
  * Format a date as a date string (e.g., "Nov 21, 2025")
  */
 export function formatDate(date: Date | string): string {

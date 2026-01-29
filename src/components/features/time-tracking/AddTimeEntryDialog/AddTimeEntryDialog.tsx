@@ -11,6 +11,7 @@ import { addTimeEntrySchema, type AddTimeEntryInput } from "@/lib/validations/ti
 import { createTimeEntryWithDuration } from "@/server/actions/time-tracking";
 import { useRouter } from "next/navigation";
 import { LocationAutocompleteInput } from "@/components/ui/LocationAutocompleteInput";
+import { toDatetimeLocalValue } from "@/lib/utils/date";
 
 interface AddTimeEntryDialogProps {
   open: boolean;
@@ -237,8 +238,24 @@ export function AddTimeEntryDialog({ open, onOpenChange }: AddTimeEntryDialogPro
             render={({ field }) => (
               <input
                 type="datetime-local"
-                value={field.value ? new Date(field.value).toISOString().slice(0, 16) : ""}
-                onChange={(e) => field.onChange(new Date(e.target.value))}
+                value={
+                  field.value && !isNaN(new Date(field.value).getTime())
+                    ? toDatetimeLocalValue(new Date(field.value))
+                    : ""
+                }
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (!value) {
+                    field.onChange(undefined);
+                    return;
+                  }
+                  const next = new Date(value);
+                  if (isNaN(next.getTime())) {
+                    // Ignore invalid dates instead of breaking the UI
+                    return;
+                  }
+                  field.onChange(next);
+                }}
                 className="w-full px-4 py-2 rounded-lg border-2 border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               />
             )}
