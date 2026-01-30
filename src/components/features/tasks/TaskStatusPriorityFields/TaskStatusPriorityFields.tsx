@@ -4,6 +4,7 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { Select } from "@/components/ui/Select";
 import { updateTodo } from "@/server/actions/todos";
+import { getServerActionErrorMessage } from "@/lib/utils/server-action-utils";
 
 interface TaskStatusPriorityFieldsProps {
   taskId: string;
@@ -52,7 +53,7 @@ export const TaskStatusPriorityFields = ({
       }
     } catch (err) {
       console.error("Update task status error:", err);
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
     } finally {
       setIsUpdatingStatus(false);
     }
@@ -74,7 +75,7 @@ export const TaskStatusPriorityFields = ({
       }
     } catch (err) {
       console.error("Update task priority error:", err);
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
     } finally {
       setIsUpdatingPriority(false);
     }

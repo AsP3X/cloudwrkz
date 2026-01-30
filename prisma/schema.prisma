@@ -77,6 +77,7 @@ model User {
   unbanRequests         UnbanRequest[]
   locationHistories     LocationHistory[]
   links                 Link[]
+  linksSharedWithMe     LinkShare[]       @relation("LinksSharedWithMe")
   ownedCollections      Collection[]       @relation("CollectionOwner")
   collectionMemberships CollectionMember[] @relation("CollectionMember")
 
@@ -593,6 +594,7 @@ model Link {
   userId      String
   user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   collections LinkCollection[] // Many-to-many with collections
+  sharedWith  LinkShare[]      // Direct link shares to other users
 
   // Archiving
   archivedAt DateTime? // When set, link is considered archived
@@ -612,10 +614,26 @@ model Link {
   @@map("links")
 }
 
-// Collection Role
+// Collection Role (used for both CollectionMember and LinkShare)
 enum CollectionRole {
   VIEWER // Can view links in collection
   EDITOR // Can add/remove links and edit collection
+}
+
+// LinkShare - Direct share of a single link with another user (appears in "Shared with me")
+model LinkShare {
+  id               String         @id @default(cuid())
+  linkId           String
+  link             Link           @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  sharedWithUserId String
+  sharedWithUser   User           @relation("LinksSharedWithMe", fields: [sharedWithUserId], references: [id], onDelete: Cascade)
+  role             CollectionRole @default(VIEWER) // VIEWER = read only, EDITOR = can edit link
+  createdAt        DateTime       @default(now())
+
+  @@unique([linkId, sharedWithUserId])
+  @@index([linkId])
+  @@index([sharedWithUserId])
+  @@map("link_shares")
 }
 
 // Collection model for organizing links

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { updateTicket } from "@/server/actions/tickets";
+import { getServerActionErrorMessage } from "@/lib/utils/server-action-utils";
 
 interface Agent {
   id: string;
@@ -74,7 +75,7 @@ export const TicketAssignmentFields = ({
       }
     } catch (err) {
       console.error("Update assignment error:", err);
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
     } finally {
       setIsUpdatingAgent(false);
     }
@@ -96,7 +97,7 @@ export const TicketAssignmentFields = ({
       }
     } catch (err) {
       console.error("Update group assignment error:", err);
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
     } finally {
       setIsUpdatingGroup(false);
     }

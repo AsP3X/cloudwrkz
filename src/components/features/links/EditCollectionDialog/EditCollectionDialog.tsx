@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/Textarea";
 import { Button } from "@/components/ui/Button";
 import { updateCollection, getCollection, deleteCollection } from "@/server/actions/collections";
 import { ShareCollectionDialog } from "@/components/features/links/ShareCollectionDialog";
+import { getServerActionErrorMessage } from "@/lib/utils/server-action-utils";
 
 interface EditCollectionDialogProps {
   open: boolean;
@@ -116,7 +117,7 @@ export function EditCollectionDialog({
         setError(result.error || "Failed to update collection");
       }
     } catch (err) {
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
     } finally {
       setIsSubmitting(false);
     }

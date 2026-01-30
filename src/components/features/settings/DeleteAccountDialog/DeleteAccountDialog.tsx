@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { flagAccountForDeletion } from "@/server/actions/users";
 import { useRouter } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
+import { getServerActionErrorMessage } from "@/lib/utils/server-action-utils";
 
 interface DeleteAccountDialogProps {
   open: boolean;
@@ -45,7 +46,7 @@ export const DeleteAccountDialog = ({ open, onOpenChange }: DeleteAccountDialogP
       }
     } catch (error) {
       console.error("Account deletion error:", error);
-      setError("An unexpected error occurred. Please try again.");
+      setError(getServerActionErrorMessage(error, "An unexpected error occurred. Please try again."));
       setIsDeleting(false);
     }
   };

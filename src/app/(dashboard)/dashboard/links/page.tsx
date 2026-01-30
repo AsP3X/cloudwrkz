@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
 import { canUserViewModule } from "@/server/actions/modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
-import { getLinks, type LinkType } from "@/server/actions/links";
+import { getLinks, getSharedWithMeCount, type LinkType } from "@/server/actions/links";
+import { SHARED_WITH_ME_COLLECTION_ID } from "@/lib/constants/links";
 import { getCollections } from "@/server/actions/collections";
 import { hasPermission } from "@/lib/utils/permissions";
 import { LinkViewProvider } from "@/components/features/links/LinkViewContext";
@@ -82,6 +83,20 @@ export default async function LinksPage({ searchParams }: LinksPageProps) {
 
   // Get collections for filter
   const collections = await getCollections({ archived: false });
+  const sharedWithMeCount = await getSharedWithMeCount();
+  const collectionsForSidebar =
+    sharedWithMeCount > 0
+      ? [
+          {
+            id: SHARED_WITH_ME_COLLECTION_ID,
+            name: "Shared with me",
+            description: null as string | null,
+            color: null as string | null,
+            _count: { links: sharedWithMeCount },
+          },
+          ...collections,
+        ]
+      : collections;
 
   // Check if user can create links
   const canCreateLinks = 
@@ -92,16 +107,16 @@ export default async function LinksPage({ searchParams }: LinksPageProps) {
 
   return (
     <LinkViewProvider>
-      <LinksPageProvider canCreate={canCreateLinks} collections={collections}>
+      <LinksPageProvider canCreate={canCreateLinks} collections={collectionsForSidebar}>
         <div className="space-y-6">
           {/* Auto-load last used link filters */}
-          <LinkFilterLoader collections={collections} />
+          <LinkFilterLoader collections={collectionsForSidebar} />
           
           {/* Header */}
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100">
-                My Links
+                {params.collection === SHARED_WITH_ME_COLLECTION_ID ? "Shared with me" : "My Links"}
               </h1>
               <p className="text-neutral-600 dark:text-neutral-400 mt-1">
                 Store and organize your bookmarks and links
@@ -110,7 +125,7 @@ export default async function LinksPage({ searchParams }: LinksPageProps) {
             <div className="flex items-center gap-3">
               <LinkViewControls />
               <LinkFilterButton collections={collections} />
-              <ExportLinksButton collectionId={params.collection} collections={collections} />
+              <ExportLinksButton collectionId={params.collection} collections={collectionsForSidebar} />
               <ImportButton canCreate={canCreateLinks} />
               <Link href={ROUTES.LINKS_ARCHIVE}>
                 <Button variant="outline">Archive</Button>
@@ -120,9 +135,9 @@ export default async function LinksPage({ searchParams }: LinksPageProps) {
           </div>
 
           {/* Collection Filter Bar */}
-          {(canCreateLinks || collections.length > 0) && (
+          {(canCreateLinks || collectionsForSidebar.length > 0) && (
             <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-4">
-              <CollectionFilterBarWrapper collections={collections} canCreate={canCreateLinks} />
+              <CollectionFilterBarWrapper collections={collectionsForSidebar} canCreate={canCreateLinks} />
             </div>
           )}
 
@@ -161,7 +176,11 @@ export default async function LinksPage({ searchParams }: LinksPageProps) {
                 <CreateButton canCreate={canCreateLinks} />
               </div>
             ) : (
-              <LinkListView links={links} />
+              <LinkListView
+                links={links}
+                currentUserId={user.id}
+                isSharedWithMeView={params.collection === SHARED_WITH_ME_COLLECTION_ID}
+              />
             )}
           </div>
         </div>

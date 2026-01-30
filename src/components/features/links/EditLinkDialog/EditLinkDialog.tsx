@@ -10,6 +10,7 @@ import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { updateLink, extractLinkMetadataAction, refetchLinkFavicon, getLinkTagSuggestions } from "@/server/actions/links";
 import { formatLinkUrl, validateUrl } from "@/lib/utils/links";
+import { getServerActionErrorMessage } from "@/lib/utils/server-action-utils";
 import { formatDate } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
 
@@ -275,7 +276,7 @@ export function EditLinkDialog({ open, onOpenChange, link }: EditLinkDialogProps
         setError(result.error || "Failed to update link");
       }
     } catch (err) {
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
     } finally {
       setIsSubmitting(false);
     }

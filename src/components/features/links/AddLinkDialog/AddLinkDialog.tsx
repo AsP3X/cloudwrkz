@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { createLink, extractLinkMetadataAction, checkDuplicateUrl, getLinkTagSuggestions } from "@/server/actions/links";
 import { formatLinkUrl, validateUrl, isYouTubeUrl } from "@/lib/utils/links";
 import { cn } from "@/lib/utils/cn";
+import { getServerActionErrorMessage } from "@/lib/utils/server-action-utils";
 
 interface AddLinkDialogProps {
   open: boolean;
@@ -227,7 +228,7 @@ export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, select
         }
       }
     } catch (err) {
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -259,7 +260,7 @@ export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, select
         setError(result.error || "Failed to create link");
       }
     } catch (err) {
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
     } finally {
       setIsSubmitting(false);
     }

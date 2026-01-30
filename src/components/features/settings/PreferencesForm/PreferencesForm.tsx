@@ -14,6 +14,7 @@ import { updatePreferences } from "@/server/actions/preferences";
 import { useTheme } from "@/components/providers/ThemeProvider";
 import { useTimerWidgetPreference, getTimerWidgetPreference } from "@/lib/hooks/useTimerWidgetPreference";
 import { COMMON_TIMEZONES } from "@/lib/constants/timezones";
+import { getServerActionErrorMessage } from "@/lib/utils/server-action-utils";
 
 type PreferencesFormProps = {
   initialValues?: Partial<PreferencesInput>;
@@ -169,7 +170,7 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
       }
     } catch (error) {
       console.error("Preferences update error:", error);
-      setError("An unexpected error occurred. Please try again.");
+      setError(getServerActionErrorMessage(error, "An unexpected error occurred. Please try again."));
     }
   };
 

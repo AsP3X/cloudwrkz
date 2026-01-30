@@ -15,11 +15,14 @@ import {
   bulkCreateCollectionWithLinks,
 } from "@/server/actions/links";
 import { getUserCollections } from "@/server/actions/collections";
+import { ShareLinkDialog } from "@/components/features/links/ShareLinkDialog";
+import { CopyToMyCollectionDialog } from "@/components/features/links/CopyToMyCollectionDialog";
 import { Dialog } from "@/components/ui/Dialog";
 import { Select } from "@/components/ui/Select";
 import { Input } from "@/components/ui/Input";
 import { cn } from "@/lib/utils/cn";
 import { extractDomain } from "@/lib/utils/links";
+import { getServerActionErrorMessage } from "@/lib/utils/server-action-utils";
 
 type LinkItem = {
   id: string;
@@ -34,6 +37,7 @@ type LinkItem = {
   rating: number | null;
   createdAt: Date;
   updatedAt: Date;
+  userId?: string;
   collections: Array<{
     collection: {
       id: string;
@@ -48,6 +52,10 @@ interface LinkListProps {
   viewMode: LinkViewMode;
   /** When true, show Unarchive and Delete permanently instead of Archive and Delete */
   isArchivePage?: boolean;
+  /** Current user id – show Share only on own links */
+  currentUserId?: string;
+  /** When true, show Add to my collection (shared-with-me view) */
+  isSharedWithMeView?: boolean;
 }
 
 const getLinkTypeColor = (type: string) => {
@@ -102,7 +110,13 @@ const getLinkTypeLabel = (type: string) => {
   }
 };
 
-export const LinkList = ({ links, viewMode, isArchivePage = false }: LinkListProps) => {
+export const LinkList = ({
+  links,
+  viewMode,
+  isArchivePage = false,
+  currentUserId,
+  isSharedWithMeView = false,
+}: LinkListProps) => {
   const router = useRouter();
   const [selectedLinks, setSelectedLinks] = React.useState<Set<string>>(new Set());
   const [isProcessing, setIsProcessing] = React.useState(false);
@@ -119,6 +133,8 @@ export const LinkList = ({ links, viewMode, isArchivePage = false }: LinkListPro
   const [newCollectionError, setNewCollectionError] = React.useState<string | null>(null);
   const selectAllRef = React.useRef<HTMLInputElement>(null);
   const [mounted, setMounted] = React.useState(false);
+  const [shareDialogLink, setShareDialogLink] = React.useState<{ id: string; title: string } | null>(null);
+  const [copyToCollectionLink, setCopyToCollectionLink] = React.useState<{ id: string; title: string } | null>(null);
 
   React.useEffect(() => {
     setMounted(true);
@@ -185,7 +201,7 @@ export const LinkList = ({ links, viewMode, isArchivePage = false }: LinkListPro
         setError(result.error || "Failed to archive links");
       }
     } catch (err) {
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
     } finally {
       setIsProcessing(false);
     }
@@ -206,7 +222,7 @@ export const LinkList = ({ links, viewMode, isArchivePage = false }: LinkListPro
         setError(result.error || "Failed to unarchive links");
       }
     } catch (err) {
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
     } finally {
       setIsProcessing(false);
     }
@@ -234,7 +250,7 @@ export const LinkList = ({ links, viewMode, isArchivePage = false }: LinkListPro
         setShowDeleteDialog(false);
       }
     } catch (err) {
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
       setShowDeleteDialog(false);
     } finally {
       setIsProcessing(false);
@@ -272,7 +288,7 @@ export const LinkList = ({ links, viewMode, isArchivePage = false }: LinkListPro
         setCollectionError(result.error || "Failed to add to collection");
       }
     } catch (err) {
-      setCollectionError("An unexpected error occurred");
+      setCollectionError(getServerActionErrorMessage(err));
     } finally {
       setIsProcessing(false);
     }
@@ -306,7 +322,7 @@ export const LinkList = ({ links, viewMode, isArchivePage = false }: LinkListPro
         setNewCollectionError(result.error || "Failed to create collection");
       }
     } catch (err) {
-      setNewCollectionError("An unexpected error occurred");
+      setNewCollectionError(getServerActionErrorMessage(err));
     } finally {
       setIsProcessing(false);
     }
@@ -465,6 +481,31 @@ export const LinkList = ({ links, viewMode, isArchivePage = false }: LinkListPro
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                             </svg>
                           </a>
+                          {isSharedWithMeView ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCopyToCollectionLink({ id: link.id, title: link.title });
+                              }}
+                              className="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-medium flex items-center gap-1"
+                              title="Add to my collection"
+                            >
+                              Add to my collection
+                            </button>
+                          ) : currentUserId && link.userId === currentUserId ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setShareDialogLink({ id: link.id, title: link.title });
+                              }}
+                              className="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-medium flex items-center gap-1"
+                              title="Share link"
+                            >
+                              Share
+                            </button>
+                          ) : null}
                         </div>
                       </div>
                       {link.isFavorite && (
@@ -649,6 +690,31 @@ export const LinkList = ({ links, viewMode, isArchivePage = false }: LinkListPro
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                         </svg>
                       </a>
+                      {isSharedWithMeView ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCopyToCollectionLink({ id: link.id, title: link.title });
+                          }}
+                          className="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-700"
+                          title="Add to my collection"
+                        >
+                          Add to my collection
+                        </button>
+                      ) : currentUserId && link.userId === currentUserId ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShareDialogLink({ id: link.id, title: link.title });
+                          }}
+                          className="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-700"
+                          title="Share link"
+                        >
+                          Share
+                        </button>
+                      ) : null}
                     </div>
                     <div className="flex items-center gap-2 mt-1">
                       <Badge className={cn(getLinkTypeColor(link.linkType), "text-[10px] px-1.5 py-0.5")}>
@@ -804,6 +870,31 @@ export const LinkList = ({ links, viewMode, isArchivePage = false }: LinkListPro
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                           </svg>
                         </a>
+                        {isSharedWithMeView ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCopyToCollectionLink({ id: link.id, title: link.title });
+                            }}
+                            className="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-700 whitespace-nowrap"
+                            title="Add to my collection"
+                          >
+                            Add to my collection
+                          </button>
+                        ) : currentUserId && link.userId === currentUserId ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShareDialogLink({ id: link.id, title: link.title });
+                            }}
+                            className="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-700 whitespace-nowrap"
+                            title="Share link"
+                          >
+                            Share
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap hidden md:table-cell">
@@ -1097,6 +1188,23 @@ export const LinkList = ({ links, viewMode, isArchivePage = false }: LinkListPro
           </div>
         </div>
       </Dialog>
+
+      {shareDialogLink && (
+        <ShareLinkDialog
+          open={!!shareDialogLink}
+          onOpenChange={(open) => !open && setShareDialogLink(null)}
+          linkId={shareDialogLink.id}
+          linkTitle={shareDialogLink.title}
+        />
+      )}
+      {copyToCollectionLink && (
+        <CopyToMyCollectionDialog
+          open={!!copyToCollectionLink}
+          onOpenChange={(open) => !open && setCopyToCollectionLink(null)}
+          linkId={copyToCollectionLink.id}
+          linkTitle={copyToCollectionLink.title}
+        />
+      )}
     </div>
   );
 };

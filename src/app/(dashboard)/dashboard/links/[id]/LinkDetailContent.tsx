@@ -75,6 +75,8 @@ interface LinkDetailContentProps {
   canEdit: boolean;
   canDelete: boolean;
   userTimezone: string;
+  currentUserId?: string;
+  isOwner?: boolean;
 }
 
 export const LinkDetailContent = ({
@@ -83,6 +85,8 @@ export const LinkDetailContent = ({
   canEdit,
   canDelete,
   userTimezone,
+  currentUserId,
+  isOwner = true,
 }: LinkDetailContentProps) => {
   const router = useRouter();
   const [isEditMode, setIsEditMode] = React.useState(false);
@@ -167,6 +171,8 @@ export const LinkDetailContent = ({
           onEditClick={handleEditClick}
           isEditMode={isEditMode}
           archivedAt={link.archivedAt}
+          showShare={isOwner}
+          showAddToMyCollection={!isOwner}
           onFavoriteToggle={formMethods ? () => {
             const currentValue = formMethods.watch("isFavorite");
             formMethods.setValue("isFavorite", !currentValue, { shouldValidate: true });
@@ -243,6 +249,8 @@ export const LinkDetailContent = ({
         onEditClick={handleEditClick}
         isEditMode={isEditMode}
         archivedAt={link.archivedAt}
+        showShare={isOwner}
+        showAddToMyCollection={!isOwner}
       />
 
       <LinkDetailLayout

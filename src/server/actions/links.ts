@@ -18,6 +18,7 @@ import { cacheFavicon } from "@/lib/utils/favicon-cache";
 import { extractLinkMetadata } from "@/lib/utils/link-metadata";
 import { logger } from "@/lib/utils/logger";
 import { createLinkSchema, updateLinkSchema, importLinkRowSchema } from "@/lib/validations/links";
+import { SHARED_WITH_ME_COLLECTION_ID } from "@/lib/constants/links";
 
 export type LinkType = "WEBSITE" | "FILE" | "DOCUMENT" | "VIDEO" | "IMAGE" | "OTHER";
 
@@ -44,7 +45,8 @@ export type LinkFilters = {
   userId?: string;
   linkType?: LinkType;
   tags?: string[];
-  collectionId?: string; // Filter by collection
+  collectionId?: string; // Filter by collection (or SHARED_WITH_ME_COLLECTION_ID for shared-with-me)
+  sharedWithMe?: boolean; // Show only links shared directly with current user
   search?: string;
   archived?: boolean;
   isFavorite?: boolean; // Filter by favorites
@@ -1060,11 +1062,26 @@ export async function getLinks(filters: LinkFilters = {}): Promise<GetLinksResul
 
     const where: Prisma.LinkWhereInput = {};
 
-    // User filter - default to current user unless viewing all
+    const isSharedWithMe =
+      filters.sharedWithMe || filters.collectionId === SHARED_WITH_ME_COLLECTION_ID;
+    const filteringByCollection = Boolean(
+      filters.collectionId && filters.collectionId !== SHARED_WITH_ME_COLLECTION_ID
+    );
+
+    // User filter: default to current user unless viewing shared collection, shared-with-me, or explicit userId
     if (filters.userId) {
       where.userId = filters.userId;
-    } else {
+    } else if (!isSharedWithMe && !filteringByCollection) {
       where.userId = user.id;
+    }
+
+    // Shared with me: links shared directly with current user (via LinkShare)
+    if (isSharedWithMe) {
+      where.sharedWith = {
+        some: {
+          sharedWithUserId: user.id,
+        },
+      };
     }
 
     // Archive filter
@@ -1087,8 +1104,8 @@ export async function getLinks(filters: LinkFilters = {}): Promise<GetLinksResul
       where.tags = { hasEvery: filters.tags };
     }
 
-    // Collection filter
-    if (filters.collectionId) {
+    // Collection filter (skip when showing Shared with me)
+    if (filteringByCollection && filters.collectionId) {
       where.collections = {
         some: {
           collectionId: filters.collectionId,
@@ -1524,9 +1541,14 @@ export async function getLink(id: string) {
       return null;
     }
 
-    // Check access
+    // Check access: owner or shared with current user
     if (link.userId !== user.id) {
-      return null;
+      const shared = await prisma.linkShare.findUnique({
+        where: {
+          linkId_sharedWithUserId: { linkId: id, sharedWithUserId: user.id },
+        },
+      });
+      if (!shared) return null;
     }
 
     return link;
@@ -1858,6 +1880,284 @@ export async function removeLinkFromCollection(
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to remove link from collection",
+    };
+  }
+}
+
+/**
+ * Share a single link with another user (link owner only). The link will appear in their "Shared with me" view.
+ * @param role VIEWER = read only, EDITOR = can edit the link
+ */
+export async function shareLinkWithUser(
+  linkId: string,
+  sharedWithUserId: string,
+  role: "VIEWER" | "EDITOR" = "VIEWER"
+): Promise<ActionResult> {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.LINKS);
+    if (!moduleEnabled) {
+      return { success: false, error: "Links module is not enabled" };
+    }
+
+    const user = await requireAuth();
+    await requireAnyPermission("links.update");
+
+    const link = await prisma.link.findUnique({
+      where: { id: linkId },
+      select: { userId: true },
+    });
+    if (!link || link.userId !== user.id) {
+      return { success: false, error: "Link not found or you can only share your own links" };
+    }
+    if (sharedWithUserId === user.id) {
+      return { success: false, error: "Cannot share a link with yourself" };
+    }
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id: sharedWithUserId },
+      select: { id: true, status: true },
+    });
+    if (!targetUser || targetUser.status !== "ACTIVE") {
+      return { success: false, error: "User not found or not active" };
+    }
+
+    if (typeof (prisma as { linkShare?: unknown }).linkShare === "undefined") {
+      return {
+        success: false,
+        error: "Link sharing is not available. Run: pnpm exec prisma generate",
+      };
+    }
+
+    await prisma.linkShare.upsert({
+      where: {
+        linkId_sharedWithUserId: { linkId, sharedWithUserId },
+      },
+      update: { role },
+      create: { linkId, sharedWithUserId, role },
+    });
+
+    revalidatePath("/dashboard/links");
+    return { success: true };
+  } catch (error) {
+    logger.error("Error sharing link with user:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to share link",
+    };
+  }
+}
+
+/**
+ * Get users a link is shared with (link owner only).
+ */
+export async function getLinkShares(linkId: string): Promise<
+  Array<{ id: string; sharedWithUserId: string; role: "VIEWER" | "EDITOR"; sharedWithUser: { id: string; name: string | null; email: string } }>
+> {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.LINKS);
+    if (!moduleEnabled) return [];
+
+    const user = await requireAuth();
+    await requireAnyPermission("links.view");
+
+    const link = await prisma.link.findUnique({
+      where: { id: linkId },
+      select: { userId: true },
+    });
+    if (!link || link.userId !== user.id) return [];
+
+    const shares = await prisma.linkShare.findMany({
+      where: { linkId },
+      include: {
+        sharedWithUser: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+    });
+    return shares;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Update the role of a link share (link owner only).
+ */
+export async function updateLinkShareRole(
+  linkId: string,
+  sharedWithUserId: string,
+  role: "VIEWER" | "EDITOR"
+): Promise<ActionResult> {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.LINKS);
+    if (!moduleEnabled) {
+      return { success: false, error: "Links module is not enabled" };
+    }
+
+    const user = await requireAuth();
+    await requireAnyPermission("links.update");
+
+    const link = await prisma.link.findUnique({
+      where: { id: linkId },
+      select: { userId: true },
+    });
+    if (!link || link.userId !== user.id) {
+      return { success: false, error: "Link not found or you can only update your own link shares" };
+    }
+
+    if (typeof (prisma as { linkShare?: unknown }).linkShare === "undefined") {
+      return { success: false, error: "Link sharing is not available. Run: pnpm exec prisma generate" };
+    }
+
+    await prisma.linkShare.update({
+      where: { linkId_sharedWithUserId: { linkId, sharedWithUserId } },
+      data: { role },
+    });
+
+    revalidatePath("/dashboard/links");
+    return { success: true };
+  } catch (error) {
+    logger.error("Error updating link share role:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to update role",
+    };
+  }
+}
+
+/**
+ * Remove a direct link share (link owner only).
+ */
+export async function unshareLink(linkId: string, sharedWithUserId: string): Promise<ActionResult> {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.LINKS);
+    if (!moduleEnabled) {
+      return { success: false, error: "Links module is not enabled" };
+    }
+
+    const user = await requireAuth();
+    await requireAnyPermission("links.update");
+
+    const link = await prisma.link.findUnique({
+      where: { id: linkId },
+      select: { userId: true },
+    });
+    if (!link || link.userId !== user.id) {
+      return { success: false, error: "Link not found or you can only unshare your own links" };
+    }
+
+    await prisma.linkShare.deleteMany({
+      where: { linkId, sharedWithUserId },
+    });
+
+    revalidatePath("/dashboard/links");
+    return { success: true };
+  } catch (error) {
+    logger.error("Error unsharing link:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to unshare link",
+    };
+  }
+}
+
+/**
+ * Count of links shared directly with the current user (for "Shared with me" badge).
+ */
+export async function getSharedWithMeCount(): Promise<number> {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.LINKS);
+    if (!moduleEnabled) return 0;
+
+    const user = await requireAuth();
+    await requireAnyPermission("links.view");
+
+    return prisma.linkShare.count({
+      where: { sharedWithUserId: user.id },
+    });
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Copy a link shared with the current user into their own collection (creates a new link owned by them; does not affect the original).
+ */
+export async function copySharedLinkToMyCollection(
+  linkId: string,
+  collectionId: string
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.LINKS);
+    if (!moduleEnabled) {
+      return { success: false, error: "Links module is not enabled" };
+    }
+
+    const user = await requireAuth();
+    await requireAnyPermission("links.create");
+
+    const share = await prisma.linkShare.findUnique({
+      where: { linkId_sharedWithUserId: { linkId, sharedWithUserId: user.id } },
+      include: {
+        link: {
+          select: {
+            id: true,
+            title: true,
+            url: true,
+            description: true,
+            favicon: true,
+            linkType: true,
+            tags: true,
+            notes: true,
+            isFavorite: true,
+            rating: true,
+            metadata: true,
+            normalizedUrl: true,
+          },
+        },
+      },
+    });
+    if (!share) {
+      return { success: false, error: "Link is not shared with you or no longer available" };
+    }
+
+    const collection = await prisma.collection.findFirst({
+      where: { id: collectionId, ownerId: user.id },
+      select: { id: true },
+    });
+    if (!collection) {
+      return { success: false, error: "Collection not found or you don't own it" };
+    }
+
+    const src = share.link;
+    const newLink = await prisma.link.create({
+      data: {
+        userId: user.id,
+        title: src.title,
+        url: src.url,
+        normalizedUrl: src.normalizedUrl,
+        description: src.description,
+        favicon: src.favicon,
+        linkType: src.linkType,
+        tags: src.tags,
+        notes: src.notes,
+        isFavorite: src.isFavorite,
+        rating: src.rating,
+        metadata: src.metadata != null ? (src.metadata as Prisma.InputJsonValue) : undefined,
+      },
+    });
+
+    await prisma.linkCollection.create({
+      data: { linkId: newLink.id, collectionId },
+    });
+
+    revalidatePath("/dashboard/links");
+    return { success: true, data: { id: newLink.id } };
+  } catch (error) {
+    logger.error("Error copying shared link to collection:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to copy link to collection",
     };
   }
 }

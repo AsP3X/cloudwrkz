@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { Button } from "@/components/ui/Button";
 import { createCollection } from "@/server/actions/collections";
+import { getServerActionErrorMessage } from "@/lib/utils/server-action-utils";
 
 interface CreateCollectionDialogProps {
   open: boolean;
@@ -76,7 +77,7 @@ export function CreateCollectionDialog({ open, onOpenChange }: CreateCollectionD
         setError(result.error || "Failed to create collection");
       }
     } catch (err) {
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
     } finally {
       setIsSubmitting(false);
     }

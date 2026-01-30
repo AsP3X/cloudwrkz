@@ -4,6 +4,7 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { Select } from "@/components/ui/Select";
 import { updateTicket } from "@/server/actions/tickets";
+import { getServerActionErrorMessage } from "@/lib/utils/server-action-utils";
 
 interface TicketStatusPriorityFieldsProps {
   ticketId: string;
@@ -53,7 +54,7 @@ export const TicketStatusPriorityFields = ({
       }
     } catch (err) {
       console.error("Update status error:", err);
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
     } finally {
       setIsUpdatingStatus(false);
     }
@@ -75,7 +76,7 @@ export const TicketStatusPriorityFields = ({
       }
     } catch (err) {
       console.error("Update priority error:", err);
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
     } finally {
       setIsUpdatingPriority(false);
     }

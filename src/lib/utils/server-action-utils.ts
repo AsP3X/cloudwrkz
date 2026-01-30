@@ -80,3 +80,39 @@ export function isStaleServerActionError(error: any): boolean {
     (error?.response?.status === 404)
   );
 }
+
+/** User-facing message when the server is disconnected or crashed */
+export const SERVER_UNAVAILABLE_MESSAGE =
+  "The server is temporarily unavailable. Please check your connection and try again.";
+
+/**
+ * Check if an error indicates the server is disconnected, crashed, or unreachable.
+ * Use this in catch blocks to show a friendly message instead of raw errors.
+ */
+export function isServerUnavailableError(error: unknown): boolean {
+  if (error == null) return false;
+  const err = error as Record<string, unknown>;
+  const message = typeof err?.message === "string" ? err.message : "";
+  const name = typeof err?.name === "string" ? err.name : "";
+
+  return (
+    message.includes("unexpected response") ||
+    message.includes("An unexpected response was received from the server") ||
+    message.includes("Failed to fetch") ||
+    message.includes("NetworkError") ||
+    message.includes("Load failed") ||
+    message.includes("Network request failed") ||
+    message.includes("ERR_CONNECTION_REFUSED") ||
+    message.includes("ERR_CONNECTION_RESET") ||
+    message.includes("connection refused") ||
+    name === "TypeError" && (message.includes("fetch") || message.includes("network") || message === "Failed to fetch")
+  );
+}
+
+/**
+ * Return a user-friendly error message for server action failures.
+ * Use in catch blocks: setError(getServerActionErrorMessage(err))
+ */
+export function getServerActionErrorMessage(error: unknown, fallback = "Something went wrong. Please try again."): string {
+  return isServerUnavailableError(error) ? SERVER_UNAVAILABLE_MESSAGE : fallback;
+}

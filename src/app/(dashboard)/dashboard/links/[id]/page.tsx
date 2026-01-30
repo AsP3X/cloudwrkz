@@ -72,6 +72,8 @@ export default async function LinkDetailPage({ params }: LinkDetailPageProps) {
   // Fetch collections for the edit form
   const collections = await getCollections({ archived: false });
 
+  const isOwner = link.userId === user.id;
+
   return (
     <LinkDetailWrapper defaultSidebarOpen={true}>
       <LinkDetailContent
@@ -81,9 +83,11 @@ export default async function LinkDetailPage({ params }: LinkDetailPageProps) {
           name: c.name,
           color: c.color,
         }))}
-        canEdit={canEdit}
-        canDelete={canDelete}
+        canEdit={canEdit && isOwner}
+        canDelete={canDelete && isOwner}
         userTimezone={userTimezone}
+        currentUserId={user.id}
+        isOwner={isOwner}
       />
     </LinkDetailWrapper>
   );

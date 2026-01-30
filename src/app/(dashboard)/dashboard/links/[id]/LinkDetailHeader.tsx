@@ -10,6 +10,8 @@ import { deleteLink } from "@/server/actions/links";
 import { useSidebar } from "./LinkDetailLayout";
 import { cn } from "@/lib/utils/cn";
 import { handleArchiveLink, handleUnarchiveLink } from "./actions";
+import { ShareLinkDialog } from "@/components/features/links/ShareLinkDialog";
+import { CopyToMyCollectionDialog } from "@/components/features/links/CopyToMyCollectionDialog";
 
 interface LinkDetailHeaderProps {
   linkId: string;
@@ -39,6 +41,8 @@ interface LinkDetailHeaderProps {
   renderRatingInput?: () => React.ReactNode;
   archivedAt?: Date | null;
   onFavoriteToggle?: () => void;
+  showShare?: boolean;
+  showAddToMyCollection?: boolean;
 }
 
 export const LinkDetailHeader = ({ 
@@ -63,10 +67,28 @@ export const LinkDetailHeader = ({
   renderRatingInput,
   archivedAt = null,
   onFavoriteToggle,
+  showShare = false,
+  showAddToMyCollection = false,
 }: LinkDetailHeaderProps) => {
   const router = useRouter();
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = React.useState(false);
+  const [copyToCollectionOpen, setCopyToCollectionOpen] = React.useState(false);
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const menuRefMobile = React.useRef<HTMLDivElement>(null);
+  const menuRefDesktop = React.useRef<HTMLDivElement>(null);
   const { isOpen: sidebarOpen } = useSidebar();
+
+  React.useEffect(() => {
+    if (!menuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      const inside = menuRefMobile.current?.contains(target) || menuRefDesktop.current?.contains(target);
+      if (!inside) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [menuOpen]);
 
   const handleDelete = async () => {
     try {
@@ -107,23 +129,8 @@ export const LinkDetailHeader = ({
           </Button>
         </Link>
         
-        {/* Archive Button, Edit Button, and Delete Button (mobile only) */}
+        {/* Edit, Delete, three-dot menu (Archive + Share), Add to my collection (mobile only) */}
         <div className="flex items-center gap-2 sm:hidden">
-          {archivedAt ? (
-            <form action={handleUnarchiveLink}>
-              <input type="hidden" name="linkId" value={linkId} />
-              <Button type="submit" variant="outline" size="sm">
-                Unarchive
-              </Button>
-            </form>
-          ) : (
-            <form action={handleArchiveLink}>
-              <input type="hidden" name="linkId" value={linkId} />
-              <Button type="submit" variant="outline" size="sm">
-                Archive
-              </Button>
-            </form>
-          )}
           {canEdit && !isEditMode && (
             <Button variant="primary" size="sm" onClick={onEditClick}>
               <svg
@@ -164,30 +171,72 @@ export const LinkDetailHeader = ({
               </svg>
             </Button>
           )}
+          {!showAddToMyCollection && (
+            <div className="relative" ref={menuRefMobile}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setMenuOpen((o) => !o)}
+                aria-label="More actions"
+                aria-expanded={menuOpen}
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                </svg>
+              </Button>
+              {menuOpen && (
+                <div className="absolute right-0 top-full z-50 mt-1 min-w-[160px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 py-1 shadow-lg">
+                  {archivedAt ? (
+                    <form action={handleUnarchiveLink}>
+                      <input type="hidden" name="linkId" value={linkId} />
+                      <button
+                        type="submit"
+                        className="w-full px-4 py-2 text-left text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                      >
+                        Unarchive
+                      </button>
+                    </form>
+                  ) : (
+                    <form action={handleArchiveLink}>
+                      <input type="hidden" name="linkId" value={linkId} />
+                      <button
+                        type="submit"
+                        className="w-full px-4 py-2 text-left text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                      >
+                        Archive
+                      </button>
+                    </form>
+                  )}
+                  {showShare && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShareDialogOpen(true);
+                        setMenuOpen(false);
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                    >
+                      Share
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {showAddToMyCollection && (
+            <Button variant="outline" size="sm" onClick={() => setCopyToCollectionOpen(true)}>
+              Add to my collection
+            </Button>
+          )}
         </div>
         
-        {/* Archive Button, Edit Button, and Delete Button (desktop only) */}
+        {/* Edit, Delete, three-dot menu (Archive + Share), Add to my collection (desktop only) */}
         <div
           className={cn(
             "hidden sm:flex flex-wrap items-center gap-2 flex-shrink-0 lg:transition-all lg:duration-300 lg:ease-in-out",
             sidebarOpen ? "lg:mr-[360px]" : "lg:mr-12"
           )}
         >
-          {archivedAt ? (
-            <form action={handleUnarchiveLink}>
-              <input type="hidden" name="linkId" value={linkId} />
-              <Button type="submit" variant="outline" size="sm">
-                Unarchive
-              </Button>
-            </form>
-          ) : (
-            <form action={handleArchiveLink}>
-              <input type="hidden" name="linkId" value={linkId} />
-              <Button type="submit" variant="outline" size="sm">
-                Archive
-              </Button>
-            </form>
-          )}
           {canEdit && !isEditMode && (
             <Button variant="primary" size="sm" onClick={onEditClick}>
               <svg
@@ -226,6 +275,63 @@ export const LinkDetailHeader = ({
                 />
               </svg>
               Delete Link
+            </Button>
+          )}
+          {!showAddToMyCollection && (
+            <div className="relative" ref={menuRefDesktop}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setMenuOpen((o) => !o)}
+                aria-label="More actions"
+                aria-expanded={menuOpen}
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                </svg>
+              </Button>
+              {menuOpen && (
+                <div className="absolute right-0 top-full z-50 mt-1 min-w-[160px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 py-1 shadow-lg">
+                  {archivedAt ? (
+                    <form action={handleUnarchiveLink}>
+                      <input type="hidden" name="linkId" value={linkId} />
+                      <button
+                        type="submit"
+                        className="w-full px-4 py-2 text-left text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                      >
+                        Unarchive
+                      </button>
+                    </form>
+                  ) : (
+                    <form action={handleArchiveLink}>
+                      <input type="hidden" name="linkId" value={linkId} />
+                      <button
+                        type="submit"
+                        className="w-full px-4 py-2 text-left text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                      >
+                        Archive
+                      </button>
+                    </form>
+                  )}
+                  {showShare && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShareDialogOpen(true);
+                        setMenuOpen(false);
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                    >
+                      Share
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {showAddToMyCollection && (
+            <Button variant="outline" size="sm" onClick={() => setCopyToCollectionOpen(true)}>
+              Add to my collection
             </Button>
           )}
         </div>
@@ -344,6 +450,23 @@ export const LinkDetailHeader = ({
             </div>
           </div>
         </div>
+      )}
+
+      {shareDialogOpen && (
+        <ShareLinkDialog
+          open={shareDialogOpen}
+          onOpenChange={setShareDialogOpen}
+          linkId={linkId}
+          linkTitle={linkTitle}
+        />
+      )}
+      {copyToCollectionOpen && (
+        <CopyToMyCollectionDialog
+          open={copyToCollectionOpen}
+          onOpenChange={setCopyToCollectionOpen}
+          linkId={linkId}
+          linkTitle={linkTitle}
+        />
       )}
     </div>
   );

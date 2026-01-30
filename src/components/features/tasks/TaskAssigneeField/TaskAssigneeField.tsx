@@ -4,6 +4,7 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { Select } from "@/components/ui/Select";
 import { updateTodo } from "@/server/actions/todos";
+import { getServerActionErrorMessage } from "@/lib/utils/server-action-utils";
 
 interface UserOption {
   id: string;
@@ -46,7 +47,7 @@ export const TaskAssigneeField = ({ taskId, assignedToId, users }: TaskAssigneeF
       }
     } catch (err) {
       console.error("Update task assignee error:", err);
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
     } finally {
       setIsUpdating(false);
     }

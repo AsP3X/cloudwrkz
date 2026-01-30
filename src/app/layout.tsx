@@ -4,6 +4,7 @@ import "./globals.css";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { CookiesDisclaimer } from "@/components/ui/CookiesDisclaimer";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
+import { ServerUnavailableProvider } from "@/components/providers/ServerUnavailableProvider";
 import { getUserTheme } from "@/server/actions/theme";
 import { isDatabaseAccessible } from "@/lib/utils/db-health";
 import { DatabaseConnectionError } from "@/lib/utils/auth-server";
@@ -133,8 +134,10 @@ export default async function RootLayout({
           }}
         />
         <ThemeProvider>
-          {children}
-          <CookiesDisclaimer />
+          <ServerUnavailableProvider>
+            {children}
+            <CookiesDisclaimer />
+          </ServerUnavailableProvider>
         </ThemeProvider>
       </body>
     </html>

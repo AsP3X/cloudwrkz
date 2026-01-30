@@ -13,6 +13,7 @@ import { bulkUnarchiveTickets, bulkDeleteTickets } from "@/server/actions/ticket
 import { bulkUnarchiveTimeEntries, bulkDeleteTimeEntries } from "@/server/actions/time-tracking";
 import { bulkUnarchiveLinks, bulkDeleteLinks } from "@/server/actions/links";
 import { ArchiveFilterButton } from "./ArchiveFilterButton";
+import { getServerActionErrorMessage } from "@/lib/utils/server-action-utils";
 
 export type ArchiveItemType = "all" | "tickets" | "todos" | "time" | "links";
 
@@ -196,7 +197,7 @@ export function ArchivePageClient({
       setSelected(new Set());
       router.refresh();
     } catch (e) {
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(e));
     } finally {
       setIsWorking(false);
     }
@@ -231,7 +232,7 @@ export function ArchivePageClient({
       setSelected(new Set());
       router.refresh();
     } catch (e) {
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(e));
     } finally {
       setIsWorking(false);
     }

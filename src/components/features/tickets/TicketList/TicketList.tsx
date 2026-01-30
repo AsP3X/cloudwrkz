@@ -13,6 +13,7 @@ import { bulkUpdateTickets, bulkDeleteTickets, bulkArchiveTickets } from "@/serv
 import { TicketBulkAssignDialog } from "../TicketBulkAssignDialog";
 import { TicketBulkDeleteDialog } from "../TicketBulkDeleteDialog";
 import { cn } from "@/lib/utils/cn";
+import { getServerActionErrorMessage } from "@/lib/utils/server-action-utils";
 
 type Ticket = {
   id: string;
@@ -137,7 +138,7 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
         setError(result.error || "Failed to update tickets");
       }
     } catch (err) {
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
     } finally {
       setIsProcessing(false);
     }
@@ -158,7 +159,7 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
         setError(result.error || "Failed to update tickets");
       }
     } catch (err) {
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
     } finally {
       setIsProcessing(false);
     }
@@ -189,7 +190,7 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
         setError(result.error || "Failed to assign tickets");
       }
     } catch (err) {
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
     } finally {
       setIsProcessing(false);
     }
@@ -215,7 +216,7 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
         setError(result.error || "Failed to archive tickets");
       }
     } catch (err) {
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
     } finally {
       setIsProcessing(false);
     }
@@ -238,7 +239,7 @@ export const TicketList = ({ tickets, viewMode }: TicketListProps) => {
         setShowDeleteDialog(false);
       }
     } catch (err) {
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
       setShowDeleteDialog(false);
     } finally {
       setIsProcessing(false);

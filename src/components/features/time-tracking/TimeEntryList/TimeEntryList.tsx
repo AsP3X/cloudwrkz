@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils/cn";
 import { pauseTimeEntry, resumeTimeEntry, stopTimeEntry, deleteTimeEntry, bulkUpdateTimeEntries, bulkDeleteTimeEntries, bulkArchiveTimeEntries } from "@/server/actions/time-tracking";
 import { type TimeEntryStatus } from "@prisma/client";
 import { EditTimeEntryDialog } from "../EditTimeEntryDialog";
+import { getServerActionErrorMessage } from "@/lib/utils/server-action-utils";
 
 type TimeEntry = {
   id: string;
@@ -241,7 +242,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
         setError(result.error || "Failed to update time entries");
       }
     } catch (err) {
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
     } finally {
       setIsProcessing(false);
     }
@@ -269,7 +270,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
         setShowTagDialog(false);
       }
     } catch (err) {
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
       setShowTagDialog(false);
     } finally {
       setIsProcessing(false);
@@ -296,7 +297,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
         setError(result.error || "Failed to archive time entries");
       }
     } catch (err) {
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
     } finally {
       setIsProcessing(false);
     }
@@ -319,7 +320,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC" }: TimeEntryListPr
         setShowDeleteDialog(false);
       }
     } catch (err) {
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
       setShowDeleteDialog(false);
     } finally {
       setIsProcessing(false);

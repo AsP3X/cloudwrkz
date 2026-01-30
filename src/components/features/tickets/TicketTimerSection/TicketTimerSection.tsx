@@ -8,6 +8,7 @@ import Link from "next/link";
 import { ROUTES } from "@/lib/constants/routes";
 import { calculateElapsedTime } from "@/lib/utils/time-tracking";
 import { formatDateTimeInTimezone } from "@/lib/utils/date";
+import { getServerActionErrorMessage } from "@/lib/utils/server-action-utils";
 
 interface TicketTimerSectionProps {
   ticketId: string;
@@ -93,7 +94,7 @@ export function TicketTimerSection({
         setError(result.error || "Failed to create timer");
       }
     } catch (err) {
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
       console.error("Error creating timer:", err);
     } finally {
       setIsCreating(false);
@@ -114,7 +115,7 @@ export function TicketTimerSection({
         setError(result.error || "Failed to pause timer");
       }
     } catch (err) {
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
       console.error("Error pausing timer:", err);
     } finally {
       setLoadingTimers((prev) => {
@@ -139,7 +140,7 @@ export function TicketTimerSection({
         setError(result.error || "Failed to resume timer");
       }
     } catch (err) {
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
       console.error("Error resuming timer:", err);
     } finally {
       setLoadingTimers((prev) => {
@@ -164,7 +165,7 @@ export function TicketTimerSection({
         setError(result.error || "Failed to stop timer");
       }
     } catch (err) {
-      setError("An unexpected error occurred");
+      setError(getServerActionErrorMessage(err));
       console.error("Error stopping timer:", err);
     } finally {
       setLoadingTimers((prev) => {

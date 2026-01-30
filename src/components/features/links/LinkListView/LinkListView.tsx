@@ -17,6 +17,7 @@ type LinkItem = {
   rating: number | null;
   createdAt: Date;
   updatedAt: Date;
+  userId?: string;
   collections: Array<{
     collection: {
       id: string;
@@ -30,9 +31,18 @@ interface LinkListViewProps {
   links: LinkItem[];
   /** When true, show Unarchive and Delete permanently (for archived links page) */
   isArchivePage?: boolean;
+  /** Current user id – used to show Share only on own links */
+  currentUserId?: string;
+  /** When true, links are from "Shared with me" – show Add to my collection */
+  isSharedWithMeView?: boolean;
 }
 
-export const LinkListView = ({ links, isArchivePage = false }: LinkListViewProps) => {
+export const LinkListView = ({
+  links,
+  isArchivePage = false,
+  currentUserId,
+  isSharedWithMeView = false,
+}: LinkListViewProps) => {
   const { viewMode, isReady } = useLinkView();
 
   if (!isReady) {
@@ -41,7 +51,13 @@ export const LinkListView = ({ links, isArchivePage = false }: LinkListViewProps
 
   return (
     <div>
-      <LinkList links={links} viewMode={viewMode} isArchivePage={isArchivePage} />
+      <LinkList
+        links={links}
+        viewMode={viewMode}
+        isArchivePage={isArchivePage}
+        currentUserId={currentUserId}
+        isSharedWithMeView={isSharedWithMeView}
+      />
     </div>
   );
 };

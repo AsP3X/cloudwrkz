@@ -9,6 +9,7 @@ import {
   privacySettingsSchema,
   type PrivacySettingsInput,
 } from "@/lib/validations/settings";
+import { getServerActionErrorMessage } from "@/lib/utils/server-action-utils";
 
 export const PrivacySecurityForm = () => {
   const [error, setError] = React.useState<string | null>(null);
@@ -44,7 +45,7 @@ export const PrivacySecurityForm = () => {
       setError("Privacy settings update functionality is not yet implemented.");
     } catch (error) {
       console.error("Privacy settings update error:", error);
-      setError("An unexpected error occurred. Please try again.");
+      setError(getServerActionErrorMessage(error, "An unexpected error occurred. Please try again."));
     }
   };
 
