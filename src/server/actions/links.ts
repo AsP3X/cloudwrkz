@@ -2081,6 +2081,65 @@ export async function getSharedWithMeCount(): Promise<number> {
 }
 
 /**
+ * Remove a link from "Shared with me" for the current user only.
+ * Deletes the LinkShare for this user; the link and shares for other users are unchanged.
+ */
+export async function removeSharedLinkForMe(linkId: string): Promise<ActionResult> {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.LINKS);
+    if (!moduleEnabled) {
+      return { success: false, error: "Links module is not enabled" };
+    }
+
+    const user = await requireAuth();
+    await requireAnyPermission("links.view");
+
+    await prisma.linkShare.deleteMany({
+      where: { linkId, sharedWithUserId: user.id },
+    });
+
+    revalidatePath("/dashboard/links");
+    return { success: true };
+  } catch (error) {
+    logger.error("Error removing shared link for me:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to remove from Shared with me",
+    };
+  }
+}
+
+/**
+ * Remove multiple links from "Shared with me" for the current user only (bulk).
+ */
+export async function bulkRemoveSharedLinksForMe(linkIds: string[]): Promise<ActionResult> {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.LINKS);
+    if (!moduleEnabled) {
+      return { success: false, error: "Links module is not enabled" };
+    }
+
+    const user = await requireAuth();
+    await requireAnyPermission("links.view");
+
+    if (linkIds.length === 0) return { success: true };
+
+    await prisma.linkShare.deleteMany({
+      where: { sharedWithUserId: user.id, linkId: { in: linkIds } },
+    });
+
+    revalidatePath("/dashboard/links");
+    return { success: true };
+  } catch (error) {
+    logger.error("Error bulk removing shared links for me:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to remove from Shared with me",
+    };
+  }
+}
+
+/**
  * Copy a link shared with the current user into their own collection (creates a new link owned by them; does not affect the original).
  */
 export async function copySharedLinkToMyCollection(

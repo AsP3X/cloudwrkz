@@ -172,8 +172,7 @@ export default async function LinksPage({ searchParams }: LinksPageProps) {
                   />
                 </svg>
                 <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">No links yet</h3>
-                <p className="text-neutral-600 dark:text-neutral-400 mb-4">Get started by creating your first link</p>
-                <CreateButton canCreate={canCreateLinks} />
+                <p className="text-neutral-600 dark:text-neutral-400">Get started by creating your first link</p>
               </div>
             ) : (
               <LinkListView

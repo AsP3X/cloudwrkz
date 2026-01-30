@@ -173,6 +173,7 @@ export const LinkDetailContent = ({
           archivedAt={link.archivedAt}
           showShare={isOwner}
           showAddToMyCollection={!isOwner}
+          showRemoveFromShared={!isOwner}
           onFavoriteToggle={formMethods ? () => {
             const currentValue = formMethods.watch("isFavorite");
             formMethods.setValue("isFavorite", !currentValue, { shouldValidate: true });
@@ -251,6 +252,7 @@ export const LinkDetailContent = ({
         archivedAt={link.archivedAt}
         showShare={isOwner}
         showAddToMyCollection={!isOwner}
+        showRemoveFromShared={!isOwner}
       />
 
       <LinkDetailLayout

@@ -13,6 +13,7 @@ import {
   bulkUnarchiveLinks,
   bulkAddLinksToCollection,
   bulkCreateCollectionWithLinks,
+  bulkRemoveSharedLinksForMe,
 } from "@/server/actions/links";
 import { getUserCollections } from "@/server/actions/collections";
 import { ShareLinkDialog } from "@/components/features/links/ShareLinkDialog";
@@ -240,13 +241,15 @@ export const LinkList = ({
     setError(null);
 
     try {
-      const result = await bulkDeleteLinks(Array.from(selectedLinks));
+      const result = isSharedWithMeView
+        ? await bulkRemoveSharedLinksForMe(Array.from(selectedLinks))
+        : await bulkDeleteLinks(Array.from(selectedLinks));
       if (result.success) {
         setSelectedLinks(new Set());
         setShowDeleteDialog(false);
         router.refresh();
       } else {
-        setError(result.error || "Failed to delete links");
+        setError(result.error || (isSharedWithMeView ? "Failed to remove from Shared with me" : "Failed to delete links"));
         setShowDeleteDialog(false);
       }
     } catch (err) {
@@ -350,7 +353,7 @@ export const LinkList = ({
                 </button>
               </div>
               <div className="flex items-center gap-2">
-                {!isArchivePage && (
+                {!isArchivePage && !isSharedWithMeView && (
                   <button
                     onClick={handleCollectionClick}
                     disabled={isProcessing}
@@ -359,7 +362,7 @@ export const LinkList = ({
                     Collection
                   </button>
                 )}
-                {isArchivePage ? (
+                {!isSharedWithMeView && (isArchivePage ? (
                   <button
                     onClick={handleBulkUnarchive}
                     disabled={isProcessing}
@@ -375,13 +378,13 @@ export const LinkList = ({
                   >
                     Archive
                   </button>
-                )}
+                ))}
                 <button
                   onClick={handleBulkDelete}
                   disabled={isProcessing}
                   className="px-3 py-1.5 text-sm font-medium text-error-600 dark:text-error-400 hover:bg-error-50 dark:hover:bg-error-900/20 rounded-md disabled:opacity-50"
                 >
-                  {isArchivePage ? "Delete permanently" : "Delete"}
+                  {isSharedWithMeView ? "Remove from Shared with me" : isArchivePage ? "Delete permanently" : "Delete"}
                 </button>
               </div>
             </div>
@@ -956,10 +959,12 @@ export const LinkList = ({
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-lg p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
-              {isArchivePage ? "Delete permanently" : "Delete Links"}
+              {isSharedWithMeView ? "Remove from Shared with me" : isArchivePage ? "Delete permanently" : "Delete Links"}
             </h3>
             <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
-              Are you sure you want to {isArchivePage ? "permanently delete" : "delete"} {selectedLinks.size} link{selectedLinks.size !== 1 ? "s" : ""}? This action cannot be undone.
+              {isSharedWithMeView
+                ? `Remove ${selectedLinks.size} link${selectedLinks.size !== 1 ? "s" : ""} from your list? The owner and others will not be affected.`
+                : `Are you sure you want to ${isArchivePage ? "permanently delete" : "delete"} ${selectedLinks.size} link${selectedLinks.size !== 1 ? "s" : ""}? This action cannot be undone.`}
             </p>
             <div className="flex justify-end gap-3">
               <button
@@ -973,7 +978,7 @@ export const LinkList = ({
                 disabled={isProcessing}
                 className="px-4 py-2 text-sm font-medium text-white bg-error-600 hover:bg-error-700 rounded-md disabled:opacity-50"
               >
-                {isProcessing ? "Deleting..." : isArchivePage ? "Delete permanently" : "Delete"}
+                {isProcessing ? (isSharedWithMeView ? "Removing..." : "Deleting...") : isSharedWithMeView ? "Remove" : isArchivePage ? "Delete permanently" : "Delete"}
               </button>
             </div>
           </div>

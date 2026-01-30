@@ -6,7 +6,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { formatDateTimeInTimezone } from "@/lib/utils/date";
-import { deleteLink } from "@/server/actions/links";
+import { deleteLink, removeSharedLinkForMe } from "@/server/actions/links";
 import { useSidebar } from "./LinkDetailLayout";
 import { cn } from "@/lib/utils/cn";
 import { handleArchiveLink, handleUnarchiveLink } from "./actions";
@@ -43,6 +43,8 @@ interface LinkDetailHeaderProps {
   onFavoriteToggle?: () => void;
   showShare?: boolean;
   showAddToMyCollection?: boolean;
+  /** When true, show "Remove from Shared with me" (removes share for current user only). */
+  showRemoveFromShared?: boolean;
 }
 
 export const LinkDetailHeader = ({ 
@@ -69,9 +71,11 @@ export const LinkDetailHeader = ({
   onFavoriteToggle,
   showShare = false,
   showAddToMyCollection = false,
+  showRemoveFromShared = false,
 }: LinkDetailHeaderProps) => {
   const router = useRouter();
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
+  const [removeFromSharedDialogOpen, setRemoveFromSharedDialogOpen] = React.useState(false);
   const [shareDialogOpen, setShareDialogOpen] = React.useState(false);
   const [copyToCollectionOpen, setCopyToCollectionOpen] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -103,6 +107,22 @@ export const LinkDetailHeader = ({
     } catch (error) {
       console.error("Error deleting link:", error);
       alert("Failed to delete link. Please try again.");
+    }
+  };
+
+  const handleRemoveFromShared = async () => {
+    try {
+      const result = await removeSharedLinkForMe(linkId);
+      if (result.success) {
+        setRemoveFromSharedDialogOpen(false);
+        router.push("/dashboard/links");
+        router.refresh();
+      } else {
+        alert(result.error || "Failed to remove from Shared with me.");
+      }
+    } catch (error) {
+      console.error("Error removing from shared:", error);
+      alert("Failed to remove from Shared with me.");
     }
   };
 
@@ -155,6 +175,28 @@ export const LinkDetailHeader = ({
               size="sm" 
               onClick={() => setDeleteDialogOpen(true)}
               aria-label="Delete Link"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                />
+              </svg>
+            </Button>
+          )}
+          {showRemoveFromShared && (
+            <Button 
+              variant="danger" 
+              size="sm" 
+              onClick={() => setRemoveFromSharedDialogOpen(true)}
+              aria-label="Remove from Shared with me"
             >
               <svg
                 className="w-4 h-4"
@@ -275,6 +317,28 @@ export const LinkDetailHeader = ({
                 />
               </svg>
               Delete Link
+            </Button>
+          )}
+          {showRemoveFromShared && (
+            <Button 
+              variant="danger" 
+              size="sm" 
+              onClick={() => setRemoveFromSharedDialogOpen(true)}
+            >
+              <svg
+                className="w-4 h-4 mr-2"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                />
+              </svg>
+              Remove from Shared with me
             </Button>
           )}
           {!showAddToMyCollection && (
@@ -446,6 +510,28 @@ export const LinkDetailHeader = ({
               </Button>
               <Button variant="danger" onClick={handleDelete}>
                 Delete
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Remove from Shared with me Confirmation Dialog */}
+      {showRemoveFromShared && removeFromSharedDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-xl border border-neutral-200 dark:border-neutral-800 p-6 max-w-md w-full">
+            <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
+              Remove from Shared with me
+            </h3>
+            <p className="text-neutral-600 dark:text-neutral-400 mb-4">
+              This will only remove the link from your list. The owner and others it was shared with will not be affected.
+            </p>
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setRemoveFromSharedDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button variant="danger" onClick={handleRemoveFromShared}>
+                Remove
               </Button>
             </div>
           </div>
