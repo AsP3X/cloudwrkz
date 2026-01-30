@@ -84,50 +84,80 @@ export function BulkAddLinksDialog({
     .filter(Boolean).length;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} title="Bulk add links">
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <p className="text-sm text-neutral-600 dark:text-neutral-400">
-          Paste one URL per line. Invalid lines are skipped. Duplicates are not created.
-        </p>
-        <Textarea
-          value={urlsText}
-          onChange={(e) => setUrlsText(e.target.value)}
-          placeholder={"https://example.com\nhttps://github.com/owner/repo\n..."}
-          rows={10}
-          className="font-mono text-sm"
-          disabled={isSubmitting}
-        />
-        {totalLines > 0 && (
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">
-            {validCount} valid URL{validCount !== 1 ? "s" : ""} of {totalLines} line{totalLines !== 1 ? "s" : ""}
-          </p>
-        )}
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={extractMetadata}
-            onChange={(e) => setExtractMetadata(e.target.checked)}
-            disabled={isSubmitting}
-            className="rounded border-neutral-300 dark:border-neutral-600"
-          />
-          Extract title and description from each page
-        </label>
-        {selectedCollectionId && collections.length > 0 && (
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">
-            Links will be added to the selected collection.
-          </p>
-        )}
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Bulk add links"
+      description="Paste multiple URLs to add many links at once"
+      className="max-w-2xl"
+    >
+      <form onSubmit={handleSubmit} className="px-4 sm:px-6 py-4 sm:py-6">
         {error && (
-          <p className="text-sm text-red-600 dark:text-red-400" role="alert">
-            {error}
-          </p>
+          <div className="mb-6 p-4 bg-error-50 dark:bg-error-950/50 border border-error-200 dark:border-error-800 rounded-lg">
+            <p className="text-sm font-medium text-error-800 dark:text-error-200" role="alert">{error}</p>
+          </div>
         )}
+
+        <div className="space-y-6">
+          <div className="space-y-4">
+            <div className="pb-2 border-b border-neutral-200 dark:border-neutral-800">
+              <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 uppercase tracking-wide">
+                URLs
+              </h3>
+            </div>
+            <p className="text-sm text-neutral-600 dark:text-neutral-400">
+              Paste one URL per line. Invalid lines are skipped. Duplicates are not created.
+            </p>
+            <div>
+              <label htmlFor="bulk-urls" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                URLs (one per line)
+              </label>
+              <Textarea
+                id="bulk-urls"
+                value={urlsText}
+                onChange={(e) => setUrlsText(e.target.value)}
+                placeholder={"https://example.com\nhttps://github.com/owner/repo\n..."}
+                rows={10}
+                className="font-mono text-sm resize-none"
+                disabled={isSubmitting}
+              />
+              {totalLines > 0 && (
+                <p className="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                  {validCount} valid URL{validCount !== 1 ? "s" : ""} of {totalLines} line{totalLines !== 1 ? "s" : ""}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="pb-2 border-b border-neutral-200 dark:border-neutral-800">
+              <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 uppercase tracking-wide">
+                Options
+              </h3>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={extractMetadata}
+                onChange={(e) => setExtractMetadata(e.target.checked)}
+                disabled={isSubmitting}
+                className="rounded border-neutral-300 dark:border-neutral-600 text-primary-600 focus:ring-primary-500"
+              />
+              Extract title and description from each page
+            </label>
+            {selectedCollectionId && collections.length > 0 && (
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                Links will be added to the selected collection.
+              </p>
+            )}
+          </div>
+        </div>
+
         {result && (
-          <div className="rounded-md border border-neutral-200 dark:border-neutral-700 p-3 text-sm space-y-2">
+          <div className="mt-6 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50 p-4 text-sm space-y-2">
             <p className="font-medium text-neutral-900 dark:text-neutral-100">
               Created {result.created} link{result.created !== 1 ? "s" : ""}.
-              {result.failed.length > 0 &&
-                ` ${result.failed.length} failed.`}
+              {result.failed.length > 0 && ` ${result.failed.length} failed.`}
             </p>
             {result.failed.length > 0 && (
               <ul className="max-h-32 overflow-y-auto space-y-1 text-neutral-600 dark:text-neutral-400">
@@ -143,13 +173,24 @@ export function BulkAddLinksDialog({
             )}
           </div>
         )}
-        <div className="flex justify-end gap-2 pt-2">
+
+        <div className="flex justify-end gap-3 pt-6 mt-6 border-t border-neutral-200 dark:border-neutral-800">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
             {result ? "Close" : "Cancel"}
           </Button>
           {!result && (
             <Button type="submit" variant="primary" disabled={isSubmitting || validCount === 0}>
-              {isSubmitting ? "Adding…" : `Add ${validCount} link${validCount !== 1 ? "s" : ""}`}
+              {isSubmitting ? (
+                <span className="flex items-center gap-2">
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Adding…
+                </span>
+              ) : (
+                `Add ${validCount} link${validCount !== 1 ? "s" : ""}`
+              )}
             </Button>
           )}
         </div>
