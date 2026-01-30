@@ -8,9 +8,13 @@ interface ServerUnavailableProviderProps {
   children: React.ReactNode;
 }
 
+const SERVER_UNAVAILABLE_EVENT = "serverunavailable";
+
 /**
  * Listens for unhandled promise rejections (e.g. server action failures when the server
  * disconnects or crashes) and shows a dismissible banner instead of only logging to console.
+ * Also listens for the custom 'serverunavailable' event dispatched by the early inline script
+ * when a rejection was handled before React mounted.
  */
 export function ServerUnavailableProvider({ children }: ServerUnavailableProviderProps) {
   const [showBanner, setShowBanner] = useState(false);
@@ -18,17 +22,36 @@ export function ServerUnavailableProvider({ children }: ServerUnavailableProvide
   const dismiss = useCallback(() => setShowBanner(false), []);
 
   useEffect(() => {
+    const showBannerIfServerUnavailable = (error: unknown) => {
+      if (isServerUnavailableError(error)) setShowBanner(true);
+    };
+
     const handleRejection = (event: PromiseRejectionEvent) => {
       const error = event?.reason;
       if (isServerUnavailableError(error)) {
         setShowBanner(true);
-        // Prevent the default console error for this known case so the user sees the banner instead
         event.preventDefault?.();
+        event.stopImmediatePropagation?.();
       }
     };
 
-    window.addEventListener("unhandledrejection", handleRejection);
-    return () => window.removeEventListener("unhandledrejection", handleRejection);
+    const handleServerUnavailableEvent = (event: Event) => {
+      const customEvent = event as CustomEvent<unknown>;
+      showBannerIfServerUnavailable(customEvent.detail);
+    };
+
+    if (typeof window !== "undefined" && (window as unknown as { __serverUnavailableReason?: unknown }).__serverUnavailableReason != null) {
+      const reason = (window as unknown as { __serverUnavailableReason?: unknown }).__serverUnavailableReason;
+      showBannerIfServerUnavailable(reason);
+      delete (window as unknown as { __serverUnavailableReason?: unknown }).__serverUnavailableReason;
+    }
+
+    window.addEventListener("unhandledrejection", handleRejection, true);
+    window.addEventListener(SERVER_UNAVAILABLE_EVENT, handleServerUnavailableEvent);
+    return () => {
+      window.removeEventListener("unhandledrejection", handleRejection, true);
+      window.removeEventListener(SERVER_UNAVAILABLE_EVENT, handleServerUnavailableEvent);
+    };
   }, []);
 
   return (

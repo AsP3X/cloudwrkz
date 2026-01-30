@@ -60,6 +60,31 @@ export default async function RootLayout({
   return (
     <html lang="en" className={inter.variable} suppressHydrationWarning>
       <body className="min-h-screen">
+        {/* Catch server disconnect / unexpected response before Next.js logs to console */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                function isServerDisconnect(e) {
+                  if (!e) return false;
+                  var msg = (e && typeof e.message === 'string') ? e.message : '';
+                  var cause = e.cause;
+                  if (msg.indexOf('unexpected response') !== -1 || msg.indexOf('An unexpected response was received from the server') !== -1) return true;
+                  if (msg.indexOf('Failed to fetch') !== -1 || msg.indexOf('Load failed') !== -1 || msg.indexOf('NetworkError') !== -1) return true;
+                  if (msg.indexOf('connection refused') !== -1 || msg.indexOf('ERR_CONNECTION') !== -1 || msg.indexOf('Network request failed') !== -1) return true;
+                  if (cause && isServerDisconnect(cause)) return true;
+                  return false;
+                }
+                window.addEventListener('unhandledrejection', function(event) {
+                  if (isServerDisconnect(event.reason)) {
+                    event.preventDefault();
+                    try { window.__serverUnavailableReason = event.reason; window.dispatchEvent(new CustomEvent('serverunavailable', { detail: event.reason })); } catch (_) {}
+                  }
+                }, true);
+              })();
+            `,
+          }}
+        />
         {/* Blocking script to prevent white flash - must run before React hydrates */}
         {/* Priority: serverTheme (from database) > localStorage > system */}
         <script

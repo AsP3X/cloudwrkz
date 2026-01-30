@@ -88,14 +88,16 @@ export const SERVER_UNAVAILABLE_MESSAGE =
 /**
  * Check if an error indicates the server is disconnected, crashed, or unreachable.
  * Use this in catch blocks to show a friendly message instead of raw errors.
+ * Handles Next.js server action errors (e.g. E394 "unexpected response"), wrapped errors (cause), and stack traces.
  */
 export function isServerUnavailableError(error: unknown): boolean {
   if (error == null) return false;
   const err = error as Record<string, unknown>;
   const message = typeof err?.message === "string" ? err.message : "";
   const name = typeof err?.name === "string" ? err.name : "";
+  const stack = typeof err?.stack === "string" ? err.stack : "";
 
-  return (
+  const messageIndicators =
     message.includes("unexpected response") ||
     message.includes("An unexpected response was received from the server") ||
     message.includes("Failed to fetch") ||
@@ -105,8 +107,14 @@ export function isServerUnavailableError(error: unknown): boolean {
     message.includes("ERR_CONNECTION_REFUSED") ||
     message.includes("ERR_CONNECTION_RESET") ||
     message.includes("connection refused") ||
-    name === "TypeError" && (message.includes("fetch") || message.includes("network") || message === "Failed to fetch")
-  );
+    (name === "TypeError" && (message.includes("fetch") || message.includes("network") || message === "Failed to fetch"));
+
+  if (messageIndicators) return true;
+  if (stack && (stack.includes("unexpected response") || stack.includes("fetchServerAction"))) return true;
+  if (err?.__NEXT_ERROR_CODE === "E394") return true;
+  const cause = err?.cause;
+  if (cause != null && isServerUnavailableError(cause)) return true;
+  return false;
 }
 
 /**
