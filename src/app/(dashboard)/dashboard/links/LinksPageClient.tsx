@@ -8,6 +8,7 @@ import { CollectionList } from "@/components/features/links/CollectionList";
 import { CreateCollectionDialog } from "@/components/features/links/CreateCollectionDialog";
 import { ImportLinksDialog } from "@/components/features/links/ImportLinksDialog";
 import { Button } from "@/components/ui/Button";
+import { exportLinks } from "@/server/actions/links";
 
 // Context for sharing dialog state
 const LinksPageContext = React.createContext<{
@@ -105,15 +106,153 @@ interface CreateButtonProps {
 
 export function CreateButton({ canCreate }: CreateButtonProps) {
   const { openAddLink, openBulkAdd } = useLinksPage();
+  const [dropdownOpen, setDropdownOpen] = React.useState(false);
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!dropdownOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (dropdownRef.current && !dropdownRef.current.contains(target)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [dropdownOpen]);
+
   if (!canCreate) return null;
+
   return (
-    <div className="flex items-center gap-2">
-      <Button variant="outline" onClick={openBulkAdd}>
-        Bulk add
-      </Button>
-      <Button variant="primary" onClick={openAddLink}>
+    <div className="relative inline-flex" ref={dropdownRef}>
+      <Button
+        variant="primary"
+        onClick={openAddLink}
+        className="rounded-r-none border-r border-white/20 dark:border-white/20"
+      >
         Create
       </Button>
+      <button
+        type="button"
+        onClick={() => setDropdownOpen((o) => !o)}
+        aria-label="Create options"
+        aria-expanded={dropdownOpen}
+        className="inline-flex items-center justify-center h-10 px-2 rounded-r-md bg-primary-700 dark:bg-primary-600 text-white hover:bg-primary-800 dark:hover:bg-primary-700 border-2 border-primary-700 dark:border-primary-600 border-l-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-neutral-900"
+      >
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {dropdownOpen && (
+        <div className="absolute right-0 top-full z-50 mt-1 min-w-[140px] rounded-lg border-2 border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 py-1 shadow-xl ring-1 ring-black/5 dark:ring-white/5">
+          <button
+            type="button"
+            onClick={() => {
+              openBulkAdd();
+              setDropdownOpen(false);
+            }}
+            className="mx-1 w-[calc(100%-8px)] rounded-md px-4 py-2 text-left text-sm text-neutral-800 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+          >
+            Bulk add
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface LinksOverviewActionsMenuProps {
+  canCreate: boolean;
+  collectionId?: string;
+  collections?: Array<{ id: string; name: string; color: string | null }>;
+}
+
+export function LinksOverviewActionsMenu({ canCreate, collectionId, collections = [] }: LinksOverviewActionsMenuProps) {
+  const { openImport } = useLinksPage();
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const [exportLoading, setExportLoading] = React.useState<"json" | "csv" | null>(null);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!menuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (menuRef.current && !menuRef.current.contains(target)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [menuOpen]);
+
+  const handleExport = async (format: "json" | "csv") => {
+    setExportLoading(format);
+    try {
+      const result = await exportLinks({
+        format,
+        collectionId,
+        archived: false,
+      });
+      if (result.success && result.data) {
+        const blob = new Blob([result.data.content], { type: result.data.mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = result.data.filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } finally {
+      setExportLoading(null);
+      setMenuOpen(false);
+    }
+  };
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <Button
+        variant="outline"
+        onClick={() => setMenuOpen((o) => !o)}
+        disabled={exportLoading !== null}
+        aria-label="More actions"
+        aria-expanded={menuOpen}
+      >
+        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+        </svg>
+      </Button>
+      {menuOpen && (
+        <div className="absolute right-0 top-full z-50 mt-1 min-w-[160px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 py-1 shadow-lg">
+          <button
+            type="button"
+            disabled={exportLoading !== null}
+            onClick={() => handleExport("json")}
+            className="w-full px-4 py-2 text-left text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50"
+          >
+            {exportLoading === "json" ? "Exporting…" : "Export as JSON"}
+          </button>
+          <button
+            type="button"
+            disabled={exportLoading !== null}
+            onClick={() => handleExport("csv")}
+            className="w-full px-4 py-2 text-left text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50"
+          >
+            {exportLoading === "csv" ? "Exporting…" : "Export as CSV"}
+          </button>
+          {canCreate && (
+            <button
+              type="button"
+              onClick={() => {
+                openImport();
+                setMenuOpen(false);
+              }}
+              className="w-full px-4 py-2 text-left text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            >
+              Import
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

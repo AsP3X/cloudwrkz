@@ -9,12 +9,14 @@ interface FilterButtonProps {
   config: FilterConfig;
   activeFilterKeys?: string[]; // Optional: specify which keys indicate active filters
   defaultSort?: string; // Optional: override default sort for active check
+  size?: "sm" | "md" | "lg";
 }
 
 export const FilterButton = ({ 
   config, 
   activeFilterKeys,
-  defaultSort 
+  defaultSort,
+  size = "md"
 }: FilterButtonProps) => {
   const [isOpen, setIsOpen] = React.useState(false);
   const searchParams = useSearchParams();
@@ -105,6 +107,7 @@ export const FilterButton = ({
     <>
       <Button
         variant={shouldShowBadge ? "primary" : "outline"}
+        size={size}
         onClick={() => setIsOpen(true)}
         className="relative"
       >

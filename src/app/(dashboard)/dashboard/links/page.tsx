@@ -14,10 +14,9 @@ import { LinkFilterButton } from "@/components/features/links/LinkFilterButton";
 import { LinkListView } from "@/components/features/links/LinkListView";
 import { CollectionFilterBarWrapper } from "@/components/features/links/CollectionFilterBar";
 import { LinksPagination } from "@/components/features/links/LinksPagination";
-import { ExportLinksButton } from "@/components/features/links/ExportLinksButton";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
-import { LinksPageProvider, CreateButton, ImportButton } from "./LinksPageClient";
+import { LinksPageProvider, CreateButton, LinksOverviewActionsMenu } from "./LinksPageClient";
 
 interface LinksPageProps {
   searchParams: Promise<{
@@ -125,12 +124,15 @@ export default async function LinksPage({ searchParams }: LinksPageProps) {
             <div className="flex items-center gap-3">
               <LinkViewControls />
               <LinkFilterButton collections={collections} />
-              <ExportLinksButton collectionId={params.collection} collections={collectionsForSidebar} />
-              <ImportButton canCreate={canCreateLinks} />
               <Link href={ROUTES.LINKS_ARCHIVE}>
                 <Button variant="outline">Archive</Button>
               </Link>
               <CreateButton canCreate={canCreateLinks} />
+              <LinksOverviewActionsMenu
+                canCreate={canCreateLinks}
+                collectionId={params.collection}
+                collections={collectionsForSidebar}
+              />
             </div>
           </div>
 
