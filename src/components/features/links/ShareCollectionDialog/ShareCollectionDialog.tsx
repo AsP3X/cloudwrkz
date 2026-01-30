@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Dialog } from "@/components/ui/Dialog";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
-import { shareCollection, removeCollectionMember, updateCollectionMember } from "@/server/actions/collections";
+import { shareCollection, removeCollectionMember, updateCollectionMember, getCollectionMembers } from "@/server/actions/collections";
 import { getAllUsers } from "@/server/actions/users";
 
 interface ShareCollectionDialogProps {
@@ -22,6 +22,7 @@ interface ShareCollectionDialogProps {
       email: string;
     };
   }>;
+  owner: { id: string; name: string | null; email: string };
 }
 
 export function ShareCollectionDialog({
@@ -29,6 +30,7 @@ export function ShareCollectionDialog({
   onOpenChange,
   collectionId,
   members: initialMembers,
+  owner,
 }: ShareCollectionDialogProps) {
   const router = useRouter();
   const [users, setUsers] = React.useState<Array<{ id: string; name: string | null; email: string }>>([]);
@@ -71,7 +73,8 @@ export function ShareCollectionDialog({
       });
 
       if (result.success) {
-        // Refresh members list
+        const updatedMembers = await getCollectionMembers(collectionId);
+        setMembers(updatedMembers);
         router.refresh();
         setSelectedUserId("");
         setSelectedRole("VIEWER");
@@ -203,14 +206,22 @@ export function ShareCollectionDialog({
           <div className="space-y-4">
             <div className="pb-2 border-b border-neutral-200 dark:border-neutral-800">
               <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 uppercase tracking-wide">
-                Members ({members.length})
+                Members (1 owner + {members.length} shared)
               </h3>
             </div>
-            {members.length === 0 ? (
-              <p className="text-sm text-neutral-500 dark:text-neutral-400">No members yet.</p>
-            ) : (
-              <div className="space-y-2">
-                {members.map((member) => (
+            <div className="space-y-2">
+              {/* Owner row */}
+              <div className="flex items-center justify-between p-3 bg-neutral-50 dark:bg-neutral-800/80 rounded-lg border border-neutral-200 dark:border-neutral-700">
+                <div>
+                  <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                    {owner.name || owner.email}
+                  </p>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">Owner</p>
+                </div>
+              </div>
+              {members.length === 0 ? null : (
+                <>
+                  {members.map((member) => (
                   <div
                     key={member.id}
                     className="flex items-center justify-between p-3 bg-neutral-50 dark:bg-neutral-800/80 rounded-lg border border-neutral-200 dark:border-neutral-700"
@@ -224,15 +235,16 @@ export function ShareCollectionDialog({
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Select
-                        value={member.role}
-                        onChange={(e) => handleUpdateRole(member.id, e.target.value as "VIEWER" | "EDITOR")}
-                        options={[
-                          { value: "VIEWER", label: "Viewer" },
-                          { value: "EDITOR", label: "Editor" },
-                        ]}
-                        className="w-32"
-                      />
+                      <div className="w-32 shrink-0">
+                        <Select
+                          value={member.role}
+                          onChange={(e) => handleUpdateRole(member.id, e.target.value as "VIEWER" | "EDITOR")}
+                          options={[
+                            { value: "VIEWER", label: "Viewer" },
+                            { value: "EDITOR", label: "Editor" },
+                          ]}
+                        />
+                      </div>
                       <Button
                         type="button"
                         onClick={() => handleRemove(member.id)}
@@ -244,9 +256,10 @@ export function ShareCollectionDialog({
                       </Button>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </>
+              )}
+            </div>
           </div>
         </div>
 

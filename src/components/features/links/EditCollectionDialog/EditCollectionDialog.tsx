@@ -56,6 +56,7 @@ export function EditCollectionDialog({
       role: "VIEWER" | "EDITOR";
       user: { id: string; name: string | null; email: string };
     }>;
+    owner: { id: string; name: string | null; email: string };
   } | null>(null);
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [deleteError, setDeleteError] = React.useState<string | null>(null);
@@ -123,8 +124,8 @@ export function EditCollectionDialog({
 
   const handleShareClick = async () => {
     const full = await getCollection(collection.id);
-    if (full?.members != null) {
-      setCollectionWithMembers({ members: full.members });
+    if (full?.members != null && full?.owner) {
+      setCollectionWithMembers({ members: full.members, owner: full.owner });
       setShareDialogOpen(true);
     }
   };
@@ -321,6 +322,7 @@ export function EditCollectionDialog({
           onOpenChange={setShareDialogOpen}
           collectionId={collection.id}
           members={collectionWithMembers.members}
+          owner={collectionWithMembers.owner}
         />
       )}
 

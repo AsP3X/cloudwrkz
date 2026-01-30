@@ -28,6 +28,7 @@ export function EditCollectionButton({ collection }: { collection: any }) {
 
 export function ShareCollectionButton({ collection }: { collection: any }) {
   const [open, setOpen] = React.useState(false);
+  const owner = collection?.owner ?? { id: "", name: null, email: "" };
   return (
     <>
       <Button variant="outline" onClick={() => setOpen(true)}>
@@ -38,6 +39,7 @@ export function ShareCollectionButton({ collection }: { collection: any }) {
         onOpenChange={setOpen}
         collectionId={collection.id}
         members={collection.members || []}
+        owner={owner}
       />
     </>
   );

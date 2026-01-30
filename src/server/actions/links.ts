@@ -1738,7 +1738,7 @@ export async function addLinkToCollection(
       };
     }
 
-    // Verify collection access
+    // Verify collection access (owner or EDITOR can add links; VIEWER cannot)
     const collection = await prisma.collection.findFirst({
       where: {
         id: collectionId,
@@ -1748,7 +1748,7 @@ export async function addLinkToCollection(
             members: {
               some: {
                 userId: user.id,
-                role: { in: ["VIEWER", "EDITOR"] },
+                role: "EDITOR",
               },
             },
           },
@@ -1760,7 +1760,7 @@ export async function addLinkToCollection(
     if (!collection) {
       return {
         success: false,
-        error: "Collection not found or you don't have access",
+        error: "Collection not found or you don't have permission to add links to it",
       };
     }
 
