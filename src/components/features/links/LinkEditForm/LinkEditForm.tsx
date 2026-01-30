@@ -9,7 +9,7 @@ import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
-import { updateLink, extractLinkMetadataAction, refetchLinkFavicon } from "@/server/actions/links";
+import { updateLink, extractLinkMetadataAction, refetchLinkFavicon, getLinkTagSuggestions } from "@/server/actions/links";
 import { formatLinkUrl, validateUrl } from "@/lib/utils/links";
 import { cn } from "@/lib/utils/cn";
 
@@ -73,6 +73,9 @@ export const LinkEditForm = ({ link, collections, onCancel, onSaveSuccess, rende
   const [hoveredRating, setHoveredRating] = React.useState<number | null>(null);
   const [showCollectionDialog, setShowCollectionDialog] = React.useState(false);
   const [availableCollections, setAvailableCollections] = React.useState<Array<{ id: string; name: string; color: string | null }>>([]);
+  const [tagSuggestions, setTagSuggestions] = React.useState<string[]>([]);
+  const [showTagSuggestions, setShowTagSuggestions] = React.useState(false);
+  const tagInputContainerRef = React.useRef<HTMLDivElement>(null);
 
   const methods = useForm({
     defaultValues: {
@@ -263,12 +266,51 @@ export const LinkEditForm = ({ link, collections, onCancel, onSaveSuccess, rende
     if (trimmed && !tags.includes(trimmed)) {
       setTags([...tags, trimmed]);
       setTagInput("");
+      setShowTagSuggestions(false);
     }
+  };
+
+  const handleSelectTagSuggestion = (tag: string) => {
+    if (!tags.includes(tag)) {
+      setTags([...tags, tag]);
+    }
+    setTagInput("");
+    setTagSuggestions([]);
+    setShowTagSuggestions(false);
   };
 
   const handleRemoveTag = (tagToRemove: string) => {
     setTags(tags.filter((tag) => tag !== tagToRemove));
   };
+
+  // Fetch tag suggestions when typing (debounced)
+  React.useEffect(() => {
+    const q = tagInput.trim();
+    if (!q) {
+      setTagSuggestions([]);
+      setShowTagSuggestions(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      getLinkTagSuggestions(q).then((suggestions) => {
+        const filtered = suggestions.filter((s) => !tags.includes(s));
+        setTagSuggestions(filtered);
+        setShowTagSuggestions(filtered.length > 0);
+      });
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [tagInput, tags]);
+
+  // Close tag suggestions when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (tagInputContainerRef.current && !tagInputContainerRef.current.contains(e.target as Node)) {
+        setShowTagSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Load collections when collection dialog opens
   React.useEffect(() => {
@@ -554,6 +596,98 @@ export const LinkEditForm = ({ link, collections, onCancel, onSaveSuccess, rende
             {selectedCollections.length > 0 ? "Add another collection" : "Assign collection"}
           </button>
         </div>
+      </div>
+
+      {/* Tags */}
+      <div>
+        <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+          Tags
+        </label>
+        <div ref={tagInputContainerRef} className="relative flex items-center gap-2 mb-3">
+          <div className="relative flex-1">
+            <Input
+              type="text"
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (showTagSuggestions && tagSuggestions.length > 0) {
+                    handleSelectTagSuggestion(tagSuggestions[0]);
+                  } else {
+                    handleAddTag();
+                  }
+                }
+              }}
+              onFocus={() => tagSuggestions.length > 0 && setShowTagSuggestions(true)}
+              placeholder="Add a tag and press Enter"
+              className="flex-1 w-full"
+            />
+            {showTagSuggestions && tagSuggestions.length > 0 && (
+              <div
+                className="absolute z-50 mt-1.5 w-full rounded-lg border-2 border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 p-3 shadow-md"
+                role="listbox"
+              >
+                <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-2">
+                  Suggested tags
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {tagSuggestions.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      role="option"
+                      aria-selected={false}
+                      className={cn(
+                        "inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium border cursor-pointer transition-colors",
+                        "bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300",
+                        "hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-200 dark:hover:border-primary-800 hover:text-primary-700 dark:hover:text-primary-300"
+                      )}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        handleSelectTagSuggestion(suggestion);
+                      }}
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <Button
+            type="button"
+            onClick={handleAddTag}
+            variant="outline"
+            size="md"
+            className="flex-shrink-0 min-w-[5.5rem]"
+            aria-label="Add tag"
+          >
+            Add
+          </Button>
+        </div>
+        {tags.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {tags.map((tag) => (
+              <span
+                key={tag}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 rounded-full text-sm font-medium border border-primary-200 dark:border-primary-800"
+              >
+                {tag}
+                <button
+                  type="button"
+                  onClick={() => handleRemoveTag(tag)}
+                  className="hover:text-primary-900 dark:hover:text-primary-100 transition-colors"
+                  aria-label={`Remove ${tag} tag`}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Description Field */}

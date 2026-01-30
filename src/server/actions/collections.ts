@@ -725,6 +725,70 @@ export async function removeCollectionMember(
 }
 
 /**
+ * Remove the current user from a collection they were shared with ("leave collection").
+ * Deletes the CollectionMember for this user only; the collection and other members are unchanged.
+ * No permission required beyond auth: any authenticated member can remove their own membership.
+ */
+export async function removeSharedCollectionForMe(collectionId: string): Promise<ActionResult> {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.LINKS);
+    if (!moduleEnabled) {
+      return {
+        success: false,
+        error: "Links module is not enabled",
+      };
+    }
+
+    const user = await requireAuth();
+
+    const collection = await prisma.collection.findFirst({
+      where: {
+        id: collectionId,
+        members: {
+          some: { userId: user.id },
+        },
+      },
+      select: { ownerId: true },
+    });
+
+    if (!collection) {
+      return {
+        success: false,
+        error: "Collection not found or you are not a member",
+      };
+    }
+
+    if (collection.ownerId === user.id) {
+      return {
+        success: false,
+        error: "Collection owner cannot leave; transfer or delete the collection instead",
+      };
+    }
+
+    await prisma.collectionMember.delete({
+      where: {
+        collectionId_userId: {
+          collectionId,
+          userId: user.id,
+        },
+      },
+    });
+
+    revalidatePath("/dashboard/links");
+    revalidatePath(`/dashboard/links/collections/${collectionId}`);
+    return {
+      success: true,
+    };
+  } catch (error) {
+    logger.error("Error removing shared collection for me:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to leave collection",
+    };
+  }
+}
+
+/**
  * Get all members of a collection
  */
 export async function getCollectionMembers(collectionId: string) {

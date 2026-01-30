@@ -6,7 +6,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { Button } from "@/components/ui/Button";
-import { updateCollection, getCollection, deleteCollection } from "@/server/actions/collections";
+import { updateCollection, getCollection, deleteCollection, removeSharedCollectionForMe } from "@/server/actions/collections";
 import { ShareCollectionDialog } from "@/components/features/links/ShareCollectionDialog";
 import { getServerActionErrorMessage } from "@/lib/utils/server-action-utils";
 
@@ -16,9 +16,11 @@ interface EditCollectionDialogProps {
   collection: {
     id: string;
     name: string;
-    description: string | null;
-    color: string | null;
+    description?: string | null;
+    color?: string | null;
   };
+  /** When false, user is a member (shared collection): show only "Remove share" instead of edit/delete. */
+  isOwner?: boolean;
 }
 
 // Predefined color options for quick selection
@@ -41,15 +43,18 @@ export function EditCollectionDialog({
   open,
   onOpenChange,
   collection,
+  isOwner = true,
 }: EditCollectionDialogProps) {
   const router = useRouter();
   const [name, setName] = React.useState(collection.name);
-  const [description, setDescription] = React.useState(collection.description || "");
-  const [color, setColor] = React.useState(collection.color || "");
+  const [description, setDescription] = React.useState(collection.description ?? "");
+  const [color, setColor] = React.useState(collection.color ?? "");
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [shareDialogOpen, setShareDialogOpen] = React.useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = React.useState(false);
+  const [isRemovingShare, setIsRemovingShare] = React.useState(false);
+  const [removeShareError, setRemoveShareError] = React.useState<string | null>(null);
   const [collectionWithMembers, setCollectionWithMembers] = React.useState<{
     members: Array<{
       id: string;
@@ -74,6 +79,7 @@ export function EditCollectionDialog({
     if (!open) {
       setError(null);
       setDeleteError(null);
+      setRemoveShareError(null);
     }
   }, [open]);
 
@@ -150,6 +156,67 @@ export function EditCollectionDialog({
       setIsDeleting(false);
     }
   };
+
+  const handleRemoveShareClick = async () => {
+    setIsRemovingShare(true);
+    setRemoveShareError(null);
+    try {
+      const result = await removeSharedCollectionForMe(collection.id);
+      if (result.success) {
+        onOpenChange(false);
+        router.push("/dashboard/links");
+        router.refresh();
+      } else {
+        setRemoveShareError(result.error || "Failed to remove share");
+      }
+    } catch (err) {
+      setRemoveShareError(getServerActionErrorMessage(err));
+    } finally {
+      setIsRemovingShare(false);
+    }
+  };
+
+  // Shared collection: show only "Remove share" instead of edit/delete (same Edit button entry point)
+  if (!isOwner) {
+    return (
+      <Dialog
+        open={open}
+        onOpenChange={onOpenChange}
+        title="Remove share"
+        description="Remove this collection from your list. The owner and other members will not be affected."
+        className="max-w-md"
+      >
+        <div className="px-4 sm:px-6 py-4 flex flex-col gap-4">
+          <p className="text-neutral-600 dark:text-neutral-400 text-sm">
+            &quot;{collection.name}&quot; will be removed from your collections. Only your access is removed; the owner and other members are not affected.
+          </p>
+          {removeShareError && (
+            <div className="p-3 bg-error-50 dark:bg-error-950/50 border border-error-200 dark:border-error-800 rounded-lg">
+              <p className="text-sm font-medium text-error-800 dark:text-error-200">{removeShareError}</p>
+            </div>
+          )}
+          <div className="flex justify-end gap-3">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isRemovingShare}>
+              Cancel
+            </Button>
+            <Button type="button" variant="danger" onClick={handleRemoveShareClick} disabled={isRemovingShare}>
+              {isRemovingShare ? (
+                <span className="flex items-center gap-2">
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Removing...
+                </span>
+              ) : (
+                "Remove share"
+              )}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog

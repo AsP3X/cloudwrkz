@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EditCollectionDialog } from "@/components/features/links/EditCollectionDialog";
+import { SHARED_WITH_ME_COLLECTION_ID } from "@/lib/constants/links";
 
 interface Collection {
   id: string;
@@ -15,15 +16,17 @@ interface Collection {
   _count: {
     links: number;
   };
+  owner?: { id: string; name: string | null; email: string };
 }
 
 interface CollectionFilterBarProps {
   collections: Collection[];
   canCreate: boolean;
+  currentUserId: string;
   onCreateCollection?: () => void;
 }
 
-// Pencil/pen icon (Heroicons outline style)
+// Pencil/pen icon (Heroicons outline style) – for collection owners (edit)
 function PencilIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
@@ -32,10 +35,21 @@ function PencilIcon({ className }: { className?: string }) {
   );
 }
 
-export function CollectionFilterBar({ collections, canCreate, onCreateCollection }: CollectionFilterBarProps) {
+// Remove-from-list icon (Heroicons outline: minus circle) – for shared collections (remove share)
+function RemoveShareIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  );
+}
+
+export function CollectionFilterBar({ collections, canCreate, currentUserId, onCreateCollection }: CollectionFilterBarProps) {
   const searchParams = useSearchParams();
   const currentCollectionId = searchParams.get("collection") || undefined;
   const [editingCollection, setEditingCollection] = React.useState<Collection | null>(null);
+  const isOwnerOf = (c: Collection) => c.owner != null && c.owner.id === currentUserId;
+  const showEditPencil = (c: Collection) => c.id !== SHARED_WITH_ME_COLLECTION_ID;
 
   // Build URL without collection param (for "All" link)
   const getAllLinksUrl = () => {
@@ -110,19 +124,25 @@ export function CollectionFilterBar({ collections, canCreate, onCreateCollection
                     {collection._count.links}
                   </Badge>
                 </Link>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setEditingCollection(collection);
-                  }}
-                  className="p-1 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500 shrink-0"
-                  style={colorValue ? { color: colorValue } : undefined}
-                  aria-label={`Edit collection ${collection.name}`}
-                >
-                  <PencilIcon className="w-3.5 h-3.5" />
-                </button>
+                {showEditPencil(collection) && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setEditingCollection(collection);
+                    }}
+                    className="p-1 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500 shrink-0"
+                    style={colorValue ? { color: colorValue } : undefined}
+                    aria-label={isOwnerOf(collection) ? `Edit collection ${collection.name}` : `Remove ${collection.name} from my list`}
+                  >
+                    {isOwnerOf(collection) ? (
+                      <PencilIcon className="w-3.5 h-3.5" />
+                    ) : (
+                      <RemoveShareIcon className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                )}
               </div>
             ) : (
               <Link
@@ -160,6 +180,7 @@ export function CollectionFilterBar({ collections, canCreate, onCreateCollection
             description: editingCollection.description,
             color: editingCollection.color,
           }}
+          isOwner={isOwnerOf(editingCollection)}
         />
       )}
 

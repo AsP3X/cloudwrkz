@@ -139,7 +139,7 @@ export default async function LinksPage({ searchParams }: LinksPageProps) {
           {/* Collection Filter Bar */}
           {(canCreateLinks || collectionsForSidebar.length > 0) && (
             <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-4">
-              <CollectionFilterBarWrapper collections={collectionsForSidebar} canCreate={canCreateLinks} />
+              <CollectionFilterBarWrapper collections={collectionsForSidebar} canCreate={canCreateLinks} currentUserId={user.id} />
             </div>
           )}
 

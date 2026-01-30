@@ -12,20 +12,23 @@ interface Collection {
   _count: {
     links: number;
   };
+  owner?: { id: string; name: string | null; email: string };
 }
 
 interface CollectionFilterBarWrapperProps {
   collections: Collection[];
   canCreate: boolean;
+  currentUserId: string;
 }
 
-export function CollectionFilterBarWrapper({ collections, canCreate }: CollectionFilterBarWrapperProps) {
+export function CollectionFilterBarWrapper({ collections, canCreate, currentUserId }: CollectionFilterBarWrapperProps) {
   const { openCreateCollection } = useLinksPage();
   
   return (
     <CollectionFilterBar
       collections={collections}
       canCreate={canCreate}
+      currentUserId={currentUserId}
       onCreateCollection={openCreateCollection}
     />
   );

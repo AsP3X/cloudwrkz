@@ -65,12 +65,10 @@ export default async function CollectionDetailPage({ params }: CollectionDetailP
           <Link href={ROUTES.LINKS}>
             <Button variant="outline">← Back to Links</Button>
           </Link>
-          {isOwner && (
-            <div className="flex items-center gap-2">
-              <EditCollectionButton collection={collection} />
-              <ShareCollectionButton collection={collection} />
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            <EditCollectionButton collection={collection} isOwner={isOwner} />
+            {isOwner && <ShareCollectionButton collection={collection} />}
+          </div>
         </div>
 
         <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
