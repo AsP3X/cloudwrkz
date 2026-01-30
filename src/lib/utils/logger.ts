@@ -173,10 +173,13 @@ class Logger {
         error: "❌",
       }[entry.level];
 
+      const errorStr = entry.error
+        ? `${entry.error.name}: ${entry.error.message}`
+        : "";
       logMethod(
         `${emoji} [${entry.level.toUpperCase()}] ${entry.message}`,
-        entry.context || "",
-        entry.error || "",
+        entry.context ?? "",
+        errorStr,
         entry.duration ? `(${entry.duration}ms)` : ""
       );
     } else {

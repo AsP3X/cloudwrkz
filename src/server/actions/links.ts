@@ -1174,7 +1174,14 @@ export async function getLinks(filters: LinkFilters = {}): Promise<GetLinksResul
       totalPages,
     };
   } catch (error) {
-    logger.error("Error fetching links:", error);
+    const err =
+      error instanceof Error
+        ? error
+        : new Error(error != null ? String(error) : "Error fetching links (unknown/falsy throw)");
+    logger.error("Error fetching links", err, {
+      errorType: typeof error,
+      errorConstructor: error?.constructor?.name,
+    });
     return { links: [], total: 0, page: 1, limit: 50, totalPages: 0 };
   }
 }
