@@ -3,12 +3,13 @@ import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
 import { canUserViewModule } from "@/server/actions/modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
-import { getLinks } from "@/server/actions/links";
+import { getLinks, type LinkType } from "@/server/actions/links";
 import { LinkListView } from "@/components/features/links/LinkListView";
 import { LinkViewProvider } from "@/components/features/links/LinkViewContext";
 import { LinkViewControls } from "@/components/features/links/LinkViewControls";
 import { LinkFilterButton } from "@/components/features/links/LinkFilterButton";
 import { LinkFilterLoader } from "@/components/features/links/LinkFilterLoader";
+import { LinksPagination } from "@/components/features/links/LinksPagination";
 import { getCollections } from "@/server/actions/collections";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
@@ -19,6 +20,7 @@ interface LinksArchivePageProps {
     search?: string;
     sort?: string;
     archived?: string;
+    page?: string;
   }>;
 }
 
@@ -50,25 +52,19 @@ export default async function LinksArchivePage({ searchParams }: LinksArchivePag
   const sortParam = params.sort || "createdAt-desc";
   const [sortBy, sortOrder] = sortParam.split("-") as ["createdAt" | "updatedAt" | "title" | "rating", "asc" | "desc"];
 
-  // Build filters - only archived links
-  // Always force archived: true, even if URL params try to override it
-  const filters: any = {
+  const page = Math.max(1, parseInt(params.page ?? "1", 10) || 1);
+  const filters = {
     sortBy: sortBy || "createdAt",
     sortOrder: sortOrder || "desc",
-    archived: true, // Always show archived links on archive page
+    archived: true as const,
+    page,
+    limit: 50,
+    ...(params.linkType && { linkType: params.linkType as LinkType }),
+    ...(params.search && { search: params.search }),
   };
-  
-  // If archived param is explicitly false in URL, ignore it (archive page should always show archived)
-  // This prevents filter presets from overriding the archive page behavior
 
-  if (params.linkType) {
-    filters.linkType = params.linkType;
-  }
-  if (params.search) {
-    filters.search = params.search;
-  }
-
-  const links = await getLinks(filters);
+  const result = await getLinks(filters);
+  const { links, total, totalPages, limit } = result;
   const collections = await getCollections({ archived: false });
 
   return (
@@ -90,9 +86,14 @@ export default async function LinksArchivePage({ searchParams }: LinksArchivePag
           </div>
         </div>
 
-        {links.length > 0 && (
-          <div className="text-sm text-neutral-600 dark:text-neutral-400">
-            Showing {links.length} archived link{links.length !== 1 ? "s" : ""}
+        {(total > 0 || page > 1) && (
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+            <div className="text-sm text-neutral-600 dark:text-neutral-400">
+              Showing {(page - 1) * limit + 1}-{Math.min(page * limit, total)} of {total} archived link{total !== 1 ? "s" : ""}
+            </div>
+            {totalPages > 1 && (
+              <LinksPagination page={page} totalPages={totalPages} searchParams={params} />
+            )}
           </div>
         )}
 
@@ -118,7 +119,7 @@ export default async function LinksArchivePage({ searchParams }: LinksArchivePag
             </Link>
           </div>
         ) : (
-          <LinkListView links={links as any} isArchivePage />
+          <LinkListView links={links} isArchivePage />
         )}
       </div>
     </LinkViewProvider>

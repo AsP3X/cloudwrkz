@@ -107,7 +107,9 @@ export default async function ArchivePage({ searchParams }: ArchivePageProps) {
           archived: true,
           sortBy: "createdAt",
           sortOrder: "desc",
-        })
+          page: 1,
+          limit: 500,
+        }).then((r) => r.links)
       : Promise.resolve([]),
   ]);
 

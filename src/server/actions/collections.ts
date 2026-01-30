@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth, requireAnyPermission } from "@/lib/utils/auth-server";
+import { logger } from "@/lib/utils/logger";
 import { isModuleEnabled } from "./modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
 import { revalidatePath } from "next/cache";
@@ -81,7 +82,7 @@ export async function createCollection(
       data: { id: collection.id },
     };
   } catch (error) {
-    console.error("Error creating collection:", error);
+    logger.error("Error creating collection:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to create collection",
@@ -173,7 +174,7 @@ export async function updateCollection(
       success: true,
     };
   } catch (error) {
-    console.error("Error updating collection:", error);
+    logger.error("Error updating collection:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to update collection",
@@ -225,7 +226,7 @@ export async function deleteCollection(id: string): Promise<ActionResult> {
       success: true,
     };
   } catch (error) {
-    console.error("Error deleting collection:", error);
+    logger.error("Error deleting collection:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to delete collection",
@@ -278,7 +279,7 @@ export async function archiveCollection(id: string): Promise<ActionResult> {
       success: true,
     };
   } catch (error) {
-    console.error("Error archiving collection:", error);
+    logger.error("Error archiving collection:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to archive collection",
@@ -331,7 +332,7 @@ export async function unarchiveCollection(id: string): Promise<ActionResult> {
       success: true,
     };
   } catch (error) {
-    console.error("Error unarchiving collection:", error);
+    logger.error("Error unarchiving collection:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to unarchive collection",
@@ -397,7 +398,7 @@ export async function getCollections(filters?: {
 
     return collections;
   } catch (error) {
-    console.error("Error fetching collections:", error);
+    logger.error("Error fetching collections:", error);
     return [];
   }
 }
@@ -495,7 +496,7 @@ export async function getCollection(id: string) {
 
     return collection;
   } catch (error) {
-    console.error("Error fetching collection:", error);
+    logger.error("Error fetching collection:", error);
     return null;
   }
 }
@@ -583,7 +584,7 @@ export async function shareCollection(
       success: true,
     };
   } catch (error) {
-    console.error("Error sharing collection:", error);
+    logger.error("Error sharing collection:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to share collection",
@@ -646,7 +647,7 @@ export async function updateCollectionMember(
       success: true,
     };
   } catch (error) {
-    console.error("Error updating collection member:", error);
+    logger.error("Error updating collection member:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to update member role",
@@ -715,7 +716,7 @@ export async function removeCollectionMember(
       success: true,
     };
   } catch (error) {
-    console.error("Error removing collection member:", error);
+    logger.error("Error removing collection member:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to remove member",
@@ -775,7 +776,7 @@ export async function getCollectionMembers(collectionId: string) {
 
     return members;
   } catch (error) {
-    console.error("Error fetching collection members:", error);
+    logger.error("Error fetching collection members:", error);
     return [];
   }
 }
@@ -824,7 +825,7 @@ export async function getUserCollections(userId: string) {
 
     return collections;
   } catch (error) {
-    console.error("Error fetching user collections:", error);
+    logger.error("Error fetching user collections:", error);
     return [];
   }
 }

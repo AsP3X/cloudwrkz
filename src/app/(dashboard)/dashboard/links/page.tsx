@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
 import { canUserViewModule } from "@/server/actions/modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
-import { getLinks } from "@/server/actions/links";
+import { getLinks, type LinkType } from "@/server/actions/links";
 import { getCollections } from "@/server/actions/collections";
 import { hasPermission } from "@/lib/utils/permissions";
 import { LinkViewProvider } from "@/components/features/links/LinkViewContext";
@@ -12,9 +12,11 @@ import { LinkViewControls } from "@/components/features/links/LinkViewControls";
 import { LinkFilterButton } from "@/components/features/links/LinkFilterButton";
 import { LinkListView } from "@/components/features/links/LinkListView";
 import { CollectionFilterBarWrapper } from "@/components/features/links/CollectionFilterBar";
+import { LinksPagination } from "@/components/features/links/LinksPagination";
+import { ExportLinksButton } from "@/components/features/links/ExportLinksButton";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
-import { LinksPageProvider, CreateButton } from "./LinksPageClient";
+import { LinksPageProvider, CreateButton, ImportButton } from "./LinksPageClient";
 
 interface LinksPageProps {
   searchParams: Promise<{
@@ -24,6 +26,7 @@ interface LinksPageProps {
     minRating?: string;
     search?: string;
     sort?: string;
+    page?: string;
   }>;
 }
 
@@ -58,32 +61,24 @@ export default async function LinksPage({ searchParams }: LinksPageProps) {
   const [sortBy, sortOrder] = sortParam.split("-") as ["createdAt" | "updatedAt" | "title" | "rating", "asc" | "desc"];
 
   // Build filters
-  const filters: any = {
+  const page = Math.max(1, parseInt(params.page ?? "1", 10) || 1);
+  const filters = {
     sortBy: sortBy || "createdAt",
     sortOrder: sortOrder || "desc",
-    archived: false, // Don't show archived links by default
+    archived: false as const,
+    page,
+    limit: 50,
+    ...(params.collection && { collectionId: params.collection }),
+    ...(params.linkType && { linkType: params.linkType as LinkType }),
+    ...(params.isFavorite === "true" && { isFavorite: true }),
+    ...(params.isFavorite === "false" && { isFavorite: false }),
+    ...(params.minRating && { minRating: parseInt(params.minRating, 10) }),
+    ...(params.search && { search: params.search }),
   };
 
-  if (params.collection) {
-    filters.collectionId = params.collection;
-  }
-  if (params.linkType) {
-    filters.linkType = params.linkType;
-  }
-  if (params.isFavorite === "true") {
-    filters.isFavorite = true;
-  } else if (params.isFavorite === "false") {
-    filters.isFavorite = false;
-  }
-  if (params.minRating) {
-    filters.minRating = parseInt(params.minRating);
-  }
-  if (params.search) {
-    filters.search = params.search;
-  }
-
   // Get links with filters
-  const links = await getLinks(filters);
+  const result = await getLinks(filters);
+  const { links, total, totalPages, limit } = result;
 
   // Get collections for filter
   const collections = await getCollections({ archived: false });
@@ -115,6 +110,8 @@ export default async function LinksPage({ searchParams }: LinksPageProps) {
             <div className="flex items-center gap-3">
               <LinkViewControls />
               <LinkFilterButton collections={collections} />
+              <ExportLinksButton collectionId={params.collection} collections={collections} />
+              <ImportButton canCreate={canCreateLinks} />
               <Link href={ROUTES.LINKS_ARCHIVE}>
                 <Button variant="outline">Archive</Button>
               </Link>
@@ -131,10 +128,15 @@ export default async function LinksPage({ searchParams }: LinksPageProps) {
 
           {/* Main Content */}
           <div>
-            {/* Results Count */}
-            {links.length > 0 && (
-              <div className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
-                Showing {links.length} link{links.length !== 1 ? "s" : ""}
+            {/* Results Count and pagination */}
+            {(total > 0 || page > 1) && (
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+                <div className="text-sm text-neutral-600 dark:text-neutral-400">
+                  Showing {(page - 1) * limit + 1}-{Math.min(page * limit, total)} of {total} link{total !== 1 ? "s" : ""}
+                </div>
+                {totalPages > 1 && (
+                  <LinksPagination page={page} totalPages={totalPages} searchParams={params} />
+                )}
               </div>
             )}
 

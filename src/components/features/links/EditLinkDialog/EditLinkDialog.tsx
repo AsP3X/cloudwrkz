@@ -523,6 +523,7 @@ export function EditLinkDialog({ open, onOpenChange, link }: EditLinkDialogProps
                               key={suggestion}
                               type="button"
                               role="option"
+                              aria-selected={false}
                               className={cn(
                                 "inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium border cursor-pointer transition-colors",
                                 "bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300",

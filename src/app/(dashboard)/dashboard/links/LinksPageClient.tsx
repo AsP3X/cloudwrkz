@@ -3,13 +3,17 @@
 import React from "react";
 import { useSearchParams } from "next/navigation";
 import { AddLinkDialog } from "@/components/features/links/AddLinkDialog";
+import { BulkAddLinksDialog } from "@/components/features/links/BulkAddLinksDialog";
 import { CollectionList } from "@/components/features/links/CollectionList";
 import { CreateCollectionDialog } from "@/components/features/links/CreateCollectionDialog";
+import { ImportLinksDialog } from "@/components/features/links/ImportLinksDialog";
 import { Button } from "@/components/ui/Button";
 
 // Context for sharing dialog state
 const LinksPageContext = React.createContext<{
   openAddLink: () => void;
+  openBulkAdd: () => void;
+  openImport: () => void;
   openCreateCollection: () => void;
 } | null>(null);
 
@@ -29,6 +33,8 @@ interface LinksPageProviderProps {
 
 export function LinksPageProvider({ children, canCreate, collections = [] }: LinksPageProviderProps) {
   const [addLinkOpen, setAddLinkOpen] = React.useState(false);
+  const [bulkAddOpen, setBulkAddOpen] = React.useState(false);
+  const [importOpen, setImportOpen] = React.useState(false);
   const [createCollectionOpen, setCreateCollectionOpen] = React.useState(false);
   const searchParams = useSearchParams();
   const selectedCollectionId = searchParams.get("collection") || undefined;
@@ -36,6 +42,18 @@ export function LinksPageProvider({ children, canCreate, collections = [] }: Lin
   const openAddLink = React.useCallback(() => {
     if (canCreate) {
       setAddLinkOpen(true);
+    }
+  }, [canCreate]);
+
+  const openBulkAdd = React.useCallback(() => {
+    if (canCreate) {
+      setBulkAddOpen(true);
+    }
+  }, [canCreate]);
+
+  const openImport = React.useCallback(() => {
+    if (canCreate) {
+      setImportOpen(true);
     }
   }, [canCreate]);
 
@@ -51,7 +69,7 @@ export function LinksPageProvider({ children, canCreate, collections = [] }: Lin
     : null;
 
   return (
-    <LinksPageContext.Provider value={{ openAddLink, openCreateCollection }}>
+    <LinksPageContext.Provider value={{ openAddLink, openBulkAdd, openImport, openCreateCollection }}>
       {children}
       {canCreate && (
         <>
@@ -61,6 +79,18 @@ export function LinksPageProvider({ children, canCreate, collections = [] }: Lin
             selectedCollectionId={selectedCollectionId}
             selectedCollectionName={selectedCollection?.name}
             selectedCollectionColor={selectedCollection?.color}
+          />
+          <BulkAddLinksDialog
+            open={bulkAddOpen}
+            onOpenChange={setBulkAddOpen}
+            selectedCollectionId={selectedCollectionId}
+            collections={collections}
+          />
+          <ImportLinksDialog
+            open={importOpen}
+            onOpenChange={setImportOpen}
+            selectedCollectionId={selectedCollectionId}
+            collections={collections}
           />
           <CreateCollectionDialog open={createCollectionOpen} onOpenChange={setCreateCollectionOpen} />
         </>
@@ -74,11 +104,30 @@ interface CreateButtonProps {
 }
 
 export function CreateButton({ canCreate }: CreateButtonProps) {
-  const { openAddLink } = useLinksPage();
+  const { openAddLink, openBulkAdd } = useLinksPage();
   if (!canCreate) return null;
   return (
-    <Button variant="primary" onClick={openAddLink}>
-      Create
+    <div className="flex items-center gap-2">
+      <Button variant="outline" onClick={openBulkAdd}>
+        Bulk add
+      </Button>
+      <Button variant="primary" onClick={openAddLink}>
+        Create
+      </Button>
+    </div>
+  );
+}
+
+interface ImportButtonProps {
+  canCreate: boolean;
+}
+
+export function ImportButton({ canCreate }: ImportButtonProps) {
+  const { openImport } = useLinksPage();
+  if (!canCreate) return null;
+  return (
+    <Button variant="outline" onClick={openImport}>
+      Import
     </Button>
   );
 }

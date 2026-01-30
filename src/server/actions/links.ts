@@ -1,5 +1,6 @@
 "use server";
 
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth, requireAnyPermission } from "@/lib/utils/auth-server";
 import { isModuleEnabled } from "./modules";
@@ -15,6 +16,8 @@ import {
 } from "@/lib/utils/links";
 import { cacheFavicon } from "@/lib/utils/favicon-cache";
 import { extractLinkMetadata } from "@/lib/utils/link-metadata";
+import { logger } from "@/lib/utils/logger";
+import { createLinkSchema, updateLinkSchema, importLinkRowSchema } from "@/lib/validations/links";
 
 export type LinkType = "WEBSITE" | "FILE" | "DOCUMENT" | "VIDEO" | "IMAGE" | "OTHER";
 
@@ -48,6 +51,26 @@ export type LinkFilters = {
   minRating?: number; // Filter by minimum rating (1-5)
   sortBy?: "createdAt" | "updatedAt" | "title" | "rating";
   sortOrder?: "asc" | "desc";
+  page?: number;
+  limit?: number;
+};
+
+export type GetLinksResult = {
+  links: Array<
+    Prisma.LinkGetPayload<{
+      include: {
+        collections: {
+          include: {
+            collection: { select: { id: true; name: true; color: true } };
+          };
+        };
+      };
+    }>
+  >;
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 };
 
 export type ActionResult<T = void> =
@@ -72,38 +95,50 @@ export type ActionResult<T = void> =
  * - Exact duplicates are links where the fully formatted URL matches 1:1
  * - Similar links share the same normalized URL (ignoring protocol, www, trailing slash, etc.)
  *
- * This ensures we only block on true exact duplicates, while still being able
- * to surface "very similar" URLs as a warning to the user.
+ * Uses normalizedUrl when set for efficient DB query; falls back to in-memory check for legacy rows.
  */
 export async function checkDuplicateUrl(
   url: string,
   userId: string,
   excludeLinkId?: string
 ): Promise<{ exactDuplicateIds: string[]; similarLinkIds: string[] }> {
-  const normalizedUrl = normalizeUrl(url);
-  const existingLinks = await prisma.link.findMany({
+  const normalized = normalizeUrl(url);
+  const exactDuplicateIds: string[] = [];
+  const similarLinkIds: string[] = [];
+
+  // Query by normalizedUrl when we have an index (efficient path)
+  const byNormalized = await prisma.link.findMany({
     where: {
       userId,
-      url: {
-        // This is a simplified check - in production, you might want to store normalized URLs
-        // For now, we'll check both the original URL and normalized versions
-      },
+      normalizedUrl: normalized,
+      ...(excludeLinkId ? { id: { not: excludeLinkId } } : {}),
     },
     select: { id: true, url: true },
   });
 
-  const exactDuplicateIds: string[] = [];
-  const similarLinkIds: string[] = [];
-  for (const link of existingLinks) {
-    if (link.id === excludeLinkId) continue;
-    // Exact duplicate: full URL including query/fragment matches after formatting
+  for (const link of byNormalized) {
     if (link.url === url) {
       exactDuplicateIds.push(link.id);
-      continue;
+    } else {
+      similarLinkIds.push(link.id);
     }
+  }
 
-    // Very similar: normalized URL matches but full URL differs (e.g. small query changes)
-    if (normalizeUrl(link.url) === normalizedUrl) {
+  // For legacy rows with null normalizedUrl, do in-memory check (one-time fetch)
+  const legacyLinks = await prisma.link.findMany({
+    where: {
+      userId,
+      normalizedUrl: null,
+      ...(excludeLinkId ? { id: { not: excludeLinkId } } : {}),
+    },
+    select: { id: true, url: true },
+  });
+
+  for (const link of legacyLinks) {
+    if (link.id === excludeLinkId) continue;
+    if (link.url === url) {
+      exactDuplicateIds.push(link.id);
+    } else if (normalizeUrl(link.url) === normalized) {
       similarLinkIds.push(link.id);
     }
   }
@@ -178,7 +213,7 @@ export async function getLinkTagSuggestions(query: string): Promise<string[]> {
 
     return filtered;
   } catch (error) {
-    console.error("Error fetching link tag suggestions:", error);
+    logger.error("Error fetching link tag suggestions:", error);
     return [];
   }
 }
@@ -235,7 +270,7 @@ export async function refetchLinkFavicon(
         faviconUrl = metadata.favicon;
       }
     } catch (error) {
-      console.error("Metadata extraction failed while refetching favicon:", error);
+      logger.error("Metadata extraction failed while refetching favicon:", error);
     }
 
     // Fallback to generic favicon helper if metadata didn't yield one
@@ -263,7 +298,7 @@ export async function refetchLinkFavicon(
         finalFavicon = cached;
       }
     } catch (error) {
-      console.error("Favicon caching failed while refetching:", error);
+      logger.error("Favicon caching failed while refetching:", error);
     }
 
     await prisma.link.update({
@@ -276,7 +311,7 @@ export async function refetchLinkFavicon(
       data: { favicon: finalFavicon },
     };
   } catch (error) {
-    console.error("Error refetching favicon:", error);
+    logger.error("Error refetching favicon:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to refetch favicon",
@@ -301,17 +336,33 @@ export async function createLink(input: LinkInput): Promise<ActionResult<{ id: s
     const user = await requireAuth();
     await requireAnyPermission("links.create");
 
-    // Validate URL
-    if (!input.url || input.url.trim().length === 0) {
+    const parsed = createLinkSchema.safeParse({
+      url: input.url,
+      title: input.title,
+      description: input.description,
+      favicon: input.favicon,
+      linkType: input.linkType,
+      tags: input.tags ?? [],
+      notes: input.notes,
+      isFavorite: input.isFavorite,
+      rating: input.rating,
+      collectionIds: input.collectionIds ?? [],
+      extractMetadata: input.extractMetadata,
+      allowDuplicates: input.allowDuplicates,
+    });
+    if (!parsed.success) {
+      const flat = parsed.error.flatten();
       return {
         success: false,
-        error: "URL is required",
-        fieldErrors: { url: ["URL cannot be empty"] },
+        error: flat.formErrors[0] ?? "Validation failed",
+        fieldErrors: flat.fieldErrors as Record<string, string[]>,
       };
     }
+    const validated = parsed.data;
 
     // Format URL (add protocol if missing)
-    const formattedUrl = formatLinkUrl(input.url);
+    const formattedUrl = formatLinkUrl(validated.url);
+    const normalized = normalizeUrl(formattedUrl);
 
     if (!validateUrl(formattedUrl)) {
       return {
@@ -322,7 +373,7 @@ export async function createLink(input: LinkInput): Promise<ActionResult<{ id: s
     }
 
     // Check for duplicates (unless explicitly allowed)
-    if (!input.allowDuplicates) {
+    if (!validated.allowDuplicates) {
       const { exactDuplicateIds, similarLinkIds } = await checkDuplicateUrl(formattedUrl, user.id);
 
       // Block on exact duplicates, but still include information about similar URLs
@@ -339,11 +390,11 @@ export async function createLink(input: LinkInput): Promise<ActionResult<{ id: s
     // Extract metadata if requested or if title/description missing
     let metadata = null;
     let metadataExtractedAt = null;
-    let title = input.title?.trim() || "";
-    let description = input.description?.trim() || "";
-    let favicon = input.favicon;
+    let title = validated.title?.trim() || "";
+    let description = validated.description?.trim() || "";
+    let favicon = validated.favicon || undefined;
 
-    if (input.extractMetadata || !title || !description) {
+    if (validated.extractMetadata || !title || !description) {
       try {
         const extracted = await extractLinkMetadata(formattedUrl);
         if (extracted) {
@@ -361,7 +412,7 @@ export async function createLink(input: LinkInput): Promise<ActionResult<{ id: s
         }
       } catch (error) {
         // Metadata extraction failed, but don't block link creation
-        console.error("Metadata extraction failed:", error);
+        logger.error("Metadata extraction failed:", error);
       }
     }
 
@@ -376,7 +427,7 @@ export async function createLink(input: LinkInput): Promise<ActionResult<{ id: s
     }
 
     // Auto-detect link type if not provided
-    const linkType = input.linkType || getLinkTypeFromUrl(formattedUrl);
+    const linkType = validated.linkType || getLinkTypeFromUrl(formattedUrl);
 
     // Get favicon if not provided
     if (!favicon) {
@@ -403,12 +454,12 @@ export async function createLink(input: LinkInput): Promise<ActionResult<{ id: s
         }
       } catch (error) {
         // Favicon caching should never block link creation
-        console.error("Favicon caching failed:", error);
+        logger.error("Favicon caching failed:", error);
       }
     }
 
     // Validate rating
-    let rating: number | null | undefined = input.rating;
+    let rating: number | null | undefined = validated.rating;
     if (rating !== undefined && rating !== null && (rating < 1 || rating > 5)) {
       rating = null;
     }
@@ -418,13 +469,14 @@ export async function createLink(input: LinkInput): Promise<ActionResult<{ id: s
       data: {
         title,
         url: formattedUrl,
+        normalizedUrl: normalized,
         description: description || null,
         favicon: favicon || null,
         linkType,
-        tags: input.tags || [],
-        notes: input.notes?.trim() || null,
-        isFavorite: input.isFavorite || false,
-        rating: rating || null,
+        tags: validated.tags || [],
+        notes: validated.notes?.trim() || null,
+        isFavorite: validated.isFavorite ?? false,
+        rating: rating ?? null,
         metadata: metadata ? (metadata as any) : null,
         metadataExtractedAt,
         userId: user.id,
@@ -432,11 +484,11 @@ export async function createLink(input: LinkInput): Promise<ActionResult<{ id: s
     });
 
     // Add to collections if specified
-    if (input.collectionIds && input.collectionIds.length > 0) {
+    if (validated.collectionIds && validated.collectionIds.length > 0) {
       // Verify user has access to these collections
       const collections = await prisma.collection.findMany({
         where: {
-          id: { in: input.collectionIds },
+          id: { in: validated.collectionIds },
           OR: [
             { ownerId: user.id },
             {
@@ -472,10 +524,82 @@ export async function createLink(input: LinkInput): Promise<ActionResult<{ id: s
       // Note: when allowDuplicates is true, we skip duplicate checking entirely.
     };
   } catch (error) {
-    console.error("Error creating link:", error);
+    logger.error("Error creating link:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to create link",
+    };
+  }
+}
+
+export type BulkCreateLinksOptions = {
+  collectionIds?: string[];
+  extractMetadata?: boolean;
+};
+
+export type BulkCreateLinksResult = {
+  created: number;
+  failed: Array<{ url: string; error: string }>;
+};
+
+/**
+ * Create multiple links from a list of URLs.
+ * Validates each URL and calls createLink; returns count and per-URL errors.
+ */
+export async function bulkCreateLinks(
+  urls: string[],
+  options: BulkCreateLinksOptions = {}
+): Promise<ActionResult<BulkCreateLinksResult>> {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.LINKS);
+    if (!moduleEnabled) {
+      return {
+        success: false,
+        error: "Links module is not enabled",
+      };
+    }
+
+    await requireAuth();
+    await requireAnyPermission("links.create");
+
+    const parsed = urls
+      .map((u) => u.trim())
+      .filter(Boolean);
+    const failed: Array<{ url: string; error: string }> = [];
+    let created = 0;
+
+    for (const url of parsed) {
+      const formattedUrl = formatLinkUrl(url);
+      if (!validateUrl(formattedUrl)) {
+        failed.push({ url: formattedUrl, error: "Invalid URL format" });
+        continue;
+      }
+      const result = await createLink({
+        url: formattedUrl,
+        collectionIds: options.collectionIds,
+        extractMetadata: options.extractMetadata ?? true,
+        allowDuplicates: false,
+      });
+      if (result.success && result.data) {
+        created++;
+      } else {
+        failed.push({
+          url: formattedUrl,
+          error: !result.success ? result.error : "Failed to create link",
+        });
+      }
+    }
+
+    revalidatePath("/dashboard/links");
+    return {
+      success: true,
+      data: { created, failed },
+    };
+  } catch (error) {
+    logger.error("Error bulk creating links:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to bulk create links",
     };
   }
 }
@@ -520,10 +644,21 @@ export async function updateLink(
       };
     }
 
+    const parsed = updateLinkSchema.safeParse(input);
+    if (!parsed.success) {
+      const flat = parsed.error.flatten();
+      return {
+        success: false,
+        error: flat.formErrors[0] ?? "Validation failed",
+        fieldErrors: flat.fieldErrors as Record<string, string[]>,
+      };
+    }
+    const validated = parsed.data;
+
     // If URL changed, validate and check for duplicates
     let formattedUrl = existingLink.url;
-    if (input.url && input.url !== existingLink.url) {
-      formattedUrl = formatLinkUrl(input.url);
+    if (validated.url && validated.url !== existingLink.url) {
+      formattedUrl = formatLinkUrl(validated.url);
       if (!validateUrl(formattedUrl)) {
         return {
           success: false,
@@ -548,11 +683,11 @@ export async function updateLink(
     // Extract metadata if URL changed or refresh requested
     let metadata = null;
     let metadataExtractedAt = null;
-    let title = input.title?.trim();
-    let description = input.description?.trim();
-    let favicon = input.favicon;
+    let title = validated.title?.trim();
+    let description = validated.description?.trim();
+    let favicon = validated.favicon;
 
-    if (input.extractMetadata || (input.url && input.url !== existingLink.url)) {
+    if (validated.extractMetadata || (validated.url && validated.url !== existingLink.url)) {
       try {
         const extracted = await extractLinkMetadata(formattedUrl);
         if (extracted) {
@@ -569,7 +704,7 @@ export async function updateLink(
           }
         }
       } catch (error) {
-        console.error("Metadata extraction failed:", error);
+        logger.error("Metadata extraction failed:", error);
       }
     }
 
@@ -595,29 +730,32 @@ export async function updateLink(
           favicon = cachedFavicon;
         }
       } catch (error) {
-        console.error("Favicon caching failed:", error);
+        logger.error("Favicon caching failed:", error);
       }
     }
 
     // Validate rating
-    let rating: number | null | undefined = input.rating;
+    let rating: number | null | undefined = validated.rating;
     if (rating !== undefined && rating !== null && (rating < 1 || rating > 5)) {
       rating = null;
     }
 
     // Update link
-    const updateData: any = {};
-    if (input.url !== undefined) updateData.url = formattedUrl;
+    const updateData: Prisma.LinkUpdateInput = {};
+    if (validated.url !== undefined) {
+      updateData.url = formattedUrl;
+      updateData.normalizedUrl = normalizeUrl(formattedUrl);
+    }
     if (title !== undefined) updateData.title = title;
     if (description !== undefined) updateData.description = description || null;
-    if (input.favicon !== undefined || favicon) updateData.favicon = favicon || null;
-    if (input.linkType !== undefined) updateData.linkType = input.linkType;
-    if (input.tags !== undefined) updateData.tags = input.tags;
-    if (input.notes !== undefined) updateData.notes = input.notes?.trim() || null;
-    if (input.isFavorite !== undefined) updateData.isFavorite = input.isFavorite;
-    if (input.rating !== undefined) updateData.rating = rating || null;
+    if (validated.favicon !== undefined || favicon) updateData.favicon = favicon || null;
+    if (validated.linkType !== undefined) updateData.linkType = validated.linkType;
+    if (validated.tags !== undefined) updateData.tags = validated.tags;
+    if (validated.notes !== undefined) updateData.notes = validated.notes?.trim() || null;
+    if (validated.isFavorite !== undefined) updateData.isFavorite = validated.isFavorite;
+    if (validated.rating !== undefined) updateData.rating = rating ?? null;
     if (metadata) {
-      updateData.metadata = metadata as any;
+      updateData.metadata = metadata as Prisma.InputJsonValue;
       updateData.metadataExtractedAt = metadataExtractedAt;
     }
 
@@ -627,17 +765,17 @@ export async function updateLink(
     });
 
     // Update collections if specified
-    if (input.collectionIds !== undefined) {
+    if (validated.collectionIds !== undefined) {
       // Remove all existing collection associations
       await prisma.linkCollection.deleteMany({
         where: { linkId: id },
       });
 
       // Add new collections
-      if (input.collectionIds.length > 0) {
+      if (validated.collectionIds.length > 0) {
         const collections = await prisma.collection.findMany({
           where: {
-            id: { in: input.collectionIds },
+            id: { in: validated.collectionIds },
             OR: [
               { ownerId: user.id },
               {
@@ -672,7 +810,7 @@ export async function updateLink(
       data: { id },
     };
   } catch (error) {
-    console.error("Error updating link:", error);
+    logger.error("Error updating link:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to update link",
@@ -724,7 +862,7 @@ export async function deleteLink(id: string): Promise<ActionResult> {
       success: true,
     };
   } catch (error) {
-    console.error("Error deleting link:", error);
+    logger.error("Error deleting link:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to delete link",
@@ -778,7 +916,7 @@ export async function archiveLink(id: string): Promise<ActionResult> {
       success: true,
     };
   } catch (error) {
-    console.error("Error archiving link:", error);
+    logger.error("Error archiving link:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to archive link",
@@ -832,7 +970,7 @@ export async function unarchiveLink(id: string): Promise<ActionResult> {
       success: true,
     };
   } catch (error) {
-    console.error("Error unarchiving link:", error);
+    logger.error("Error unarchiving link:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to unarchive link",
@@ -899,7 +1037,7 @@ export async function bulkUnarchiveLinks(
       message: `Successfully unarchived ${result.count} link${result.count !== 1 ? "s" : ""}`,
     };
   } catch (error) {
-    console.error("Bulk unarchive links error:", error);
+    logger.error("Bulk unarchive links error:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to unarchive links",
@@ -910,17 +1048,17 @@ export async function bulkUnarchiveLinks(
 /**
  * Get links with filtering
  */
-export async function getLinks(filters: LinkFilters = {}) {
+export async function getLinks(filters: LinkFilters = {}): Promise<GetLinksResult> {
   try {
     const moduleEnabled = await isModuleEnabled(MODULE_KEYS.LINKS);
     if (!moduleEnabled) {
-      return [];
+      return { links: [], total: 0, page: 1, limit: 50, totalPages: 0 };
     }
 
     const user = await requireAuth();
     await requireAnyPermission("links.view");
 
-    const where: any = {};
+    const where: Prisma.LinkWhereInput = {};
 
     // User filter - default to current user unless viewing all
     if (filters.userId) {
@@ -991,38 +1129,332 @@ export async function getLinks(filters: LinkFilters = {}) {
       ];
     }
 
-    // Sort
+    // Sort and pagination
     const sortBy = filters.sortBy || "createdAt";
     const sortOrder = filters.sortOrder || "desc";
+    const page = Math.max(1, filters.page ?? 1);
+    const limit = Math.min(100, Math.max(1, filters.limit ?? 50));
+    const skip = (page - 1) * limit;
 
-    const links = await prisma.link.findMany({
-      where,
-      include: {
-        collections: {
-          include: {
-            collection: {
-              select: {
-                id: true,
-                name: true,
-                color: true,
+    const [links, total] = await Promise.all([
+      prisma.link.findMany({
+        where,
+        include: {
+          collections: {
+            include: {
+              collection: {
+                select: {
+                  id: true,
+                  name: true,
+                  color: true,
+                },
               },
             },
           },
         },
-      },
-      orderBy: {
-        [sortBy]: sortOrder,
-      },
+        orderBy: {
+          [sortBy]: sortOrder,
+        },
+        skip,
+        take: limit,
+      }),
+      prisma.link.count({ where }),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
+    return {
+      links: links.map((link) => ({
+        ...link,
+        createdAt: link.createdAt,
+        updatedAt: link.updatedAt,
+      })),
+      total,
+      page,
+      limit,
+      totalPages,
+    };
+  } catch (error) {
+    logger.error("Error fetching links:", error);
+    return { links: [], total: 0, page: 1, limit: 50, totalPages: 0 };
+  }
+}
+
+export type ExportLinksOptions = {
+  format: "json" | "csv";
+  collectionId?: string;
+  archived?: boolean;
+};
+
+export type ExportLinksResult = {
+  content: string;
+  filename: string;
+  mimeType: string;
+};
+
+/**
+ * Export links as JSON or CSV for download.
+ * Uses getLinks with high limit to fetch all matching links.
+ */
+export async function exportLinks(
+  options: ExportLinksOptions
+): Promise<ActionResult<ExportLinksResult>> {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.LINKS);
+    if (!moduleEnabled) {
+      return { success: false, error: "Links module is not enabled" };
+    }
+
+    await requireAuth();
+    await requireAnyPermission("links.view");
+
+    const result = await getLinks({
+      collectionId: options.collectionId,
+      archived: options.archived ?? false,
+      page: 1,
+      limit: 10000,
+      sortBy: "createdAt",
+      sortOrder: "desc",
     });
 
-    return links.map((link) => ({
-      ...link,
-      createdAt: link.createdAt,
-      updatedAt: link.updatedAt,
-    }));
+    const links = result.links;
+    const timestamp = new Date().toISOString().slice(0, 10);
+
+    if (options.format === "json") {
+      const payload = links.map((link) => ({
+        id: link.id,
+        title: link.title,
+        url: link.url,
+        description: link.description,
+        linkType: link.linkType,
+        tags: link.tags,
+        notes: link.notes,
+        isFavorite: link.isFavorite,
+        rating: link.rating,
+        createdAt: link.createdAt.toISOString(),
+        updatedAt: link.updatedAt.toISOString(),
+        collections: link.collections.map((lc) => ({
+          id: lc.collection.id,
+          name: lc.collection.name,
+          color: lc.collection.color,
+        })),
+      }));
+      return {
+        success: true,
+        data: {
+          content: JSON.stringify(payload, null, 2),
+          filename: `links-export-${timestamp}.json`,
+          mimeType: "application/json",
+        },
+      };
+    }
+
+    // CSV: escape commas and newlines
+    const escapeCsv = (val: string | null | undefined): string => {
+      if (val == null) return "";
+      const s = String(val);
+      if (s.includes(",") || s.includes('"') || s.includes("\n") || s.includes("\r")) {
+        return `"${s.replace(/"/g, '""')}"`;
+      }
+      return s;
+    };
+    const headers = [
+      "id",
+      "title",
+      "url",
+      "description",
+      "linkType",
+      "tags",
+      "notes",
+      "isFavorite",
+      "rating",
+      "createdAt",
+      "updatedAt",
+      "collectionNames",
+    ];
+    const rows = links.map((link) => [
+      link.id,
+      link.title,
+      link.url,
+      link.description ?? "",
+      link.linkType,
+      link.tags.join("; "),
+      link.notes ?? "",
+      link.isFavorite ? "true" : "false",
+      link.rating ?? "",
+      link.createdAt.toISOString(),
+      link.updatedAt.toISOString(),
+      link.collections.map((lc) => lc.collection.name).join("; "),
+    ]);
+    const csvLines = [headers.join(","), ...rows.map((row) => row.map((v) => escapeCsv(String(v))).join(","))];
+    const content = csvLines.join("\n");
+    const bom = "\uFEFF";
+    return {
+      success: true,
+      data: {
+        content: bom + content,
+        filename: `links-export-${timestamp}.csv`,
+        mimeType: "text/csv;charset=utf-8",
+      },
+    };
   } catch (error) {
-    console.error("Error fetching links:", error);
-    return [];
+    logger.error("Error exporting links:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to export links",
+    };
+  }
+}
+
+export type ImportLinksOptions = {
+  format: "json" | "csv";
+  collectionId?: string;
+  skipDuplicates?: boolean;
+};
+
+export type ImportLinksResult = {
+  imported: number;
+  skipped: number;
+  errors: Array<{ row: number; url?: string; error: string }>;
+};
+
+/**
+ * Import links from JSON or CSV content.
+ * Client should read file and pass content string.
+ */
+export async function importLinks(
+  content: string,
+  options: ImportLinksOptions
+): Promise<ActionResult<ImportLinksResult>> {
+  try {
+    const moduleEnabled = await isModuleEnabled(MODULE_KEYS.LINKS);
+    if (!moduleEnabled) {
+      return { success: false, error: "Links module is not enabled" };
+    }
+
+    const user = await requireAuth();
+    await requireAnyPermission("links.create");
+
+    let rows: Array<Record<string, unknown>> = [];
+    if (options.format === "json") {
+      try {
+        const parsed = JSON.parse(content);
+        rows = Array.isArray(parsed) ? parsed : [parsed];
+      } catch {
+        return {
+          success: false,
+          error: "Invalid JSON. Expected an array of link objects.",
+        };
+      }
+    } else {
+      const lines = content.split(/\r?\n/).filter((line) => line.trim());
+      if (lines.length < 2) {
+        return {
+          success: false,
+          error: "CSV must have a header row and at least one data row.",
+        };
+      }
+      const header = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
+      const parseCsvLine = (line: string): string[] => {
+        const result: string[] = [];
+        let i = 0;
+        while (i < line.length) {
+          if (line[i] === '"') {
+            i++;
+            let field = "";
+            while (i < line.length) {
+              if (line[i] === '"') {
+                i++;
+                if (line[i] === '"') {
+                  field += '"';
+                  i++;
+                } else break;
+              } else {
+                field += line[i++];
+              }
+            }
+            result.push(field);
+            if (line[i] === ",") i++;
+          } else {
+            const end = line.indexOf(",", i);
+            const field = end === -1 ? line.slice(i) : line.slice(i, end);
+            result.push(field.replace(/""/g, '"'));
+            i = end === -1 ? line.length : end + 1;
+          }
+        }
+        return result;
+      };
+      for (let i = 1; i < lines.length; i++) {
+        const values = parseCsvLine(lines[i]);
+        const row: Record<string, unknown> = {};
+        header.forEach((h, j) => {
+          row[h] = values[j] ?? "";
+        });
+        rows.push(row);
+      }
+    }
+
+    const collectionIds = options.collectionId ? [options.collectionId] : undefined;
+    const skipDuplicates = options.skipDuplicates ?? true;
+    let imported = 0;
+    let skipped = 0;
+    const errors: Array<{ row: number; url?: string; error: string }> = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const rowIndex = i + 1;
+      const parsed = importLinkRowSchema.safeParse(rows[i]);
+      if (!parsed.success) {
+        const rowUrl = rows[i]?.url;
+        errors.push({
+          row: rowIndex,
+          url: typeof rowUrl === "string" ? rowUrl : undefined,
+          error: parsed.error.errors.map((e) => e.message).join("; "),
+        });
+        continue;
+      }
+      const row = parsed.data;
+      const formattedUrl = formatLinkUrl(row.url);
+      if (skipDuplicates) {
+        const { exactDuplicateIds } = await checkDuplicateUrl(formattedUrl, user.id);
+        if (exactDuplicateIds.length > 0) {
+          skipped++;
+          continue;
+        }
+      }
+      const result = await createLink({
+        url: formattedUrl,
+        title: row.title || undefined,
+        description: row.description || undefined,
+        linkType: row.linkType,
+        tags: row.tags,
+        notes: row.notes || undefined,
+        isFavorite: row.isFavorite,
+        rating: row.rating ?? undefined,
+        collectionIds,
+        extractMetadata: false,
+        allowDuplicates: !skipDuplicates,
+      });
+      if (result.success) {
+        imported++;
+      } else {
+        errors.push({
+          row: rowIndex,
+          url: formattedUrl,
+          error: result.error ?? "Failed to create",
+        });
+      }
+    }
+
+    revalidatePath("/dashboard/links");
+    return {
+      success: true,
+      data: { imported, skipped, errors },
+    };
+  } catch (error) {
+    logger.error("Error importing links:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to import links",
+    };
   }
 }
 
@@ -1092,7 +1524,7 @@ export async function getLink(id: string) {
 
     return link;
   } catch (error) {
-    console.error("Error fetching link:", error);
+    logger.error("Error fetching link:", error);
     return null;
   }
 }
@@ -1132,7 +1564,7 @@ export async function bulkUpdateLinks(
       };
     }
 
-    const updateData: any = {};
+    const updateData: Prisma.LinkUpdateManyMutationInput = {};
     if (updates.tags !== undefined) updateData.tags = updates.tags;
     if (updates.isFavorite !== undefined) updateData.isFavorite = updates.isFavorite;
     if (updates.rating !== undefined) {
@@ -1152,7 +1584,7 @@ export async function bulkUpdateLinks(
       success: true,
     };
   } catch (error) {
-    console.error("Error bulk updating links:", error);
+    logger.error("Error bulk updating links:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to update links",
@@ -1205,7 +1637,7 @@ export async function bulkDeleteLinks(ids: string[]): Promise<ActionResult> {
       success: true,
     };
   } catch (error) {
-    console.error("Error bulk deleting links:", error);
+    logger.error("Error bulk deleting links:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to delete links",
@@ -1259,7 +1691,7 @@ export async function bulkArchiveLinks(ids: string[]): Promise<ActionResult> {
       success: true,
     };
   } catch (error) {
-    console.error("Error bulk archiving links:", error);
+    logger.error("Error bulk archiving links:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to archive links",
@@ -1337,7 +1769,7 @@ export async function addLinkToCollection(
       success: true,
     };
   } catch (error) {
-    console.error("Error adding link to collection:", error);
+    logger.error("Error adding link to collection:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to add link to collection",
@@ -1415,7 +1847,7 @@ export async function removeLinkFromCollection(
       success: true,
     };
   } catch (error) {
-    console.error("Error removing link from collection:", error);
+    logger.error("Error removing link from collection:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to remove link from collection",
@@ -1640,7 +2072,7 @@ export async function toggleFavorite(linkId: string): Promise<ActionResult> {
       success: true,
     };
   } catch (error) {
-    console.error("Error toggling favorite:", error);
+    logger.error("Error toggling favorite:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to toggle favorite",
@@ -1697,7 +2129,7 @@ export async function updateRating(
       success: true,
     };
   } catch (error) {
-    console.error("Error updating rating:", error);
+    logger.error("Error updating rating:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to update rating",

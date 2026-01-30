@@ -576,6 +576,7 @@ model Link {
   id          String   @id @default(cuid())
   title       String
   url         String
+  normalizedUrl String? // Normalized URL for duplicate detection (protocol, www, trailing slash removed)
   description String?
   favicon     String? // URL to favicon or stored favicon path
   linkType    LinkType @default(WEBSITE) // WEBSITE, FILE, DOCUMENT, etc.
@@ -601,6 +602,7 @@ model Link {
   updatedAt DateTime @updatedAt
 
   @@index([userId])
+  @@index([userId, normalizedUrl])
   @@index([linkType])
   @@index([archivedAt])
   @@index([createdAt])
