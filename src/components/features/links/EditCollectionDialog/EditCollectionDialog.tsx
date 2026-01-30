@@ -6,7 +6,8 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { Button } from "@/components/ui/Button";
-import { updateCollection } from "@/server/actions/collections";
+import { updateCollection, getCollection, deleteCollection } from "@/server/actions/collections";
+import { ShareCollectionDialog } from "@/components/features/links/ShareCollectionDialog";
 
 interface EditCollectionDialogProps {
   open: boolean;
@@ -46,6 +47,18 @@ export function EditCollectionDialog({
   const [color, setColor] = React.useState(collection.color || "");
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [shareDialogOpen, setShareDialogOpen] = React.useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = React.useState(false);
+  const [collectionWithMembers, setCollectionWithMembers] = React.useState<{
+    members: Array<{
+      id: string;
+      userId: string;
+      role: "VIEWER" | "EDITOR";
+      user: { id: string; name: string | null; email: string };
+    }>;
+  } | null>(null);
+  const [isDeleting, setIsDeleting] = React.useState(false);
+  const [deleteError, setDeleteError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (collection) {
@@ -58,8 +71,15 @@ export function EditCollectionDialog({
   React.useEffect(() => {
     if (!open) {
       setError(null);
+      setDeleteError(null);
     }
   }, [open]);
+
+  React.useEffect(() => {
+    if (!deleteConfirmOpen) {
+      setDeleteError(null);
+    }
+  }, [deleteConfirmOpen]);
 
   const isValidHexColor = (value: string) => {
     return !value || /^#[0-9A-Fa-f]{6}$/.test(value);
@@ -98,6 +118,34 @@ export function EditCollectionDialog({
       setError("An unexpected error occurred");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleShareClick = async () => {
+    const full = await getCollection(collection.id);
+    if (full?.members != null) {
+      setCollectionWithMembers({ members: full.members });
+      setShareDialogOpen(true);
+    }
+  };
+
+  const handleDeleteClick = async () => {
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      const result = await deleteCollection(collection.id);
+      if (result.success) {
+        setDeleteConfirmOpen(false);
+        onOpenChange(false);
+        router.push("/dashboard/links");
+        router.refresh();
+      } else {
+        setDeleteError(result.error || "Failed to delete collection");
+      }
+    } catch (err) {
+      setDeleteError("An unexpected error occurred");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -223,6 +271,29 @@ export function EditCollectionDialog({
           </div>
         </div>
 
+        {/* Share & Delete Section */}
+        <div className="space-y-4 pt-6 border-t border-neutral-200 dark:border-neutral-800">
+          <div className="pb-2 border-b border-neutral-200 dark:border-neutral-800">
+            <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 uppercase tracking-wide">
+              Sharing &amp; deletion
+            </h3>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Button type="button" variant="outline" onClick={handleShareClick} disabled={isSubmitting}>
+              Share with others
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDeleteConfirmOpen(true)}
+              disabled={isSubmitting}
+              className="text-error-600 dark:text-error-400 border-error-300 dark:border-error-700 hover:bg-error-50 dark:hover:bg-error-950/30"
+            >
+              Delete collection
+            </Button>
+          </div>
+        </div>
+
         {/* Footer Actions */}
         <div className="flex justify-end gap-3 pt-6 mt-6 border-t border-neutral-200 dark:border-neutral-800">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
@@ -243,6 +314,55 @@ export function EditCollectionDialog({
           </Button>
         </div>
       </form>
+
+      {collectionWithMembers && (
+        <ShareCollectionDialog
+          open={shareDialogOpen}
+          onOpenChange={setShareDialogOpen}
+          collectionId={collection.id}
+          members={collectionWithMembers.members}
+        />
+      )}
+
+      <Dialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title="Delete collection"
+        description="This will permanently delete the collection and remove it from all links. This action cannot be undone."
+        className="max-w-md"
+      >
+        <div className="px-4 sm:px-6 py-4 flex flex-col gap-4">
+          {deleteError && (
+            <div className="p-3 bg-error-50 dark:bg-error-950/50 border border-error-200 dark:border-error-800 rounded-lg">
+              <p className="text-sm font-medium text-error-800 dark:text-error-200">{deleteError}</p>
+            </div>
+          )}
+          <div className="flex justify-end gap-3">
+            <Button type="button" variant="outline" onClick={() => setDeleteConfirmOpen(false)} disabled={isDeleting}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={handleDeleteClick}
+              disabled={isDeleting}
+              className="bg-error-600 hover:bg-error-700 dark:bg-error-500 dark:hover:bg-error-600 text-white border-error-600 dark:border-error-500"
+            >
+              {isDeleting ? (
+                <span className="flex items-center gap-2">
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Deleting...
+                </span>
+              ) : (
+                "Delete"
+              )}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </Dialog>
   );
 }
