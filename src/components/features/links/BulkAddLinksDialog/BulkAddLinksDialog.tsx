@@ -5,8 +5,16 @@ import { useRouter } from "next/navigation";
 import { Dialog } from "@/components/ui/Dialog";
 import { Textarea } from "@/components/ui/Textarea";
 import { Button } from "@/components/ui/Button";
-import { bulkCreateLinks } from "@/server/actions/links";
+import { createLink } from "@/server/actions/links";
 import { formatLinkUrl, validateUrl } from "@/lib/utils/links";
+
+type LinkProgressStatus = "pending" | "adding" | "added" | "failed";
+
+interface LinkProgressItem {
+  url: string;
+  status: LinkProgressStatus;
+  error?: string;
+}
 
 interface BulkAddLinksDialogProps {
   open: boolean;
@@ -25,6 +33,7 @@ export function BulkAddLinksDialog({
   const [urlsText, setUrlsText] = React.useState("");
   const [extractMetadata, setExtractMetadata] = React.useState(true);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [linkProgress, setLinkProgress] = React.useState<LinkProgressItem[]>([]);
   const [result, setResult] = React.useState<{ created: number; failed: Array<{ url: string; error: string }> } | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -32,6 +41,7 @@ export function BulkAddLinksDialog({
     if (!open) {
       setUrlsText("");
       setExtractMetadata(true);
+      setLinkProgress([]);
       setResult(null);
       setError(null);
     }
@@ -51,20 +61,50 @@ export function BulkAddLinksDialog({
       setError("Please enter at least one URL (one per line).");
       return;
     }
+    const validUrls = lines
+      .map((line) => formatLinkUrl(line))
+      .filter((url) => validateUrl(url));
+    if (validUrls.length === 0) {
+      setError("No valid URLs to add. Please enter at least one valid URL.");
+      return;
+    }
+    setLinkProgress(validUrls.map((url) => ({ url, status: "pending" as const })));
     setIsSubmitting(true);
+    const failed: Array<{ url: string; error: string }> = [];
+    let created = 0;
     try {
-      const res = await bulkCreateLinks(lines, {
-        collectionIds,
-        extractMetadata,
-      });
-      if (res.success && res.data) {
-        setResult(res.data);
-        if (res.data.created > 0) {
-          router.refresh();
+      for (let i = 0; i < validUrls.length; i++) {
+        const url = validUrls[i];
+        setLinkProgress((prev) =>
+          prev.map((p, j) => (j === i ? { ...p, status: "adding" as const } : p))
+        );
+        const res = await createLink({
+          url,
+          collectionIds,
+          extractMetadata,
+          allowDuplicates: false,
+        });
+        if (res.success) {
+          created++;
+          setLinkProgress((prev) =>
+            prev.map((p, j) => (j === i ? { ...p, status: "added" as const } : p))
+          );
+        } else {
+          const errMsg = res.error ?? "Failed to create link";
+          failed.push({ url, error: errMsg });
+          setLinkProgress((prev) =>
+            prev.map((p, j) =>
+              j === i ? { ...p, status: "failed" as const, error: errMsg } : p
+            )
+          );
         }
-      } else {
-        setError(!res.success ? res.error : "Bulk add failed");
       }
+      setResult({ created, failed });
+      if (created > 0) {
+        router.refresh();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Bulk add failed");
     } finally {
       setIsSubmitting(false);
     }
@@ -98,62 +138,140 @@ export function BulkAddLinksDialog({
           </div>
         )}
 
-        <div className="space-y-6">
-          <div className="space-y-4">
-            <div className="pb-2 border-b border-neutral-200 dark:border-neutral-800">
-              <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 uppercase tracking-wide">
-                URLs
-              </h3>
+        {linkProgress.length === 0 ? (
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <div className="pb-2 border-b border-neutral-200 dark:border-neutral-800">
+                <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 uppercase tracking-wide">
+                  URLs
+                </h3>
+              </div>
+              <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                Paste one URL per line. Invalid lines are skipped. Duplicates are not created.
+              </p>
+              <div>
+                <label htmlFor="bulk-urls" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                  URLs (one per line)
+                </label>
+                <Textarea
+                  id="bulk-urls"
+                  value={urlsText}
+                  onChange={(e) => setUrlsText(e.target.value)}
+                  placeholder={"https://example.com\nhttps://github.com/owner/repo\n..."}
+                  rows={10}
+                  className="font-mono text-sm resize-none"
+                  disabled={isSubmitting}
+                />
+                {totalLines > 0 && (
+                  <p className="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                    {validCount} valid URL{validCount !== 1 ? "s" : ""} of {totalLines} line{totalLines !== 1 ? "s" : ""}
+                  </p>
+                )}
+              </div>
             </div>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400">
-              Paste one URL per line. Invalid lines are skipped. Duplicates are not created.
-            </p>
-            <div>
-              <label htmlFor="bulk-urls" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                URLs (one per line)
+
+            <div className="space-y-4">
+              <div className="pb-2 border-b border-neutral-200 dark:border-neutral-800">
+                <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 uppercase tracking-wide">
+                  Options
+                </h3>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={extractMetadata}
+                  onChange={(e) => setExtractMetadata(e.target.checked)}
+                  disabled={isSubmitting}
+                  className="rounded border-neutral-300 dark:border-neutral-600 text-primary-600 focus:ring-primary-500"
+                />
+                Extract title and description from each page
               </label>
-              <Textarea
-                id="bulk-urls"
-                value={urlsText}
-                onChange={(e) => setUrlsText(e.target.value)}
-                placeholder={"https://example.com\nhttps://github.com/owner/repo\n..."}
-                rows={10}
-                className="font-mono text-sm resize-none"
-                disabled={isSubmitting}
-              />
-              {totalLines > 0 && (
-                <p className="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400">
-                  {validCount} valid URL{validCount !== 1 ? "s" : ""} of {totalLines} line{totalLines !== 1 ? "s" : ""}
+              {selectedCollectionId && collections.length > 0 && (
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                  Links will be added to the selected collection.
                 </p>
               )}
             </div>
           </div>
-
+        ) : (
           <div className="space-y-4">
             <div className="pb-2 border-b border-neutral-200 dark:border-neutral-800">
               <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 uppercase tracking-wide">
-                Options
+                Progress
               </h3>
             </div>
-            <label className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={extractMetadata}
-                onChange={(e) => setExtractMetadata(e.target.checked)}
-                disabled={isSubmitting}
-                className="rounded border-neutral-300 dark:border-neutral-600 text-primary-600 focus:ring-primary-500"
-              />
-              Extract title and description from each page
-            </label>
-            {selectedCollectionId && collections.length > 0 && (
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                Links will be added to the selected collection.
-              </p>
-            )}
+            <ul className="max-h-[50vh] overflow-y-auto space-y-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50 p-3">
+              {linkProgress.map((item, i) => (
+                <li
+                  key={`${item.url}-${i}`}
+                  className="flex items-center gap-3 text-sm min-w-0"
+                >
+                  <span className="flex-shrink-0 w-5 h-5 flex items-center justify-center" aria-hidden>
+                    {item.status === "pending" && (
+                      <span className="w-2 h-2 rounded-full bg-neutral-300 dark:bg-neutral-600" />
+                    )}
+                    {item.status === "adding" && (
+                      <svg
+                        className="animate-spin h-4 w-4 text-primary-600 dark:text-primary-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        />
+                      </svg>
+                    )}
+                    {item.status === "added" && (
+                      <svg
+                        className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                    {item.status === "failed" && (
+                      <svg
+                        className="w-5 h-5 text-error-600 dark:text-error-400 flex-shrink-0"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    )}
+                  </span>
+                  <span className="font-mono text-xs text-neutral-600 dark:text-neutral-400 truncate min-w-0" title={item.url}>
+                    {item.url}
+                  </span>
+                  <span
+                    className="flex-shrink-0 text-xs text-neutral-500 dark:text-neutral-400 max-w-[40%] truncate"
+                    title={item.status === "failed" && item.error ? item.error : undefined}
+                  >
+                    {item.status === "pending" && "Pending"}
+                    {item.status === "adding" &&
+                      (extractMetadata ? "Extracting metadata…" : "Adding…")}
+                    {item.status === "added" && "Added"}
+                    {item.status === "failed" && (item.error ? `Failed: ${item.error}` : "Failed")}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
-        </div>
+        )}
 
-        {result && (
+        {linkProgress.length > 0 && result && (
           <div className="mt-6 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50 p-4 text-sm space-y-2">
             <p className="font-medium text-neutral-900 dark:text-neutral-100">
               Created {result.created} link{result.created !== 1 ? "s" : ""}.
@@ -178,20 +296,24 @@ export function BulkAddLinksDialog({
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
             {result ? "Close" : "Cancel"}
           </Button>
-          {!result && (
+          {linkProgress.length === 0 && (
             <Button type="submit" variant="primary" disabled={isSubmitting || validCount === 0}>
-              {isSubmitting ? (
-                <span className="flex items-center gap-2">
-                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  Adding…
-                </span>
-              ) : (
-                `Add ${validCount} link${validCount !== 1 ? "s" : ""}`
-              )}
+              Add {validCount} link{validCount !== 1 ? "s" : ""}
             </Button>
+          )}
+          {linkProgress.length > 0 && isSubmitting && (
+            <span className="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400 py-2">
+              <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+              {(() => {
+                const addingIndex = linkProgress.findIndex((p) => p.status === "adding");
+                const current = addingIndex >= 0 ? addingIndex + 1 : linkProgress.length;
+                const total = linkProgress.length;
+                return `Adding link ${current} of ${total}…`;
+              })()}
+            </span>
           )}
         </div>
       </form>
