@@ -146,100 +146,113 @@ export function ShareCollectionDialog({
       onOpenChange={onOpenChange}
       title="Share Collection"
       description="Share this collection with other users"
-      className="max-w-2xl"
+      className="max-w-2xl shadow-2xl"
+      zIndex={60}
     >
-      <div className="space-y-4">
+      <div className="px-4 sm:px-6 py-4 sm:py-6">
         {error && (
-          <div className="p-3 bg-error-50 dark:bg-error-950 border border-error-200 dark:border-error-800 rounded-md">
-            <p className="text-sm text-error-800 dark:text-error-200">{error}</p>
+          <div className="mb-6 p-4 bg-error-50 dark:bg-error-950/50 border border-error-200 dark:border-error-800 rounded-lg">
+            <p className="text-sm font-medium text-error-800 dark:text-error-200">{error}</p>
           </div>
         )}
 
-        <div>
-          <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-            Add User
-          </h3>
-          <div className="flex gap-2">
-            <Select
-              value={selectedUserId}
-              onChange={(e) => setSelectedUserId(e.target.value)}
-              options={[
-                { value: "", label: "Select a user..." },
-                ...availableUsers.map((user) => ({
-                  value: user.id,
-                  label: user.name || user.email,
-                })),
-              ]}
-              className="flex-1"
-            />
-            <Select
-              value={selectedRole}
-              onChange={(e) => setSelectedRole(e.target.value as "VIEWER" | "EDITOR")}
-              options={[
-                { value: "VIEWER", label: "Viewer" },
-                { value: "EDITOR", label: "Editor" },
-              ]}
-            />
-            <Button
-              type="button"
-              onClick={handleShare}
-              disabled={!selectedUserId || isSubmitting}
-              variant="primary"
-            >
-              Add
-            </Button>
+        <div className="space-y-6">
+          {/* Add User Section */}
+          <div className="space-y-4">
+            <div className="pb-2 border-b border-neutral-200 dark:border-neutral-800">
+              <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 uppercase tracking-wide">
+                Add user
+              </h3>
+            </div>
+            <div className="flex flex-nowrap items-center gap-3">
+              <Select
+                value={selectedUserId}
+                onChange={(e) => setSelectedUserId(e.target.value)}
+                options={[
+                  { value: "", label: "Select a user..." },
+                  ...availableUsers.map((user) => ({
+                    value: user.id,
+                    label: user.name || user.email,
+                  })),
+                ]}
+                className="flex-1 min-w-0"
+              />
+              <div className="w-32 shrink-0">
+                <Select
+                  value={selectedRole}
+                  onChange={(e) => setSelectedRole(e.target.value as "VIEWER" | "EDITOR")}
+                  options={[
+                    { value: "VIEWER", label: "Viewer" },
+                    { value: "EDITOR", label: "Editor" },
+                  ]}
+                />
+              </div>
+              <Button
+                type="button"
+                onClick={handleShare}
+                disabled={!selectedUserId || isSubmitting}
+                variant="primary"
+                className="shrink-0"
+              >
+                Add
+              </Button>
+            </div>
+          </div>
+
+          {/* Members Section */}
+          <div className="space-y-4">
+            <div className="pb-2 border-b border-neutral-200 dark:border-neutral-800">
+              <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 uppercase tracking-wide">
+                Members ({members.length})
+              </h3>
+            </div>
+            {members.length === 0 ? (
+              <p className="text-sm text-neutral-500 dark:text-neutral-400">No members yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {members.map((member) => (
+                  <div
+                    key={member.id}
+                    className="flex items-center justify-between p-3 bg-neutral-50 dark:bg-neutral-800/80 rounded-lg border border-neutral-200 dark:border-neutral-700"
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                        {member.user.name || member.user.email}
+                      </p>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                        {member.role === "EDITOR" ? "Editor" : "Viewer"}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={member.role}
+                        onChange={(e) => handleUpdateRole(member.id, e.target.value as "VIEWER" | "EDITOR")}
+                        options={[
+                          { value: "VIEWER", label: "Viewer" },
+                          { value: "EDITOR", label: "Editor" },
+                        ]}
+                        className="w-32"
+                      />
+                      <Button
+                        type="button"
+                        onClick={() => handleRemove(member.id)}
+                        disabled={isSubmitting}
+                        variant="outline"
+                        className="text-error-600 dark:text-error-400 border-error-300 dark:border-error-700 hover:bg-error-50 dark:hover:bg-error-950/30"
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
-        <div>
-          <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-            Members ({members.length})
-          </h3>
-          {members.length === 0 ? (
-            <p className="text-sm text-neutral-500 dark:text-neutral-400">No members yet.</p>
-          ) : (
-            <div className="space-y-2">
-              {members.map((member) => (
-                <div
-                  key={member.id}
-                  className="flex items-center justify-between p-3 bg-neutral-50 dark:bg-neutral-800 rounded-md"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                      {member.user.name || member.user.email}
-                    </p>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                      {member.role === "EDITOR" ? "Editor" : "Viewer"}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Select
-                      value={member.role}
-                      onChange={(e) => handleUpdateRole(member.id, e.target.value as "VIEWER" | "EDITOR")}
-                      options={[
-                        { value: "VIEWER", label: "Viewer" },
-                        { value: "EDITOR", label: "Editor" },
-                      ]}
-                      className="w-32"
-                    />
-                    <Button
-                      type="button"
-                      onClick={() => handleRemove(member.id)}
-                      disabled={isSubmitting}
-                      variant="outline"
-                      className="text-error-600 dark:text-error-400 hover:text-error-700 dark:hover:text-error-300"
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="flex justify-end pt-4">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+        {/* Footer Actions */}
+        <div className="flex justify-end gap-3 pt-6 mt-6 border-t border-neutral-200 dark:border-neutral-800">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
             Close
           </Button>
         </div>
