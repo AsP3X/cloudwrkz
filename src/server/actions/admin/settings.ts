@@ -2,7 +2,14 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { requireRole } from "@/lib/utils/auth-server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
+import { MODULE_KEYS } from "@/lib/constants/modules";
+import {
+  LINK_PAGE_SIZE_OPTIONS,
+  LINK_PAGE_SIZE_ALL,
+  DEFAULT_LINKS_PAGE_SIZE,
+  LINKS_DEFAULT_PAGE_SIZE_VALUES,
+} from "@/lib/constants/links";
 
 export type SystemInfo = {
   totalUsers: number;
@@ -213,4 +220,56 @@ export async function getSystemHealth(): Promise<{
       message: "System health check failed",
     };
   }
+}
+
+const LINKS_DEFAULT_PAGE_SIZE_CACHE_TAG = "links-default-page-size";
+
+async function getLinksDefaultPageSizeUncached(): Promise<number> {
+  const moduleRecord = await prisma.module.findUnique({
+    where: { key: MODULE_KEYS.LINKS },
+    select: { config: true },
+  });
+  if (!moduleRecord?.config || typeof moduleRecord.config !== "object") {
+    return DEFAULT_LINKS_PAGE_SIZE;
+  }
+  const config = moduleRecord.config as Record<string, unknown>;
+  const value = config.defaultPageSize;
+  if (typeof value === "number" && LINKS_DEFAULT_PAGE_SIZE_VALUES.includes(value as (typeof LINKS_DEFAULT_PAGE_SIZE_VALUES)[number])) {
+    return value;
+  }
+  return DEFAULT_LINKS_PAGE_SIZE;
+}
+
+/**
+ * Get the default page size for the links overview (cached; used when rendering links page for any user).
+ */
+export const getLinksDefaultPageSize = unstable_cache(
+  getLinksDefaultPageSizeUncached,
+  [LINKS_DEFAULT_PAGE_SIZE_CACHE_TAG],
+  { revalidate: 60, tags: [LINKS_DEFAULT_PAGE_SIZE_CACHE_TAG] }
+);
+
+/**
+ * Update the default page size for the links overview (admin only).
+ */
+export async function updateLinksDefaultPageSize(value: number): Promise<{ success: boolean; error?: string }> {
+  await requireRole("ADMIN");
+  if (!LINKS_DEFAULT_PAGE_SIZE_VALUES.includes(value as (typeof LINKS_DEFAULT_PAGE_SIZE_VALUES)[number])) {
+    return { success: false, error: "Invalid page size" };
+  }
+  const moduleRecord = await prisma.module.findUnique({
+    where: { key: MODULE_KEYS.LINKS },
+    select: { config: true },
+  });
+  const existingConfig = (moduleRecord?.config as Record<string, unknown>) ?? {};
+  await prisma.module.update({
+    where: { key: MODULE_KEYS.LINKS },
+    data: {
+      config: { ...existingConfig, defaultPageSize: value },
+    },
+  });
+  revalidatePath("/dashboard/links");
+  revalidatePath("/dashboard/admin/settings");
+  revalidateTag(LINKS_DEFAULT_PAGE_SIZE_CACHE_TAG, "max");
+  return { success: true };
 }

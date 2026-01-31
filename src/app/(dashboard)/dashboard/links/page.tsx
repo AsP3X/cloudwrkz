@@ -3,20 +3,26 @@ import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/constants/routes";
 import { canUserViewModule } from "@/server/actions/modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
-import { getLinks, getSharedWithMeCount, type LinkType } from "@/server/actions/links";
-import { SHARED_WITH_ME_COLLECTION_ID } from "@/lib/constants/links";
+import { getSharedWithMeCount, type LinkType } from "@/server/actions/links";
+import { getLinksDefaultPageSize } from "@/server/actions/admin/settings";
+import {
+  SHARED_WITH_ME_COLLECTION_ID,
+  LINK_PAGE_SIZE_OPTIONS,
+  LINK_PAGE_SIZE_ALL,
+} from "@/lib/constants/links";
 import { getCollections } from "@/server/actions/collections";
 import { hasPermission } from "@/lib/utils/permissions";
 import { LinkViewProvider } from "@/components/features/links/LinkViewContext";
 import { LinkFilterLoader } from "@/components/features/links/LinkFilterLoader";
 import { LinkViewControls } from "@/components/features/links/LinkViewControls";
 import { LinkFilterButton } from "@/components/features/links/LinkFilterButton";
-import { LinkListView } from "@/components/features/links/LinkListView";
 import { CollectionFilterBarWrapper } from "@/components/features/links/CollectionFilterBar";
-import { LinksPagination } from "@/components/features/links/LinksPagination";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { LinksPageProvider, CreateButton, LinksOverviewActionsMenu } from "./LinksPageClient";
+import { Suspense } from "react";
+import { LinksListLoader } from "./LinksListLoader";
+import { LinksPageContent } from "./LinksPageContent";
 
 interface LinksPageProps {
   searchParams: Promise<{
@@ -27,6 +33,7 @@ interface LinksPageProps {
     search?: string;
     sort?: string;
     page?: string;
+    limit?: string;
   }>;
 }
 
@@ -42,8 +49,17 @@ export default async function LinksPage({ searchParams }: LinksPageProps) {
     redirect(ROUTES.LOGIN);
   }
 
-  // Check if user can view links module (module enabled AND user has permission)
-  const canViewLinks = await canUserViewModule(user.id, MODULE_KEYS.LINKS);
+  // Parse sort parameter
+  const sortParam = params.sort || "createdAt-desc";
+  const [sortBy, sortOrder] = sortParam.split("-") as ["createdAt" | "updatedAt" | "title" | "rating", "asc" | "desc"];
+
+  // Run access check, default page size, collections, and shared count in parallel
+  const [canViewLinks, defaultPageSize, collections, sharedWithMeCount] = await Promise.all([
+    canUserViewModule(user.id, MODULE_KEYS.LINKS),
+    getLinksDefaultPageSize(),
+    getCollections({ archived: false }),
+    getSharedWithMeCount(),
+  ]);
 
   if (!canViewLinks) {
     return (
@@ -56,18 +72,25 @@ export default async function LinksPage({ searchParams }: LinksPageProps) {
     );
   }
 
-  // Parse sort parameter
-  const sortParam = params.sort || "createdAt-desc";
-  const [sortBy, sortOrder] = sortParam.split("-") as ["createdAt" | "updatedAt" | "title" | "rating", "asc" | "desc"];
+  const validLimits = [...LINK_PAGE_SIZE_OPTIONS, LINK_PAGE_SIZE_ALL];
+  const limitParam = params.limit;
+  const limit =
+    limitParam === "all"
+      ? LINK_PAGE_SIZE_ALL
+      : limitParam
+        ? (() => {
+            const n = parseInt(limitParam, 10);
+            return validLimits.includes(n) ? n : defaultPageSize;
+          })()
+        : defaultPageSize;
 
-  // Build filters
   const page = Math.max(1, parseInt(params.page ?? "1", 10) || 1);
   const filters = {
     sortBy: sortBy || "createdAt",
     sortOrder: sortOrder || "desc",
     archived: false as const,
     page,
-    limit: 50,
+    limit,
     ...(params.collection && { collectionId: params.collection }),
     ...(params.linkType && { linkType: params.linkType as LinkType }),
     ...(params.isFavorite === "true" && { isFavorite: true }),
@@ -76,13 +99,6 @@ export default async function LinksPage({ searchParams }: LinksPageProps) {
     ...(params.search && { search: params.search }),
   };
 
-  // Get links with filters
-  const result = await getLinks(filters);
-  const { links, total, totalPages, limit } = result;
-
-  // Get collections for filter
-  const collections = await getCollections({ archived: false });
-  const sharedWithMeCount = await getSharedWithMeCount();
   const collectionsForSidebar =
     sharedWithMeCount > 0
       ? [
@@ -143,47 +159,18 @@ export default async function LinksPage({ searchParams }: LinksPageProps) {
             </div>
           )}
 
-          {/* Main Content */}
-          <div>
-            {/* Results Count and pagination */}
-            {(total > 0 || page > 1) && (
-              <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
-                <div className="text-sm text-neutral-600 dark:text-neutral-400">
-                  Showing {(page - 1) * limit + 1}-{Math.min(page * limit, total)} of {total} link{total !== 1 ? "s" : ""}
-                </div>
-                {totalPages > 1 && (
-                  <LinksPagination page={page} totalPages={totalPages} searchParams={params} />
-                )}
-              </div>
-            )}
-
-            {/* Links List */}
-            {links.length === 0 ? (
-              <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-12 text-center">
-                <svg
-                  className="w-16 h-16 text-neutral-300 dark:text-neutral-700 mx-auto mb-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
-                  />
-                </svg>
-                <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">No links yet</h3>
-                <p className="text-neutral-600 dark:text-neutral-400">Get started by creating your first link</p>
-              </div>
-            ) : (
-              <LinkListView
-                links={links}
-                currentUserId={user.id}
-                isSharedWithMeView={params.collection === SHARED_WITH_ME_COLLECTION_ID}
-              />
-            )}
-          </div>
+          {/* Main Content: loader until links are loaded, then list + pagination */}
+          <Suspense fallback={<LinksListLoader />}>
+            <LinksPageContent
+              filters={filters}
+              defaultPageSize={defaultPageSize}
+              params={params}
+              limit={limit}
+              page={page}
+              userId={user.id}
+              isSharedWithMeView={params.collection === SHARED_WITH_ME_COLLECTION_ID}
+            />
+          </Suspense>
         </div>
       </LinksPageProvider>
     </LinkViewProvider>

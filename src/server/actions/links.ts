@@ -18,7 +18,12 @@ import { cacheFavicon } from "@/lib/utils/favicon-cache";
 import { extractLinkMetadata } from "@/lib/utils/link-metadata";
 import { logger } from "@/lib/utils/logger";
 import { createLinkSchema, updateLinkSchema, importLinkRowSchema } from "@/lib/validations/links";
-import { SHARED_WITH_ME_COLLECTION_ID } from "@/lib/constants/links";
+import {
+  SHARED_WITH_ME_COLLECTION_ID,
+  LINK_PAGE_SIZE_OPTIONS,
+  LINK_PAGE_SIZE_ALL,
+  DEFAULT_LINKS_PAGE_SIZE,
+} from "@/lib/constants/links";
 
 export type LinkType = "WEBSITE" | "FILE" | "DOCUMENT" | "VIDEO" | "IMAGE" | "OTHER";
 
@@ -60,9 +65,22 @@ export type LinkFilters = {
 export type GetLinksResult = {
   links: Array<
     Prisma.LinkGetPayload<{
-      include: {
+      select: {
+        id: true;
+        title: true;
+        url: true;
+        description: true;
+        favicon: true;
+        linkType: true;
+        tags: true;
+        notes: true;
+        isFavorite: true;
+        rating: true;
+        userId: true;
+        createdAt: true;
+        updatedAt: true;
         collections: {
-          include: {
+          select: {
             collection: { select: { id: true; name: true; color: true } };
           };
         };
@@ -1146,25 +1164,38 @@ export async function getLinks(filters: LinkFilters = {}): Promise<GetLinksResul
       ];
     }
 
-    // Sort and pagination
+    // Sort and pagination (allowed: 10, 25, 50, 100, or LINK_PAGE_SIZE_ALL for "all")
     const sortBy = filters.sortBy || "createdAt";
     const sortOrder = filters.sortOrder || "desc";
     const page = Math.max(1, filters.page ?? 1);
-    const limit = Math.min(100, Math.max(1, filters.limit ?? 50));
+    const validLimits = [...LINK_PAGE_SIZE_OPTIONS, LINK_PAGE_SIZE_ALL];
+    const requestedLimit = filters.limit ?? DEFAULT_LINKS_PAGE_SIZE;
+    const limit = validLimits.includes(requestedLimit)
+      ? requestedLimit
+      : DEFAULT_LINKS_PAGE_SIZE;
     const skip = (page - 1) * limit;
 
     const [links, total] = await Promise.all([
       prisma.link.findMany({
         where,
-        include: {
+        select: {
+          id: true,
+          title: true,
+          url: true,
+          description: true,
+          favicon: true,
+          linkType: true,
+          tags: true,
+          notes: true,
+          isFavorite: true,
+          rating: true,
+          userId: true,
+          createdAt: true,
+          updatedAt: true,
           collections: {
-            include: {
+            select: {
               collection: {
-                select: {
-                  id: true,
-                  name: true,
-                  color: true,
-                },
+                select: { id: true, name: true, color: true },
               },
             },
           },

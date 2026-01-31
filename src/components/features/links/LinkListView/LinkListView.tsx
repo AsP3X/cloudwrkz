@@ -45,19 +45,20 @@ export const LinkListView = ({
 }: LinkListViewProps) => {
   const { viewMode, isReady } = useLinkView();
 
-  if (!isReady) {
-    return null;
-  }
-
+  // Always render a stable wrapper so server and client have the same DOM structure.
+  // When !isReady we render an empty wrapper to avoid hydration mismatch when
+  // the client later injects the list (which would otherwise reuse the next sibling node).
   return (
     <div>
-      <LinkList
-        links={links}
-        viewMode={viewMode}
-        isArchivePage={isArchivePage}
-        currentUserId={currentUserId}
-        isSharedWithMeView={isSharedWithMeView}
-      />
+      {isReady ? (
+        <LinkList
+          links={links}
+          viewMode={viewMode}
+          isArchivePage={isArchivePage}
+          currentUserId={currentUserId}
+          isSharedWithMeView={isSharedWithMeView}
+        />
+      ) : null}
     </div>
   );
 };

@@ -1,7 +1,12 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/utils/auth-server";
 import { requireRole } from "@/lib/utils/auth-server";
-import { getSystemInfo, getDatabaseStats, getSystemHealth } from "@/server/actions/admin/settings";
+import {
+  getSystemInfo,
+  getDatabaseStats,
+  getSystemHealth,
+  getLinksDefaultPageSize,
+} from "@/server/actions/admin/settings";
 import { SystemSettingsPage } from "@/components/features/admin/SystemSettings/SystemSettingsPage";
 
 export default async function AdminSettingsPage() {
@@ -13,10 +18,11 @@ export default async function AdminSettingsPage() {
 
   await requireRole("ADMIN");
 
-  const [systemInfo, databaseStats, health] = await Promise.all([
+  const [systemInfo, databaseStats, health, linksDefaultPageSize] = await Promise.all([
     getSystemInfo(),
     getDatabaseStats(),
     getSystemHealth(),
+    getLinksDefaultPageSize(),
   ]);
 
   return (
@@ -24,6 +30,7 @@ export default async function AdminSettingsPage() {
       systemInfo={systemInfo}
       databaseStats={databaseStats}
       health={health}
+      linksDefaultPageSize={linksDefaultPageSize}
     />
   );
 }
