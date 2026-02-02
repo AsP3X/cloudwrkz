@@ -404,6 +404,7 @@ export function TimeEntryDetailPage({ initialEntry, userTimezone }: TimeEntryDet
               timeEntryId={entry.id}
               userTimezone={userTimezone}
               entryTimezone={entry.timezone}
+              entryStartedAt={entry.startedAt}
               initialBreaks={entry.breaks?.map(breakItem => ({
                 ...breakItem,
                 createdAt: breakItem.createdAt || new Date(),

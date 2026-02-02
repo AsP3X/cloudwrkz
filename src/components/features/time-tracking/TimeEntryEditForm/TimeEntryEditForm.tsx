@@ -321,6 +321,7 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting, userT
         timeEntryId={entry.id}
         userTimezone={userTimezone}
         entryTimezone={entryTimezone}
+        entryStartedAt={entry.startedAt}
         initialBreaks={breaks?.map(breakItem => ({
           ...breakItem,
           createdAt: breakItem.createdAt || new Date(),

@@ -25,9 +25,11 @@ interface TimeEntryBreaksProps {
   userTimezone: string;
   entryTimezone?: string | null;
   initialBreaks?: Break[];
+  /** When set, the Add Break form defaults start/end date to this date and end time to start + 15 min */
+  entryStartedAt?: Date;
 }
 
-export function TimeEntryBreaks({ timeEntryId, userTimezone, entryTimezone, initialBreaks = [] }: TimeEntryBreaksProps) {
+export function TimeEntryBreaks({ timeEntryId, userTimezone, entryTimezone, initialBreaks = [], entryStartedAt }: TimeEntryBreaksProps) {
   // Use entry timezone if set, otherwise fall back to user timezone
   const displayTimezone = React.useMemo(() => {
     return entryTimezone || userTimezone || "UTC";
@@ -35,6 +37,7 @@ export function TimeEntryBreaks({ timeEntryId, userTimezone, entryTimezone, init
   
   const [breaks, setBreaks] = React.useState<Break[]>(initialBreaks);
   const [showAddDialog, setShowAddDialog] = React.useState(false);
+  const [addBreakDefaults, setAddBreakDefaults] = React.useState<{ start: string; end: string }>({ start: "", end: "" });
   const [editingBreak, setEditingBreak] = React.useState<Break | null>(null);
   const [processing, setProcessing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -76,7 +79,7 @@ export function TimeEntryBreaks({ timeEntryId, userTimezone, entryTimezone, init
 
     try {
       const startedAt = startedAtStr ? new Date(startedAtStr) : new Date();
-      const endedAt = endedAtStr ? new Date(endedAtStr) : undefined;
+      const endedAt = endedAtStr ? new Date(endedAtStr) : new Date(startedAt.getTime() + 15 * 60 * 1000);
 
       const result = await addBreakToTimeEntry(timeEntryId, {
         startedAt,
@@ -165,6 +168,19 @@ export function TimeEntryBreaks({ timeEntryId, userTimezone, entryTimezone, init
     return d.toISOString().slice(0, 16);
   };
 
+  const openAddBreakDialog = () => {
+    const now = new Date();
+    const entryDate = entryStartedAt
+      ? new Date(entryStartedAt.getFullYear(), entryStartedAt.getMonth(), entryStartedAt.getDate())
+      : null;
+    const start = entryDate
+      ? new Date(entryDate.getFullYear(), entryDate.getMonth(), entryDate.getDate(), now.getHours(), now.getMinutes())
+      : new Date();
+    const end = new Date(start.getTime() + 15 * 60 * 1000);
+    setAddBreakDefaults({ start: formatDateTimeLocal(start), end: formatDateTimeLocal(end) });
+    setShowAddDialog(true);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0">
@@ -180,7 +196,7 @@ export function TimeEntryBreaks({ timeEntryId, userTimezone, entryTimezone, init
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setShowAddDialog(true)}
+          onClick={openAddBreakDialog}
           disabled={processing}
         >
           <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -297,9 +313,10 @@ export function TimeEntryBreaks({ timeEntryId, userTimezone, entryTimezone, init
         title="Add Break"
         description="Record a break that will be deducted from the total duration"
       >
-        <form 
+        <form
+          key={showAddDialog ? "add-break-open" : "add-break-closed"}
           ref={addBreakFormRef}
-          onSubmit={handleAddBreak} 
+          onSubmit={handleAddBreak}
           className="space-y-4"
         >
           <div>
@@ -310,18 +327,20 @@ export function TimeEntryBreaks({ timeEntryId, userTimezone, entryTimezone, init
               id="startedAt"
               name="startedAt"
               type="datetime-local"
-              defaultValue={formatDateTimeLocal(new Date())}
+              defaultValue={addBreakDefaults.start || formatDateTimeLocal(new Date())}
               required
             />
           </div>
           <div>
             <label htmlFor="endedAt" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-              End Time (optional - leave empty for ongoing break)
+              End Time
             </label>
             <Input
               id="endedAt"
               name="endedAt"
               type="datetime-local"
+              defaultValue={addBreakDefaults.end}
+              required
             />
           </div>
           <div>
