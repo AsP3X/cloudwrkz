@@ -5,6 +5,7 @@ import { APP_CONFIG } from "@/lib/constants/config";
 import { CookiesDisclaimer } from "@/components/ui/CookiesDisclaimer";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import { ServerUnavailableProvider } from "@/components/providers/ServerUnavailableProvider";
+import { KeepAliveProvider } from "@/components/providers/KeepAliveProvider";
 import { getUserTheme } from "@/server/actions/theme";
 import { isDatabaseAccessible } from "@/lib/utils/db-health";
 import { DatabaseConnectionError } from "@/lib/utils/auth-server";
@@ -72,9 +73,19 @@ export default async function RootLayout({
                   if (msg.indexOf('unexpected response') !== -1 || msg.indexOf('An unexpected response was received from the server') !== -1) return true;
                   if (msg.indexOf('Failed to fetch') !== -1 || msg.indexOf('Load failed') !== -1 || msg.indexOf('NetworkError') !== -1) return true;
                   if (msg.indexOf('connection refused') !== -1 || msg.indexOf('ERR_CONNECTION') !== -1 || msg.indexOf('Network request failed') !== -1) return true;
+                  if (msg.indexOf('502') !== -1 || msg.indexOf('Bad Gateway') !== -1) return true;
+                  if (e.status === 502 || e.statusCode === 502) return true;
                   if (cause && isServerDisconnect(cause)) return true;
                   return false;
                 }
+                // Next.js logs this error in fetchServerAction before rejecting; suppress that single message
+                var origError = console.error;
+                console.error = function() {
+                  var first = arguments[0];
+                  if (typeof first === 'string' && (first.indexOf('unexpected response') !== -1 || first.indexOf('An unexpected response was received from the server') !== -1 || first.indexOf('502') !== -1 || first.indexOf('Bad Gateway') !== -1)) return;
+                  if (first && typeof first === 'object' && first.message && typeof first.message === 'string' && (first.message.indexOf('unexpected response') !== -1 || first.message.indexOf('An unexpected response was received from the server') !== -1 || first.message.indexOf('502') !== -1 || first.message.indexOf('Bad Gateway') !== -1)) return;
+                  return origError.apply(console, arguments);
+                };
                 window.addEventListener('unhandledrejection', function(event) {
                   if (isServerDisconnect(event.reason)) {
                     event.preventDefault();
@@ -159,10 +170,12 @@ export default async function RootLayout({
           }}
         />
         <ThemeProvider>
-          <ServerUnavailableProvider>
-            {children}
-            <CookiesDisclaimer />
-          </ServerUnavailableProvider>
+          <KeepAliveProvider>
+            <ServerUnavailableProvider>
+              {children}
+              <CookiesDisclaimer />
+            </ServerUnavailableProvider>
+          </KeepAliveProvider>
         </ThemeProvider>
       </body>
     </html>

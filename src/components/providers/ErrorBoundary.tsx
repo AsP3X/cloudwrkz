@@ -1,6 +1,7 @@
 "use client";
 
 import React, { Component, ReactNode } from "react";
+import { isServerUnavailableError } from "@/lib/utils/server-action-utils";
 
 interface Props {
   children: ReactNode;
@@ -12,9 +13,13 @@ interface State {
   error: Error | null;
 }
 
+const SERVER_UNAVAILABLE_EVENT = "serverunavailable";
+
 /**
- * Error boundary to catch React errors and display them gracefully
- * Prevents the entire page from crashing on connection errors
+ * Error boundary to catch React errors and display them gracefully.
+ * Prevents the entire page from crashing on connection errors.
+ * For server-unreachable errors, does not show the error page; instead triggers
+ * the existing ServerUnavailableBanner via the serverunavailable event.
  */
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
@@ -22,12 +27,24 @@ export class ErrorBoundary extends Component<Props, State> {
     this.state = { hasError: false, error: null };
   }
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): Partial<State> | null {
+    // Server unreachable: don't switch to error page; banner will be shown via event
+    if (isServerUnavailableError(error)) {
+      return null;
+    }
     return { hasError: true, error };
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    // Log error for debugging but don't crash the page
+    if (isServerUnavailableError(error)) {
+      // Trigger the existing banner without replacing the page
+      try {
+        window.dispatchEvent(new CustomEvent(SERVER_UNAVAILABLE_EVENT, { detail: error }));
+      } catch (_) {
+        // ignore
+      }
+      return;
+    }
     console.error("Error caught by boundary:", error, errorInfo);
   }
 

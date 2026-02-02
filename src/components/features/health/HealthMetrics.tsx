@@ -193,7 +193,20 @@ export function HealthMetrics({ initialDbHealth, isAuthenticated = false }: Heal
       // Calculate page/server response time
       const pageResponseTime = Date.now() - startTime;
 
-      // Try to parse the response even if status is not OK (e.g., 503)
+      // Proxy returns 502/503 when upstream server is down; don't try to parse (may be HTML error page)
+      if (response.status === 502 || response.status === 503) {
+        setDbHealth({
+          status: "unhealthy",
+          connected: false,
+          responseTime: undefined,
+          error: response.status === 502 ? "Server unavailable (502 Bad Gateway)" : "Service unavailable (503)",
+          lastChecked: new Date(),
+        });
+        setIsRefreshing(false);
+        return;
+      }
+
+      // Try to parse the response even if status is not OK (e.g., 503 from our API)
       // The API still returns health data in the body even when unhealthy
       let data;
       try {

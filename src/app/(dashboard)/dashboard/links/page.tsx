@@ -53,14 +53,8 @@ export default async function LinksPage({ searchParams }: LinksPageProps) {
   const sortParam = params.sort || "createdAt-desc";
   const [sortBy, sortOrder] = sortParam.split("-") as ["createdAt" | "updatedAt" | "title" | "rating", "asc" | "desc"];
 
-  // Run access check, default page size, collections, and shared count in parallel
-  const [canViewLinks, defaultPageSize, collections, sharedWithMeCount] = await Promise.all([
-    canUserViewModule(user.id, MODULE_KEYS.LINKS),
-    getLinksDefaultPageSize(),
-    getCollections({ archived: false }),
-    getSharedWithMeCount(),
-  ]);
-
+  // Check module access first so we don't call link/collection actions for users without permission
+  const canViewLinks = await canUserViewModule(user.id, MODULE_KEYS.LINKS);
   if (!canViewLinks) {
     return (
       <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8 text-center">
@@ -71,6 +65,13 @@ export default async function LinksPage({ searchParams }: LinksPageProps) {
       </div>
     );
   }
+
+  // Only fetch link-related data for users who can view the module
+  const [defaultPageSize, collections, sharedWithMeCount] = await Promise.all([
+    getLinksDefaultPageSize(),
+    getCollections({ archived: false }),
+    getSharedWithMeCount(),
+  ]);
 
   const validLimits = [...LINK_PAGE_SIZE_OPTIONS, LINK_PAGE_SIZE_ALL];
   const limitParam = params.limit;

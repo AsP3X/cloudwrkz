@@ -26,6 +26,18 @@ export const Footer = () => {
             cache: "no-store",
             headers: { "Cache-Control": "no-cache" },
           });
+          if (response.status === 502 || response.status === 503) {
+            setLocalHealthStatus("unhealthy");
+            try {
+              const err = new Error(response.statusText || `HTTP ${response.status}`) as Error & { status?: number };
+              err.status = response.status;
+              (window as unknown as { __serverUnavailableReason?: unknown }).__serverUnavailableReason = err;
+              window.dispatchEvent(new CustomEvent("serverunavailable", { detail: err }));
+            } catch {
+              // ignore
+            }
+            return;
+          }
           const data = await response.json();
           setLocalHealthStatus(data.status || "unhealthy");
         } catch {

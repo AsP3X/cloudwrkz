@@ -84,6 +84,7 @@ export async function canUserViewModule(userId: string, moduleKey: ModuleKey): P
     [MODULE_KEYS.TICKETS]: "modules.tickets.view",
     [MODULE_KEYS.TIMETRACKING]: "modules.timetracking.view",
     [MODULE_KEYS.TODOS]: "modules.todos.view",
+    [MODULE_KEYS.LINKS]: "modules.links.view",
   };
 
   const permissionKey = modulePermissionMap[moduleKey];
@@ -106,6 +107,19 @@ export async function canUserViewModule(userId: string, moduleKey: ModuleKey): P
       userPermissions.has("todos.delete" as any);
     
     return hasModulePermission || hasTodoPermission;
+  }
+
+  // Special handling for LINKS: also check for link-related permissions
+  // If user has any link permission (links.view, links.create, etc.), they can see the module
+  if (moduleKey === MODULE_KEYS.LINKS) {
+    const hasModulePermission = userPermissions.has(permissionKey as any);
+    const hasLinkPermission =
+      userPermissions.has("links.view" as any) ||
+      userPermissions.has("links.create" as any) ||
+      userPermissions.has("links.update" as any) ||
+      userPermissions.has("links.delete" as any) ||
+      userPermissions.has("collections.view" as any);
+    return hasModulePermission || hasLinkPermission;
   }
   
   return userPermissions.has(permissionKey as any);

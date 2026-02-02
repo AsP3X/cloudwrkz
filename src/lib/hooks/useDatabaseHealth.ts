@@ -67,7 +67,17 @@ export function useDatabaseHealth(options?: {
       
       clearTimeout(timeoutId);
 
-      // Try to parse the response even if status is not OK (e.g., 503)
+      // Proxy returns 502/503 when upstream server is down; don't try to parse (may be HTML error page)
+      if (response.status === 502 || response.status === 503) {
+        setIsServerUnreachable(true);
+        setError(response.status === 502 ? "Server unavailable (502 Bad Gateway)" : "Service unavailable (503)");
+        setStatus("unhealthy");
+        setIsConnected(false);
+        setLastChecked(new Date());
+        return;
+      }
+
+      // Try to parse the response even if status is not OK (e.g., 503 from our API)
       // The API still returns health data in the body even when unhealthy
       let data: HealthCheckResponse;
       try {
@@ -98,12 +108,16 @@ export function useDatabaseHealth(options?: {
       setIsConnected(newConnected);
     } catch (err) {
       // Clear timeout in case of error
-      // Check if this is a server unreachable error (fetch failed completely)
+      const msg = err instanceof Error ? err.message.toLowerCase() : "";
+      // Check if this is a server unreachable error (fetch failed, 502/503, or proxy error page)
       const isServerError = err instanceof Error && (
         err.name === "TypeError" && err.message.includes("fetch") ||
         err.name === "AbortError" ||
-        err.message.toLowerCase().includes("network") ||
-        err.message.toLowerCase().includes("failed to fetch")
+        msg.includes("network") ||
+        msg.includes("failed to fetch") ||
+        msg.includes("502") ||
+        msg.includes("bad gateway") ||
+        msg.includes("503")
       );
       
       setIsServerUnreachable(isServerError);

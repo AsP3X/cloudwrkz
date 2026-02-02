@@ -107,9 +107,12 @@ export function isServerUnavailableError(error: unknown): boolean {
     message.includes("ERR_CONNECTION_REFUSED") ||
     message.includes("ERR_CONNECTION_RESET") ||
     message.includes("connection refused") ||
+    message.includes("502") ||
+    message.includes("Bad Gateway") ||
     (name === "TypeError" && (message.includes("fetch") || message.includes("network") || message === "Failed to fetch"));
 
   if (messageIndicators) return true;
+  if (err?.status === 502 || err?.statusCode === 502 || (err?.response as { status?: number } | undefined)?.status === 502) return true;
   if (stack && (stack.includes("unexpected response") || stack.includes("fetchServerAction"))) return true;
   if (err?.__NEXT_ERROR_CODE === "E394") return true;
   const cause = err?.cause;

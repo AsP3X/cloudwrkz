@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ServerUnavailableBanner } from "@/components/ui/ServerUnavailableBanner";
 import { isServerUnavailableError } from "@/lib/utils/server-action-utils";
 
@@ -18,8 +18,20 @@ const SERVER_UNAVAILABLE_EVENT = "serverunavailable";
  */
 export function ServerUnavailableProvider({ children }: ServerUnavailableProviderProps) {
   const [showBanner, setShowBanner] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   const dismiss = useCallback(() => setShowBanner(false), []);
+
+  // When server is unavailable, set inert on page content so all interactivity is blocked (clicks + keyboard)
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    if (showBanner) {
+      el.setAttribute("inert", "");
+    } else {
+      el.removeAttribute("inert");
+    }
+  }, [showBanner]);
 
   useEffect(() => {
     const showBannerIfServerUnavailable = (error: unknown) => {
@@ -56,8 +68,22 @@ export function ServerUnavailableProvider({ children }: ServerUnavailableProvide
 
   return (
     <>
-      {showBanner && <ServerUnavailableBanner onDismiss={dismiss} dismissible />}
-      {children}
+      {/* When server is unavailable, inert blocks all page interaction (clicks + keyboard) like login FormBlurWrapper */}
+      <div ref={contentRef}>
+        {children}
+      </div>
+      {showBanner && (
+        <>
+          <div
+            className="fixed inset-0 z-[9998] bg-black/40 backdrop-blur-[2px]"
+            style={{ pointerEvents: "auto" }}
+            aria-hidden="true"
+          />
+          <div className="fixed top-0 left-0 right-0 z-[9999]">
+            <ServerUnavailableBanner onDismiss={dismiss} dismissible />
+          </div>
+        </>
+      )}
     </>
   );
 }
