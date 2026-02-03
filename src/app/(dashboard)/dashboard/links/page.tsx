@@ -128,9 +128,9 @@ export default async function LinksPage({ searchParams }: LinksPageProps) {
           {/* Auto-load last used link filters */}
           <LinkFilterLoader collections={collectionsForSidebar} />
           
-          {/* Header: icon above title, all centered; actions on the right */}
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div className="flex flex-1 min-w-0 flex-col items-center text-center">
+          {/* Header: title and subtitle on top (centered); actions row always below, full width */}
+          <div className="flex flex-col gap-4">
+            <div className="flex min-w-0 w-full flex-col items-center justify-center text-center">
               <svg
                 className="w-10 h-10 text-primary-600 dark:text-primary-400 shrink-0 mb-2"
                 fill="none"
@@ -152,18 +152,26 @@ export default async function LinksPage({ searchParams }: LinksPageProps) {
                 Store and organize your bookmarks and links
               </p>
             </div>
-            <div className="flex items-center gap-3 shrink-0">
-              <LinkViewControls />
-              <LinkFilterButton collections={collections} />
-              <Link href={ROUTES.LINKS_ARCHIVE}>
-                <Button variant="outline">Archive</Button>
-              </Link>
-              <CreateButton canCreate={canCreateLinks} />
-              <LinksOverviewActionsMenu
-                canCreate={canCreateLinks}
-                collectionId={params.collection}
-                collections={collectionsForSidebar}
-              />
+            <div className="flex min-w-0 w-full flex-wrap items-center justify-between gap-2 md:gap-3">
+              <div className="flex items-center shrink-0">
+                <LinkViewControls />
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="hidden md:flex items-center gap-2">
+                  <LinkFilterButton collections={collections} />
+                  <Link href={ROUTES.LINKS_ARCHIVE}>
+                    <Button variant="outline" size="sm" className="shrink-0">
+                      Archive
+                    </Button>
+                  </Link>
+                </div>
+                <CreateButton canCreate={canCreateLinks} />
+                <LinksOverviewActionsMenu
+                  canCreate={canCreateLinks}
+                  collectionId={params.collection}
+                  collections={collectionsForSidebar}
+                />
+              </div>
             </div>
           </div>
 

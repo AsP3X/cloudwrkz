@@ -1,14 +1,18 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AddLinkDialog } from "@/components/features/links/AddLinkDialog";
 import { BulkAddLinksDialog } from "@/components/features/links/BulkAddLinksDialog";
 import { CollectionList } from "@/components/features/links/CollectionList";
 import { CreateCollectionDialog } from "@/components/features/links/CreateCollectionDialog";
 import { ImportLinksDialog } from "@/components/features/links/ImportLinksDialog";
+import { getLinkFilterConfig } from "@/components/features/links/LinkFilterConfig";
 import { Button } from "@/components/ui/Button";
+import { FilterDialog } from "@/components/ui/FilterDialog";
 import { exportLinks } from "@/server/actions/links";
+import { ROUTES } from "@/lib/constants/routes";
 
 // Context for sharing dialog state
 const LinksPageContext = React.createContext<{
@@ -170,8 +174,21 @@ interface LinksOverviewActionsMenuProps {
 export function LinksOverviewActionsMenu({ canCreate, collectionId, collections = [] }: LinksOverviewActionsMenuProps) {
   const { openImport } = useLinksPage();
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const [filterOpen, setFilterOpen] = React.useState(false);
   const [exportLoading, setExportLoading] = React.useState<"json" | "csv" | null>(null);
+  const [isMobile, setIsMobile] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
+
+  const filterConfig = React.useMemo(() => getLinkFilterConfig({ collections }), [collections]);
+
+  React.useEffect(() => {
+    const mql = typeof window !== "undefined" ? window.matchMedia("(min-width: 640px)") : null;
+    if (!mql) return;
+    const update = () => setIsMobile(!mql.matches);
+    update();
+    mql.addEventListener("change", update);
+    return () => mql.removeEventListener("change", update);
+  }, []);
 
   React.useEffect(() => {
     if (!menuOpen) return;
@@ -223,6 +240,31 @@ export function LinksOverviewActionsMenu({ canCreate, collectionId, collections 
       </Button>
       {menuOpen && (
         <div className="absolute right-0 top-full z-50 mt-1 min-w-[160px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 py-1 shadow-lg">
+          {isMobile && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setFilterOpen(true);
+                }}
+                className="w-full px-4 py-2 text-left text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 flex items-center gap-2"
+              >
+                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                </svg>
+                Filters
+              </button>
+              <Link
+                href={ROUTES.LINKS_ARCHIVE}
+                onClick={() => setMenuOpen(false)}
+                className="block w-full px-4 py-2 text-left text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              >
+                Archive
+              </Link>
+              <div className="my-1 border-t border-neutral-200 dark:border-neutral-700" aria-hidden />
+            </>
+          )}
           <button
             type="button"
             disabled={exportLoading !== null}
@@ -253,6 +295,7 @@ export function LinksOverviewActionsMenu({ canCreate, collectionId, collections 
           )}
         </div>
       )}
+      <FilterDialog open={filterOpen} onOpenChange={setFilterOpen} config={filterConfig} />
     </div>
   );
 }
