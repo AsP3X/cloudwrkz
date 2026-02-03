@@ -265,6 +265,120 @@ export function isGitHubUrl(url: string): boolean {
   }
 }
 
+/** Parsed GitHub URL for repo root, tree, blob, issues, pulls, etc. */
+export interface GitHubParsedUrl {
+  owner: string;
+  repo: string;
+  path?: string;
+  branch?: string;
+  type: "repo" | "tree" | "blob" | "pull" | "issue" | "issues" | "pulls" | "actions" | "releases" | "commits" | "wiki" | "projects" | "security" | "profile" | "other";
+  baseUrl: string;
+  /** Full URL to the repo root (https://github.com/owner/repo) */
+  repoUrl: string;
+}
+
+/**
+ * Parse a GitHub URL into owner, repo, path, branch, and type.
+ * Returns null if the URL is not a valid github.com URL or has no owner/repo.
+ */
+export function parseGitHubUrl(url: string): GitHubParsedUrl | null {
+  if (!url || !isGitHubUrl(url)) return null;
+  try {
+    const normalized = url.trim();
+    const withProtocol =
+      normalized.startsWith("http://") || normalized.startsWith("https://")
+        ? normalized
+        : `https://${normalized}`;
+    const u = new URL(withProtocol);
+    if (u.hostname.toLowerCase() !== "github.com") return null;
+
+    const pathParts = u.pathname.replace(/^\/+|\/+$/g, "").split("/");
+    if (pathParts.length < 2) {
+      return {
+        owner: pathParts[0] || "",
+        repo: "",
+        type: "profile",
+        baseUrl: u.origin + "/" + pathParts[0],
+        repoUrl: u.origin + "/" + pathParts[0],
+      };
+    }
+
+    const owner = pathParts[0];
+    const repo = pathParts[1];
+    const repoUrl = `${u.origin}/${owner}/${repo}`;
+
+    if (pathParts.length === 2) {
+      return { owner, repo, type: "repo", baseUrl: u.origin, repoUrl };
+    }
+
+    const segment = pathParts[2];
+    switch (segment) {
+      case "tree":
+        return {
+          owner,
+          repo,
+          branch: pathParts[3],
+          path: pathParts.slice(4).join("/"),
+          type: "tree",
+          baseUrl: u.origin,
+          repoUrl,
+        };
+      case "blob":
+        return {
+          owner,
+          repo,
+          branch: pathParts[3],
+          path: pathParts.slice(4).join("/"),
+          type: "blob",
+          baseUrl: u.origin,
+          repoUrl,
+        };
+      case "pull":
+        return {
+          owner,
+          repo,
+          path: pathParts[3],
+          type: pathParts.length > 3 ? "pull" : "pulls",
+          baseUrl: u.origin,
+          repoUrl,
+        };
+      case "issues":
+        return {
+          owner,
+          repo,
+          path: pathParts[3],
+          type: pathParts.length > 3 ? "issue" : "issues",
+          baseUrl: u.origin,
+          repoUrl,
+        };
+      case "commit":
+      case "commits":
+        return {
+          owner,
+          repo,
+          branch: pathParts[3],
+          type: "commits",
+          baseUrl: u.origin,
+          repoUrl,
+        };
+      case "actions":
+        return { owner, repo, type: "actions", baseUrl: u.origin, repoUrl };
+      case "releases":
+        return { owner, repo, type: "releases", baseUrl: u.origin, repoUrl };
+      case "wiki":
+        return { owner, repo, type: "wiki", baseUrl: u.origin, repoUrl };
+      case "projects":
+        return { owner, repo, type: "projects", baseUrl: u.origin, repoUrl };
+      case "security":
+        return { owner, repo, type: "security", baseUrl: u.origin, repoUrl };
+      default:
+        return { owner, repo, type: "other", baseUrl: u.origin, repoUrl };
+    }
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Check if a URL is a Stack Overflow question or answer
  */

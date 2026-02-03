@@ -61,6 +61,7 @@ export function EditLinkDialog({ open, onOpenChange, link }: EditLinkDialogProps
   const [error, setError] = React.useState<string | null>(null);
   const [extractingMetadata, setExtractingMetadata] = React.useState(false);
   const [updatingFavicon, setUpdatingFavicon] = React.useState(false);
+  const [metadataRefreshed, setMetadataRefreshed] = React.useState(false);
   const [tagSuggestions, setTagSuggestions] = React.useState<string[]>([]);
   const [showTagSuggestions, setShowTagSuggestions] = React.useState(false);
   const tagInputContainerRef = React.useRef<HTMLDivElement>(null);
@@ -89,6 +90,7 @@ export function EditLinkDialog({ open, onOpenChange, link }: EditLinkDialogProps
       setIsFavorite(link.isFavorite);
       setRating(link.rating);
       setSelectedCollections(link.collections.map((c) => c.collection.id));
+      setMetadataRefreshed(false);
     }
   }, [link]);
 
@@ -116,6 +118,9 @@ export function EditLinkDialog({ open, onOpenChange, link }: EditLinkDialogProps
         if (result.data.favicon) {
           setFavicon(result.data.favicon);
         }
+        // Mark that fresh metadata was fetched so we can re-extract
+        // and persist enriched metadata (including GitHub stats) on save.
+        setMetadataRefreshed(true);
       }
     } catch (error) {
       setError("Failed to extract metadata");
@@ -266,7 +271,10 @@ export function EditLinkDialog({ open, onOpenChange, link }: EditLinkDialogProps
         isFavorite,
         rating: rating || undefined,
         collectionIds: selectedCollections,
-        extractMetadata: url !== link.url, // Extract if URL changed
+        // If URL changed or user explicitly refreshed metadata in this dialog,
+        // trigger a fresh server-side metadata extraction (which includes
+        // GitHub repo stats for GitHub links).
+        extractMetadata: metadataRefreshed || url !== link.url,
       });
 
       if (result.success) {

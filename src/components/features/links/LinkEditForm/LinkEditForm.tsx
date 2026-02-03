@@ -70,6 +70,12 @@ export const LinkEditForm = ({ link, collections, onCancel, onSaveSuccess, rende
     link.collections.map((c) => c.collection.id)
   );
   const [extractingMetadata, setExtractingMetadata] = React.useState(false);
+  const [metadataRefreshed, setMetadataRefreshed] = React.useState(false);
+  const [showMetadataDialog, setShowMetadataDialog] = React.useState(false);
+  const [metadataPreview, setMetadataPreview] = React.useState<any | null>(null);
+  const [metadataPreviewStatus, setMetadataPreviewStatus] = React.useState<
+    "idle" | "loading" | "loaded" | "error"
+  >("idle");
   const [hoveredRating, setHoveredRating] = React.useState<number | null>(null);
   const [showCollectionDialog, setShowCollectionDialog] = React.useState(false);
   const [availableCollections, setAvailableCollections] = React.useState<Array<{ id: string; name: string; color: string | null }>>([]);
@@ -100,6 +106,11 @@ export const LinkEditForm = ({ link, collections, onCancel, onSaveSuccess, rende
 
   const currentRating = watch("rating") ? parseInt(watch("rating")) : null;
   const displayRating = hoveredRating ?? currentRating;
+
+  // Reset metadata refresh flag when the link changes (e.g. navigating to a different link)
+  React.useEffect(() => {
+    setMetadataRefreshed(false);
+  }, [link.id]);
 
   // Expose form methods to parent (only once on mount)
   React.useEffect(() => {
@@ -179,6 +190,9 @@ export const LinkEditForm = ({ link, collections, onCancel, onSaveSuccess, rende
 
     setExtractingMetadata(true);
     setServerError(null);
+    setShowMetadataDialog(true);
+    setMetadataPreview(null);
+    setMetadataPreviewStatus("loading");
 
     try {
       const result = await extractLinkMetadataAction(formattedUrl);
@@ -192,9 +206,17 @@ export const LinkEditForm = ({ link, collections, onCancel, onSaveSuccess, rende
         if (result.data.favicon) {
           setValue("favicon", result.data.favicon);
         }
+        // Mark that we explicitly refreshed metadata so on save the server
+        // re-extracts and persists enriched metadata (e.g. GitHub stats).
+        setMetadataRefreshed(true);
+        setMetadataPreview(result.data);
+        setMetadataPreviewStatus("loaded");
+      } else {
+        setMetadataPreviewStatus("error");
       }
     } catch (error) {
       setServerError("Failed to extract metadata");
+      setMetadataPreviewStatus("error");
     } finally {
       setExtractingMetadata(false);
     }
@@ -361,7 +383,10 @@ export const LinkEditForm = ({ link, collections, onCancel, onSaveSuccess, rende
         isFavorite: data.isFavorite,
         rating: data.rating ? parseInt(data.rating) : undefined,
         collectionIds: selectedCollections,
-        extractMetadata: url !== link.url, // Extract if URL changed
+        // If URL changed or the user clicked "Refresh Metadata" in this form,
+        // trigger a fresh server-side extraction so enriched metadata (e.g.
+        // GitHub repo stats) is persisted even for existing links.
+        extractMetadata: metadataRefreshed || url !== link.url,
       });
 
       if (result.success) {
@@ -842,6 +867,163 @@ export const LinkEditForm = ({ link, collections, onCancel, onSaveSuccess, rende
         </Button>
       </div>
     </form>
+
+    {/* Metadata Preview Dialog (shown during/after Refresh Metadata) */}
+    <Dialog
+      open={showMetadataDialog}
+      onOpenChange={setShowMetadataDialog}
+      title="Metadata extraction"
+      description="Information gathered from this URL."
+      className="sm:max-w-lg"
+    >
+      <div className="p-5 space-y-4">
+        {metadataPreviewStatus === "loading" && (
+          <div className="flex items-center gap-3 text-sm text-neutral-700 dark:text-neutral-300">
+            <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              />
+            </svg>
+            <span>Extracting metadata…</span>
+          </div>
+        )}
+
+        {metadataPreviewStatus === "error" && (
+          <p className="text-sm text-error-600 dark:text-error-400">
+            Failed to extract metadata. You can still edit and save the link.
+          </p>
+        )}
+
+        {metadataPreview && metadataPreviewStatus === "loaded" && (
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1.5">
+                Basic
+              </h3>
+              <ul className="space-y-1.5 text-sm text-neutral-700 dark:text-neutral-300">
+                <li>
+                  <span className="font-medium">Title:</span>{" "}
+                  <span>{metadataPreview.title || "—"}</span>
+                </li>
+                <li>
+                  <span className="font-medium">Description:</span>{" "}
+                  <span>{metadataPreview.description || "—"}</span>
+                </li>
+                <li>
+                  <span className="font-medium">Favicon:</span>{" "}
+                  {metadataPreview.favicon ? (
+                    <a
+                      href={metadataPreview.favicon}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary-600 dark:text-primary-400 hover:underline break-all"
+                    >
+                      {metadataPreview.favicon}
+                    </a>
+                  ) : (
+                    <span>—</span>
+                  )}
+                </li>
+              </ul>
+            </div>
+
+            {(metadataPreview.githubRepo || metadataPreview.githubStars != null) && (
+              <div>
+                <h3 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1.5">
+                  GitHub
+                </h3>
+                <ul className="space-y-1.5 text-sm text-neutral-700 dark:text-neutral-300">
+                  {metadataPreview.githubOwner && metadataPreview.githubRepo && (
+                    <li>
+                      <span className="font-medium">Repository:</span>{" "}
+                      <span>
+                        {metadataPreview.githubOwner}/{metadataPreview.githubRepo}
+                      </span>
+                    </li>
+                  )}
+                  {metadataPreview.githubStars != null && (
+                    <li>
+                      <span className="font-medium">Stars:</span>{" "}
+                      <span>{new Intl.NumberFormat("en-US").format(metadataPreview.githubStars)}</span>
+                    </li>
+                  )}
+                  {metadataPreview.githubForks != null && (
+                    <li>
+                      <span className="font-medium">Forks:</span>{" "}
+                      <span>{new Intl.NumberFormat("en-US").format(metadataPreview.githubForks)}</span>
+                    </li>
+                  )}
+                  {metadataPreview.githubCommitsCount != null && (
+                    <li>
+                      <span className="font-medium">Commits:</span>{" "}
+                      <span>
+                        {new Intl.NumberFormat("en-US").format(metadataPreview.githubCommitsCount)}
+                      </span>
+                    </li>
+                  )}
+                  {metadataPreview.githubBranchesCount != null && (
+                    <li>
+                      <span className="font-medium">Branches:</span>{" "}
+                      <span>
+                        {new Intl.NumberFormat("en-US").format(metadataPreview.githubBranchesCount)}
+                      </span>
+                    </li>
+                  )}
+                  {metadataPreview.githubReleasesCount != null && (
+                    <li>
+                      <span className="font-medium">Releases:</span>{" "}
+                      <span>
+                        {new Intl.NumberFormat("en-US").format(metadataPreview.githubReleasesCount)}
+                      </span>
+                    </li>
+                  )}
+                  {metadataPreview.githubOpenIssues != null && (
+                    <li>
+                      <span className="font-medium">Open issues:</span>{" "}
+                      <span>
+                        {new Intl.NumberFormat("en-US").format(metadataPreview.githubOpenIssues)}
+                      </span>
+                    </li>
+                  )}
+                  {Array.isArray(metadataPreview.githubBranches) &&
+                    metadataPreview.githubBranches.length > 0 && (
+                      <li>
+                        <span className="font-medium">Branch names:</span>{" "}
+                        <span>
+                          {metadataPreview.githubBranches.slice(0, 5).join(", ")}
+                          {metadataPreview.githubBranches.length > 5 &&
+                            `, +${metadataPreview.githubBranches.length - 5} more`}
+                        </span>
+                      </li>
+                    )}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex justify-end pt-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setShowMetadataDialog(false)}
+          >
+            Close
+          </Button>
+        </div>
+      </div>
+    </Dialog>
     </FormProvider>
   );
 };

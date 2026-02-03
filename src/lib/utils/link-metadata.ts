@@ -28,6 +28,24 @@ export interface LinkMetadata {
   twitterCard?: string;
   author?: string;
   keywords?: string;
+
+  // GitHub-specific metadata (populated for GitHub URLs only)
+  githubOwner?: string;
+  githubRepo?: string;
+  githubDefaultBranch?: string;
+  githubStars?: number;
+  githubForks?: number;
+  githubWatchers?: number;
+  githubOpenIssues?: number;
+  githubIsFork?: boolean;
+  githubLicense?: string;
+  githubPrimaryLanguage?: string;
+  githubTopics?: string[];
+  githubBranches?: string[]; // Sample of branches (e.g., first 5)
+  githubBranchesCount?: number;
+  githubCommitsCount?: number;
+  githubReleasesCount?: number;
+  githubLastPushedAt?: string; // ISO date string
 }
 
 /**
@@ -410,16 +428,14 @@ export function extractMetadataFromHtml(html: string, url: string): LinkMetadata
  */
 export async function extractLinkMetadata(url: string): Promise<LinkMetadata | null> {
   try {
-    // Wikipedia links: use dedicated extractor for richer metadata,
-    // keeping Wikipedia-specific logic in a separate module so this
-    // file stays focused on generic metadata extraction.
+    // Wikipedia links: use dedicated extractor for richer metadata.
     if (isWikipediaUrl(url)) {
       try {
         const { extractWikipediaMetadata } = await import(
           "@/lib/utils/link-metadata-wikipedia"
         );
         const wikipediaMetadata = await extractWikipediaMetadata(url);
-        if (wikipediaMetadata && wikipediaMetadata.title) {
+        if (wikipediaMetadata) {
           return prioritizeMetadata(wikipediaMetadata, wikipediaMetadata.ogUrl || url);
         }
       } catch {
@@ -428,15 +444,14 @@ export async function extractLinkMetadata(url: string): Promise<LinkMetadata | n
       }
     }
 
-    // GitHub links: use dedicated extractor so we can later
-    // augment with repo-specific metadata.
+    // GitHub links: use dedicated extractor so we can crawl repo-specific metadata.
     if (isGitHubUrl(url)) {
       try {
         const { extractGitHubMetadata } = await import(
           "@/lib/utils/link-metadata-github"
         );
         const githubMetadata = await extractGitHubMetadata(url);
-        if (githubMetadata && githubMetadata.title) {
+        if (githubMetadata) {
           return prioritizeMetadata(githubMetadata, githubMetadata.ogUrl || url);
         }
       } catch {
@@ -452,7 +467,7 @@ export async function extractLinkMetadata(url: string): Promise<LinkMetadata | n
           "@/lib/utils/link-metadata-stackoverflow"
         );
         const soMetadata = await extractStackOverflowMetadata(url);
-        if (soMetadata && soMetadata.title) {
+        if (soMetadata) {
           return prioritizeMetadata(soMetadata, soMetadata.ogUrl || url);
         }
       } catch {
@@ -468,7 +483,7 @@ export async function extractLinkMetadata(url: string): Promise<LinkMetadata | n
           "@/lib/utils/link-metadata-x"
         );
         const xMetadata = await extractXMetadata(url);
-        if (xMetadata && xMetadata.title) {
+        if (xMetadata) {
           return prioritizeMetadata(xMetadata, xMetadata.ogUrl || url);
         }
       } catch {
@@ -586,37 +601,35 @@ export async function extractLinkMetadata(url: string): Promise<LinkMetadata | n
 }
 
 /**
- * Prioritize metadata sources: Open Graph > Twitter Card > Meta tags > JSON-LD > Title tag
+ * Prioritize metadata sources: Open Graph > Twitter Card > Meta tags > JSON-LD > Title tag.
+ *
+ * IMPORTANT: we must preserve any additional provider-specific fields (e.g. GitHub stats)
+ * that were attached to the metadata object. So we start from the original metadata and
+ * override the core fields (title, description, image, ogUrl, resolved image URLs).
  */
 function prioritizeMetadata(metadata: LinkMetadata, url: string): LinkMetadata {
   // Use the best available title
   const title = metadata.ogTitle || metadata.twitterTitle || metadata.title || undefined;
-  
+
   // Use the best available description
   const description = metadata.ogDescription || metadata.twitterDescription || metadata.description || undefined;
-  
+
   // Use the best available image
   const image = metadata.ogImage || metadata.twitterImage || metadata.image || undefined;
-  
+
   // Resolve image URL if needed
   const resolvedImage = image ? resolveUrl(image, url) : undefined;
 
   return {
+    // Preserve all existing fields (including GitHub-specific ones)
+    ...metadata,
+
+    // Override core fields with prioritized / resolved values
     title,
     description,
     image: resolvedImage,
-    favicon: metadata.favicon,
-    ogTitle: metadata.ogTitle,
-    ogDescription: metadata.ogDescription,
     ogImage: metadata.ogImage ? resolveUrl(metadata.ogImage, url) : undefined,
-    ogType: metadata.ogType,
     ogUrl: metadata.ogUrl || url,
-    ogSiteName: metadata.ogSiteName,
-    twitterTitle: metadata.twitterTitle,
-    twitterDescription: metadata.twitterDescription,
     twitterImage: metadata.twitterImage ? resolveUrl(metadata.twitterImage, url) : undefined,
-    twitterCard: metadata.twitterCard,
-    author: metadata.author,
-    keywords: metadata.keywords,
   };
 }
