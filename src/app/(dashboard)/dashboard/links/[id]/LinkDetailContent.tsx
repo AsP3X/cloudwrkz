@@ -44,7 +44,7 @@ YouTubeEmbed.displayName = "YouTubeEmbed";
 
 const INITIAL_BRANCHES_VISIBLE = 8;
 
-// GitHub repo/file quick links and context for the detail page
+// GitHub repo/file quick links and context for the detail page — redesigned card
 const GitHubLinkInfo = React.memo(
   ({ url, metadata }: { url: string; metadata?: any }) => {
   const [showAllBranches, setShowAllBranches] = React.useState(false);
@@ -52,73 +52,54 @@ const GitHubLinkInfo = React.memo(
   if (!parsed) return null;
 
   const meta = metadata && typeof metadata === "object" ? metadata : null;
+  const formatNum = (n: number) => new Intl.NumberFormat("en-US").format(n);
 
   // Profile-only URL (e.g. https://github.com/username)
   if (!parsed.repo) {
     return (
-      <div className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-soft-lg">
-        <div className="px-5 py-4 flex items-center gap-2 flex-wrap">
-          <span className="text-neutral-500 dark:text-neutral-400" aria-hidden>
+      <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-soft-lg bg-white dark:bg-neutral-900">
+        <div className="flex items-center gap-3 px-5 py-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#24292f] dark:bg-neutral-100 text-white dark:text-[#24292f]">
             <GitHubLogoIcon />
-          </span>
-          <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-            GitHub profile
-          </span>
-          <a
-            href={parsed.repoUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-mono"
-          >
-            {parsed.owner}
-          </a>
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+              GitHub profile
+            </p>
+            <a
+              href={parsed.repoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-sm font-semibold text-primary-600 dark:text-primary-400 hover:underline"
+            >
+              {parsed.owner}
+            </a>
+          </div>
+          <ExternalLinkIcon className="h-4 w-4 shrink-0 text-neutral-400" />
         </div>
       </div>
     );
   }
 
   const repoLabel = `${parsed.owner}/${parsed.repo}`;
-
   const stats = [
-    meta?.githubStars != null && {
-      key: "stars",
-      label: "Stars",
-      value: meta.githubStars,
-    },
-    meta?.githubForks != null && {
-      key: "forks",
-      label: "Forks",
-      value: meta.githubForks,
-    },
-    meta?.githubCommitsCount != null && {
-      key: "commits",
-      label: "Commits",
-      value: meta.githubCommitsCount,
-    },
-    meta?.githubBranchesCount != null && {
-      key: "branches",
-      label: "Branches",
-      value: meta.githubBranchesCount,
-    },
-    meta?.githubReleasesCount != null && {
-      key: "releases",
-      label: "Releases",
-      value: meta.githubReleasesCount,
-    },
-    meta?.githubOpenIssues != null && {
-      key: "issues",
-      label: "Open issues",
-      value: meta.githubOpenIssues,
-    },
-  ].filter(Boolean) as { key: string; label: string; value: number }[];
+    meta?.githubStars != null && { key: "stars", label: "Stars", value: meta.githubStars, icon: <StarIcon /> },
+    meta?.githubForks != null && { key: "forks", label: "Forks", value: meta.githubForks, icon: <ForkIcon /> },
+    meta?.githubOpenIssues != null && { key: "issues", label: "Issues", value: meta.githubOpenIssues, icon: <IssueIcon /> },
+    meta?.githubCommitsCount != null && { key: "commits", label: "Commits", value: meta.githubCommitsCount, icon: <CommitIcon /> },
+    meta?.githubBranchesCount != null && { key: "branches", label: "Branches", value: meta.githubBranchesCount, icon: <BranchIcon /> },
+    meta?.githubReleasesCount != null && { key: "releases", label: "Releases", value: meta.githubReleasesCount, icon: <ReleaseIcon /> },
+  ].filter(Boolean) as { key: string; label: string; value: number; icon: React.ReactNode }[];
 
   const branches: string[] = Array.isArray(meta?.githubBranches)
     ? meta.githubBranches.filter(
         (b: unknown): b is string => typeof b === "string" && b.trim().length > 0
       )
     : [];
-  const links: { href: string; label: string; icon: React.ReactNode }[] = [
-    { href: parsed.repoUrl, label: "Code", icon: <CodeIcon /> },
+  const topics: string[] = Array.isArray(meta?.githubTopics)
+    ? meta.githubTopics.filter((t: unknown): t is string => typeof t === "string").slice(0, 8)
+    : [];
+  const quickLinks: { href: string; label: string; icon: React.ReactNode }[] = [
     { href: `${parsed.repoUrl}/issues`, label: "Issues", icon: <IssueIcon /> },
     { href: `${parsed.repoUrl}/pulls`, label: "Pull requests", icon: <PullIcon /> },
     { href: `${parsed.repoUrl}/actions`, label: "Actions", icon: <ActionIcon /> },
@@ -126,133 +107,165 @@ const GitHubLinkInfo = React.memo(
     { href: `${parsed.repoUrl}/security`, label: "Security", icon: <SecurityIcon /> },
   ];
 
+  const metaLine: string[] = [];
+  if (meta?.githubPrimaryLanguage) metaLine.push(meta.githubPrimaryLanguage);
+  if (meta?.githubDefaultBranch) metaLine.push(`Default: ${meta.githubDefaultBranch}`);
+  if (meta?.githubLicense) metaLine.push(meta.githubLicense);
+  if (meta?.githubLastPushedAt) {
+    try {
+      const d = new Date(meta.githubLastPushedAt);
+      if (!isNaN(d.getTime())) metaLine.push(`Updated ${formatRelative(d)}`);
+    } catch {
+      // ignore
+    }
+  }
+
   return (
-    <div className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-soft-lg">
-      <div className="px-5 py-4 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-800/50">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-neutral-500 dark:text-neutral-400" aria-hidden>
+    <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-soft-lg bg-white dark:bg-neutral-900">
+      {/* Header: GitHub brand + repo name */}
+      <div className="border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50">
+        <div className="flex items-start gap-4 px-5 py-4 sm:px-6 sm:py-5">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#24292f] dark:bg-[#e6edf3] text-white dark:text-[#1f2328] shadow-sm">
             <GitHubLogoIcon />
-          </span>
-          <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-            GitHub repository
-          </span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+              Repository
+            </p>
+            <a
+              href={parsed.repoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-0.5 inline-flex items-center gap-1.5 font-mono text-base font-semibold text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+            >
+              <span className="truncate">{repoLabel}</span>
+              <ExternalLinkIcon className="h-4 w-4 shrink-0 opacity-70" />
+            </a>
+            {(parsed.type === "blob" || parsed.type === "tree") && parsed.path && (
+              <p className="mt-1.5 truncate text-xs text-neutral-500 dark:text-neutral-400" title={parsed.path}>
+                {parsed.type === "blob" ? "File" : "Folder"} — {parsed.path}
+              </p>
+            )}
+            {metaLine.length > 0 && (
+              <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
+                {metaLine.join(" · ")}
+              </p>
+            )}
+          </div>
           <a
             href={parsed.repoUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-mono break-all"
+            className="shrink-0 self-center inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-300 shadow-sm transition-colors hover:border-neutral-300 dark:hover:border-neutral-600 hover:bg-neutral-50 dark:hover:bg-neutral-700/50"
           >
-            {repoLabel}
+            Open
+            <ExternalLinkIcon className="h-4 w-4 opacity-70" />
           </a>
         </div>
-        {(parsed.type === "blob" || parsed.type === "tree") && parsed.path && (
-          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1.5 truncate" title={parsed.path}>
-            {parsed.type === "blob" ? "File" : "Folder"}: {parsed.path}
-          </p>
-        )}
 
+        {/* Stats bar */}
         {stats.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-3">
-            {stats.map((stat) => (
-              <div
-                key={stat.key}
-                className="inline-flex items-center gap-1.5 rounded-full bg-white/70 dark:bg-neutral-900/60 border border-neutral-200 dark:border-neutral-700 px-2.5 py-1"
-              >
-                <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                  {stat.label}
-                </span>
-                <span className="text-xs font-semibold text-neutral-900 dark:text-neutral-100 tabular-nums">
-                  {new Intl.NumberFormat("en-US").format(stat.value)}
-                </span>
+          <div className="flex flex-wrap gap-x-6 gap-y-2 border-t border-neutral-200 dark:border-neutral-700/80 px-5 py-3 sm:px-6">
+            {stats.map(({ key, label, value, icon }) => (
+              <div key={key} className="flex items-center gap-1.5 text-neutral-600 dark:text-neutral-400">
+                <span className="[&>svg]:h-4 [&>svg]:w-4" aria-hidden>{icon}</span>
+                <span className="tabular-nums font-medium text-neutral-900 dark:text-neutral-100">{formatNum(value)}</span>
+                <span className="text-xs">{label}</span>
               </div>
             ))}
           </div>
         )}
 
+        {/* Topics */}
+        {topics.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 border-t border-neutral-200 dark:border-neutral-700/80 px-5 py-3 sm:px-6">
+            {topics.map((topic) => (
+              <span
+                key={topic}
+                className="rounded-md bg-neutral-200/80 dark:bg-neutral-700/80 px-2 py-0.5 text-xs font-medium text-neutral-700 dark:text-neutral-300"
+              >
+                {topic}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Branches */}
         {branches.length > 0 && (
-          <div className="mt-3">
-            <p className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-1.5">
-              Branches
-            </p>
-            <div className="flex flex-wrap gap-1.5 items-center">
-              {(showAllBranches ? branches : branches.slice(0, INITIAL_BRANCHES_VISIBLE)).map(
-                (branch) => (
-                  <a
-                    key={branch}
-                    href={`${parsed.repoUrl}/tree/${encodeURIComponent(branch)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center px-2.5 py-1 rounded-full bg-neutral-100 dark:bg-neutral-800 text-[11px] font-medium text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600 transition-colors"
-                  >
-                    {branch}
-                  </a>
-                )
-              )}
+          <div className="border-t border-neutral-200 dark:border-neutral-700/80 px-5 py-3 sm:px-6">
+            <p className="mb-2 text-xs font-medium text-neutral-500 dark:text-neutral-400">Branches</p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {(showAllBranches ? branches : branches.slice(0, INITIAL_BRANCHES_VISIBLE)).map((branch) => (
+                <a
+                  key={branch}
+                  href={`${parsed.repoUrl}/tree/${encodeURIComponent(branch)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center rounded-md border border-neutral-200 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-2 py-1 font-mono text-[11px] text-neutral-700 dark:text-neutral-300 hover:border-neutral-300 dark:hover:border-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-700/50 transition-colors"
+                >
+                  {branch}
+                </a>
+              ))}
               {branches.length > INITIAL_BRANCHES_VISIBLE && (
                 <button
                   type="button"
-                  onClick={() => setShowAllBranches((prev) => !prev)}
-                  className="text-[11px] font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 underline decoration-dotted underline-offset-1"
+                  onClick={() => setShowAllBranches((p) => !p)}
+                  className="text-[11px] font-medium text-primary-600 dark:text-primary-400 hover:underline"
                 >
-                  {showAllBranches
-                    ? "Show less"
-                    : `+ ${branches.length - INITIAL_BRANCHES_VISIBLE} more`}
+                  {showAllBranches ? "Show less" : `+${branches.length - INITIAL_BRANCHES_VISIBLE} more`}
                 </button>
               )}
-              {!showAllBranches &&
-                typeof meta?.githubBranchesCount === "number" &&
-                meta.githubBranchesCount > branches.length && (
-                  <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                    ({meta.githubBranchesCount - branches.length} more on GitHub)
-                  </span>
-                )}
+              {!showAllBranches && typeof meta?.githubBranchesCount === "number" && meta.githubBranchesCount > branches.length && (
+                <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                  ({meta.githubBranchesCount - branches.length} more on GitHub)
+                </span>
+              )}
             </div>
           </div>
         )}
       </div>
-      <div className="p-4">
-        <p className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-3">
+
+      {/* Quick links grid */}
+      <div className="p-5 sm:p-6">
+        <p className="mb-3 text-xs font-medium uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
           Quick links
         </p>
-        <div className="flex flex-wrap gap-2">
-          {links.map(({ href, label, icon }) => (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {quickLinks.map(({ href, label, icon }) => (
             <a
               key={label}
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-600 transition-colors"
+              className="flex items-center gap-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50/50 dark:bg-neutral-800/30 px-3 py-2.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 transition-colors hover:border-neutral-300 dark:hover:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800/60"
             >
-              {icon}
+              <span className="[&>svg]:h-4 [&>svg]:w-4 text-neutral-500 dark:text-neutral-400">{icon}</span>
               {label}
             </a>
           ))}
         </div>
+
+        {/* This link: file / folder actions */}
         {parsed.type === "blob" && (
-          <div className="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-800">
-            <p className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wide mb-2">
-              This link
-            </p>
-            <div className="flex flex-wrap gap-2">
+          <div className="mt-4 flex flex-wrap gap-2 pt-4 border-t border-neutral-200 dark:border-neutral-800">
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary-100 dark:bg-primary-900/30 px-3 py-2 text-sm font-medium text-primary-700 dark:text-primary-300 hover:bg-primary-200/80 dark:hover:bg-primary-900/50"
+            >
+              View file
+            </a>
+            {parsed.branch && parsed.path && (
               <a
-                href={url}
+                href={url.replace("/blob/", "/raw/")}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 text-sm hover:bg-primary-100 dark:hover:bg-primary-900/30"
+                className="inline-flex items-center gap-2 rounded-lg border border-neutral-200 dark:border-neutral-700 px-3 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
               >
-                View file
+                Raw file
               </a>
-              {parsed.branch && parsed.path && (
-                <a
-                  href={url.replace("/blob/", "/raw/")}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                >
-                  Raw file
-                </a>
-              )}
-            </div>
+            )}
           </div>
         )}
         {parsed.type === "tree" && (
@@ -261,7 +274,7 @@ const GitHubLinkInfo = React.memo(
               href={url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 text-sm hover:bg-primary-100 dark:hover:bg-primary-900/30"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary-100 dark:bg-primary-900/30 px-3 py-2 text-sm font-medium text-primary-700 dark:text-primary-300 hover:bg-primary-200/80 dark:hover:bg-primary-900/50"
             >
               Browse folder
             </a>
@@ -274,8 +287,56 @@ const GitHubLinkInfo = React.memo(
   (prev, next) => prev.url === next.url && prev.metadata === next.metadata
 );
 
+function formatRelative(date: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return "today";
+  if (diffDays === 1) return "yesterday";
+  if (diffDays < 7) return `${diffDays} days ago`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+  if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
+  return `${Math.floor(diffDays / 365)} years ago`;
+}
+
 GitHubLinkInfo.displayName = "GitHubLinkInfo";
 
+function ExternalLinkIcon({ className }: { className?: string }) {
+  return (
+    <svg className={cn("w-4 h-4", className)} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+    </svg>
+  );
+}
+function StarIcon() {
+  return (
+    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path d="M12 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L12 11.43l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L3.318 6.045a.75.75 0 0 1 .416-1.28l4.21-.611L11.327.668A.75.75 0 0 1 12 .25Z" />
+    </svg>
+  );
+}
+function ForkIcon() {
+  return (
+    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path d="M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0V8A2.25 2.25 0 0 1 19.25 5.75H4.75A2.25 2.25 0 0 1 2.5 8v.372a2.25 2.25 0 1 1 1.5 0ZM3 19.25v-7.5a.75.75 0 0 1 .75-.75h4.5a.75.75 0 0 1 .75.75v7.5a.75.75 0 0 1-.75.75h-4.5a.75.75 0 0 1-.75-.75Zm9-10.5v7.5a.75.75 0 0 0 .75.75h4.5a.75.75 0 0 0 .75-.75v-7.5a.75.75 0 0 0-.75-.75h-4.5a.75.75 0 0 0-.75.75Zm-6.75 7.5a.75.75 0 0 0 .75.75h4.5a.75.75 0 0 0 .75-.75v-7.5a.75.75 0 0 0-.75-.75h-4.5a.75.75 0 0 0-.75.75v7.5Zm15-.75a.75.75 0 0 1-.75.75h-4.5a.75.75 0 0 1-.75-.75v-7.5a.75.75 0 0 1 .75-.75h4.5a.75.75 0 0 1 .75.75v7.5Z" />
+    </svg>
+  );
+}
+function CommitIcon() {
+  return (
+    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path d="M15.5 11.75a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z" />
+      <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2ZM3.5 12a8.5 8.5 0 0 0 14.998 5.25h-4.5a.75.75 0 0 1 0-1.5h4.5A8.5 8.5 0 0 0 3.5 12Zm9.5 0a.75.75 0 0 1-.75.75H5.75a.75.75 0 0 1 0-1.5h6.5A.75.75 0 0 1 13 12Zm-1.5 0a.75.75 0 0 1 .75-.75h6.5a.75.75 0 0 1 0 1.5h-6.5A.75.75 0 0 1 11.5 12Z" />
+    </svg>
+  );
+}
+function BranchIcon() {
+  return (
+    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path d="M5 3.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm0 2.122a2.25 2.25 0 0 0-1.5 0v.878A2.25 2.25 0 0 0 5.75 8.5h1.5v2.128a2.251 2.251 0 1 0 1.5 0V8.5h1.5a2.25 2.25 0 0 0 2.25-2.25v-.878a2.25 2.25 0 1 0-1.5 0v.878a.75.75 0 0 1-.75.75h-4.5A.75.75 0 0 1 5 6.25v-.878Zm3.75 7.378a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm3-8.75a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z" />
+    </svg>
+  );
+}
 function CodeIcon() {
   return (
     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden>

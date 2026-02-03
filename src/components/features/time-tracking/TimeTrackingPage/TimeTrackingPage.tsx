@@ -11,6 +11,7 @@ import { TimeEntryViewToggle } from "../TimeEntryViewToggle";
 import { TimeEntryViewProvider, useTimeEntryView } from "../TimeEntryViewContext";
 import { getActiveTimeEntries } from "@/server/actions/time-tracking";
 import { useTimeTrackingEvents } from "@/lib/hooks/useTimeTrackingEvents";
+import { normalizeActiveEntry } from "@/lib/hooks/useActiveTimers";
 import { type TimeEntryStatus } from "@prisma/client";
 import { calculateElapsedTime } from "@/lib/utils/time-tracking";
 import { formatDateTimeInTimezone } from "@/lib/utils/date";
@@ -97,7 +98,7 @@ function TimeTrackingPageContent({ initialEntries, initialTotal, initialPage, us
       // Refresh active entries when events occur
       try {
         const active = await getActiveTimeEntries();
-        setActiveEntries(active);
+        setActiveEntries((Array.isArray(active) ? active.map(normalizeActiveEntry) : []) as TimeEntry[]);
       } catch (error) {
         console.error("Error fetching active entries:", error);
       }
@@ -110,7 +111,7 @@ function TimeTrackingPageContent({ initialEntries, initialTotal, initialPage, us
     const interval = setInterval(async () => {
       try {
         const active = await getActiveTimeEntries();
-        setActiveEntries(active);
+        setActiveEntries((Array.isArray(active) ? active.map(normalizeActiveEntry) : []) as TimeEntry[]);
       } catch (error) {
         console.error("Error fetching active entries:", error);
       }

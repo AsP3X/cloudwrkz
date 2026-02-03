@@ -14,6 +14,28 @@ type TimeEntry = {
   currentDuration?: number;
 };
 
+/** Normalize server response: dates may be ISO strings after server action serialization. Export for use in TimeTrackingPage. */
+export function normalizeActiveEntry(raw: {
+  id: string;
+  name: string;
+  status: TimeEntryStatus;
+  startedAt: string | Date;
+  totalDuration: number;
+  lastResumedAt: string | Date | null;
+  currentDuration?: number;
+}): TimeEntry {
+  return {
+    ...raw,
+    startedAt: typeof raw.startedAt === "string" ? new Date(raw.startedAt) : raw.startedAt,
+    lastResumedAt:
+      raw.lastResumedAt == null
+        ? null
+        : typeof raw.lastResumedAt === "string"
+          ? new Date(raw.lastResumedAt)
+          : raw.lastResumedAt,
+  };
+}
+
 export function useActiveTimers() {
   const [activeEntries, setActiveEntries] = useState<TimeEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,7 +46,7 @@ export function useActiveTimers() {
       setLoading(true);
       setError(null);
       const entries = await getActiveTimeEntries();
-      setActiveEntries(entries);
+      setActiveEntries(Array.isArray(entries) ? entries.map(normalizeActiveEntry) : []);
     } catch (err: any) {
       setError(err.message || "Failed to fetch active timers");
       console.error("Error fetching active timers:", err);

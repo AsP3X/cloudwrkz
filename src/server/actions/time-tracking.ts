@@ -1163,6 +1163,54 @@ export async function getTimeEntries(filters: TimeEntryFilters = {}) {
 }
 
 /**
+ * Serialize a time entry and its breaks to plain JSON-safe objects (dates as ISO strings).
+ * Ensures server action return value is safely serializable for Next.js.
+ */
+function serializeActiveEntry(entry: {
+  id: string;
+  name: string;
+  description: string | null;
+  status: TimeEntryStatus;
+  startedAt: Date;
+  pausedAt: Date | null;
+  stoppedAt: Date | null;
+  completedAt: Date | null;
+  totalDuration: number;
+  lastResumedAt: Date | null;
+  userId: string;
+  ticketId: string | null;
+  tags: string[];
+  billable: boolean;
+  location: string | null;
+  timezone: string | null;
+  archivedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  ticket?: { id: string; ticketNumber: string; title: string } | null;
+  breaks?: Array<{ id: string; startedAt: Date; endedAt: Date | null; duration: number }>;
+}, currentDuration: number) {
+  const breaks = entry.breaks ?? [];
+  return {
+    ...entry,
+    startedAt: entry.startedAt.toISOString(),
+    pausedAt: entry.pausedAt?.toISOString() ?? null,
+    stoppedAt: entry.stoppedAt?.toISOString() ?? null,
+    completedAt: entry.completedAt?.toISOString() ?? null,
+    lastResumedAt: entry.lastResumedAt?.toISOString() ?? null,
+    archivedAt: entry.archivedAt?.toISOString() ?? null,
+    createdAt: entry.createdAt.toISOString(),
+    updatedAt: entry.updatedAt.toISOString(),
+    breaks: breaks.map((b) => ({
+      id: b.id,
+      startedAt: b.startedAt.toISOString(),
+      endedAt: b.endedAt?.toISOString() ?? null,
+      duration: b.duration,
+    })),
+    currentDuration,
+  };
+}
+
+/**
  * Get active (RUNNING and PAUSED) time entries for a user
  */
 export async function getActiveTimeEntries(userId?: string) {
@@ -1197,15 +1245,10 @@ export async function getActiveTimeEntries(userId?: string) {
       },
     });
 
-    // Calculate current elapsed time for each entry
     return entries.map((entry) => {
-      // Fetch breaks for each entry
-      const breaks = entry.breaks || [];
-      return {
-        ...entry,
-        breaks,
-        currentDuration: calculateElapsedTime({ ...entry, breaks }),
-      };
+      const breaks = entry.breaks ?? [];
+      const currentDuration = calculateElapsedTime({ ...entry, breaks });
+      return serializeActiveEntry(entry, currentDuration);
     });
   } catch (error: any) {
     console.error("Error fetching active time entries:", error);
