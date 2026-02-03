@@ -128,9 +128,23 @@ export default async function LinksPage({ searchParams }: LinksPageProps) {
           {/* Auto-load last used link filters */}
           <LinkFilterLoader collections={collectionsForSidebar} />
           
-          {/* Header */}
+          {/* Header: icon above title, all centered; actions on the right */}
           <div className="flex items-center justify-between flex-wrap gap-4">
-            <div>
+            <div className="flex flex-1 min-w-0 flex-col items-center text-center">
+              <svg
+                className="w-10 h-10 text-primary-600 dark:text-primary-400 shrink-0 mb-2"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                aria-hidden
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+                />
+              </svg>
               <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100">
                 {params.collection === SHARED_WITH_ME_COLLECTION_ID ? "Shared with me" : "My Links"}
               </h1>
@@ -138,7 +152,7 @@ export default async function LinksPage({ searchParams }: LinksPageProps) {
                 Store and organize your bookmarks and links
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 shrink-0">
               <LinkViewControls />
               <LinkFilterButton collections={collections} />
               <Link href={ROUTES.LINKS_ARCHIVE}>

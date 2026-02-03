@@ -129,9 +129,9 @@ export const LinkDetailHeader = ({
   return (
     <div className="space-y-4">
       {/* Action buttons row - Back on left, Edit/Delete on right */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Link href="/dashboard/links">
-          <Button variant="outline" size="sm" className="w-full sm:w-auto">
+      <div className="flex flex-wrap items-center justify-between gap-2 gap-y-3">
+        <Link href="/dashboard/links" className="w-full min-w-0 sm:w-auto">
+          <Button variant="outline" size="sm" className="w-full sm:w-auto min-h-[44px] sm:min-h-0 touch-manipulation">
             <svg
               className="w-4 h-4 mr-2"
               fill="none"
@@ -150,9 +150,9 @@ export const LinkDetailHeader = ({
         </Link>
         
         {/* Edit, Delete, three-dot menu (Archive + Share), Add to my collection (mobile only) */}
-        <div className="flex items-center gap-2 sm:hidden">
+        <div className="flex flex-wrap items-center justify-end gap-2 sm:hidden min-w-0 w-full">
           {canEdit && !isEditMode && (
-            <Button variant="primary" size="sm" onClick={onEditClick}>
+            <Button variant="primary" size="sm" className="min-h-[44px] sm:min-h-0 touch-manipulation" onClick={onEditClick}>
               <svg
                 className="w-4 h-4 mr-2"
                 fill="none"
@@ -173,6 +173,7 @@ export const LinkDetailHeader = ({
             <Button 
               variant="danger" 
               size="sm" 
+              className="min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 touch-manipulation"
               onClick={() => setDeleteDialogOpen(true)}
               aria-label="Delete Link"
             >
@@ -195,6 +196,7 @@ export const LinkDetailHeader = ({
             <Button 
               variant="danger" 
               size="sm" 
+              className="min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 touch-manipulation"
               onClick={() => setRemoveFromSharedDialogOpen(true)}
               aria-label="Remove from Shared with me"
             >
@@ -218,6 +220,7 @@ export const LinkDetailHeader = ({
               <Button
                 variant="outline"
                 size="sm"
+                className="min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 touch-manipulation"
                 onClick={() => setMenuOpen((o) => !o)}
                 aria-label="More actions"
                 aria-expanded={menuOpen}
@@ -233,7 +236,7 @@ export const LinkDetailHeader = ({
                       <input type="hidden" name="linkId" value={linkId} />
                       <button
                         type="submit"
-                        className="w-full px-4 py-2 text-left text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                        className="w-full px-4 py-2 min-h-[44px] sm:min-h-0 text-left text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 flex items-center touch-manipulation"
                       >
                         Unarchive
                       </button>
@@ -243,7 +246,7 @@ export const LinkDetailHeader = ({
                       <input type="hidden" name="linkId" value={linkId} />
                       <button
                         type="submit"
-                        className="w-full px-4 py-2 text-left text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                        className="w-full px-4 py-2 min-h-[44px] sm:min-h-0 text-left text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 flex items-center touch-manipulation"
                       >
                         Archive
                       </button>
@@ -256,7 +259,7 @@ export const LinkDetailHeader = ({
                         setShareDialogOpen(true);
                         setMenuOpen(false);
                       }}
-                      className="w-full px-4 py-2 text-left text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                      className="w-full px-4 py-2 min-h-[44px] sm:min-h-0 text-left text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 flex items-center touch-manipulation"
                     >
                       Share
                     </button>
@@ -266,7 +269,7 @@ export const LinkDetailHeader = ({
             </div>
           )}
           {showAddToMyCollection && (
-            <Button variant="outline" size="sm" onClick={() => setCopyToCollectionOpen(true)}>
+            <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0 touch-manipulation" onClick={() => setCopyToCollectionOpen(true)}>
               Add to my collection
             </Button>
           )}
@@ -404,12 +407,13 @@ export const LinkDetailHeader = ({
       {/* Title section - centered, accounting for sidebar */}
       <div 
         className={cn(
-          "w-full flex justify-center lg:transition-all lg:duration-300 lg:ease-in-out",
+          "w-full flex justify-center px-2 sm:px-0 lg:transition-all lg:duration-300 lg:ease-in-out",
           sidebarOpen ? "lg:max-w-[calc(100%-372px)]" : "lg:max-w-[calc(100%-60px)]"
         )}
       >
-        <div className="text-center w-full max-w-4xl">
-          <div className="flex items-center justify-center gap-3 mb-2">
+        <div className="text-center w-full max-w-4xl min-w-0">
+          {/* Mobile: favicon above title. sm+: favicon beside title */}
+          <div className="flex flex-col items-center gap-2 mb-2 min-w-0 sm:flex-row sm:items-center sm:justify-center sm:gap-3">
             {favicon && (
               <Image
                 src={favicon}
@@ -423,37 +427,39 @@ export const LinkDetailHeader = ({
                 }}
               />
             )}
-            <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-neutral-100 break-words">
-              {linkTitle}
-            </h1>
-            {isEditMode && onFavoriteToggle ? (
-              <button
-                type="button"
-                onClick={onFavoriteToggle}
-                className="p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors flex items-center justify-center flex-shrink-0"
-                aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
-              >
-                <svg
-                  className={isFavorite ? "w-6 h-6 text-yellow-500 fill-current" : "w-6 h-6 text-neutral-400 hover:text-yellow-500 transition-colors"}
-                  fill={isFavorite ? "currentColor" : "none"}
-                  viewBox="0 0 20 20"
-                  stroke={isFavorite ? "none" : "currentColor"}
-                  strokeWidth={isFavorite ? 0 : 1.5}
+            <div className="flex items-center justify-center gap-3 min-w-0">
+              <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-neutral-100 break-words min-w-0">
+                {linkTitle}
+              </h1>
+              {isEditMode && onFavoriteToggle ? (
+                <button
+                  type="button"
+                  onClick={onFavoriteToggle}
+                  className="p-1.5 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors flex items-center justify-center flex-shrink-0"
+                  aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
                 >
+                  <svg
+                    className={isFavorite ? "w-6 h-6 text-yellow-500 fill-current" : "w-6 h-6 text-neutral-400 hover:text-yellow-500 transition-colors"}
+                    fill={isFavorite ? "currentColor" : "none"}
+                    viewBox="0 0 20 20"
+                    stroke={isFavorite ? "none" : "currentColor"}
+                    strokeWidth={isFavorite ? 0 : 1.5}
+                  >
+                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                  </svg>
+                </button>
+              ) : isFavorite ? (
+                <svg className="w-6 h-6 text-yellow-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                 </svg>
-              </button>
-            ) : isFavorite ? (
-              <svg className="w-6 h-6 text-yellow-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-              </svg>
-            ) : null}
+              ) : null}
+            </div>
           </div>
           <a
             href={linkUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 text-sm sm:text-base mb-3 inline-block"
+            className="block w-full max-w-full text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 text-sm sm:text-base mb-3 break-all touch-manipulation"
           >
             {linkUrl} ↗
           </a>
@@ -485,12 +491,6 @@ export const LinkDetailHeader = ({
               ))}
             </div>
           ) : null}
-          {/* Description on mobile - shown directly under title */}
-          {description && (
-            <div className="sm:hidden mt-4 text-left">
-              <p className="text-neutral-600 dark:text-neutral-400">{description}</p>
-            </div>
-          )}
         </div>
       </div>
 
