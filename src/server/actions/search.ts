@@ -1137,6 +1137,7 @@ async function searchLinks(
       description: true,
       tags: true,
       notes: true,
+      metadata: true,
       favicon: true,
       linkType: true,
       isFavorite: true,
@@ -1200,7 +1201,7 @@ async function searchLinks(
 
   const trimmed = searchTerm.trim();
 
-  // Prepare links for fuzzy search on title, description, url, tags, and notes
+  // Prepare links for fuzzy search on title, description, url, tags, notes, and all metadata fields
   const linksForFuzzy = links.map((link) => ({
     ...link,
     searchableText: [
@@ -1211,6 +1212,12 @@ async function searchLinks(
       ...link.tags,
     ].join(" "),
     tagsString: link.tags.join(" "),
+    metadataString:
+      link.metadata != null
+        ? typeof link.metadata === "object"
+          ? JSON.stringify(link.metadata)
+          : String(link.metadata)
+        : "",
   }));
 
   const linkFuzzyResults = fuzzySearch(
@@ -1218,11 +1225,12 @@ async function searchLinks(
     trimmed,
     {
       keys: [
-        { name: "title", weight: 0.4 },
-        { name: "description", weight: 0.25 },
-        { name: "url", weight: 0.2 },
+        { name: "title", weight: 0.35 },
+        { name: "description", weight: 0.2 },
+        { name: "url", weight: 0.15 },
         { name: "notes", weight: 0.1 },
         { name: "tagsString", weight: 0.05 },
+        { name: "metadataString", weight: 0.15 },
       ],
       threshold: 0.4,
       minMatchCharLength: 2,

@@ -1,6 +1,6 @@
 "use server";
 
-import type { Prisma } from "@prisma/client";
+import { type Prisma, Prisma as PrismaRuntime } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth, requireAnyPermission } from "@/lib/utils/auth-server";
 import { isModuleEnabled } from "./modules";
@@ -1153,17 +1153,6 @@ export async function getLinks(filters: LinkFilters = {}): Promise<GetLinksResul
       where.rating = { gte: filters.minRating };
     }
 
-    // Search filter
-    if (filters.search) {
-      where.OR = [
-        { title: { contains: filters.search, mode: "insensitive" } },
-        { description: { contains: filters.search, mode: "insensitive" } },
-        { url: { contains: filters.search, mode: "insensitive" } },
-        { notes: { contains: filters.search, mode: "insensitive" } },
-        { tags: { hasSome: [filters.search] } },
-      ];
-    }
-
     // Sort and pagination (allowed: 10, 25, 50, 100, or LINK_PAGE_SIZE_ALL for "all")
     const sortBy = filters.sortBy || "createdAt";
     const sortOrder = filters.sortOrder || "desc";
@@ -1175,39 +1164,204 @@ export async function getLinks(filters: LinkFilters = {}): Promise<GetLinksResul
       : DEFAULT_LINKS_PAGE_SIZE;
     const skip = (page - 1) * limit;
 
-    const [links, total] = await Promise.all([
-      prisma.link.findMany({
-        where,
-        select: {
-          id: true,
-          title: true,
-          url: true,
-          description: true,
-          favicon: true,
-          linkType: true,
-          tags: true,
-          notes: true,
-          isFavorite: true,
-          rating: true,
-          userId: true,
-          createdAt: true,
-          updatedAt: true,
-          collections: {
-            select: {
-              collection: {
-                select: { id: true, name: true, color: true },
+    const ownLinksOnly = !isSharedWithMe && !filteringByCollection;
+    let useRankedSearch =
+      Boolean(filters.search?.trim()) &&
+      ownLinksOnly &&
+      ["createdAt", "updatedAt", "title", "rating"].includes(sortBy) &&
+      ["asc", "desc"].includes(sortOrder);
+
+    let total = 0;
+    type LinkRow = GetLinksResult["links"][number];
+    let links: LinkRow[] = [];
+
+    if (useRankedSearch) {
+      // Relevance ranking: all fields (title, description, url, notes, tags, metadata) contribute to score
+      const searchTerm = filters.search!.trim();
+      const escaped = searchTerm.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+      const pattern = `%${escaped}%`;
+      const sortColumn = { createdAt: '"createdAt"', updatedAt: '"updatedAt"', title: '"title"', rating: '"rating"' }[sortBy];
+      const orderDir = sortOrder.toUpperCase() === "ASC" ? "ASC" : "DESC";
+      const archivedCond =
+        filters.archived === false
+          ? PrismaRuntime.sql`AND "archivedAt" IS NULL`
+          : filters.archived === true
+            ? PrismaRuntime.sql`AND "archivedAt" IS NOT NULL`
+            : PrismaRuntime.empty;
+      try {
+        const [rankedRows, countRows] = await Promise.all([
+          prisma.$queryRaw<Array<{ id: string }>>(
+            PrismaRuntime.sql`
+            SELECT id FROM (
+              SELECT id,
+                (CASE WHEN title ILIKE ${pattern} THEN 4 ELSE 0 END) +
+                (CASE WHEN description ILIKE ${pattern} THEN 3 ELSE 0 END) +
+                (CASE WHEN url ILIKE ${pattern} THEN 3 ELSE 0 END) +
+                (CASE WHEN notes ILIKE ${pattern} THEN 2 ELSE 0 END) +
+                (CASE WHEN ${searchTerm} = ANY(tags) THEN 3 ELSE 0 END) +
+                (CASE WHEN metadata IS NOT NULL AND metadata::text ILIKE ${pattern} THEN 2 ELSE 0 END)
+                AS score,
+                "createdAt", "updatedAt", "title", "rating"
+              FROM links
+              WHERE "userId" = ${user.id}
+                AND (
+                  title ILIKE ${pattern}
+                  OR description ILIKE ${pattern}
+                  OR url ILIKE ${pattern}
+                  OR notes ILIKE ${pattern}
+                  OR ${searchTerm} = ANY(tags)
+                  OR (metadata IS NOT NULL AND metadata::text ILIKE ${pattern})
+                )
+              ${archivedCond}
+            ) ranked
+            ORDER BY score DESC, ${PrismaRuntime.raw(sortColumn + " " + orderDir)}
+            LIMIT ${limit}
+            OFFSET ${skip}
+            `
+          ),
+          prisma.$queryRaw<Array<{ count: bigint }>>(
+            PrismaRuntime.sql`
+            SELECT COUNT(*)::int AS count FROM links
+            WHERE "userId" = ${user.id}
+              AND (
+                title ILIKE ${pattern}
+                OR description ILIKE ${pattern}
+                OR url ILIKE ${pattern}
+                OR notes ILIKE ${pattern}
+                OR ${searchTerm} = ANY(tags)
+                OR (metadata IS NOT NULL AND metadata::text ILIKE ${pattern})
+              )
+            ${archivedCond}
+            `
+          ),
+        ]);
+        const ids = rankedRows.map((r) => r.id);
+        total = Number(countRows[0]?.count ?? 0);
+        if (ids.length === 0) {
+          links = [];
+        } else {
+          const linkMap = new Map(
+            (
+              await prisma.link.findMany({
+                where: { id: { in: ids } },
+                select: {
+                  id: true,
+                  title: true,
+                  url: true,
+                  description: true,
+                  favicon: true,
+                  linkType: true,
+                  tags: true,
+                  notes: true,
+                  isFavorite: true,
+                  rating: true,
+                  userId: true,
+                  createdAt: true,
+                  updatedAt: true,
+                  collections: {
+                    select: {
+                      collection: {
+                        select: { id: true, name: true, color: true },
+                      },
+                    },
+                  },
+                },
+              })
+            ).map((l) => [l.id, l] as const)
+          );
+          links = ids.map((id) => linkMap.get(id)!).filter(Boolean);
+        }
+      } catch {
+        // Fallback to non-ranked path on error (e.g. non-PostgreSQL)
+        useRankedSearch = false;
+      }
+    }
+
+    if (!useRankedSearch) {
+      // Search filter (title, description, url, notes, tags, and metadata JSON text)
+      if (filters.search) {
+        const searchTerm = filters.search.trim();
+        const orConditions: Prisma.LinkWhereInput[] = [
+          { title: { contains: searchTerm, mode: "insensitive" } },
+          { description: { contains: searchTerm, mode: "insensitive" } },
+          { url: { contains: searchTerm, mode: "insensitive" } },
+          { notes: { contains: searchTerm, mode: "insensitive" } },
+          { tags: { hasSome: [searchTerm] } },
+        ];
+        if (ownLinksOnly) {
+          try {
+            const escaped = searchTerm.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+            const pattern = `%${escaped}%`;
+            const metadataIds =
+              filters.archived === false
+                ? await prisma.$queryRaw<Array<{ id: string }>>`
+                    SELECT id FROM links
+                    WHERE metadata IS NOT NULL
+                      AND metadata::text ILIKE ${pattern}
+                      AND "userId" = ${user.id}
+                      AND "archivedAt" IS NULL
+                  `
+                : filters.archived === true
+                  ? await prisma.$queryRaw<Array<{ id: string }>>`
+                      SELECT id FROM links
+                      WHERE metadata IS NOT NULL
+                        AND metadata::text ILIKE ${pattern}
+                        AND "userId" = ${user.id}
+                        AND "archivedAt" IS NOT NULL
+                    `
+                  : await prisma.$queryRaw<Array<{ id: string }>>`
+                      SELECT id FROM links
+                      WHERE metadata IS NOT NULL
+                        AND metadata::text ILIKE ${pattern}
+                        AND "userId" = ${user.id}
+                    `;
+            const ids = metadataIds.map((row) => row.id);
+            if (ids.length > 0) {
+              orConditions.push({ id: { in: ids } });
+            }
+          } catch {
+            // skip metadata search
+          }
+        }
+        where.OR = orConditions;
+      }
+
+      const [linksResult, totalResult] = await Promise.all([
+        prisma.link.findMany({
+          where,
+          select: {
+            id: true,
+            title: true,
+            url: true,
+            description: true,
+            favicon: true,
+            linkType: true,
+            tags: true,
+            notes: true,
+            isFavorite: true,
+            rating: true,
+            userId: true,
+            createdAt: true,
+            updatedAt: true,
+            collections: {
+              select: {
+                collection: {
+                  select: { id: true, name: true, color: true },
+                },
               },
             },
           },
-        },
-        orderBy: {
-          [sortBy]: sortOrder,
-        },
-        skip,
-        take: limit,
-      }),
-      prisma.link.count({ where }),
-    ]);
+          orderBy: {
+            [sortBy]: sortOrder,
+          },
+          skip,
+          take: limit,
+        }),
+        prisma.link.count({ where }),
+      ]);
+      links = linksResult;
+      total = totalResult;
+    }
 
     const totalPages = Math.ceil(total / limit);
     return {
