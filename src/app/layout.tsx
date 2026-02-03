@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { CookiesDisclaimer } from "@/components/ui/CookiesDisclaimer";
@@ -9,14 +8,6 @@ import { KeepAliveProvider } from "@/components/providers/KeepAliveProvider";
 import { getUserTheme } from "@/server/actions/theme";
 import { isDatabaseAccessible } from "@/lib/utils/db-health";
 import { DatabaseConnectionError } from "@/lib/utils/auth-server";
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap",
-  fallback: ["system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "sans-serif"],
-  adjustFontFallback: true,
-});
 
 export const dynamic = 'force-dynamic';
 
@@ -59,7 +50,15 @@ export default async function RootLayout({
   }
 
   return (
-    <html lang="en" className={inter.variable} suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body className="min-h-screen">
         {/* Catch server disconnect / unexpected response before Next.js logs to console */}
         <script

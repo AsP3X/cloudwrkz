@@ -1,4 +1,4 @@
-import Fuse, { type IFuseOptions } from "fuse.js";
+import Fuse, { type IFuseOptions, type FuseResultMatch } from "fuse.js";
 
 /**
  * Fuzzy search configuration options
@@ -10,6 +10,10 @@ export interface FuzzySearchOptions<T> {
   ignoreLocation?: boolean;
   includeScore?: boolean;
   /**
+   * When true, result includes Fuse match details (indices, value) for extracting snippets and highlighted text.
+   */
+  includeMatches?: boolean;
+  /**
    * Enable Fuse.js extended search.
    *
    * If not explicitly set, extended search will automatically be enabled
@@ -18,6 +22,8 @@ export interface FuzzySearchOptions<T> {
    */
   useExtendedSearch?: boolean;
 }
+
+export type FuzzySearchResultWithMatches<T> = { item: T; score?: number; matches?: ReadonlyArray<FuseResultMatch> };
 
 /**
  * Perform fuzzy search on an array of items
@@ -30,7 +36,7 @@ export function fuzzySearch<T extends Record<string, any>>(
   items: T[],
   query: string,
   options: FuzzySearchOptions<T> = { keys: [] }
-): Array<{ item: T; score?: number }> {
+): FuzzySearchResultWithMatches<T>[] {
   if (!query || query.trim().length === 0) {
     return items.map((item) => ({ item }));
   }
@@ -62,6 +68,7 @@ export function fuzzySearch<T extends Record<string, any>>(
     minMatchCharLength: options.minMatchCharLength ?? 2,
     ignoreLocation: options.ignoreLocation ?? true,
     includeScore: options.includeScore ?? true,
+    includeMatches: options.includeMatches ?? false,
     // Use extended search when we want multi-term AND-style matching
     useExtendedSearch,
     // Find all matches, not just the first
@@ -74,6 +81,7 @@ export function fuzzySearch<T extends Record<string, any>>(
   return results.map((result) => ({
     item: result.item,
     score: result.score,
+    ...(options.includeMatches && result.matches && { matches: result.matches }),
   }));
 }
 

@@ -18,6 +18,10 @@ export type SearchResult = {
   url: string;
   metadata?: Record<string, any>;
   parentTicketId?: string; // For comment results, link to parent ticket
+  /** What triggered the match (e.g. "Comment", "Email", "Tags"). Omit when match is already in title or description. */
+  context?: string;
+  /** Exact text that triggered the match; when set, UI highlights this in context instead of the search query. */
+  contextHighlight?: string;
 };
 
 export type SearchResponse = {
@@ -39,6 +43,146 @@ export type SearchFilters = {
   sortOrder?: "asc" | "desc";
   limit?: number;
 };
+
+function truncateForContext(s: string, maxLen = 80): string {
+  if (!s?.trim()) return "";
+  const t = s.trim();
+  return t.length <= maxLen ? t : t.slice(0, maxLen) + "…";
+}
+
+function termInText(term: string, text: string | null | undefined): boolean {
+  return !!text && text.toLowerCase().includes(term.toLowerCase());
+}
+
+/**
+ * Extract a snippet and the matched text from a Fuse match (e.g. for metadataString).
+ * For multi-term queries (e.g. "branch main"), finds the closest pair of ranges (one per term)
+ * and builds the snippet around the span that contains both, so we show the correct context
+ * (e.g. "branch":"main") instead of a stray occurrence (e.g. "main" in an array).
+ * Fuse indices are [start, end] inclusive.
+ */
+function snippetFromFuseMatch(
+  match: { value?: string; indices?: ReadonlyArray<[number, number]> },
+  searchTerm: string,
+  snippetPadding = 50,
+  maxSnippetLen = 120
+): { snippet: string; matchedText: string } {
+  const value = match.value ?? "";
+  const indices = match.indices ?? [];
+  if (indices.length === 0) {
+    const truncated = truncateForContext(value, maxSnippetLen);
+    return { snippet: truncated, matchedText: "" };
+  }
+  const terms = searchTerm
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((t) => t.length >= 2);
+  const ranges = indices.map(([s, e]) => ({ start: s, end: e, text: value.slice(s, e + 1) }));
+  const rangeTextLower = (r: (typeof ranges)[0]) => r.text.toLowerCase().trim();
+
+  const gap = (a: { start: number; end: number }, b: { start: number; end: number }) => {
+    if (a.end < b.start) return b.start - a.end - 1;
+    if (b.end < a.start) return a.start - b.end - 1;
+    return 0;
+  };
+
+  if (terms.length >= 2) {
+    const rangesByTerm = terms.map((term) =>
+      ranges.filter((r) => rangeTextLower(r) === term || rangeTextLower(r).includes(term) || term.includes(rangeTextLower(r)))
+    );
+    if (!rangesByTerm.some((arr) => arr.length === 0)) {
+      let bestPair: { r1: (typeof ranges)[0]; r2: (typeof ranges)[0]; d: number } | null = null;
+      for (let i = 0; i < rangesByTerm.length; i++) {
+        for (let j = i + 1; j < rangesByTerm.length; j++) {
+          for (const r1 of rangesByTerm[i]) {
+            for (const r2 of rangesByTerm[j]) {
+              const d = gap(r1, r2);
+              if (bestPair === null || d < bestPair.d) bestPair = { r1, r2, d };
+            }
+          }
+        }
+      }
+      if (bestPair) {
+        const start = Math.min(bestPair.r1.start, bestPair.r2.start);
+        const end = Math.max(bestPair.r1.end, bestPair.r2.end);
+        const snippetStart = Math.max(0, start - snippetPadding);
+        const snippetEnd = Math.min(value.length, end + 1 + snippetPadding);
+        let snippet = value.slice(snippetStart, snippetEnd);
+        if (snippetStart > 0) snippet = "…" + snippet;
+        if (snippetEnd < value.length) snippet = snippet + "…";
+        if (snippet.length > maxSnippetLen) {
+          snippet = snippet.slice(0, maxSnippetLen - 1) + "…";
+        }
+        const matchedText = [bestPair.r1.text, bestPair.r2.text].filter(Boolean).join(" ");
+        return { snippet, matchedText };
+      }
+    }
+  }
+
+  const exactTermMatches = terms.length
+    ? ranges.filter((r) => terms.some((t) => rangeTextLower(r) === t))
+    : [];
+  const containsTermMatches = terms.length
+    ? ranges.filter((r) => terms.some((t) => rangeTextLower(r).includes(t) || t.includes(rangeTextLower(r))))
+    : [];
+  let chosen: (typeof ranges)[0];
+  if (exactTermMatches.length > 0) {
+    chosen = exactTermMatches.reduce((a, b) => (a.text.length <= b.text.length ? a : b));
+  } else if (containsTermMatches.length > 0) {
+    chosen = containsTermMatches.reduce((a, b) => (a.text.length <= b.text.length ? a : b));
+  } else {
+    chosen = ranges.reduce((a, b) => (a.text.length <= b.text.length ? a : b));
+  }
+  const { start, end, text: matchedText } = chosen;
+  const snippetStart = Math.max(0, start - snippetPadding);
+  const snippetEnd = Math.min(value.length, end + 1 + snippetPadding);
+  let snippet = value.slice(snippetStart, snippetEnd);
+  if (snippetStart > 0) snippet = "…" + snippet;
+  if (snippetEnd < value.length) snippet = snippet + "…";
+  if (snippet.length > maxSnippetLen) {
+    snippet = snippet.slice(0, maxSnippetLen - 1) + "…";
+  }
+  return { snippet, matchedText };
+}
+
+/**
+ * Minimum character distance between any range matching one term and any range matching another.
+ * Used to rank results: when the user types multiple terms, results where terms appear close
+ * together rank higher. Returns Infinity if we can't find ranges for at least two terms.
+ */
+function proximityBetweenTerms(
+  match: { value?: string; indices?: ReadonlyArray<[number, number]> },
+  terms: string[]
+): number {
+  const value = match.value ?? "";
+  const indices = match.indices ?? [];
+  if (indices.length === 0 || terms.length < 2) return Infinity;
+  const termLower = terms.map((t) => t.trim().toLowerCase()).filter((t) => t.length >= 2);
+  if (termLower.length < 2) return Infinity;
+  const ranges = indices.map(([s, e]) => ({ start: s, end: e, text: value.slice(s, e + 1).toLowerCase().trim() }));
+  const rangesByTerm = termLower.map((term) =>
+    ranges.filter((r) => r.text === term || r.text.includes(term) || term.includes(r.text))
+  );
+  if (rangesByTerm.some((arr) => arr.length === 0)) return Infinity;
+  let minDistance = Infinity;
+  const gap = (a: { start: number; end: number }, b: { start: number; end: number }) => {
+    if (a.end < b.start) return b.start - a.end - 1;
+    if (b.end < a.start) return a.start - b.end - 1;
+    return 0;
+  };
+  for (let i = 0; i < rangesByTerm.length; i++) {
+    for (let j = i + 1; j < rangesByTerm.length; j++) {
+      for (const r1 of rangesByTerm[i]) {
+        for (const r2 of rangesByTerm[j]) {
+          const d = gap(r1, r2);
+          if (d < minDistance) minDistance = d;
+        }
+      }
+    }
+  }
+  return minDistance;
+}
 
 /**
  * Global search across all enabled modules
@@ -243,12 +387,18 @@ async function searchUsers(
     const url = !canViewAllUsers && u.id === user.id 
       ? "/dashboard/profile" 
       : `/dashboard/users/${u.id}`;
-    
+    const title = formatUserName(u);
+    const description = u.email !== title ? u.email : undefined;
+    // Context only when match is not already in title or description
+    const matchInTitle = termInText(searchTerm, u.name);
+    const matchInDesc = termInText(searchTerm, u.email);
+    const context: string | undefined =
+      !matchInTitle && matchInDesc && !description ? "Email" : undefined;
     return {
       type: "user" as const,
       id: u.id,
-      title: formatUserName(u),
-      description: u.email !== formatUserName(u) ? u.email : undefined,
+      title,
+      description,
       url,
       metadata: {
         email: u.email,
@@ -259,6 +409,7 @@ async function searchUsers(
         assignedTicketsCount: u._count.assignedTickets,
         createdAt: u.createdAt,
       },
+      context,
     };
   });
 }
@@ -641,6 +792,10 @@ async function searchTicketsWithFilters(
 
     // Always add ticket if it matched via other fields OR if it has matching comments
     if (matchedViaOtherFields || matchingComments.length > 0) {
+      const commentOnlyMatch = !matchedViaOtherFields && matchingComments.length > 0;
+      const firstCommentSnippet = commentOnlyMatch && matchingComments[0]
+        ? truncateForContext(matchingComments[0].content, 100)
+        : undefined;
       results.push({
         type: "ticket" as const,
         id: ticket.id,
@@ -660,6 +815,7 @@ async function searchTicketsWithFilters(
           createdAt: ticket.createdAt,
           updatedAt: ticket.updatedAt,
         },
+        context: commentOnlyMatch && firstCommentSnippet ? `Comment: ${firstCommentSnippet}` : undefined,
       });
 
       // Add each matching comment as a separate entry
@@ -689,6 +845,7 @@ async function searchTicketsWithFilters(
   topComments.forEach((item) => {
     if (!processedTicketIds.has(item.ticketId)) {
       const ticket = item.ticket;
+      const commentSnippet = truncateForContext(item.content, 100);
       // Add the ticket if it's not already included
       if (!matchedTicketIds.has(item.ticketId)) {
         results.push({
@@ -710,6 +867,7 @@ async function searchTicketsWithFilters(
             createdAt: ticket.createdAt,
             updatedAt: ticket.updatedAt,
           },
+          context: `Comment: ${commentSnippet}`,
         });
         processedTicketIds.add(item.ticketId);
       }
@@ -862,29 +1020,43 @@ async function searchTimeEntries(
   // Rank and limit results
   const rankedEntries = rankAndLimit(fuzzyResults, limit);
 
-  return rankedEntries.map((entry) => ({
-    type: "timeentry" as const,
-    id: entry.id,
-    title: entry.name,
-    description: entry.description || undefined,
-    url: `/dashboard/time-tracking/${entry.id}`,
-    metadata: {
-      timerNumber: formatTimerNumber(entry.name, entry.id), // Timer number in TMR-000000 format (6 digits)
-      status: entry.status,
-      tags: entry.tags,
-      location: entry.location,
-      totalDuration: entry.totalDuration,
-      startedAt: entry.startedAt,
-      stoppedAt: entry.stoppedAt,
-      completedAt: entry.completedAt,
-      user: formatUserName(entry.user),
-      ticketNumber: entry.ticket?.ticketNumber,
-      ticketTitle: entry.ticket?.title,
-      archivedAt: entry.archivedAt,
-      createdAt: entry.createdAt,
-      updatedAt: entry.updatedAt,
-    },
-  }));
+  return rankedEntries.map((entry) => {
+    const title = entry.name;
+    const description = entry.description || undefined;
+    const matchInTitle = termInText(searchTerm, title);
+    const matchInDesc = termInText(searchTerm, description);
+    let context: string | undefined;
+    if (!matchInTitle && !matchInDesc) {
+      if (entry.location && termInText(searchTerm, entry.location))
+        context = `Location: ${truncateForContext(entry.location, 60)}`;
+      else if (entry.tags?.length && entry.tags.some((t) => termInText(searchTerm, t)))
+        context = `Tags: ${entry.tags.join(", ")}`;
+    }
+    return {
+      type: "timeentry" as const,
+      id: entry.id,
+      title,
+      description,
+      url: `/dashboard/time-tracking/${entry.id}`,
+      metadata: {
+        timerNumber: formatTimerNumber(entry.name, entry.id), // Timer number in TMR-000000 format (6 digits)
+        status: entry.status,
+        tags: entry.tags,
+        location: entry.location,
+        totalDuration: entry.totalDuration,
+        startedAt: entry.startedAt,
+        stoppedAt: entry.stoppedAt,
+        completedAt: entry.completedAt,
+        user: formatUserName(entry.user),
+        ticketNumber: entry.ticket?.ticketNumber,
+        ticketTitle: entry.ticket?.title,
+        archivedAt: entry.archivedAt,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
+      },
+      context,
+    };
+  });
 }
 
 /**
@@ -1039,25 +1211,43 @@ async function searchTasks(
 
   const topTodos = rankAndLimit(todoFuzzyResults, limit);
 
-  return topTodos.map((todo) => ({
-    type: "task" as const,
-    id: todo.id,
-    title: todo.title,
-    description: todo.descriptionPlain || todo.description || undefined,
-    url: `/dashboard/todos/${todo.id}`,
-    metadata: {
-      todoNumber: todo.todoNumber,
-      status: todo.status,
-      priority: todo.priority,
-      parentTodoTitle: todo.parentTodo?.title,
-      ticketNumber: todo.ticket?.ticketNumber,
-      ticketTitle: todo.ticket?.title,
-      assignedTo: todo.assignedTo ? formatUserName(todo.assignedTo) : undefined,
-      archivedAt: todo.archivedAt,
-      createdAt: todo.createdAt,
-      updatedAt: todo.updatedAt,
-    },
-  }));
+  return topTodos.map((todo) => {
+    const title = todo.title;
+    const description = todo.descriptionPlain || todo.description || undefined;
+    const matchInTitle = termInText(trimmed, title);
+    const matchInDesc = termInText(trimmed, description);
+    let context: string | undefined;
+    if (!matchInTitle && !matchInDesc) {
+      if (todo.todoNumber && termInText(trimmed, todo.todoNumber))
+        context = `Task number: ${todo.todoNumber}`;
+      else if (todo.ticket?.ticketNumber && termInText(trimmed, todo.ticket.ticketNumber))
+        context = `Linked ticket: ${todo.ticket.ticketNumber}`;
+      else if (todo.ticket?.title && termInText(trimmed, todo.ticket.title))
+        context = `Linked ticket: ${truncateForContext(todo.ticket.title, 50)}`;
+      else if (todo.parentTodo?.title && termInText(trimmed, todo.parentTodo.title))
+        context = `Parent task: ${truncateForContext(todo.parentTodo.title, 50)}`;
+    }
+    return {
+      type: "task" as const,
+      id: todo.id,
+      title,
+      description,
+      url: `/dashboard/todos/${todo.id}`,
+      metadata: {
+        todoNumber: todo.todoNumber,
+        status: todo.status,
+        priority: todo.priority,
+        parentTodoTitle: todo.parentTodo?.title,
+        ticketNumber: todo.ticket?.ticketNumber,
+        ticketTitle: todo.ticket?.title,
+        assignedTo: todo.assignedTo ? formatUserName(todo.assignedTo) : undefined,
+        archivedAt: todo.archivedAt,
+        createdAt: todo.createdAt,
+        updatedAt: todo.updatedAt,
+      },
+      context,
+    };
+  });
 }
 
 /**
@@ -1220,49 +1410,96 @@ async function searchLinks(
         : "",
   }));
 
-  const linkFuzzyResults = fuzzySearch(
-    linksForFuzzy,
-    trimmed,
-    {
-      keys: [
-        { name: "title", weight: 0.35 },
-        { name: "description", weight: 0.2 },
-        { name: "url", weight: 0.15 },
-        { name: "notes", weight: 0.1 },
-        { name: "tagsString", weight: 0.05 },
-        { name: "metadataString", weight: 0.15 },
-      ],
-      threshold: 0.4,
-      minMatchCharLength: 2,
+  const linkFuzzyResults = fuzzySearch(linksForFuzzy, trimmed, {
+    keys: [
+      { name: "title", weight: 0.35 },
+      { name: "description", weight: 0.2 },
+      { name: "url", weight: 0.15 },
+      { name: "notes", weight: 0.1 },
+      { name: "tagsString", weight: 0.05 },
+      { name: "metadataString", weight: 0.15 },
+    ],
+    threshold: 0.4,
+    minMatchCharLength: 2,
+    includeMatches: true,
+  });
+
+  const terms = trimmed.split(/\s+/).filter((t) => t.length >= 2);
+  const useProximity = terms.length >= 2;
+  const proximityFor = (r: (typeof linkFuzzyResults)[0]): number => {
+    if (!useProximity || !r.matches?.length) return Infinity;
+    let minProx = Infinity;
+    for (const m of r.matches) {
+      const p = proximityBetweenTerms(m, terms);
+      if (p < minProx) minProx = p;
     }
-  );
+    return minProx;
+  };
+  const sortedWithMatches = linkFuzzyResults
+    .sort((a, b) => {
+      if (useProximity) {
+        const proxA = proximityFor(a);
+        const proxB = proximityFor(b);
+        if (proxA !== proxB) return proxA - proxB;
+      }
+      return (a.score ?? 1) - (b.score ?? 1);
+    })
+    .slice(0, limit);
 
-  const topLinks = rankAndLimit(linkFuzzyResults, limit);
-
-  return topLinks.map((link) => ({
-    type: "link" as const,
-    id: link.id,
-    title: link.title,
-    description: link.description || undefined,
-    url: `/dashboard/links/${link.id}`,
-    metadata: {
-      linkUrl: link.url,
-      favicon: link.favicon,
-      linkType: link.linkType,
-      tags: link.tags,
-      isFavorite: link.isFavorite,
-      rating: link.rating,
-      collections: link.collections.map((lc) => ({
-        id: lc.collection.id,
-        name: lc.collection.name,
-        color: lc.collection.color,
-      })),
-      createdBy: formatUserName(link.user),
-      archivedAt: link.archivedAt,
-      createdAt: link.createdAt,
-      updatedAt: link.updatedAt,
-    },
-  }));
+  return sortedWithMatches.map((r) => {
+    const link = r.item;
+    const title = link.title;
+    const description = link.description || undefined;
+    const matchInTitle = termInText(trimmed, title);
+    const matchInDesc = termInText(trimmed, description);
+    let context: string | undefined;
+    let contextHighlight: string | undefined;
+    if (!matchInTitle && !matchInDesc) {
+      if (link.url && termInText(trimmed, link.url)) {
+        context = `URL: ${truncateForContext(link.url, 60)}`;
+      } else if (link.notes && termInText(trimmed, link.notes)) {
+        context = `Notes: ${truncateForContext(link.notes, 60)}`;
+      } else if (link.tags?.length && link.tags.some((t) => termInText(trimmed, t))) {
+        context = `Tags: ${link.tags.join(", ")}`;
+      } else if (link.metadata != null) {
+        const metaMatch = r.matches?.find((m) => m.key === "metadataString");
+        if (metaMatch?.value) {
+          const { snippet, matchedText } = snippetFromFuseMatch(metaMatch, trimmed, 40, 140);
+          context = `Metadata: ${snippet}`;
+          const multiTerm = trimmed.split(/\s+/).filter((t) => t.length >= 2).length > 1;
+          contextHighlight = multiTerm ? trimmed : (matchedText || undefined);
+        } else if (termInText(trimmed, JSON.stringify(link.metadata))) {
+          context = `Metadata: ${truncateForContext(JSON.stringify(link.metadata), 100)}`;
+        }
+      }
+    }
+    return {
+      type: "link" as const,
+      id: link.id,
+      title,
+      description,
+      url: `/dashboard/links/${link.id}`,
+      metadata: {
+        linkUrl: link.url,
+        favicon: link.favicon,
+        linkType: link.linkType,
+        tags: link.tags,
+        isFavorite: link.isFavorite,
+        rating: link.rating,
+        collections: link.collections.map((lc) => ({
+          id: lc.collection.id,
+          name: lc.collection.name,
+          color: lc.collection.color,
+        })),
+        createdBy: formatUserName(link.user),
+        archivedAt: link.archivedAt,
+        createdAt: link.createdAt,
+        updatedAt: link.updatedAt,
+      },
+      context,
+      contextHighlight,
+    };
+  });
 }
 
 /**
@@ -1479,16 +1716,26 @@ async function searchSettings(
     rankedSettings = rankAndLimit(goodMatches, limit);
   }
 
-  return rankedSettings.map((setting) => ({
-    type: "setting" as const,
-    id: setting.id,
-    title: setting.title,
-    description: setting.description,
-    url: setting.url,
-    metadata: {
-      category: setting.category,
-    },
-  }));
+  return rankedSettings.map((setting) => {
+    const matchInTitle = termInText(normalizedTerm, setting.title);
+    const matchInDesc = termInText(normalizedTerm, setting.description);
+    const matchInKeywords = setting.keywords.some((kw) => termInText(normalizedTerm, kw));
+    const context: string | undefined =
+      !matchInTitle && !matchInDesc && (matchInKeywords || termInText(normalizedTerm, setting.category))
+        ? "Keywords"
+        : undefined;
+    return {
+      type: "setting" as const,
+      id: setting.id,
+      title: setting.title,
+      description: setting.description,
+      url: setting.url,
+      metadata: {
+        category: setting.category,
+      },
+      context,
+    };
+  });
 }
 
 /**
@@ -1919,6 +2166,10 @@ async function searchTickets(
 
     // Always add ticket if it matched via other fields OR if it has matching comments
     if (matchedViaOtherFields || matchingComments.length > 0) {
+      const commentOnlyMatch = !matchedViaOtherFields && matchingComments.length > 0;
+      const firstCommentSnippet = commentOnlyMatch && matchingComments[0]
+        ? truncateForContext(matchingComments[0].content, 100)
+        : undefined;
       results.push({
         type: "ticket" as const,
         id: ticket.id,
@@ -1935,6 +2186,7 @@ async function searchTickets(
           commentCount: ticket._count.comments,
           archivedAt: ticket.archivedAt,
         },
+        context: commentOnlyMatch && firstCommentSnippet ? `Comment: ${firstCommentSnippet}` : undefined,
       });
 
       // Add each matching comment as a separate entry
@@ -1964,6 +2216,7 @@ async function searchTickets(
   topComments.forEach((item) => {
     if (!processedTicketIds.has(item.ticketId)) {
       const ticket = item.ticket;
+      const commentSnippet = truncateForContext(item.content, 100);
       // Add the ticket if it's not already included
       if (!matchedTicketIds.has(item.ticketId)) {
         results.push({
@@ -1982,6 +2235,7 @@ async function searchTickets(
             commentCount: ticket._count.comments,
             archivedAt: ticket.archivedAt,
           },
+          context: `Comment: ${commentSnippet}`,
         });
         processedTicketIds.add(item.ticketId);
       }

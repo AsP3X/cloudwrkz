@@ -814,6 +814,11 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                                       {highlightMatch(group.ticket.description, query)}
                                     </p>
                                   )}
+                                  {group.ticket.context && (
+                                    <p className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-2 mb-2 italic">
+                                      {highlightMatch(group.ticket.context, group.ticket.contextHighlight ?? query)}
+                                    </p>
+                                  )}
                                   <div className="flex items-center gap-2 flex-wrap">
                                     {group.ticket.type === "ticket" && group.ticket.metadata?.status && (
                                       <span

@@ -593,6 +593,11 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                               {highlightMatch(group.ticket.description, searchQuery)}
                             </div>
                           )}
+                          {group.ticket.context && (
+                            <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 line-clamp-1 italic">
+                              {highlightMatch(group.ticket.context, group.ticket.contextHighlight ?? searchQuery)}
+                            </div>
+                          )}
                           {group.ticket.type === "user" && group.ticket.metadata && (
                             <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
                               {group.ticket.metadata.createdTicketsCount || 0} created, {group.ticket.metadata.assignedTicketsCount || 0} assigned
