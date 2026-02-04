@@ -7,6 +7,7 @@ import { AccountSettingsForm } from "@/components/features/settings/AccountSetti
 import { PreferencesForm } from "@/components/features/settings/PreferencesForm";
 import { PrivacySecurityForm } from "@/components/features/settings/PrivacySecurityForm";
 import { DeleteAccountSection } from "@/components/features/settings/DeleteAccountSection";
+import { LoginSessionsSection } from "@/components/features/settings/LoginSessionsSection";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 
 export default async function SettingsPage() {
@@ -133,6 +134,9 @@ export default async function SettingsPage() {
       >
         <PrivacySecurityForm />
       </CollapsibleSection>
+
+      {/* Login Sessions Section */}
+      <LoginSessionsSection />
 
       {/* Delete Account Section */}
       <DeleteAccountSection />

@@ -11,7 +11,11 @@ import {
 } from "@/lib/validations/settings";
 import { getServerActionErrorMessage } from "@/lib/utils/server-action-utils";
 
-export const PrivacySecurityForm = () => {
+interface PrivacySecurityFormProps {
+  children?: React.ReactNode;
+}
+
+export const PrivacySecurityForm = ({ children }: PrivacySecurityFormProps) => {
   const [error, setError] = React.useState<string | null>(null);
   const [success, setSuccess] = React.useState<string | null>(null);
 
@@ -163,6 +167,9 @@ export const PrivacySecurityForm = () => {
           </div>
         </div>
       </div>
+
+      {/* Optional nested content (e.g., login sessions) */}
+      {children}
 
       {/* Divider */}
       <div className="border-t border-neutral-200 dark:border-neutral-800 pt-6">

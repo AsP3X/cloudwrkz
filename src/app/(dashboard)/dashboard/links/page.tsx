@@ -159,11 +159,6 @@ export default async function LinksPage({ searchParams }: LinksPageProps) {
               <div className="flex items-center gap-2 shrink-0">
                 <div className="hidden md:flex items-center gap-2">
                   <LinkFilterButton collections={collections} />
-                  <Link href={ROUTES.LINKS_ARCHIVE}>
-                    <Button variant="outline" size="sm" className="shrink-0">
-                      Archive
-                    </Button>
-                  </Link>
                 </div>
                 <CreateButton canCreate={canCreateLinks} />
                 <LinksOverviewActionsMenu
