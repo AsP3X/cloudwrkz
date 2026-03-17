@@ -23,8 +23,11 @@ todos:
   - id: api-rust-setup
     content: Rust API (Axum + SQLx) with health/ping, CORS, pooling
     status: pending
+  - id: api-versioning
+    content: API versioning: v1 under /api/v1; unversioned health/ping
+    status: pending
   - id: api-rust-routes
-    content: Port all current API routes; same contract for Web and iOS
+    content: Port all current API routes under /api/v1; same contract for Web and iOS
     status: pending
   - id: api-rust-auth
     content: Auth session table + token validation; bcrypt/argon2
@@ -80,6 +83,8 @@ flowchart TB
     Web -.->|"HTTP / API calls"| API
 ```
 
+
+
 ---
 
 ## 3. Part 1 — Web (Vite+)
@@ -101,7 +106,7 @@ flowchart TB
 1. Create new app under monorepo (e.g. `apps/web-vite`).
 2. Initialize with Vite+ and React + TypeScript + Tailwind.
 3. Port layout and pages to React Router; keep existing components, hooks, and styles.
-4. **API client:** Central client (e.g. `src/api/client.ts`) using `VITE_API_URL`, session/token (cookie or `Authorization` header), mirroring current API surface.
+4. **API client:** Central client (e.g. `src/api/client.ts`) using `VITE_API_URL` pointing at the **versioned** API (e.g. `…/api/v1` so all requests go to v1). Session/token (cookie or `Authorization` header); mirror current API surface.
 5. **Auth:** Token-based flow — login/register call API; store token; 401 → redirect to login.
 6. Replace every server action with a call to the Rust API (same endpoints as iOS).
 7. Static assets from Vite build (`public/`, imports); no Next.js `public/` or `next/image`.
@@ -123,36 +128,45 @@ flowchart TB
 - **Auth:** Session tokens in `sessions` table; validate on each request; cookie (web) and `Authorization: Bearer` (iOS). bcrypt or argon2 for passwords.
 - **Config:** `DATABASE_URL`, `API_PORT`, `API_HOST`, `RUST_LOG`, CORS origins, cookie domain.
 
-### API surface to port
+### API versioning
 
-From current `apps/web/src/app/api`:
+- The new Rust API is **versioned**. The initial implementation is **v1**.
+- All versioned routes live under `**/api/v1/`** (e.g. `/api/v1/me`, `/api/v1/auth/login`, `/api/v1/tickets`, …). This allows future versions (v2, etc.) to coexist behind the same host and load balancer.
+- **Web** and **iOS** clients use a base URL that includes the version (e.g. `VITE_API_URL=https://api.example.com/api/v1` or base `https://api.example.com` with path prefix `/api/v1` in the client). No unversioned app routes.
+- **Health / ops** endpoints remain **unversioned** so load balancers and tooling can call them without a version: e.g. `GET /api/health`, `GET /api/ping` (or `GET /health`, `GET /ping` at root). These are not part of the versioned surface.
+- Router layout in code: mount the v1 route group at `/api/v1`; add further version mounts (e.g. `/api/v2`) when needed.
 
+### API surface to port (v1)
 
-| Area             | Endpoints (conceptual)                                                                     |
-| ---------------- | ------------------------------------------------------------------------------------------ |
-| Auth             | POST login, register, session extend, change-password, QR login (request, approve, status) |
-| Me               | GET /api/me, /api/auth/me                                                                  |
-| Tickets          | CRUD, list, upload-image, by id                                                            |
-| Todos            | CRUD, list, by id, upload-image                                                            |
-| Links            | CRUD, list, by id, metadata, upload-favicon, shared/collections                            |
-| Collections      | CRUD, list, members                                                                        |
-| Time tracking    | add, by id, pause/resume/stop/complete, breaks, active, events                             |
-| Location history | list, add (if any)                                                                         |
-| Search           | /api/search, /api/auth/search, enhanced                                                    |
-| Profile          | avatar upload, preferences, profile/avatar/[filename]                                      |
-| Contact          | contact form POST                                                                          |
-| Admin            | audit events, purge-deleted-accounts, db-query, db-row (if required)                       |
-| Health           | GET /api/health, /api/ping                                                                 |
-| Favicons         | serve by filename                                                                          |
+From current `apps/web/src/app/api`, exposed under `**/api/v1/`**:
 
 
-Preserve **request/response shapes** and **status codes** for minimal client changes (base URL and auth header/cookie).
+| Area             | Endpoints (conceptual, under `/api/v1/`)                                                             |
+| ---------------- | ---------------------------------------------------------------------------------------------------- |
+| Auth             | POST auth/login, auth/register, session extend, change-password, QR login (request, approve, status) |
+| Me               | GET me, auth/me                                                                                      |
+| Tickets          | CRUD, list, upload-image, by id                                                                      |
+| Todos            | CRUD, list, by id, upload-image                                                                      |
+| Links            | CRUD, list, by id, metadata, upload-favicon, shared/collections                                      |
+| Collections      | CRUD, list, members                                                                                  |
+| Time tracking    | add, by id, pause/resume/stop/complete, breaks, active, events                                       |
+| Location history | list, add (if any)                                                                                   |
+| Search           | search, auth/search, enhanced                                                                        |
+| Profile          | avatar upload, preferences, profile/avatar/[filename]                                                |
+| Contact          | contact form POST                                                                                    |
+| Admin            | audit events, purge-deleted-accounts, db-query, db-row (if required)                                 |
+| Favicons         | serve by filename                                                                                    |
+
+
+**Unversioned (no `/v1`):** `GET /api/health`, `GET /api/ping` (or equivalent at root).
+
+Preserve **request/response shapes** and **status codes** for minimal client changes; clients target the versioned base URL (e.g. `/api/v1`) and auth header/cookie.
 
 ### Project layout (Rust API)
 
 - `**apps/api`** (or `apps/api-rust`): Rust workspace.
-  - `Cargo.toml`, `src/main.rs` (bootstrap: DB pool, router, CORS, shutdown).
-  - `src/routes/`: auth, tickets, todos, links, time_tracking, search, admin, health.
+  - `Cargo.toml`, `src/main.rs` (bootstrap: DB pool, router, CORS, shutdown). Mount **v1** at `/api/v1`; reserve `/api/v2`, etc. for future versions. Unversioned: `/api/health`, `/api/ping`.
+  - `src/routes/`: auth, tickets, todos, links, time_tracking, search, admin, health (all under v1 namespace).
   - `src/db/`: connection pool, queries/repository.
   - `src/models/`: structs matching DB; serde for JSON.
   - `src/auth/`: token validation, password hashing.
@@ -275,7 +289,8 @@ Checked against the repo on **2025-03-17**.
   - Static build deployable to CDN; horizontally scalable
 - **API (Rust)**
   - Axum (or chosen framework) + SQLx/Diesel
-  - All current API routes ported; same contract for Web and iOS
+  - API versioning: v1 at `/api/v1/`; unversioned `/api/health`, `/api/ping`
+  - All current API routes ported under v1; same contract for Web and iOS
   - Auth: session table + token validation; bcrypt/argon2
   - Stateless; connection pooling; CORS and cookie config
   - Health/ping endpoints
