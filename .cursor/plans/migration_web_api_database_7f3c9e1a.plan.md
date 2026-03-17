@@ -119,22 +119,66 @@ flowchart TB
 ### Goals
 
 - Implement all current API surface in **Rust** for Web (Vite+) and iOS.
-- Stateless service: auth via tokens (session table or JWT). Horizontal scaling (any instance can serve any request).
+- Stateless service: auth via tokens (session table). Horizontal scaling (any instance can serve any request).
+- Support **SaaS**, **self-host** (Docker Compose), and **enterprise on‑prem** (Kubernetes/Helm). No vendor lock-in; standard primitives (Postgres, optional Redis/broker later).
 
 ### Recommended stack
 
-- **HTTP:** Axum.
-- **Database:** SQLx (or Diesel). Recommendation: SQLx; migrations as SQL (from current Prisma schema).
-- **Auth:** Session tokens in `sessions` table; validate on each request; cookie (web) and `Authorization: Bearer` (iOS). bcrypt or argon2 for passwords.
-- **Config:** `DATABASE_URL`, `API_PORT`, `API_HOST`, `RUST_LOG`, CORS origins, cookie domain.
+- **HTTP:** Axum (async, middleware, JSON).
+- **Database:** SQLx (compile-time SQL, pooling, async). Migrations as SQL in `apps/api/migrations/` (from current Prisma schema).
+- **Auth:** Session tokens in `sessions` table; validate on each request; cookie (web) and `Authorization: Bearer` (iOS). **argon2** for passwords (preferred over bcrypt for security).
+- **Serialization:** serde (JSON). Optional: OpenAPI for docs and client generation.
+
+### Configuration (env vars)
+
+
+| Variable          | Required | Purpose                                                           |
+| ----------------- | -------- | ----------------------------------------------------------------- |
+| `DATABASE_URL`    | Yes      | Postgres connection string (primary).                             |
+| `API_HOST`        | No       | Bind host (default `0.0.0.0`).                                    |
+| `API_PORT`        | No       | Port (default `8080`).                                            |
+| `RUST_LOG`        | No       | Log level (e.g. `info`, `api=debug`).                             |
+| `CORS_ORIGINS`    | Yes*     | Comma-separated origins for Web (e.g. `https://app.example.com`). |
+| `COOKIE_DOMAIN`   | No       | Domain for session cookie (e.g. `.example.com`).                  |
+| `COOKIE_SECURE`   | No       | `true` in production (HTTPS-only cookie).                         |
+| `SESSION_MAX_AGE` | No       | Session TTL in seconds (default 7 days).                          |
+| `MAX_BODY_SIZE`   | No       | Max request body in bytes (uploads).                              |
+
+
+ CORS required when Web is on a different origin than API.
 
 ### API versioning
 
-- The new Rust API is **versioned**. The initial implementation is **v1**.
-- All versioned routes live under `**/api/v1/`** (e.g. `/api/v1/me`, `/api/v1/auth/login`, `/api/v1/tickets`, …). This allows future versions (v2, etc.) to coexist behind the same host and load balancer.
-- **Web** and **iOS** clients use a base URL that includes the version (e.g. `VITE_API_URL=https://api.example.com/api/v1` or base `https://api.example.com` with path prefix `/api/v1` in the client). No unversioned app routes.
-- **Health / ops** endpoints remain **unversioned** so load balancers and tooling can call them without a version: e.g. `GET /api/health`, `GET /api/ping` (or `GET /health`, `GET /ping` at root). These are not part of the versioned surface.
-- Router layout in code: mount the v1 route group at `/api/v1`; add further version mounts (e.g. `/api/v2`) when needed.
+- **Versioned:** All app routes under `**/api/v1/`** (e.g. `/api/v1/me`, `/api/v1/auth/login`, `/api/v1/tickets`, …). Enables future v2 without breaking clients.
+- **Unversioned:** `GET /api/health`, `GET /api/ping` (and optionally `GET /ready` for readiness). Used by load balancers and orchestration; no `/v1` in path.
+- **Router in code:** Mount v1 at `/api/v1`; reserve `/api/v2` for later. Health/ping at `/api/health`, `/api/ping`.
+
+### API contract policy
+
+- **Prefer minimal client changes** when feasible; preserve request/response shapes and status codes where they are already adequate.
+- **Breaking changes are allowed** when they clearly improve:
+  - **Security:** auth, session handling, token storage, CSRF mitigation, rate limiting.
+  - **Performance:** payload shape, pagination, caching semantics, DB efficiency.
+  - **Operability:** observability, idempotency, error contracts, tracing.
+- **Discipline for any breaking change:**
+  - Document the change and rationale.
+  - Provide a migration path for Web and iOS (feature flags, version shims, or v2).
+  - Use deprecation windows where appropriate.
+- **Standardize over time:** error envelope (see below), pagination (cursor or offset + limit), auth strategy (Bearer + optional cookie).
+
+### Error envelope and conventions
+
+- **JSON errors:** Use a consistent envelope for v1, e.g. `{ "error": { "code": "UNAUTHORIZED", "message": "..." } }` with HTTP status matching.
+- **Status codes:** 400 validation, 401 unauthenticated, 403 forbidden, 404 not found, 409 conflict, 422 unprocessable, 429 rate limit, 500 internal.
+- **Validation:** Return 400/422 with field-level errors when request body fails validation.
+- **Pagination:** Define a single convention for list endpoints (e.g. `?limit=20&offset=0` or `?cursor=...&limit=20`); document in API spec.
+
+### Auth strategy
+
+- **Sessions table:** `id`, `user_id`, `token` (opaque, stored hashed or as-is per policy), `expires_at`, `created_at`, optional `user_agent`/`ip`.
+- **Validation:** On each v1 request, resolve Bearer token or session cookie to `user_id`; attach to request state; 401 if missing or expired.
+- **Cookie (Web):** Set `HttpOnly`, `Secure` in prod, `SameSite=Lax` or `Strict`; domain from `COOKIE_DOMAIN`. Web client can send cookie or `Authorization` header.
+- **iOS:** `Authorization: Bearer <token>` only.
 
 ### API surface to port (v1)
 
@@ -158,19 +202,70 @@ From current `apps/web/src/app/api`, exposed under `**/api/v1/`**:
 | Favicons         | serve by filename                                                                                    |
 
 
-**Unversioned (no `/v1`):** `GET /api/health`, `GET /api/ping` (or equivalent at root).
-
-Preserve **request/response shapes** and **status codes** for minimal client changes; clients target the versioned base URL (e.g. `/api/v1`) and auth header/cookie.
+**Unversioned:** `GET /api/health`, `GET /api/ping`; optionally `GET /api/ready` (returns 200 only when DB pool is reachable).
 
 ### Project layout (Rust API)
 
-- `**apps/api`** (or `apps/api-rust`): Rust workspace.
-  - `Cargo.toml`, `src/main.rs` (bootstrap: DB pool, router, CORS, shutdown). Mount **v1** at `/api/v1`; reserve `/api/v2`, etc. for future versions. Unversioned: `/api/health`, `/api/ping`.
-  - `src/routes/`: auth, tickets, todos, links, time_tracking, search, admin, health (all under v1 namespace).
-  - `src/db/`: connection pool, queries/repository.
-  - `src/models/`: structs matching DB; serde for JSON.
-  - `src/auth/`: token validation, password hashing.
-  - `migrations/`: SQL migrations (SQLx or Diesel).
+- `**apps/api`** (Rust crate/workspace):
+  - `**Cargo.toml`**: Axum, SQLx, tokio, serde, argon2, tower (middleware), tracing.
+  - `**src/main.rs`**: Load config from env, create `PgPool` (SQLx), CORS layer, router. Mount v1 at `/api/v1`; mount `/api/health`, `/api/ping` (and `/api/ready`). Graceful shutdown on SIGTERM.
+  - `**src/config.rs**`: Parse and validate env vars; expose `ApiConfig`, `DatabaseConfig`, `CorsConfig`, `AuthConfig`.
+  - `**src/routes/**`: `mod.rs` (v1 router assembly), `auth.rs`, `me.rs`, `tickets.rs`, `todos.rs`, `links.rs`, `collections.rs`, `time_tracking.rs`, `search.rs`, `profile.rs`, `contact.rs`, `admin.rs`, `favicons.rs`, `health.rs` (health/ping/ready only).
+  - `**src/db/**`: `pool.rs` (PgPool creation), `repositories/` or inline queries per domain (sessions, users, tickets, todos, links, etc.).
+  - `**src/models/**`: Structs for DB rows and API request/response DTOs; serde for JSON.
+  - `**src/auth/**`: `session.rs` (validate token, load user), `password.rs` (argon2 hash/verify), extractors (e.g. `AuthUser`).
+  - `**src/error.rs**`: App error enum, `IntoResponse`, consistent error envelope.
+  - `**migrations/**`: SQL files (SQLx `migrate!()` or Diesel); initial schema from Prisma export plus `sessions` if not present.
+
+### Database implications (API)
+
+- **Pool:** One `PgPool` per process via SQLx `PgPoolOptions::new()`. Set `max_connections` (e.g. 10–20 per instance) so that **total connections = N_instances × max_connections** stays below Postgres `max_connections`.
+- **Sessions:** Table `sessions` (or equivalent) for token storage and validation; index on `token` and `expires_at`.
+- **Read replicas (optional later):** Use a second `DATABASE_URL_READ` for read-only queries (e.g. search, list endpoints); single primary for writes.
+- **Shard-readiness (optional later):** Ensure `tenant_id` (or equivalent) on key tables and routing boundaries so that a future replication/sharding layer can route by tenant.
+
+### Phased implementation (API)
+
+
+| Phase                     | Scope                                                                                 | Acceptance criteria                                                                                                             |
+| ------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| **4a. Bootstrap**         | New `apps/api` crate; Axum + SQLx; config from env; CORS; health, ping, ready.        | `GET /api/health` and `GET /api/ping` return 200; `GET /api/ready` returns 200 when DB is up, 503 when down. Docker build runs. |
+| **4b. Auth**              | Sessions table, register/login, token validation, Bearer + cookie; argon2.            | Web and iOS can login/register; protected routes return 401 without valid token.                                                |
+| **4c. Core domains**      | Port me, tickets, todos, links, collections, time_tracking under `/api/v1`.           | Same contract as current Next.js API for these domains; Web client can point at Rust API and use app.                           |
+| **4d. Remaining domains** | Search, profile, contact, admin, favicons, QR login, location history.                | All current API surface available under v1; no remaining dependency on Next.js API for app features.                            |
+| **4e. Harden**            | Error envelope, rate limiting (optional), observability (logs, request IDs, metrics). | Consistent error JSON; structured logs with trace ID; optional Prometheus `/metrics` or equivalent.                             |
+
+
+### Operational plan (API)
+
+- **Docker:** Dockerfile in `apps/api` (multi-stage: build then runtime); image runs single binary; env vars for config.
+- **Docker Compose:** Service `api` with `build: apps/api`, env from `.env` or `environment:`; depends on `postgres`; healthcheck via `GET /api/health` or `/api/ready`.
+- **Kubernetes/Helm:** Deployment with readiness probe to `/api/ready`, liveness to `/api/health`; config via ConfigMap/Secret; scale replicas via HPA.
+- **Observability:** Structured logging (tracing crate); attach request ID (e.g. `X-Request-ID` or generated) to each request and log it; optional metrics endpoint for latency and error rate.
+- **Shutdown:** Graceful shutdown: stop accepting new requests, drain in-flight, close DB pool.
+
+### Risks and mitigations (API)
+
+
+| Risk                      | Mitigation                                                                                                                                    |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Contract drift vs Next.js | Document every endpoint and payload; run contract tests or manual checklist against Web/iOS.                                                  |
+| DB connection exhaustion  | Cap `max_connections` per instance; monitor total; tune pool and instance count.                                                              |
+| Auth token leakage        | HttpOnly cookie for web where possible; short session TTL; rotate on sensitive actions.                                                       |
+| Rollout regression        | Feature flag or parallel run (Web points to Rust API only after 4c); keep Next.js API until 4d done; rollback = point client back to Next.js. |
+| Migration ordering        | Run SQL migrations before app start (e.g. in Docker entrypoint or init container); version migrations and fail fast on mismatch.              |
+
+
+### Definition of done (Rust API)
+
+- `apps/api` exists; builds and runs with Axum + SQLx.
+- Health, ping, ready endpoints unversioned; v1 mounted at `/api/v1`.
+- All current API routes ported to v1 with same or documented improved contract.
+- Auth: sessions table, token validation, argon2, Bearer + cookie.
+- Config via env; CORS; connection pooling; graceful shutdown.
+- Docker image and Compose service; healthcheck.
+- Error envelope and status codes documented; optional observability (request ID, structured logs).
+- Web and iOS can use Rust API as sole backend for app features.
 
 ---
 
@@ -248,12 +343,13 @@ Checked against the repo on **2025-03-17**.
 ### API (Rust)
 
 
-| Item                                                  | Status          | Notes                         |
-| ----------------------------------------------------- | --------------- | ----------------------------- |
-| Axum + SQLx/Diesel, health/ping, CORS, pooling        | **Not started** | No `apps/api` (Rust) in repo. |
-| All current API routes ported; same contract          | **Not started** | —                             |
-| Auth: session table + token validation; bcrypt/argon2 | **Not started** | —                             |
-| Stateless; container deploy; N instances              | **Not started** | —                             |
+| Item                                                                          | Status          | Notes                         |
+| ----------------------------------------------------------------------------- | --------------- | ----------------------------- |
+| Bootstrap (Axum + SQLx, health/ping/ready, CORS, config)                      | **Not started** | No `apps/api` (Rust) in repo. |
+| Auth (sessions table, token validation, argon2, Bearer + cookie)              | **Not started** | —                             |
+| Core domains (me, tickets, todos, links, collections, time_tracking) under v1 | **Not started** | —                             |
+| Remaining domains (search, profile, contact, admin, favicons, QR, location)   | **Not started** | —                             |
+| Error envelope, observability, Docker/Compose, graceful shutdown              | **Not started** | —                             |
 
 
 ### Database
@@ -287,13 +383,13 @@ Checked against the repo on **2025-03-17**.
   - All server actions replaced by API calls to Rust API (in progress: using Next.js API via proxy)
   - Auth: token-based (cookie or header) against API
   - Static build deployable to CDN; horizontally scalable
-- **API (Rust)**
-  - Axum (or chosen framework) + SQLx/Diesel
-  - API versioning: v1 at `/api/v1/`; unversioned `/api/health`, `/api/ping`
-  - All current API routes ported under v1; same contract for Web and iOS
-  - Auth: session table + token validation; bcrypt/argon2
-  - Stateless; connection pooling; CORS and cookie config
-  - Health/ping endpoints
+- **API (Rust)** (see §4 for phased implementation 4a–4e)
+  - Bootstrap: Axum + SQLx; health, ping, ready; CORS; config from env
+  - API versioning: v1 at `/api/v1/`; unversioned `/api/health`, `/api/ping`, `/api/ready`
+  - Auth: sessions table; token validation; argon2; Bearer + cookie; error envelope
+  - All current API routes ported under v1; same or documented improved contract
+  - Connection pooling; graceful shutdown; Docker/Compose; healthcheck
+  - Observability: request ID, structured logs; optional metrics
   - Deployable as container; horizontally scalable (N instances)
 - **Database**
   - PostgreSQL remains; only API (and optional tooling) connect
