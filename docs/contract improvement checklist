@@ -1,0 +1,7 @@
+When suggesting API contract changes, consider:
+- Standard error envelope (code, message, details, request_id)
+- Consistent pagination (cursor-based preferred)
+- Rate limiting headers and 429 behavior
+- ETag/If-None-Match for heavy GETs
+- Idempotency-Key for POST/PUT/PATCH
+- Token strategy: prefer httpOnly cookies for web if feasible; Bearer for iOS; CSRF mitigation if cookies used
