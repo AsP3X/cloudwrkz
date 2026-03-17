@@ -9,23 +9,40 @@ mod routes;
 use axum::Router;
 use std::net::SocketAddr;
 use tower_http::cors::{AllowHeaders, AllowMethods, CorsLayer};
-use tower_http::trace::TraceLayer;
+use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
+use tracing::Level;
 use tracing_subscriber::EnvFilter;
+use axum::http::Method;
 
 use config::AppConfig;
+
+fn init_logging() {
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let use_json = std::env::var("LOG_FORMAT").as_deref() == Ok("json");
+    let fmt = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(true)
+        .with_thread_ids(false)
+        .with_file(false)
+        .with_line_number(false);
+    if use_json {
+        fmt.json()
+            .with_current_span(false)
+            .with_span_list(false)
+            .init();
+    } else {
+        fmt.init();
+    }
+}
 
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
-
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .init();
+    init_logging();
 
     let config = AppConfig::from_env();
-    tracing::info!("Starting CloudWrkz API on {}", config.bind_addr());
+    tracing::info!(bind = %config.bind_addr(), "Starting CloudWrkz API");
 
     let pool = db::create_pool(&config.database_url)
         .await
@@ -44,7 +61,11 @@ async fn main() {
         .nest("/api/v1", v1)
         .merge(routes::health::router(pool.clone()))
         .layer(cors)
-        .layer(TraceLayer::new_for_http())
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
+                .on_response(DefaultOnResponse::new().level(Level::INFO)),
+        )
         .layer(tower_http::limit::RequestBodyLimitLayer::new(
             config.max_body_size,
         ));
@@ -54,7 +75,7 @@ async fn main() {
         .await
         .expect("Failed to bind");
 
-    tracing::info!("Listening on {addr}");
+    tracing::info!(%addr, "Listening");
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
@@ -63,9 +84,26 @@ async fn main() {
 }
 
 fn build_cors(config: &AppConfig) -> CorsLayer {
+    // When allow_credentials is true, CORS forbids * for headers and methods; use explicit/mirror.
+    let (methods, headers) = if config.cors_origins.is_empty() {
+        (AllowMethods::any(), AllowHeaders::any())
+    } else {
+        (
+            AllowMethods::list([
+                Method::GET,
+                Method::POST,
+                Method::PUT,
+                Method::PATCH,
+                Method::DELETE,
+                Method::OPTIONS,
+            ]),
+            AllowHeaders::mirror_request(),
+        )
+    };
+
     let mut cors = CorsLayer::new()
-        .allow_methods(AllowMethods::any())
-        .allow_headers(AllowHeaders::any());
+        .allow_methods(methods)
+        .allow_headers(headers);
 
     if config.cors_origins.is_empty() {
         cors = cors
@@ -77,9 +115,7 @@ fn build_cors(config: &AppConfig) -> CorsLayer {
             .iter()
             .filter_map(|o| o.parse().ok())
             .collect();
-        cors = cors
-            .allow_origin(origins)
-            .allow_credentials(true);
+        cors = cors.allow_origin(origins).allow_credentials(true);
     }
 
     cors

@@ -1,4 +1,17 @@
+import { log } from "@/lib/logger";
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || "/api/v1";
+
+/** API error body: { error: { code, message, fields? } } */
+function getErrorMessage(data: unknown, statusText: string): string {
+  if (data && typeof data === "object" && "error" in data) {
+    const err = (data as { error?: { message?: string } | string }).error;
+    if (typeof err === "string") return err;
+    if (err && typeof err === "object" && typeof err.message === "string")
+      return err.message;
+  }
+  return statusText || "Request failed";
+}
 
 export class ApiError extends Error {
   constructor(
@@ -16,6 +29,7 @@ async function request<T>(
   options: RequestInit = {},
 ): Promise<T> {
   const url = `${API_BASE_URL}${path}`;
+  const method = (options.method || "GET").toUpperCase();
 
   const headers: HeadersInit = {
     "Content-Type": "application/json",
@@ -27,10 +41,25 @@ async function request<T>(
     (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-    credentials: "include",
+  log.info("API request", { method, path, url });
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers,
+      credentials: "include",
+    });
+  } catch (err) {
+    log.error("API request failed (network)", { method, path, url, err: String(err) });
+    throw err;
+  }
+
+  log.info("API response", {
+    method,
+    path,
+    status: response.status,
+    statusText: response.statusText,
   });
 
   if (response.status === 401) {
@@ -43,13 +72,17 @@ async function request<T>(
     try {
       data = await response.json();
     } catch {
-      // Response body isn't JSON
+      data = undefined;
     }
-    throw new ApiError(
-      response.status,
-      (data as { error?: string })?.error || response.statusText,
-      data,
-    );
+    const message = getErrorMessage(data, response.statusText);
+    log.error("API error response", {
+      method,
+      path,
+      status: response.status,
+      message,
+      body: data,
+    });
+    throw new ApiError(response.status, message, data);
   }
 
   if (response.status === 204) {
@@ -94,6 +127,7 @@ export const api = {
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
     }
+    log.info("API request", { method: "POST", path, url });
     return fetch(url, {
       ...options,
       method: "POST",
@@ -101,18 +135,28 @@ export const api = {
       body: formData,
       credentials: "include",
     }).then(async (response) => {
+      log.info("API response", {
+        method: "POST",
+        path,
+        status: response.status,
+        statusText: response.statusText,
+      });
       if (!response.ok) {
         let data: unknown;
         try {
           data = await response.json();
         } catch {
-          // not json
+          data = undefined;
         }
-        throw new ApiError(
-          response.status,
-          (data as { error?: string })?.error || response.statusText,
-          data,
-        );
+        const message = getErrorMessage(data, response.statusText);
+        log.error("API error response", {
+          method: "POST",
+          path,
+          status: response.status,
+          message,
+          body: data,
+        });
+        throw new ApiError(response.status, message, data);
       }
       return response.json() as Promise<T>;
     });

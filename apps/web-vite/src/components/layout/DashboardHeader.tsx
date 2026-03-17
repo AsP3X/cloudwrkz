@@ -1,6 +1,7 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { log } from "@/lib/logger";
 import { useSidebar } from "./SidebarContext";
 import { getAvatarUrl } from "@/lib/utils/users";
 import type { User } from "@/components/providers/AuthProvider";
@@ -29,7 +30,7 @@ export const DashboardHeader = ({ user }: DashboardHeaderProps) => {
     try {
       await logout();
     } catch (error) {
-      console.error("Logout error:", error);
+      log.error("Logout error", error);
       setIsLoggingOut(false);
     }
   };

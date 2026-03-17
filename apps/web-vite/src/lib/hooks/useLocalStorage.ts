@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { log } from "@/lib/logger";
 
 export function useLocalStorage<T>(
   key: string,
@@ -20,7 +21,7 @@ export function useLocalStorage<T>(
       setStoredValue(valueToStore);
       window.localStorage.setItem(key, JSON.stringify(valueToStore));
     } catch (error) {
-      console.error(`Error setting localStorage key "${key}":`, error);
+      log.error(`Error setting localStorage key "${key}"`, error);
     }
   };
 

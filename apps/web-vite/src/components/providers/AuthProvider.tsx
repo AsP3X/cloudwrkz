@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError } from "@/api/client";
+import { log } from "@/lib/logger";
 import { ROUTES } from "@/lib/constants/routes";
 
 export interface User {
@@ -106,15 +107,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       return { success: false, error: "Login failed" };
     } catch (err) {
+      log.error("Login failed", { err, message: err instanceof Error ? err.message : String(err) });
       if (err instanceof ApiError) {
         return { success: false, error: err.message };
       }
-      return { success: false, error: "An unexpected error occurred" };
+      const message = err instanceof Error ? err.message : "Network or server error";
+      return { success: false, error: message || "An unexpected error occurred" };
     }
   };
 
   const register = async (data: { name: string; email: string; password: string; confirmPassword: string }) => {
     try {
+      log.info("Register attempt", { email: data.email });
       await api.post<RegisterApiResponse>("/auth/register", {
         name: data.name,
         email: data.email,
@@ -123,10 +127,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       return { success: true };
     } catch (err) {
+      log.error("Register failed", {
+        err,
+        message: err instanceof Error ? err.message : String(err),
+        email: data.email,
+        status: err instanceof ApiError ? err.status : undefined,
+      });
       if (err instanceof ApiError) {
         return { success: false, error: err.message };
       }
-      return { success: false, error: "An unexpected error occurred" };
+      const message = err instanceof Error ? err.message : "Network or server error";
+      return { success: false, error: message || "An unexpected error occurred" };
     }
   };
 

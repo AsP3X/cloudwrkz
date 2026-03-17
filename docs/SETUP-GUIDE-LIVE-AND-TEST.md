@@ -86,17 +86,26 @@ Default credentials:
 
 **Option A: Docker Compose**
 
+From the **repository root**:
+
 ```bash
-# From repo root; ensure postgres is running first
+# Ensure postgres is running first
 docker compose up -d postgres
+
+# Build the API image (first time or after code changes; may take several minutes)
+docker compose build api
+
+# Start the API (runs migrations on startup)
 docker compose up -d api
 ```
 
 The API will:
 
-- Build the Rust image (first time may take several minutes)
-- Run migrations from `apps/api/migrations/`
+- Use the image built by `docker compose build api`
+- Run migrations from `apps/api/migrations/` on startup
 - Listen on **http://localhost:8080**
+
+To rebuild and restart after code changes: `docker compose build api && docker compose up -d api`.
 
 **Option B: Run the API binary locally**
 
@@ -148,7 +157,27 @@ pnpm dev
 
 The app will be at **http://localhost:5173**.
 
-### Step 2.5 — Quick sanity check (test env)
+### Step 2.5 — Database seeding (modules & permissions)
+
+With the **Rust API**, seeding is done via SQL migrations. No separate Node/Prisma seed script is needed.
+
+- **When it runs:** The API runs all migrations in `apps/api/migrations/` on startup (including the seed migration). So if you start the API with Docker Compose or `cargo run`, the database is seeded automatically after the schema is applied.
+- **What gets seeded:** The migration `002_seed_data.sql` inserts:
+  - **Modules:** `tickets`, `timetracking`, `todos`, `links` (all enabled so `/me` returns them).
+  - **Permissions:** The full set of permission rows (e.g. `tickets.view`, `admin.db.view_entries`, `links.create`) required for the API and web UI.
+- **Idempotent:** The seed uses `ON CONFLICT (key) DO UPDATE`, so re-running migrations (or restarting the API) will upsert and not duplicate rows.
+- **Re-seed or run migrations via CLI (recommended):** A Rust CLI in `apps/cli` provides an executable that runs seed and other DB tasks. From **repo root** (with `DATABASE_URL` set, e.g. from `apps/api/.env`):
+  ```bash
+  cargo build --release -p cloudwrkz-cli
+  export DATABASE_URL="postgresql://cloudwrkz:cloudwrkz_dev_password@localhost:5432/cloudwrkz"  # or use apps/api/.env
+  ./target/release/cloudwrkz-cli db seed    # Run seed SQL only (idempotent)
+  ./target/release/cloudwrkz-cli db migrate # Run all pending migrations
+  ./target/release/cloudwrkz-cli db status   # Check connection
+  ./target/release/cloudwrkz-cli db stats    # Table row counts
+  ```
+  See `apps/cli/README.md` for details. Alternatively, restart the API (Docker or `cargo run`) to apply pending migrations on startup.
+
+### Step 2.6 — Quick sanity check (test env)
 
 - **API health:** open http://localhost:8080/api/health — expect JSON with `"status": "healthy"` when DB is up.
 - **API ping:** http://localhost:8080/api/ping — expect `{"ok": true}`.
@@ -183,6 +212,7 @@ POSTGRES_PASSWORD=<strong-random-password>
 **Option A: Docker Compose (API + Postgres on same host)**
 
 ```bash
+docker compose --env-file .env.production build api
 docker compose --env-file .env.production up -d postgres
 # Wait for postgres to be healthy, then:
 docker compose --env-file .env.production up -d api
@@ -207,6 +237,7 @@ Set production env for the API service:
 - `DATABASE_URL` pointing at your Postgres
 
 ```bash
+docker compose --env-file .env.production build api
 docker compose --env-file .env.production up -d api
 ```
 
@@ -378,7 +409,8 @@ Expected: `200 OK` with `{"name":"Test User","email":"test@example.com","modules
 ### 4.4 — Full test environment in one go
 
 ```bash
-# Terminal 1: start everything
+# Terminal 1: build and start everything (from repo root)
+docker compose build api
 docker compose up -d
 
 # Terminal 2: start web dev server
@@ -438,6 +470,9 @@ curl -s http://localhost:8080/api/ping
 | `SESSION_MAX_AGE` | No       | `604800` (7 days) | Session TTL in seconds                         |
 | `MAX_BODY_SIZE`   | No       | `10485760` (10MB) | Max request body in bytes                      |
 | `RUST_LOG`        | No       | `info`            | Log level (e.g. `info`, `cloudwrkz_api=debug`) |
+| `LOG_FORMAT`      | No       | (plain text)      | Set to `json` for one-JSON-object-per-line (for log aggregators) |
+
+**Monitoring:** The API logs at INFO by default: startup, listen address, and each HTTP request (method, path, status, latency). Use `RUST_LOG=debug` for more detail. Set `LOG_FORMAT=json` in production so tools (Datadog, CloudWatch, etc.) can parse logs; each line is a single JSON object with `timestamp`, `level`, `target`, and `message`/fields.
 
 ### Web (`apps/web-vite/.env`)
 

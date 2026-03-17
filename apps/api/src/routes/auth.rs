@@ -1,6 +1,7 @@
 use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
 use chrono::Utc;
 use sqlx::Row;
+use tracing::{info, warn};
 
 use crate::auth::extractors::AuthUser;
 use crate::auth::password::{hash_password, verify_password};
@@ -23,7 +24,9 @@ async fn login(
     Json(body): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, AppError> {
     let email = body.email.to_lowercase().trim().to_string();
+    info!(path = "/auth/login", email = %email, "auth request");
     if email.is_empty() || body.password.is_empty() {
+        warn!(path = "/auth/login", "invalid email or password (empty)");
         return Err(AppError::unauthorized("Invalid email or password"));
     }
 
@@ -35,7 +38,10 @@ async fn login(
     .bind(&email)
     .fetch_optional(&state.pool)
     .await?
-    .ok_or_else(|| AppError::unauthorized("Invalid email or password"))?;
+    .ok_or_else(|| {
+        warn!(path = "/auth/login", email = %email, "user not found or invalid password");
+        AppError::unauthorized("Invalid email or password")
+    })?;
 
     let user_id: String = user.get("id");
     let user_email: String = user.get("email");
@@ -127,20 +133,25 @@ async fn register(
 ) -> Result<(StatusCode, Json<RegisterResponse>), AppError> {
     let email = body.email.to_lowercase().trim().to_string();
     let name = body.name.trim().to_string();
+    info!(path = "/auth/register", email = %email, name_len = name.len(), "auth request");
 
     if name.len() < 2 {
+        warn!(path = "/auth/register", email = %email, "validation: name too short");
         return Err(AppError::bad_request("Name must be at least 2 characters"));
     }
     if email.is_empty() || !email.contains('@') {
+        warn!(path = "/auth/register", email = %email, "validation: invalid email");
         return Err(AppError::bad_request("Invalid email address"));
     }
     if body.password.len() < 8 {
+        warn!(path = "/auth/register", email = %email, "validation: password too short");
         return Err(AppError::bad_request(
             "Password must be at least 8 characters",
         ));
     }
     if let Some(ref confirm) = body.confirm_password {
         if *confirm != body.password {
+            warn!(path = "/auth/register", email = %email, "validation: passwords do not match");
             return Err(AppError::bad_request("Passwords do not match"));
         }
     }
@@ -152,6 +163,7 @@ async fn register(
             .await?;
 
     if existing.is_some() {
+        warn!(path = "/auth/register", email = %email, "conflict: email already exists");
         return Err(AppError::conflict(
             "An account with this email already exists",
         ));
@@ -160,8 +172,14 @@ async fn register(
     let password = body.password.clone();
     let hashed = tokio::task::spawn_blocking(move || hash_password(&password))
         .await
-        .map_err(|_| AppError::internal("Failed to hash password"))?
-        .map_err(|_| AppError::internal("Failed to hash password"))?;
+        .map_err(|e| {
+            warn!(path = "/auth/register", email = %email, "hash task join error: {:?}", e);
+            AppError::internal("Failed to hash password")
+        })?
+        .map_err(|_| {
+            warn!(path = "/auth/register", email = %email, "password hash failed");
+            AppError::internal("Failed to hash password")
+        })?;
 
     let user_id = crate::id::new_cuid();
 
@@ -175,8 +193,13 @@ async fn register(
     .bind(&name)
     .bind(&hashed)
     .execute(&state.pool)
-    .await?;
+    .await
+    .map_err(|e| {
+        warn!(path = "/auth/register", email = %email, "db insert failed: {:?}", e);
+        e
+    })?;
 
+    info!(path = "/auth/register", email = %email, user_id = %user_id, "register success");
     Ok((
         StatusCode::CREATED,
         Json(RegisterResponse {

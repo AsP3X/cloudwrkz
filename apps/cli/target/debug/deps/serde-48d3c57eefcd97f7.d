@@ -1,0 +1,14 @@
+/Users/nvorberg/Documents/Cloudwrkz/apps/cli/target/debug/deps/serde-48d3c57eefcd97f7.d: /Users/nvorberg/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/nvorberg/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/nvorberg/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/nvorberg/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/nvorberg/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/nvorberg/Documents/Cloudwrkz/apps/cli/target/debug/build/serde-c0c83e196afbc015/out/private.rs
+
+/Users/nvorberg/Documents/Cloudwrkz/apps/cli/target/debug/deps/libserde-48d3c57eefcd97f7.rlib: /Users/nvorberg/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/nvorberg/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/nvorberg/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/nvorberg/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/nvorberg/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/nvorberg/Documents/Cloudwrkz/apps/cli/target/debug/build/serde-c0c83e196afbc015/out/private.rs
+
+/Users/nvorberg/Documents/Cloudwrkz/apps/cli/target/debug/deps/libserde-48d3c57eefcd97f7.rmeta: /Users/nvorberg/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/nvorberg/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/nvorberg/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/nvorberg/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/nvorberg/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/nvorberg/Documents/Cloudwrkz/apps/cli/target/debug/build/serde-c0c83e196afbc015/out/private.rs
+
+/Users/nvorberg/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs:
+/Users/nvorberg/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs:
+/Users/nvorberg/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs:
+/Users/nvorberg/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs:
+/Users/nvorberg/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs:
+/Users/nvorberg/Documents/Cloudwrkz/apps/cli/target/debug/build/serde-c0c83e196afbc015/out/private.rs:
+
+# env-dep:OUT_DIR=/Users/nvorberg/Documents/Cloudwrkz/apps/cli/target/debug/build/serde-c0c83e196afbc015/out
