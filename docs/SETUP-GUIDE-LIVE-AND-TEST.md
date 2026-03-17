@@ -1,0 +1,456 @@
+# CloudWrkz — Setup Guide (Test & Live Host)
+
+Step-by-step guide to set up the CloudWrkz project in a **test/development** environment and on a **production/live** host. The stack consists of:
+
+- **Web** — Vite + React SPA (static assets, CDN-ready)
+- **API** — Rust (Axum + SQLx) HTTP API
+- **Database** — PostgreSQL 16
+- **Optional** — pgAdmin for DB management; load balancer/reverse proxy in production
+
+---
+
+## Table of contents
+
+1. [Prerequisites](#1-prerequisites)
+2. [Test / development environment](#2-test--development-environment)
+3. [Live / production host](#3-live--production-host)
+4. [Verification and testing](#4-verification-and-testing)
+5. [Troubleshooting](#5-troubleshooting)
+
+---
+
+## 1. Prerequisites
+
+### All environments
+
+- **Git** — to clone the repository
+- **Docker** and **Docker Compose** — to run PostgreSQL (and optionally the API) in containers
+- **Node.js** ≥ 18 (LTS recommended) and **pnpm** ≥ 9 — for the web app
+- **Rust** toolchain (optional for local API dev) — `rustup` with `stable`; required only if you run the API binary directly instead of via Docker
+
+### Test environment only
+
+- Docker Compose v2+
+- (Optional) Rust + Cargo if you want to run the API without Docker
+
+### Live host
+
+- A host (VPS, cloud VM, or bare metal) with a public IP or domain
+- **Reverse proxy** — Nginx, Caddy, or Traefik for HTTPS and routing to API and static web
+- **SSL** — e.g. Let's Encrypt (Caddy/Nginx can handle this)
+- (Recommended) A way to run long-lived processes — systemd, Docker, or an orchestration platform (e.g. Kubernetes)
+
+---
+
+## 2. Test / development environment
+
+### Step 2.1 — Clone the repository
+
+```bash
+git clone <your-repo-url> Cloudwrkz
+cd Cloudwrkz
+```
+
+### Step 2.2 — Set up the database (PostgreSQL)
+
+**Option A: Docker Compose (recommended)**
+
+From the **repository root**:
+
+```bash
+# Start PostgreSQL (and optionally pgAdmin)
+docker compose up -d postgres
+
+# Optional: start pgAdmin for DB management at http://localhost:5050
+docker compose up -d postgres pgadmin
+```
+
+Default credentials:
+
+- **PostgreSQL:** user `cloudwrkz`, password `cloudwrkz_dev_password`, database `cloudwrkz`, port `5432`
+- **pgAdmin:** email `admin@cloudwrkz.test`, password `admin`
+
+**Option B: Local PostgreSQL**
+
+- Install PostgreSQL 16 and create a database and user, e.g.:
+
+  ```sql
+  CREATE USER cloudwrkz WITH PASSWORD 'your_password';
+  CREATE DATABASE cloudwrkz OWNER cloudwrkz;
+  ```
+
+- Use this connection string in the next steps:
+  `postgresql://cloudwrkz:your_password@localhost:5432/cloudwrkz`
+
+### Step 2.3 — Run the API (Rust)
+
+**Option A: Docker Compose**
+
+```bash
+# From repo root; ensure postgres is running first
+docker compose up -d postgres
+docker compose up -d api
+```
+
+The API will:
+
+- Build the Rust image (first time may take several minutes)
+- Run migrations from `apps/api/migrations/`
+- Listen on **http://localhost:8080**
+
+**Option B: Run the API binary locally**
+
+1. Install Rust: https://rustup.rs/
+2. Create env file and start the API:
+
+```bash
+cd apps/api
+cp .env.example .env
+# Edit .env and set DATABASE_URL to your Postgres
+cargo run
+```
+
+The API runs on **http://localhost:8080** (or the port set in `API_PORT`).
+
+### Step 2.4 — Configure and run the Web app (Vite)
+
+1. Install dependencies from the **repository root**:
+
+```bash
+pnpm install
+```
+
+2. Configure the web app to talk to the API:
+
+```bash
+cd apps/web-vite
+cp .env.example .env
+```
+
+3. Edit `apps/web-vite/.env`:
+
+- **If API is on the same machine (Docker or local binary):**
+  - `VITE_API_URL=http://localhost:8080/api/v1`
+- **If you use Vite's dev proxy** (see `vite.config.ts`), you can keep the default and ensure the proxy target is `http://localhost:8080`.
+
+4. Start the dev server:
+
+```bash
+# From repo root
+pnpm --filter web-vite dev
+```
+
+Or from `apps/web-vite`:
+
+```bash
+pnpm dev
+```
+
+The app will be at **http://localhost:5173**.
+
+### Step 2.5 — Quick sanity check (test env)
+
+- **API health:** open http://localhost:8080/api/health — expect JSON with `"status": "healthy"` when DB is up.
+- **API ping:** http://localhost:8080/api/ping — expect `{"ok": true}`.
+- **Web:** open http://localhost:5173 — you should see the app; register or log in (hits the Rust API).
+
+---
+
+## 3. Live / production host
+
+### Step 3.1 — Prepare the host
+
+- Install Docker and Docker Compose (or your chosen runtime).
+- Point a **domain** (e.g. `app.example.com`, `api.example.com`) to the host's IP (A/AAAA records).
+- (Recommended) Use a reverse proxy with HTTPS (e.g. Caddy, Nginx, Traefik).
+
+### Step 3.2 — Clone and configure environment
+
+```bash
+git clone <your-repo-url> /opt/cloudwrkz   # or your chosen path
+cd /opt/cloudwrkz
+```
+
+Create a **production** env file (do not commit secrets):
+
+```bash
+# .env.production at repo root
+POSTGRES_PASSWORD=<strong-random-password>
+```
+
+### Step 3.3 — Database on the live host
+
+**Option A: Docker Compose (API + Postgres on same host)**
+
+```bash
+docker compose --env-file .env.production up -d postgres
+# Wait for postgres to be healthy, then:
+docker compose --env-file .env.production up -d api
+```
+
+**Option B: Managed PostgreSQL**
+
+- Create a PostgreSQL 16 instance (e.g. AWS RDS, DigitalOcean, Supabase).
+- Note the connection string (e.g. `postgresql://user:pass@host:5432/cloudwrkz?sslmode=require`).
+- The API runs migrations on startup automatically.
+
+### Step 3.4 — API on the live host
+
+**Option A: Docker**
+
+Set production env for the API service:
+
+- `CORS_ORIGINS=https://app.example.com`
+- `COOKIE_DOMAIN=.example.com`
+- `COOKIE_SECURE=true`
+- `RUST_LOG=info`
+- `DATABASE_URL` pointing at your Postgres
+
+```bash
+docker compose --env-file .env.production up -d api
+```
+
+**Option B: Binary + systemd**
+
+1. Build the API on the host or in CI:
+
+   ```bash
+   cd apps/api
+   cargo build --release
+   ```
+
+2. Copy `target/release/cloudwrkz-api` and the `migrations/` folder to the server.
+
+3. Create a systemd unit (e.g. `/etc/systemd/system/cloudwrkz-api.service`):
+
+   ```ini
+   [Unit]
+   Description=CloudWrkz API
+   After=network.target postgresql.service
+
+   [Service]
+   Type=simple
+   ExecStart=/opt/cloudwrkz/cloudwrkz-api
+   WorkingDirectory=/opt/cloudwrkz
+   Environment=DATABASE_URL=postgresql://cloudwrkz:PASSWORD@localhost:5432/cloudwrkz
+   Environment=API_HOST=0.0.0.0
+   Environment=API_PORT=8080
+   Environment=CORS_ORIGINS=https://app.example.com
+   Environment=COOKIE_SECURE=true
+   Environment=RUST_LOG=info
+   Restart=always
+   RestartSec=5
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+4. Enable and start:
+
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now cloudwrkz-api
+   ```
+
+### Step 3.5 — Web app build and static hosting
+
+1. **Build the web app** with the **production API URL**:
+
+```bash
+cd apps/web-vite
+export VITE_API_URL="https://api.example.com/api/v1"
+export VITE_APP_NAME="CloudWrkz"
+pnpm build
+```
+
+2. **Deploy the contents of `dist/`** to your static host:
+
+   - **Nginx:** copy `dist/` to e.g. `/var/www/cloudwrkz` and serve the folder; set `try_files $uri $uri/ /index.html` for SPA routing.
+   - **Caddy:** point a `file_server` at the `dist/` directory.
+   - **Object storage + CDN:** upload `dist/` to S3/R2/GCS and configure the CDN to use `index.html` for 404s (SPA fallback).
+
+### Step 3.6 — Reverse proxy and HTTPS
+
+**Example with Caddy** (automatic HTTPS via Let's Encrypt):
+
+```text
+api.example.com {
+    reverse_proxy localhost:8080
+}
+
+app.example.com {
+    root * /var/www/cloudwrkz
+    file_server
+    try_files {path} /index.html
+}
+```
+
+**Example with Nginx:**
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name api.example.com;
+    # SSL managed by certbot
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name app.example.com;
+    # SSL managed by certbot
+
+    root /var/www/cloudwrkz;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+```
+
+### Step 3.7 — Production checklist
+
+- [ ] `DATABASE_URL` uses a strong password and (if remote) `?sslmode=require`
+- [ ] `CORS_ORIGINS` lists only your real web origin(s) (e.g. `https://app.example.com`)
+- [ ] `COOKIE_SECURE=true` and `COOKIE_DOMAIN` set if using cookies
+- [ ] `VITE_API_URL` at build time points to the production API (e.g. `https://api.example.com/api/v1`)
+- [ ] HTTPS everywhere; no API or web over plain HTTP in production
+- [ ] Firewall: only 80/443 (and optionally 22) open; API port (8080) not exposed publicly if behind a reverse proxy
+- [ ] Backups configured for PostgreSQL data volume
+
+---
+
+## 4. Verification and testing
+
+### 4.1 — Health and readiness
+
+| Check         | URL                          | Expected                              |
+|--------------|-------------------------------|---------------------------------------|
+| API health   | `GET /api/health`            | `{"status":"healthy","services":...}` |
+| API readiness| `GET /api/ready`             | `{"ready":true}`                      |
+| API ping     | `GET /api/ping`              | `{"ok":true}`                         |
+
+### 4.2 — Auth flow (curl examples)
+
+**Register:**
+
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Test User","email":"test@example.com","password":"password123","confirm_password":"password123"}'
+```
+
+Expected: `201 Created` with `{"message":"Account created successfully.","user_id":"...","email":"..."}`
+
+**Login:**
+
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password123"}'
+```
+
+Expected: `200 OK` with `{"token":"...","user":{"name":"Test User","email":"test@example.com"}}`
+
+**Me (authenticated):**
+
+```bash
+curl http://localhost:8080/api/v1/me \
+  -H "Authorization: Bearer <token-from-login>"
+```
+
+Expected: `200 OK` with `{"name":"Test User","email":"test@example.com","modules":[...]}`
+
+### 4.3 — Web app (manual)
+
+1. Open the web app in a browser (test: http://localhost:5173; live: https://app.example.com).
+2. Register a new user and log in.
+3. Confirm dashboard loads and no console/network errors related to CORS or wrong API URL.
+
+### 4.4 — Full test environment in one go
+
+```bash
+# Terminal 1: start everything
+docker compose up -d
+
+# Terminal 2: start web dev server
+pnpm install
+cd apps/web-vite && cp .env.example .env && pnpm dev
+
+# Terminal 3: verify
+curl -s http://localhost:8080/api/health | python3 -m json.tool
+curl -s http://localhost:8080/api/ping
+```
+
+---
+
+## 5. Troubleshooting
+
+### API won't start
+
+- **"Failed to create database pool"** — Check `DATABASE_URL` (host, port, user, password, DB name). If Postgres is in Docker, use the service name `postgres` as host when the API runs in the same Compose stack.
+- **"Failed to run migrations"** — Ensure the DB user has CREATE TABLE rights; check that `apps/api/migrations/` exists and is included in the Docker image or next to the binary.
+- **Port 8080 in use** — Change `API_PORT` (and the Compose port mapping) to another port.
+
+### Web app can't reach the API
+
+- **CORS errors** — Add the exact origin of the web app (e.g. `http://localhost:5173` or `https://app.example.com`) to `CORS_ORIGINS` (comma-separated, no trailing slash).
+- **401 on /me or after login** — Ensure the request includes `Authorization: Bearer <token>` and the token is from `/api/v1/auth/login`.
+- **Wrong API URL** — Rebuild the web app with the correct `VITE_API_URL`; for production this must be set at **build** time (not runtime).
+
+### Database connection from host to Docker
+
+- From the host, use `localhost:5432` with the same user/password/database.
+- If both API and Postgres are in the same Compose project, use hostname `postgres` and port `5432` in `DATABASE_URL`.
+
+### Docker API healthcheck failing
+
+- The default healthcheck uses `curl`. If the API image doesn't include it, add to the Dockerfile runtime stage:
+  `RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*`
+
+### iOS or other clients
+
+- Point the client's base URL to your API (e.g. `https://api.example.com`).
+- Use the versioned paths: login at `POST /api/v1/auth/login`, me at `GET /api/v1/me`, with `Authorization: Bearer <token>`.
+
+---
+
+## Environment variable reference
+
+### API (`apps/api/.env`)
+
+| Variable          | Required | Default           | Description                                    |
+|-------------------|----------|-------------------|------------------------------------------------|
+| `DATABASE_URL`    | Yes      | —                 | PostgreSQL connection string                   |
+| `API_HOST`        | No       | `0.0.0.0`        | Bind address                                   |
+| `API_PORT`        | No       | `8080`            | Listen port                                    |
+| `CORS_ORIGINS`    | Yes*     | —                 | Comma-separated allowed origins                |
+| `COOKIE_DOMAIN`   | No       | —                 | Domain for session cookie                      |
+| `COOKIE_SECURE`   | No       | `false`           | `true` in production (HTTPS only)              |
+| `SESSION_MAX_AGE` | No       | `604800` (7 days) | Session TTL in seconds                         |
+| `MAX_BODY_SIZE`   | No       | `10485760` (10MB) | Max request body in bytes                      |
+| `RUST_LOG`        | No       | `info`            | Log level (e.g. `info`, `cloudwrkz_api=debug`) |
+
+### Web (`apps/web-vite/.env`)
+
+| Variable        | Required | Default        | Description                    |
+|-----------------|----------|----------------|--------------------------------|
+| `VITE_API_URL`  | Yes      | `/api/v1`      | API base URL (set at build)    |
+| `VITE_APP_NAME` | No       | `CloudWrkz`    | App name in UI                 |
+
+---
+
+## Summary
+
+| Environment | Database         | API                    | Web                                  |
+|-------------|------------------|------------------------|--------------------------------------|
+| **Test**    | Docker Postgres  | Docker or `cargo run`  | `pnpm dev` (Vite dev server)         |
+| **Live**    | Docker or managed| Docker or systemd      | Build `pnpm build`; serve `dist/` via Nginx/Caddy/CDN |
