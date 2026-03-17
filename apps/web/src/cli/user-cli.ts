@@ -1,0 +1,3600 @@
+#!/usr/bin/env node
+
+/**
+ * User Management CLI Tool
+ * 
+ * Usage:
+ *   pnpm cli user create <email> <password> [name]
+ *   pnpm cli user delete <email>
+ *   pnpm cli user list [--status=ACTIVE] [--role=USER]
+ *   pnpm cli user show <email>
+ *   pnpm cli user update-status <email> <status>
+ *   pnpm cli user update-role <email> <role>
+ *   pnpm cli user update-password <email> <newPassword>
+ */
+
+import { prisma } from "../lib/db/prisma";
+import { hashPassword } from "../lib/utils/auth";
+import { formatUserName } from "../lib/utils/users";
+import chalk from "chalk";
+import {
+  prompt,
+  promptPassword,
+  select,
+  confirm,
+  separator,
+  header,
+  success,
+  error,
+  warning,
+  info,
+  createSpinner,
+  createTable,
+  formatStatus,
+  formatRole,
+  sectionHeader,
+  displayKeyValue,
+  notice,
+} from "./prompts";
+
+// Get args - when called from index.ts, "user" is already removed
+// When called directly, we need to handle it
+const args = process.argv.slice(2);
+const commandArgs = args[0] === "user" ? args.slice(1) : args;
+
+// Check if this file is being run directly (not imported)
+// When imported, process.argv[1] won't match this file path
+// Also check if we're being called through index.ts (which includes "index.ts" or "cli/index")
+const isRunDirectly = process.argv[1]?.includes("user-cli");
+const isCalledFromIndex = process.argv[1]?.includes("cli/index") || process.argv[1]?.includes("index.ts");
+// Only execute if we have command args (non-interactive mode) or if run directly
+const shouldExecute = isRunDirectly || (isCalledFromIndex && commandArgs.length > 0);
+
+// Only show help and exit if run directly with no args, or called from index with no args
+// But NOT if we're being imported for interactive mode (which happens when args.length === 0 in interactive mode)
+if (isRunDirectly && commandArgs.length === 0) {
+  console.log(`
+User Management CLI Tool
+
+Commands:
+  create <email> <password> [name]     Create a new user
+  delete <email|number>                Permanently delete a user and all associated data
+  reactivate <email|number>            Reactivate a deleted user account
+  list [--status=STATUS] [--role=ROLE] List users with optional filters
+  show <email>                         Show user details
+  update-status <email|number> <status> Update user status (PENDING|ACTIVE|SUSPENDED|DELETED)
+  update-role <email|number> <role>    Update user role (USER|ADMIN|MODERATOR|AGENT)
+  update-password <email|number> <password> Update user password
+  cookie-accept <email|number>         Accept cookie consent for a user
+  cookie-revoke <email|number>         Revoke cookie consent for a user
+  cookie-status <email|number>         Check cookie consent status for a user
+  verify <email|number>                Verify user email and optionally activate account
+  ban <email|number> <reason>          Ban a user account
+  unban <email|number> <reason>        Unban a user account
+
+User Selection:
+  You can select users by email or by number. Use 'list' command first to see user numbers.
+  Numbers are 1-based (first user = 1, second user = 2, etc.)
+
+Examples:
+  # Create a user
+  pnpm cli user create admin@example.com SecurePass123 "Admin User"
+  
+  # List users (to see numbers)
+  pnpm cli user list
+  pnpm cli user list --status=ACTIVE --role=ADMIN
+  
+  # Show user details
+  pnpm cli user show user@example.com
+  
+  # Update status (by email or number)
+  pnpm cli user update-status user@example.com ACTIVE
+  pnpm cli user update-status 1 ACTIVE  # Select first user from list
+  
+  # Update role (by email or number)
+  pnpm cli user update-role user@example.com ADMIN
+  pnpm cli user update-role 2 MODERATOR  # Select second user from list
+  
+  # Update password (by email or number)
+  pnpm cli user update-password user@example.com NewPassword123
+  pnpm cli user update-password 1 SecureNewPass123  # Select first user from list
+  
+  # Cookie consent management (by email or number)
+  pnpm cli user cookie-accept user@example.com
+  pnpm cli user cookie-revoke user@example.com
+  pnpm cli user cookie-status user@example.com
+  
+  # Verify user email (by email or number)
+  pnpm cli user verify user@example.com
+  pnpm cli user verify 1  # Verify first user from list
+  
+  # Delete user (by email or number)
+  pnpm cli user delete user@example.com
+  pnpm cli user delete 1  # Delete first user from list
+  
+  # Reactivate deleted user (by original email or number)
+  pnpm cli user reactivate user@example.com
+  pnpm cli user reactivate 1  # Reactivate first deleted user from list
+  
+  # Ban user (by email or number)
+  pnpm cli user ban user@example.com "Violation of terms of service"
+  pnpm cli user ban 1 "Spam activity"  # Ban first user from list
+  
+  # Unban user (by email or number)
+  pnpm cli user unban user@example.com "Appeal approved"
+  pnpm cli user unban 1 "Mistake corrected"  # Unban first banned user from list
+
+Status Options: PENDING, ACTIVE, SUSPENDED, DELETED, BANNED
+Role Options: USER, ADMIN, MODERATOR, AGENT
+`);
+  process.exit(0);
+}
+
+const command = commandArgs[0];
+
+// Only run main if there's a command (non-interactive mode) and file is run directly or called from index
+if (shouldExecute && command) {
+  async function main() {
+    try {
+      switch (command) {
+        case "create":
+          await handleCreate();
+          break;
+        case "delete":
+          await handleDelete();
+          break;
+        case "list":
+          await handleList();
+          break;
+        case "show":
+          await handleShow();
+          break;
+        case "update-status":
+          await handleUpdateStatus();
+          break;
+        case "update-role":
+          await handleUpdateRole();
+          break;
+        case "update-password":
+          await handleUpdatePassword();
+          break;
+        case "cookie-accept":
+          await handleCookieAccept();
+          break;
+        case "cookie-revoke":
+          await handleCookieRevoke();
+          break;
+        case "cookie-status":
+          await handleCookieStatus();
+          break;
+        case "verify":
+          await handleVerify();
+          break;
+        case "reactivate":
+          await handleReactivate();
+          break;
+        case "ban":
+          await handleBan();
+          break;
+        case "unban":
+          await handleUnban();
+          break;
+        default:
+          console.error(`Unknown command: ${command}`);
+          process.exit(1);
+      }
+    } catch (error) {
+      console.error("Error:", error instanceof Error ? error.message : error);
+      process.exit(1);
+    } finally {
+      await prisma.$disconnect();
+    }
+  }
+
+  main();
+}
+
+async function handleCreate() {
+  if (commandArgs.length < 3) {
+    console.error("Usage: create <email> <password> [name]");
+    process.exit(1);
+  }
+
+  const email = commandArgs[1];
+  const password = commandArgs[2];
+  const name = commandArgs[3] || null;
+
+  // Validate email format
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    console.error("Invalid email format");
+    process.exit(1);
+  }
+
+  // Check if user already exists
+  const existing = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true },
+  });
+
+  if (existing) {
+    console.error(`User with email ${email} already exists`);
+    process.exit(1);
+  }
+
+  // Hash password
+  const hashedPassword = await hashPassword(password);
+
+  // Create user
+  const user = await prisma.user.create({
+    data: {
+      email,
+      password: hashedPassword,
+      name,
+      role: "USER",
+      // When created via CLI, users should start with a verified email
+      // and an ACTIVE account status to simplify admin bootstrap flows.
+      status: "ACTIVE",
+      emailVerified: true,
+    },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      status: true,
+      createdAt: true,
+    },
+  });
+
+  console.log("✅ User created successfully!");
+  console.log(JSON.stringify(user, null, 2));
+}
+
+async function handleDelete() {
+  if (commandArgs.length < 2) {
+    console.error("Usage: delete <email|number>");
+    console.error("\nTip: Use 'list' command first to see user numbers");
+    console.error("\n⚠️  WARNING: This will permanently delete the user and all associated data!");
+    console.error("   - All tickets created by the user");
+    console.error("   - All ticket comments by the user");
+    console.error("   - All sessions");
+    console.error("   - All group memberships");
+    console.error("   - This action cannot be undone!");
+    process.exit(1);
+  }
+
+  const selection = commandArgs[1];
+  let userId: string;
+  let userEmail: string;
+  let userName: string | null;
+
+  // Check if selection is a number (for selecting from list)
+  const userIndex = parseInt(selection) - 1;
+  
+  if (!isNaN(userIndex) && userIndex >= 0) {
+    // Selection is a number - fetch users and select by index
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        role: true,
+        _count: {
+          select: {
+            createdTickets: true,
+            assignedTickets: true,
+            ticketComments: true,
+            sessions: true,
+            groupMemberships: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (userIndex >= users.length) {
+      console.error(`Invalid user number: ${selection}. Only ${users.length} user(s) found.`);
+      console.error("\nRun 'pnpm cli user list' to see available users.");
+      process.exit(1);
+    }
+
+    const selectedUser = users[userIndex];
+    userId = selectedUser.id;
+    userEmail = selectedUser.email;
+    userName = selectedUser.name;
+
+    console.log(`\n⚠️  WARNING: You are about to permanently delete:`);
+    console.log(`   User: ${userEmail}${userName ? ` (${userName})` : ""}`);
+    console.log(`   Status: ${selectedUser.status} | Role: ${selectedUser.role}`);
+    console.log(`\n   This will preserve:`);
+    console.log(`   - ${selectedUser._count.createdTickets} ticket(s) created by this user (with anonymized name)`);
+    console.log(`   - ${selectedUser._count.ticketComments} ticket comment(s) (with anonymized name)`);
+    console.log(`\n   This will delete:`);
+    console.log(`   - ${selectedUser._count.sessions} session(s)`);
+    console.log(`   - ${selectedUser._count.groupMemberships} group membership(s)`);
+    console.log(`   - ${selectedUser._count.assignedTickets} ticket assignment(s) will be unassigned`);
+    console.log(`\n   The user account will be permanently deleted and cannot be recovered.`);
+    console.log(`   Tickets and comments will be preserved with anonymized name: "Deleted User (UUID)"`);
+    console.log(`\n   This action CANNOT be undone!`);
+  } else {
+    // Selection is an email
+    const user = await prisma.user.findUnique({
+      where: { email: selection },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        role: true,
+        _count: {
+          select: {
+            createdTickets: true,
+            assignedTickets: true,
+            ticketComments: true,
+            sessions: true,
+            groupMemberships: true,
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      console.error(`User with email ${selection} not found`);
+      process.exit(1);
+    }
+
+    userId = user.id;
+    userEmail = user.email;
+    userName = user.name;
+
+    console.log(`\n⚠️  WARNING: You are about to permanently delete:`);
+    console.log(`   User: ${userEmail}${userName ? ` (${userName})` : ""}`);
+    console.log(`   Status: ${user.status} | Role: ${user.role}`);
+    console.log(`\n   This will preserve:`);
+    console.log(`   - ${user._count.createdTickets} ticket(s) created by this user (with anonymized name)`);
+    console.log(`   - ${user._count.ticketComments} ticket comment(s) (with anonymized name)`);
+    console.log(`\n   This will delete:`);
+    console.log(`   - ${user._count.sessions} session(s)`);
+    console.log(`   - ${user._count.groupMemberships} group membership(s)`);
+    console.log(`   - ${user._count.assignedTickets} ticket assignment(s) will be unassigned`);
+    console.log(`\n   The user account will be permanently deleted and cannot be recovered.`);
+    console.log(`   Tickets and comments will be preserved with anonymized name: "Deleted User (UUID)"`);
+    console.log(`\n   This action CANNOT be undone!`);
+  }
+
+  // Delete all user sessions first
+  await prisma.session.deleteMany({
+    where: { userId },
+  });
+
+  // Generate anonymized name: "Deleted User (full UUID)"
+  const anonymizedName = `Deleted User (${userId})`;
+
+  // Update all tickets created by this user to store anonymized name with full UUID
+  // Note: We keep createdById set to preserve the full UUID reference, even though the user is deleted
+  // The foreign key constraint will be handled by Prisma's onDelete: SetNull when the user is actually deleted
+  await prisma.ticket.updateMany({
+    where: { createdById: userId },
+    data: {
+      createdByName: anonymizedName,
+      // Keep createdById to preserve UUID reference - it will be nulled by Prisma's onDelete: SetNull
+    },
+  });
+
+  // Update all ticket comments by this user to store anonymized name and nullify user reference
+  await prisma.ticketComment.updateMany({
+    where: { userId },
+    data: {
+      authorName: anonymizedName,
+      userId: null,
+    },
+  });
+
+  // Unassign user from any assigned tickets (SetNull will handle this automatically, but we do it explicitly)
+  await prisma.ticket.updateMany({
+    where: { assignedToId: userId },
+    data: {
+      assignedToId: null,
+    },
+  });
+
+  // Delete group memberships
+  await prisma.groupMembership.deleteMany({
+    where: { userId },
+  });
+
+  // Hard delete: Permanently delete the user
+  await prisma.user.delete({
+    where: { id: userId },
+  });
+
+  console.log(`\n✅ User ${userEmail}${userName ? ` (${userName})` : ""} has been permanently deleted.`);
+  console.log(`   Tickets and comments preserved with anonymized name: "${anonymizedName}"`);
+}
+
+async function handleReactivate() {
+  if (commandArgs.length < 2) {
+    console.error("Usage: reactivate <email|number>");
+    console.error("\nTip: Use 'list --status=DELETED' command first to see deleted users");
+    process.exit(1);
+  }
+
+  const selection = commandArgs[1];
+  let userId: string;
+  let userEmail: string;
+  let userName: string | null;
+  let originalEmail: string | null;
+
+  // Check if selection is a number (for selecting from list)
+  const userIndex = parseInt(selection) - 1;
+  
+  if (!isNaN(userIndex) && userIndex >= 0) {
+    // Selection is a number - fetch deleted users and select by index
+    const users = await prisma.user.findMany({
+      where: { status: "DELETED" },
+      select: {
+        id: true,
+        email: true,
+        originalEmail: true,
+        name: true,
+        status: true,
+        emailVerified: true,
+      },
+      orderBy: { scheduledForDeletionAt: "desc" },
+    });
+
+    if (userIndex >= users.length) {
+      console.error(`Invalid user number: ${selection}. Only ${users.length} deleted user(s) found.`);
+      console.error("\nRun 'pnpm cli user list --status=DELETED' to see deleted users.");
+      process.exit(1);
+    }
+
+    const selectedUser = users[userIndex];
+    userId = selectedUser.id;
+    userEmail = selectedUser.email;
+    userName = selectedUser.name;
+    originalEmail = selectedUser.originalEmail;
+
+    console.log(`Selected user: ${originalEmail || userEmail}${userName ? ` (${userName})` : ""} - Status: ${selectedUser.status}`);
+  } else {
+    // Selection is an email - try to find by originalEmail or email
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { originalEmail: selection },
+          { email: selection },
+        ],
+        status: "DELETED",
+      },
+      select: {
+        id: true,
+        email: true,
+        originalEmail: true,
+        name: true,
+        status: true,
+        emailVerified: true,
+      },
+    });
+
+    if (!user) {
+      console.error(`Deleted user with email ${selection} not found`);
+      console.error("\nRun 'pnpm cli user list --status=DELETED' to see deleted users.");
+      process.exit(1);
+    }
+
+    userId = user.id;
+    userEmail = user.email;
+    userName = user.name;
+    originalEmail = user.originalEmail;
+  }
+
+  // Handle legacy deleted users (deleted before originalEmail field was added)
+  // If originalEmail is not set but email doesn't contain "_deleted_", use current email
+  if (!originalEmail) {
+    if (userEmail.includes("_deleted_")) {
+      console.error(`Cannot reactivate user: original email not found. User may have been permanently deleted.`);
+      process.exit(1);
+    } else {
+      // Legacy deleted user - email wasn't modified, so use current email
+      originalEmail = userEmail;
+      console.log(`Note: This appears to be a legacy deleted user. Using current email as original email.`);
+    }
+  }
+
+  // Check if the original email is now taken by another active user
+  const emailTaken = await prisma.user.findFirst({
+    where: {
+      email: originalEmail,
+      status: { not: "DELETED" },
+    },
+    select: { id: true, email: true },
+  });
+
+  if (emailTaken) {
+    console.error(`Cannot reactivate user: The email ${originalEmail} is now in use by another user.`);
+    process.exit(1);
+  }
+
+  // Reactivate: restore original email, set status to ACTIVE (or PENDING if email not verified)
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { emailVerified: true },
+  });
+
+  const newStatus = user?.emailVerified ? "ACTIVE" : "PENDING";
+
+  const reactivatedUser = await prisma.user.update({
+    where: { id: userId },
+    data: {
+      email: originalEmail,
+      originalEmail: null,
+      status: newStatus,
+      scheduledForDeletionAt: null,
+    },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      status: true,
+      emailVerified: true,
+    },
+  });
+
+  console.log(`\n✅ User ${reactivatedUser.email}${userName ? ` (${userName})` : ""} has been reactivated.`);
+  console.log(`   Status: ${reactivatedUser.status}`);
+  console.log(`   Email verified: ${reactivatedUser.emailVerified ? "Yes" : "No"}`);
+  if (!reactivatedUser.emailVerified) {
+    console.log(`   Note: User will need to verify their email before full access is granted.`);
+  }
+}
+
+async function handleBan() {
+  if (commandArgs.length < 3) {
+    console.error("Usage: ban <email|number> <reason>");
+    console.error("\nTip: Use 'list' command first to see user numbers");
+    process.exit(1);
+  }
+
+  const selection = commandArgs[1];
+  const reason = commandArgs.slice(2).join(" "); // Join all remaining args as reason
+  let userId: string;
+  let userEmail: string;
+  let userName: string | null;
+
+  if (!reason.trim()) {
+    console.error("Ban reason is required");
+    process.exit(1);
+  }
+
+  // Check if selection is a number (for selecting from list)
+  const userIndex = parseInt(selection) - 1;
+  
+  if (!isNaN(userIndex) && userIndex >= 0) {
+    // Selection is a number - fetch users and select by index
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        role: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (userIndex >= users.length) {
+      console.error(`Invalid user number: ${selection}. Only ${users.length} user(s) found.`);
+      console.error("\nRun 'pnpm cli user list' to see available users.");
+      process.exit(1);
+    }
+
+    const selectedUser = users[userIndex];
+    userId = selectedUser.id;
+    userEmail = selectedUser.email;
+    userName = selectedUser.name;
+
+    if (selectedUser.status === "BANNED") {
+      console.error(`User ${userEmail} is already banned`);
+      process.exit(1);
+    }
+
+    console.log(`Selected user: ${userEmail}${userName ? ` (${userName})` : ""} - Current status: ${selectedUser.status}`);
+  } else {
+    // Selection is an email
+    const user = await prisma.user.findUnique({
+      where: { email: selection },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        role: true,
+      },
+    });
+
+    if (!user) {
+      console.error(`User with email ${selection} not found`);
+      process.exit(1);
+    }
+
+    if (user.status === "BANNED") {
+      console.error(`User ${user.email} is already banned`);
+      process.exit(1);
+    }
+
+    userId = user.id;
+    userEmail = user.email;
+    userName = user.name;
+  }
+
+  // Delete all sessions to force logout
+  await prisma.session.deleteMany({
+    where: { userId },
+  });
+
+  // Update user status to BANNED and set ban details
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      status: "BANNED",
+      bannedAt: new Date(),
+      banReason: reason.trim(),
+    },
+  });
+
+  console.log(`✅ User ${userEmail}${userName ? ` (${userName})` : ""} has been banned.`);
+  console.log(`   Reason: ${reason.trim()}`);
+  console.log(`   All active sessions have been terminated.`);
+}
+
+async function handleUnban() {
+  if (commandArgs.length < 3) {
+    console.error("Usage: unban <email|number> <reason>");
+    console.error("\nTip: Use 'list --status=BANNED' command first to see banned users");
+    process.exit(1);
+  }
+
+  const selection = commandArgs[1];
+  const reason = commandArgs.slice(2).join(" "); // Join all remaining args as reason
+  let userId: string;
+  let userEmail: string;
+  let userName: string | null;
+
+  if (!reason.trim()) {
+    console.error("Unban reason is required");
+    process.exit(1);
+  }
+
+  // Check if selection is a number (for selecting from list)
+  const userIndex = parseInt(selection) - 1;
+  
+  if (!isNaN(userIndex) && userIndex >= 0) {
+    // Selection is a number - fetch banned users and select by index
+    const users = await prisma.user.findMany({
+      where: { status: "BANNED" },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        role: true,
+        bannedAt: true,
+        banReason: true,
+      },
+      orderBy: { bannedAt: "desc" },
+    });
+
+    if (userIndex >= users.length) {
+      console.error(`Invalid user number: ${selection}. Only ${users.length} banned user(s) found.`);
+      console.error("\nRun 'pnpm cli user list --status=BANNED' to see banned users.");
+      process.exit(1);
+    }
+
+    const selectedUser = users[userIndex];
+    userId = selectedUser.id;
+    userEmail = selectedUser.email;
+    userName = selectedUser.name;
+
+    console.log(`Selected user: ${userEmail}${userName ? ` (${userName})` : ""} - Status: ${selectedUser.status}`);
+    if (selectedUser.banReason) {
+      console.log(`   Original ban reason: ${selectedUser.banReason}`);
+    }
+  } else {
+    // Selection is an email
+    const user = await prisma.user.findUnique({
+      where: { email: selection },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        role: true,
+        bannedAt: true,
+        banReason: true,
+      },
+    });
+
+    if (!user) {
+      console.error(`User with email ${selection} not found`);
+      process.exit(1);
+    }
+
+    if (user.status !== "BANNED") {
+      console.error(`User ${user.email} is not currently banned (status: ${user.status})`);
+      process.exit(1);
+    }
+
+    userId = user.id;
+    userEmail = user.email;
+    userName = user.name;
+  }
+
+  // Import utilities for unban handling
+  const { isModuleEnabled } = await import("../server/actions/modules");
+  const { MODULE_KEYS } = await import("../lib/constants/modules");
+  const { logTicketActivity } = await import("../server/utils/ticket-activity-logger");
+
+  // Find pending unban requests for this user
+  const pendingRequests = await prisma.unbanRequest.findMany({
+    where: {
+      userId,
+      status: "PENDING",
+    },
+    include: {
+      ticket: {
+        select: {
+          id: true,
+          status: true,
+        },
+      },
+    },
+  });
+
+  // Update user status to ACTIVE and clear ban fields
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      status: "ACTIVE",
+      emailVerified: true,
+      bannedAt: null,
+      banReason: null,
+    },
+  });
+
+  // Handle unbanning: update unban requests and tickets
+  const ticketsEnabled = await isModuleEnabled(MODULE_KEYS.TICKETS);
+  const now = new Date();
+  const reasonText = reason.trim();
+
+  // Update all pending unban requests to APPROVED
+  for (const request of pendingRequests) {
+    await prisma.unbanRequest.update({
+      where: { id: request.id },
+      data: {
+        status: "APPROVED",
+        reviewedBy: null, // CLI doesn't have an admin user context
+        reviewedAt: now,
+        adminNotes: reasonText,
+      },
+    });
+
+    // If there's an associated ticket and tickets module is enabled, mark it as resolved
+    if (request.ticketId && request.ticket && ticketsEnabled) {
+      // Update ticket status to RESOLVED
+      await prisma.ticket.update({
+        where: { id: request.ticketId },
+        data: {
+          status: "RESOLVED",
+          resolvedAt: now,
+        },
+      });
+
+      // Add a comment to the ticket explaining the unban
+      await prisma.ticketComment.create({
+        data: {
+          ticketId: request.ticketId,
+          userId: null, // CLI doesn't have a user context
+          authorName: "System (CLI)",
+          content: `User has been unbanned via CLI.\n\nReason: ${reasonText}`,
+          isAgentOnly: false,
+        },
+      });
+
+      // Log ticket resolution activity
+      try {
+        await logTicketActivity(
+          request.ticketId,
+          "RESOLVED",
+          userId, // Use the unbanned user's ID as a fallback
+          "System (CLI)",
+          request.ticket.status,
+          "RESOLVED"
+        );
+      } catch (err) {
+        // Log error but don't fail the unban operation
+        console.error("Error logging ticket activity:", err);
+      }
+    }
+  }
+
+  console.log(`✅ User ${userEmail}${userName ? ` (${userName})` : ""} has been unbanned.`);
+  console.log(`   Reason: ${reasonText}`);
+  if (pendingRequests.length > 0) {
+    console.log(`   ${pendingRequests.length} pending unban request(s) have been approved.`);
+  }
+}
+
+async function handleList() {
+  const where: any = {};
+
+  // Parse filters
+  for (let i = 1; i < commandArgs.length; i++) {
+    const arg = commandArgs[i];
+    if (arg.startsWith("--status=")) {
+      const status = arg.split("=")[1];
+      if (!["PENDING", "ACTIVE", "SUSPENDED", "DELETED"].includes(status)) {
+        console.error(`Invalid status: ${status}`);
+        process.exit(1);
+      }
+      where.status = status;
+    } else if (arg.startsWith("--role=")) {
+      const role = arg.split("=")[1];
+      if (!["USER", "ADMIN", "MODERATOR", "AGENT"].includes(role)) {
+        console.error(`Invalid role: ${role}`);
+        process.exit(1);
+      }
+      where.role = role;
+    }
+  }
+
+  const users = await prisma.user.findMany({
+    where,
+    select: {
+      id: true,
+      email: true,
+      originalEmail: true,
+      name: true,
+      role: true,
+      status: true,
+      emailVerified: true,
+      cookieConsentAccepted: true,
+      cookieConsentAcceptedAt: true,
+      createdAt: true,
+      lastLoginAt: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (users.length === 0) {
+    console.log("No users found");
+    return;
+  }
+
+  console.log(`\nFound ${users.length} user(s):\n`);
+  users.forEach((u, index) => {
+    const displayName = formatUserName(u);
+    const emailDisplay = u.status === "DELETED" && u.originalEmail 
+      ? ` (original: ${u.originalEmail})`
+      : u.status !== "DELETED" && u.email !== displayName 
+        ? ` (${u.email})`
+        : "";
+    console.log(`${index + 1}. ${displayName} - ${u.status} [${u.role}]${emailDisplay}`);
+  });
+  console.table(
+    users.map((u: typeof users[0]) => ({
+      Email: u.status === "DELETED" && u.originalEmail ? u.originalEmail : (u.status === "DELETED" ? formatUserName(u) : u.email),
+      Name: u.status === "DELETED" ? formatUserName(u) : (u.name || "-"),
+      Role: u.role,
+      Status: u.status,
+      Verified: u.emailVerified ? "✓" : "✗",
+      "Cookie Consent": u.cookieConsentAccepted ? "✓" : "✗",
+      Created: u.createdAt.toLocaleDateString(),
+      "Last Login": u.lastLoginAt?.toLocaleDateString() || "Never",
+    }))
+  );
+}
+
+async function handleShow() {
+  if (commandArgs.length < 2) {
+    console.error("Usage: show <email|number>");
+    console.error("\nTip: Use 'list' command first to see user numbers");
+    process.exit(1);
+  }
+
+  const selection = commandArgs[1];
+  let email: string;
+
+  // Check if selection is a number (for selecting from list)
+  const userIndex = parseInt(selection) - 1;
+  
+  if (!isNaN(userIndex) && userIndex >= 0) {
+    // Selection is a number - fetch users and select by index
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        name: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (userIndex >= users.length) {
+      console.error(`Invalid user number: ${selection}. Only ${users.length} user(s) found.`);
+      console.error("\nRun 'pnpm cli user list' to see available users.");
+      process.exit(1);
+    }
+
+    email = users[userIndex].email;
+    console.log(`Selected user: ${email}${users[userIndex].name ? ` (${users[userIndex].name})` : ""}`);
+  } else {
+    // Selection is an email
+    email = selection;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      status: true,
+      emailVerified: true,
+      avatar: true,
+      bio: true,
+      cookieConsentAccepted: true,
+      cookieConsentAcceptedAt: true,
+      createdAt: true,
+      updatedAt: true,
+      lastLoginAt: true,
+      lastLoginIp: true,
+      _count: {
+        select: {
+          createdTickets: true,
+          assignedTickets: true,
+          ticketComments: true,
+          sessions: true,
+        },
+      },
+    },
+  });
+
+  if (!user) {
+    console.error(`User with email ${email} not found`);
+    process.exit(1);
+  }
+
+  console.log("\n📋 User Details:\n");
+  console.log(`ID:              ${user.id}`);
+  console.log(`Email:           ${user.email}`);
+  console.log(`Name:            ${user.name || "-"}`);
+  console.log(`Role:            ${user.role}`);
+  console.log(`Status:          ${user.status}`);
+  console.log(`Email Verified:  ${user.emailVerified ? "Yes" : "No"}`);
+  console.log(`Cookie Consent:  ${user.cookieConsentAccepted ? "Yes" : "No"}`);
+  if (user.cookieConsentAcceptedAt) {
+    console.log(`Consent Date:    ${user.cookieConsentAcceptedAt.toLocaleString()}`);
+  }
+  console.log(`Avatar:          ${user.avatar || "-"}`);
+  console.log(`Bio:             ${user.bio || "-"}`);
+  console.log(`Created:         ${user.createdAt.toLocaleString()}`);
+  console.log(`Updated:         ${user.updatedAt.toLocaleString()}`);
+  console.log(`Last Login:      ${user.lastLoginAt?.toLocaleString() || "Never"}`);
+  console.log(`Last Login IP:   ${user.lastLoginIp || "-"}`);
+  console.log(`\n📊 Statistics:`);
+  console.log(`  Created Tickets:    ${user._count.createdTickets}`);
+  console.log(`  Assigned Tickets:    ${user._count.assignedTickets}`);
+  console.log(`  Ticket Comments:     ${user._count.ticketComments}`);
+  console.log(`  Active Sessions:     ${user._count.sessions}`);
+}
+
+async function handleUpdateStatus() {
+  if (commandArgs.length < 3) {
+    console.error("Usage: update-status <email|number> <status>");
+    console.error("Status must be one of: PENDING, ACTIVE, SUSPENDED, DELETED");
+    console.error("\nTip: Use 'list' command first to see user numbers");
+    process.exit(1);
+  }
+
+  const selection = commandArgs[1];
+  const status = commandArgs[2].toUpperCase();
+  let email: string;
+
+  // Check if selection is a number (for selecting from list)
+  const userIndex = parseInt(selection) - 1;
+  
+  if (!isNaN(userIndex) && userIndex >= 0) {
+    // Selection is a number - fetch users and select by index
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        role: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (userIndex >= users.length) {
+      console.error(`Invalid user number: ${selection}. Only ${users.length} user(s) found.`);
+      console.error("\nRun 'pnpm cli user list' to see available users.");
+      process.exit(1);
+    }
+
+    email = users[userIndex].email;
+    console.log(`Selected user: ${email}${users[userIndex].name ? ` (${users[userIndex].name})` : ""} - Current status: ${users[userIndex].status}`);
+  } else {
+    // Selection is an email
+    email = selection;
+  }
+
+  // Validate status
+  if (!["PENDING", "ACTIVE", "SUSPENDED", "DELETED"].includes(status)) {
+    console.error(`Invalid status: ${status}`);
+    console.error("Status must be one of: PENDING, ACTIVE, SUSPENDED, DELETED");
+    process.exit(1);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, email: true, name: true, status: true },
+  });
+
+  if (!user) {
+    console.error(`User with email ${email} not found`);
+    process.exit(1);
+  }
+
+  if (user.status === status) {
+    console.log(`User status is already ${status}`);
+    return;
+  }
+
+  await prisma.user.update({
+    where: { email },
+    data: { status: status as any },
+  });
+
+  console.log(`✅ User ${user.email}${user.name ? ` (${user.name})` : ""} status updated: ${user.status} → ${status}`);
+}
+
+async function handleUpdateRole() {
+  if (commandArgs.length < 3) {
+    console.error("Usage: update-role <email|number> <role>");
+    console.error("Role must be one of: USER, ADMIN, MODERATOR, AGENT");
+    console.error("\nTip: Use 'list' command first to see user numbers");
+    process.exit(1);
+  }
+
+  const selection = commandArgs[1];
+  const role = commandArgs[2].toUpperCase();
+  let email: string;
+
+  // Check if selection is a number (for selecting from list)
+  const userIndex = parseInt(selection) - 1;
+  
+  if (!isNaN(userIndex) && userIndex >= 0) {
+    // Selection is a number - fetch users and select by index
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (userIndex >= users.length) {
+      console.error(`Invalid user number: ${selection}. Only ${users.length} user(s) found.`);
+      console.error("\nRun 'pnpm cli user list' to see available users.");
+      process.exit(1);
+    }
+
+    email = users[userIndex].email;
+    console.log(`Selected user: ${email}${users[userIndex].name ? ` (${users[userIndex].name})` : ""} - Current role: ${users[userIndex].role}`);
+  } else {
+    // Selection is an email
+    email = selection;
+  }
+
+  if (!["USER", "ADMIN", "MODERATOR", "AGENT"].includes(role)) {
+    console.error(`Invalid role: ${role}`);
+    console.error("Role must be one of: USER, ADMIN, MODERATOR, AGENT");
+    process.exit(1);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, email: true, name: true, role: true },
+  });
+
+  if (!user) {
+    console.error(`User with email ${email} not found`);
+    process.exit(1);
+  }
+
+  if (user.role === role) {
+    console.log(`User role is already ${role}`);
+    return;
+  }
+
+  await prisma.user.update({
+    where: { email },
+    data: { role: role as any },
+  });
+
+  console.log(`✅ User ${user.email}${user.name ? ` (${user.name})` : ""} role updated: ${user.role} → ${role}`);
+}
+
+async function handleUpdatePassword() {
+  if (commandArgs.length < 3) {
+    console.error("Usage: update-password <email|number> <newPassword>");
+    console.error("\nTip: Use 'list' command first to see user numbers");
+    process.exit(1);
+  }
+
+  const selection = commandArgs[1];
+  const newPassword = commandArgs[2];
+  let email: string;
+
+  // Check if selection is a number (for selecting from list)
+  const userIndex = parseInt(selection) - 1;
+  
+  if (!isNaN(userIndex) && userIndex >= 0) {
+    // Selection is a number - fetch users and select by index
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        name: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (userIndex >= users.length) {
+      console.error(`Invalid user number: ${selection}. Only ${users.length} user(s) found.`);
+      console.error("\nRun 'pnpm cli user list' to see available users.");
+      process.exit(1);
+    }
+
+    email = users[userIndex].email;
+    console.log(`Selected user: ${email}${users[userIndex].name ? ` (${users[userIndex].name})` : ""}`);
+  } else {
+    // Selection is an email
+    email = selection;
+  }
+
+  if (newPassword.length < 8) {
+    console.error("Password must be at least 8 characters long");
+    process.exit(1);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, email: true, name: true },
+  });
+
+  if (!user) {
+    console.error(`User with email ${email} not found`);
+    process.exit(1);
+  }
+
+  const hashedPassword = await hashPassword(newPassword);
+
+  await prisma.user.update({
+    where: { email },
+    data: { password: hashedPassword },
+  });
+
+  console.log(`✅ Password updated for user ${user.email}${user.name ? ` (${user.name})` : ""}`);
+}
+
+async function handleCookieAccept() {
+  if (commandArgs.length < 2) {
+    console.error("Usage: cookie-accept <email|number>");
+    console.error("\nTip: Use 'list' command first to see user numbers");
+    process.exit(1);
+  }
+
+  const selection = commandArgs[1];
+  let email: string;
+
+  // Check if selection is a number (for selecting from list)
+  const userIndex = parseInt(selection) - 1;
+  
+  if (!isNaN(userIndex) && userIndex >= 0) {
+    // Selection is a number - fetch users and select by index
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        cookieConsentAccepted: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (userIndex >= users.length) {
+      console.error(`Invalid user number: ${selection}. Only ${users.length} user(s) found.`);
+      console.error("\nRun 'pnpm cli user list' to see available users.");
+      process.exit(1);
+    }
+
+    email = users[userIndex].email;
+    console.log(`Selected user: ${email}${users[userIndex].name ? ` (${users[userIndex].name})` : ""} - Current consent: ${users[userIndex].cookieConsentAccepted ? "Accepted" : "Not accepted"}`);
+  } else {
+    // Selection is an email
+    email = selection;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, email: true, name: true, cookieConsentAccepted: true },
+  });
+
+  if (!user) {
+    console.error(`User with email ${email} not found`);
+    process.exit(1);
+  }
+
+  if (user.cookieConsentAccepted) {
+    console.log(`User ${user.email}${user.name ? ` (${user.name})` : ""} has already accepted cookie consent`);
+    return;
+  }
+
+  await prisma.user.update({
+    where: { email },
+    data: {
+      cookieConsentAccepted: true,
+      cookieConsentAcceptedAt: new Date(),
+    },
+  });
+
+  console.log(`✅ Cookie consent accepted for user ${user.email}${user.name ? ` (${user.name})` : ""}`);
+}
+
+async function handleCookieRevoke() {
+  if (commandArgs.length < 2) {
+    console.error("Usage: cookie-revoke <email|number>");
+    console.error("\nTip: Use 'list' command first to see user numbers");
+    process.exit(1);
+  }
+
+  const selection = commandArgs[1];
+  let email: string;
+
+  // Check if selection is a number (for selecting from list)
+  const userIndex = parseInt(selection) - 1;
+  
+  if (!isNaN(userIndex) && userIndex >= 0) {
+    // Selection is a number - fetch users and select by index
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        cookieConsentAccepted: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (userIndex >= users.length) {
+      console.error(`Invalid user number: ${selection}. Only ${users.length} user(s) found.`);
+      console.error("\nRun 'pnpm cli user list' to see available users.");
+      process.exit(1);
+    }
+
+    email = users[userIndex].email;
+    console.log(`Selected user: ${email}${users[userIndex].name ? ` (${users[userIndex].name})` : ""} - Current consent: ${users[userIndex].cookieConsentAccepted ? "Accepted" : "Not accepted"}`);
+  } else {
+    // Selection is an email
+    email = selection;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, email: true, name: true, cookieConsentAccepted: true },
+  });
+
+  if (!user) {
+    console.error(`User with email ${email} not found`);
+    process.exit(1);
+  }
+
+  if (!user.cookieConsentAccepted) {
+    console.log(`User ${user.email}${user.name ? ` (${user.name})` : ""} has not accepted cookie consent yet`);
+    return;
+  }
+
+  await prisma.user.update({
+    where: { email },
+    data: {
+      cookieConsentAccepted: false,
+      cookieConsentAcceptedAt: null,
+    },
+  });
+
+  console.log(`✅ Cookie consent revoked for user ${user.email}${user.name ? ` (${user.name})` : ""}`);
+  console.log(`   The user will see the cookie banner again on their next visit.`);
+}
+
+async function handleCookieStatus() {
+  if (commandArgs.length < 2) {
+    console.error("Usage: cookie-status <email|number>");
+    console.error("\nTip: Use 'list' command first to see user numbers");
+    process.exit(1);
+  }
+
+  const selection = commandArgs[1];
+  let email: string;
+
+  // Check if selection is a number (for selecting from list)
+  const userIndex = parseInt(selection) - 1;
+  
+  if (!isNaN(userIndex) && userIndex >= 0) {
+    // Selection is a number - fetch users and select by index
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        name: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (userIndex >= users.length) {
+      console.error(`Invalid user number: ${selection}. Only ${users.length} user(s) found.`);
+      console.error("\nRun 'pnpm cli user list' to see available users.");
+      process.exit(1);
+    }
+
+    email = users[userIndex].email;
+    console.log(`Selected user: ${email}${users[userIndex].name ? ` (${users[userIndex].name})` : ""}`);
+  } else {
+    // Selection is an email
+    email = selection;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      cookieConsentAccepted: true,
+      cookieConsentAcceptedAt: true,
+    },
+  });
+
+  if (!user) {
+    console.error(`User with email ${email} not found`);
+    process.exit(1);
+  }
+
+  console.log("\n🍪 Cookie Consent Status:\n");
+  console.log(`User:            ${user.email}${user.name ? ` (${user.name})` : ""}`);
+  console.log(`Status:          ${user.cookieConsentAccepted ? "✅ Accepted" : "❌ Not accepted"}`);
+  if (user.cookieConsentAcceptedAt) {
+    console.log(`Accepted Date:   ${user.cookieConsentAcceptedAt.toLocaleString()}`);
+    const daysSince = Math.floor((Date.now() - user.cookieConsentAcceptedAt.getTime()) / (1000 * 60 * 60 * 24));
+    console.log(`Days Since:      ${daysSince} day(s) ago`);
+  } else {
+    console.log(`Accepted Date:   Never`);
+  }
+}
+
+async function handleVerify() {
+  if (commandArgs.length < 2) {
+    console.error("Usage: verify <email|number>");
+    console.error("\nTip: Use 'list' command first to see user numbers");
+    process.exit(1);
+  }
+
+  const selection = commandArgs[1];
+  let email: string;
+
+  // Check if selection is a number (for selecting from list)
+  const userIndex = parseInt(selection) - 1;
+  
+  if (!isNaN(userIndex) && userIndex >= 0) {
+    // Selection is a number - fetch users and select by index
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        emailVerified: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (userIndex >= users.length) {
+      console.error(`Invalid user number: ${selection}. Only ${users.length} user(s) found.`);
+      console.error("\nRun 'pnpm cli user list' to see available users.");
+      process.exit(1);
+    }
+
+    email = users[userIndex].email;
+    console.log(`Selected user: ${email}${users[userIndex].name ? ` (${users[userIndex].name})` : ""} - Email verified: ${users[userIndex].emailVerified ? "Yes" : "No"}, Status: ${users[userIndex].status}`);
+  } else {
+    // Selection is an email
+    email = selection;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, email: true, name: true, status: true, emailVerified: true },
+  });
+
+  if (!user) {
+    console.error(`User with email ${email} not found`);
+    process.exit(1);
+  }
+
+  if (user.emailVerified) {
+    console.log(`User ${user.email}${user.name ? ` (${user.name})` : ""} is already verified`);
+    if (user.status !== "ACTIVE") {
+      console.log(`Note: User status is ${user.status}. Consider updating status to ACTIVE for full access.`);
+    }
+    return;
+  }
+
+  // Update email verification and optionally set status to ACTIVE if PENDING
+  const updateData: { emailVerified: boolean; status?: "ACTIVE" } = {
+    emailVerified: true,
+  };
+
+  if (user.status === "PENDING") {
+    updateData.status = "ACTIVE";
+    await prisma.user.update({
+      where: { email },
+      data: updateData,
+    });
+    console.log(`✅ User ${user.email}${user.name ? ` (${user.name})` : ""} email verified and account activated (status changed from PENDING to ACTIVE)`);
+  } else {
+    await prisma.user.update({
+      where: { email },
+      data: updateData,
+    });
+    console.log(`✅ User ${user.email}${user.name ? ` (${user.name})` : ""} email verified`);
+    if (user.status !== "ACTIVE") {
+      console.log(`Note: User status is ${user.status}. User will need ACTIVE status to access protected pages.`);
+    }
+  }
+}
+
+// Helper function to select user interactively
+async function selectUserInteractively(): Promise<{ id: string; email: string; name: string | null } | null> {
+  const users = await prisma.user.findMany({
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      status: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (users.length === 0) {
+    console.error("No users found");
+    return null;
+  }
+
+  // Display the list of users for selection
+  console.log("\nAvailable users:");
+  users.forEach((u, index) => {
+    console.log(`${index + 1}. ${u.email} - ${u.status} [${u.role}]${u.name ? ` (${u.name})` : ""}`);
+  });
+
+  const userChoice = await prompt("\nEnter user email or number: ");
+  const userIndex = parseInt(userChoice) - 1;
+
+  if (!isNaN(userIndex) && userIndex >= 0 && userIndex < users.length) {
+    return users[userIndex];
+  } else {
+    const user = users.find((u) => u.email.toLowerCase() === userChoice.toLowerCase());
+    if (!user) {
+      console.error(`User not found: ${userChoice}`);
+      return null;
+    }
+    return user;
+  }
+}
+
+// Interactive versions of handlers
+export async function handleCreateInteractive() {
+  try {
+    header("Create New User", "Add a new user account to the system");
+
+    const email = await prompt("Email address:", {
+      required: true,
+      validate: (input) => {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input)) {
+          return "Please enter a valid email address";
+        }
+        return true;
+      },
+    });
+
+    const spinner = createSpinner("Checking if user exists...");
+    spinner.start();
+
+    const existing = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true },
+    });
+
+    if (existing) {
+      spinner.fail("User already exists");
+      error(`User with email ${email} already exists`);
+      return;
+    }
+    spinner.succeed("Email available");
+
+    const password = await promptPassword("Password:", {
+      required: true,
+      validate: (input) => {
+        if (input.length < 8) {
+          return "Password must be at least 8 characters long";
+        }
+        return true;
+      },
+    });
+
+    const confirmPassword = await promptPassword("Confirm password:", {
+      required: true,
+      validate: (input) => {
+        if (input !== password) {
+          return "Passwords do not match";
+        }
+        return true;
+      },
+    });
+
+    const name = await prompt("Full name (optional, press Enter to skip):", {
+      required: false,
+    });
+
+    const role = await select("Select user role:", ["USER", "ADMIN", "MODERATOR", "AGENT"]);
+
+    const spinner2 = createSpinner("Creating user...");
+    spinner2.start();
+
+    const hashedPassword = await hashPassword(password);
+
+    const user = await prisma.user.create({
+      data: {
+        email,
+        password: hashedPassword,
+        name: name || null,
+        role: role as any,
+        // For users created via the interactive CLI, we automatically
+        // mark the email as verified and set the account status to ACTIVE.
+        status: "ACTIVE",
+        emailVerified: true,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        status: true,
+        createdAt: true,
+      },
+    });
+
+    spinner2.succeed("User created successfully");
+
+    separator();
+    sectionHeader("User Created");
+    displayKeyValue("Email", user.email);
+    displayKeyValue("Name", user.name || "-");
+    displayKeyValue("Role", formatRole(user.role));
+    displayKeyValue("Status", formatStatus(user.status));
+    displayKeyValue("Created", user.createdAt.toLocaleString());
+    success("User account has been created successfully!");
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleListInteractive() {
+  try {
+    header("List Users", "View and filter user accounts");
+
+    const statusFilter = await select("Filter by status:", ["All", "PENDING", "ACTIVE", "SUSPENDED", "DELETED"]);
+    const roleFilter = await select("Filter by role:", ["All", "USER", "ADMIN", "MODERATOR", "AGENT"]);
+
+    const where: any = {};
+    if (statusFilter !== "All") {
+      where.status = statusFilter;
+    }
+    if (roleFilter !== "All") {
+      where.role = roleFilter;
+    }
+
+    await handleListWithFilters(where);
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleListWithFilters(where: any) {
+  const spinner = createSpinner("Loading users...");
+  spinner.start();
+
+  try {
+    const users = await prisma.user.findMany({
+      where,
+      select: {
+        id: true,
+        email: true,
+        originalEmail: true,
+        name: true,
+        role: true,
+        status: true,
+        emailVerified: true,
+        cookieConsentAccepted: true,
+        cookieConsentAcceptedAt: true,
+        createdAt: true,
+        lastLoginAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    spinner.succeed(`Found ${users.length} user(s)`);
+
+    if (users.length === 0) {
+      notice("No users found matching the selected filters.", "info");
+      return;
+    }
+
+    separator();
+
+    const table = createTable(
+      ["#", "Email", "Name", "Role", "Status", "Verified", "Cookie Consent", "Created", "Last Login"],
+      { colWidths: [4, 30, 20, 12, 12, 8, 15, 12, 12] }
+    );
+
+    users.forEach((u, index) => {
+      const displayEmail =
+        u.status === "DELETED" && u.originalEmail
+          ? u.originalEmail
+          : u.status === "DELETED"
+            ? formatUserName(u)
+            : u.email;
+      const displayName = u.status === "DELETED" ? formatUserName(u) : u.name || "-";
+
+      table.push([
+        (index + 1).toString(),
+        displayEmail,
+        displayName,
+        formatRole(u.role),
+        formatStatus(u.status),
+        u.emailVerified ? "✓" : "✗",
+        u.cookieConsentAccepted ? "✓" : "✗",
+        u.createdAt.toLocaleDateString(),
+        u.lastLoginAt?.toLocaleDateString() || "Never",
+      ]);
+    });
+
+    console.log(table.toString());
+  } catch (err) {
+    spinner.fail("Failed to load users");
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleShowInteractive() {
+  try {
+    // List users first
+    await handleListWithFilters({});
+    separator();
+
+    const userChoice = await prompt("Enter user email or number: ");
+    const userIndex = parseInt(userChoice) - 1;
+
+    let email: string;
+    const users = await prisma.user.findMany({
+      select: { email: true },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!isNaN(userIndex) && userIndex >= 0 && userIndex < users.length) {
+      email = users[userIndex].email;
+    } else {
+      email = userChoice;
+    }
+
+    // Use existing handleShow logic but set commandArgs temporarily
+    const originalArgs = commandArgs.slice();
+    commandArgs.length = 0;
+    commandArgs.push("show", email);
+    await handleShow();
+    commandArgs.length = 0;
+    commandArgs.push(...originalArgs);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleUpdateStatusInteractive() {
+  try {
+    await handleListWithFilters({});
+    separator();
+
+    const user = await selectUserInteractively();
+    if (!user) return;
+
+    const status = await select("Select new status:", ["PENDING", "ACTIVE", "SUSPENDED", "DELETED"]);
+
+    const originalArgs = commandArgs.slice();
+    commandArgs.length = 0;
+    commandArgs.push("update-status", user.email, status);
+    await handleUpdateStatus();
+    commandArgs.length = 0;
+    commandArgs.push(...originalArgs);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleUpdateRoleInteractive() {
+  try {
+    await handleListWithFilters({});
+    separator();
+
+    const user = await selectUserInteractively();
+    if (!user) return;
+
+    const role = await select("Select new role:", ["USER", "ADMIN", "MODERATOR", "AGENT"]);
+
+    const originalArgs = commandArgs.slice();
+    commandArgs.length = 0;
+    commandArgs.push("update-role", user.email, role);
+    await handleUpdateRole();
+    commandArgs.length = 0;
+    commandArgs.push(...originalArgs);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleUpdatePasswordInteractive() {
+  try {
+    await handleListWithFilters({});
+    separator();
+
+    const user = await selectUserInteractively();
+    if (!user) return;
+
+    const password = await promptPassword("Enter new password: ");
+    if (password.length < 8) {
+      console.error("Password must be at least 8 characters long");
+      return;
+    }
+
+    const confirmPassword = await promptPassword("Confirm password: ");
+    if (password !== confirmPassword) {
+      console.error("Passwords do not match");
+      return;
+    }
+
+    const hashedPassword = await hashPassword(password);
+
+    await prisma.user.update({
+      where: { email: user.email },
+      data: { password: hashedPassword },
+    });
+
+    console.log(`✅ Password updated for user ${user.email}${user.name ? ` (${user.name})` : ""}`);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleCookieAcceptInteractive() {
+  try {
+    await handleListWithFilters({});
+    separator();
+
+    const user = await selectUserInteractively();
+    if (!user) return;
+
+    const originalArgs = commandArgs.slice();
+    commandArgs.length = 0;
+    commandArgs.push("cookie-accept", user.email);
+    await handleCookieAccept();
+    commandArgs.length = 0;
+    commandArgs.push(...originalArgs);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleCookieRevokeInteractive() {
+  try {
+    await handleListWithFilters({});
+    separator();
+
+    const user = await selectUserInteractively();
+    if (!user) return;
+
+    const originalArgs = commandArgs.slice();
+    commandArgs.length = 0;
+    commandArgs.push("cookie-revoke", user.email);
+    await handleCookieRevoke();
+    commandArgs.length = 0;
+    commandArgs.push(...originalArgs);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleCookieStatusInteractive() {
+  try {
+    await handleListWithFilters({});
+    separator();
+
+    const user = await selectUserInteractively();
+    if (!user) return;
+
+    const originalArgs = commandArgs.slice();
+    commandArgs.length = 0;
+    commandArgs.push("cookie-status", user.email);
+    await handleCookieStatus();
+    commandArgs.length = 0;
+    commandArgs.push(...originalArgs);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleVerifyInteractive() {
+  try {
+    await handleListWithFilters({});
+    separator();
+
+    const user = await selectUserInteractively();
+    if (!user) return;
+
+    const originalArgs = commandArgs.slice();
+    commandArgs.length = 0;
+    commandArgs.push("verify", user.email);
+    await handleVerify();
+    commandArgs.length = 0;
+    commandArgs.push(...originalArgs);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleDeleteInteractive() {
+  try {
+    console.log("Delete User\n");
+
+    const user = await selectUserInteractively();
+    if (!user) return;
+
+    separator();
+
+    // Get full user details with counts
+    const fullUser = await prisma.user.findUnique({
+      where: { email: user.email },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        role: true,
+        _count: {
+          select: {
+            createdTickets: true,
+            assignedTickets: true,
+            ticketComments: true,
+            sessions: true,
+            groupMemberships: true,
+          },
+        },
+      },
+    });
+
+    if (!fullUser) {
+      console.error("User not found");
+      return;
+    }
+
+    console.log(`\n⚠️  WARNING: You are about to permanently delete:`);
+    console.log(`   User: ${fullUser.email}${fullUser.name ? ` (${fullUser.name})` : ""}`);
+    console.log(`   Status: ${fullUser.status} | Role: ${fullUser.role}`);
+    console.log(`\n   This will also delete:`);
+    console.log(`   - ${fullUser._count.createdTickets} ticket(s) created by this user`);
+    console.log(`   - ${fullUser._count.ticketComments} ticket comment(s)`);
+    console.log(`   - ${fullUser._count.sessions} session(s)`);
+    console.log(`   - ${fullUser._count.groupMemberships} group membership(s)`);
+    console.log(`   - ${fullUser._count.assignedTickets} ticket assignment(s) will be unassigned`);
+    console.log(`\n   This action CANNOT be undone!`);
+
+    const confirmed = await confirm("\nAre you sure you want to delete this user?", false);
+    if (!confirmed) {
+      console.log("Deletion cancelled.");
+      return;
+    }
+
+    // Delete all user sessions first
+    await prisma.session.deleteMany({
+      where: { userId: fullUser.id },
+    });
+
+    // Generate anonymized name: "Deleted User (full UUID)"
+    const anonymizedName = `Deleted User (${fullUser.id})`;
+
+    // Update all tickets created by this user to store anonymized name with full UUID
+    // Note: We keep createdById set to preserve the full UUID reference, even though the user is deleted
+    // The foreign key constraint will be handled by Prisma's onDelete: SetNull when the user is actually deleted
+    await prisma.ticket.updateMany({
+      where: { createdById: fullUser.id },
+      data: {
+        createdByName: anonymizedName,
+        // Keep createdById to preserve UUID reference - it will be nulled by Prisma's onDelete: SetNull
+      },
+    });
+
+    // Update all ticket comments by this user to store anonymized name and nullify user reference
+    await prisma.ticketComment.updateMany({
+      where: { userId: fullUser.id },
+      data: {
+        authorName: anonymizedName,
+        userId: null,
+      },
+    });
+
+    // Unassign user from any assigned tickets
+    await prisma.ticket.updateMany({
+      where: { assignedToId: fullUser.id },
+      data: {
+        assignedToId: null,
+      },
+    });
+
+    // Delete group memberships
+    await prisma.groupMembership.deleteMany({
+      where: { userId: fullUser.id },
+    });
+
+    // Hard delete: Permanently delete the user
+    await prisma.user.delete({
+      where: { id: fullUser.id },
+    });
+
+    console.log(`\n✅ User ${fullUser.email}${fullUser.name ? ` (${fullUser.name})` : ""} has been permanently deleted.`);
+    console.log(`   Tickets and comments preserved with anonymized name: "${anonymizedName}"`);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+// Interactive handlers that work with a pre-selected user
+export async function handleUpdateStatusInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
+  try {
+    header("Update User Status", `Change status for ${user.email}`);
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: user.email },
+      select: { id: true, email: true, name: true, status: true },
+    });
+
+    if (!currentUser) {
+      error(`User with email ${user.email} not found`);
+      return;
+    }
+
+    sectionHeader("Current Status");
+    displayKeyValue("Current Status", formatStatus(currentUser.status));
+    separator();
+
+    const status = await select("Select new status:", ["PENDING", "ACTIVE", "SUSPENDED", "DELETED"]);
+
+    if (currentUser.status === status) {
+      info(`User status is already ${status}`);
+      return;
+    }
+
+    const confirmed = await confirm(
+      `Are you sure you want to change status from ${currentUser.status} to ${status}?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Status update cancelled");
+      return;
+    }
+
+    const spinner = createSpinner("Updating user status...");
+    spinner.start();
+
+    await prisma.user.update({
+      where: { email: user.email },
+      data: { status: status as any },
+    });
+
+    spinner.succeed("Status updated successfully");
+    success(
+      `User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} status updated: ${formatStatus(currentUser.status)} → ${formatStatus(status)}`
+    );
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleUpdateRoleInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
+  try {
+    header("Update User Role", `Change role for ${user.email}`);
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: user.email },
+      select: { id: true, email: true, name: true, role: true },
+    });
+
+    if (!currentUser) {
+      error(`User with email ${user.email} not found`);
+      return;
+    }
+
+    sectionHeader("Current Role");
+    displayKeyValue("Current Role", formatRole(currentUser.role));
+    separator();
+
+    const role = await select("Select new role:", ["USER", "ADMIN", "MODERATOR", "AGENT"]);
+
+    if (currentUser.role === role) {
+      info(`User role is already ${role}`);
+      return;
+    }
+
+    const confirmed = await confirm(
+      `Are you sure you want to change role from ${currentUser.role} to ${role}?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Role update cancelled");
+      return;
+    }
+
+    const spinner = createSpinner("Updating user role...");
+    spinner.start();
+
+    await prisma.user.update({
+      where: { email: user.email },
+      data: { role: role as any },
+    });
+
+    spinner.succeed("Role updated successfully");
+    success(
+      `User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} role updated: ${formatRole(currentUser.role)} → ${formatRole(role)}`
+    );
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleUpdatePasswordInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
+  try {
+    header("Update Password", `Reset password for ${user.email}`);
+
+    warning("This will change the user's password. They will need to use the new password to log in.");
+
+    const password = await promptPassword("Enter new password:", {
+      required: true,
+      validate: (input) => {
+        if (input.length < 8) {
+          return "Password must be at least 8 characters long";
+        }
+        return true;
+      },
+    });
+
+    const confirmPassword = await promptPassword("Confirm password:", {
+      required: true,
+      validate: (input) => {
+        if (input !== password) {
+          return "Passwords do not match";
+        }
+        return true;
+      },
+    });
+
+    const confirmed = await confirm("Are you sure you want to update the password?", false);
+
+    if (!confirmed) {
+      info("Password update cancelled");
+      return;
+    }
+
+    const spinner = createSpinner("Updating password...");
+    spinner.start();
+
+    const hashedPassword = await hashPassword(password);
+
+    await prisma.user.update({
+      where: { email: user.email },
+      data: { password: hashedPassword },
+    });
+
+    spinner.succeed("Password updated successfully");
+    success(`Password updated for user ${user.email}${user.name ? ` (${user.name})` : ""}`);
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleVerifyInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
+  try {
+    header("Verify Email", `Verify email for ${user.email}`);
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: user.email },
+      select: { id: true, email: true, name: true, status: true, emailVerified: true },
+    });
+
+    if (!currentUser) {
+      error(`User with email ${user.email} not found`);
+      return;
+    }
+
+    sectionHeader("Current Status");
+    displayKeyValue("Email Verified", currentUser.emailVerified ? "Yes ✓" : "No ✗");
+    displayKeyValue("Account Status", formatStatus(currentUser.status));
+    separator();
+
+    if (currentUser.emailVerified) {
+      info(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} is already verified`);
+      if (currentUser.status !== "ACTIVE") {
+        warning(`Note: User status is ${currentUser.status}. Consider updating status to ACTIVE for full access.`);
+      }
+      return;
+    }
+
+    const confirmed = await confirm("Are you sure you want to verify this user's email?", true);
+
+    if (!confirmed) {
+      info("Email verification cancelled");
+      return;
+    }
+
+    const spinner = createSpinner("Verifying email...");
+    spinner.start();
+
+    // Update email verification and optionally set status to ACTIVE if PENDING
+    const updateData: { emailVerified: boolean; status?: "ACTIVE" } = {
+      emailVerified: true,
+    };
+
+    if (currentUser.status === "PENDING") {
+      updateData.status = "ACTIVE";
+      await prisma.user.update({
+        where: { email: user.email },
+        data: updateData,
+      });
+      spinner.succeed("Email verified and account activated");
+      success(
+        `User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} email verified and account activated (status changed from PENDING to ACTIVE)`
+      );
+    } else {
+      await prisma.user.update({
+        where: { email: user.email },
+        data: updateData,
+      });
+      spinner.succeed("Email verified");
+      success(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} email verified`);
+      if (currentUser.status !== "ACTIVE") {
+        warning(`Note: User status is ${currentUser.status}. User will need ACTIVE status to access protected pages.`);
+      }
+    }
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleDeleteInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
+  try {
+    header("Delete User", `Permanently delete ${user.email}`);
+
+    const spinner = createSpinner("Loading user details...");
+    spinner.start();
+
+    const fullUser = await prisma.user.findUnique({
+      where: { email: user.email },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        role: true,
+        _count: {
+          select: {
+            createdTickets: true,
+            assignedTickets: true,
+            ticketComments: true,
+            sessions: true,
+            groupMemberships: true,
+          },
+        },
+      },
+    });
+
+    spinner.succeed("User details loaded");
+
+    if (!fullUser) {
+      error("User not found");
+      return;
+    }
+
+    notice("⚠️  WARNING: This action is PERMANENT and CANNOT be undone!", "error");
+
+    sectionHeader("User Information");
+    displayKeyValue("Email", fullUser.email);
+    displayKeyValue("Name", fullUser.name || "-");
+    displayKeyValue("Status", formatStatus(fullUser.status));
+    displayKeyValue("Role", formatRole(fullUser.role));
+
+    separator();
+
+    sectionHeader("Impact Analysis");
+    const impactTable = createTable(["Action", "Count", "Description"]);
+    impactTable.push([
+      "Preserve",
+      fullUser._count.createdTickets.toString(),
+      "Tickets created (with anonymized name)",
+    ]);
+    impactTable.push([
+      "Preserve",
+      fullUser._count.ticketComments.toString(),
+      "Ticket comments (with anonymized name)",
+    ]);
+    impactTable.push(["Delete", fullUser._count.sessions.toString(), "Active sessions"]);
+    impactTable.push(["Delete", fullUser._count.groupMemberships.toString(), "Group memberships"]);
+    impactTable.push([
+      "Unassign",
+      fullUser._count.assignedTickets.toString(),
+      "Ticket assignments",
+    ]);
+    console.log(impactTable.toString());
+
+    separator();
+
+    const confirmed = await confirm(
+      `Are you absolutely sure you want to PERMANENTLY DELETE user ${fullUser.email}${fullUser.name ? ` (${fullUser.name})` : ""}?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Deletion cancelled");
+      return;
+    }
+
+    const deleteSpinner = createSpinner("Deleting user and cleaning up data...");
+    deleteSpinner.start();
+
+    try {
+      // Delete all user sessions first
+      await prisma.session.deleteMany({
+        where: { userId: fullUser.id },
+      });
+
+      // Generate anonymized name: "Deleted User (full UUID)"
+      const anonymizedName = `Deleted User (${fullUser.id})`;
+
+      // Update all tickets created by this user to store anonymized name with full UUID
+      await prisma.ticket.updateMany({
+        where: { createdById: fullUser.id },
+        data: {
+          createdByName: anonymizedName,
+        },
+      });
+
+      // Update all ticket comments by this user to store anonymized name and nullify user reference
+      await prisma.ticketComment.updateMany({
+        where: { userId: fullUser.id },
+        data: {
+          authorName: anonymizedName,
+          userId: null,
+        },
+      });
+
+      // Unassign user from any assigned tickets
+      await prisma.ticket.updateMany({
+        where: { assignedToId: fullUser.id },
+        data: {
+          assignedToId: null,
+        },
+      });
+
+      // Delete group memberships
+      await prisma.groupMembership.deleteMany({
+        where: { userId: fullUser.id },
+      });
+
+      // Hard delete: Permanently delete the user
+      await prisma.user.delete({
+        where: { id: fullUser.id },
+      });
+
+      deleteSpinner.succeed("User deleted successfully");
+      success(`User ${fullUser.email}${fullUser.name ? ` (${fullUser.name})` : ""} has been permanently deleted.`);
+      info(`Tickets and comments preserved with anonymized name: "${anonymizedName}"`);
+    } catch (err) {
+      deleteSpinner.fail("Failed to delete user");
+      error(err instanceof Error ? err.message : String(err));
+    }
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleReactivateInteractive() {
+  try {
+    console.log("Reactivate Deleted User\n");
+
+    // List deleted users
+    const deletedUsers = await prisma.user.findMany({
+      where: { status: "DELETED" },
+      select: {
+        id: true,
+        email: true,
+        originalEmail: true,
+        name: true,
+        status: true,
+        emailVerified: true,
+      },
+      orderBy: { scheduledForDeletionAt: "desc" },
+    });
+
+    if (deletedUsers.length === 0) {
+      console.log("No deleted users found.");
+      return;
+    }
+
+    console.log(`Found ${deletedUsers.length} deleted user(s):\n`);
+    deletedUsers.forEach((u, index) => {
+      const displayEmail = u.originalEmail || u.email;
+      console.log(`${index + 1}. ${displayEmail}${u.name ? ` (${u.name})` : ""}`);
+    });
+
+    separator();
+
+    const email = await prompt("Enter the original email of the user to reactivate: ");
+    if (!email) {
+      console.error("Email cannot be empty");
+      return;
+    }
+
+    // Find user by originalEmail or email
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { originalEmail: email },
+          { email: email },
+        ],
+        status: "DELETED",
+      },
+      select: {
+        id: true,
+        email: true,
+        originalEmail: true,
+        name: true,
+        status: true,
+        emailVerified: true,
+      },
+    });
+
+    if (!user) {
+      console.error(`Deleted user with email ${email} not found`);
+      return;
+    }
+
+    // Handle legacy deleted users (deleted before originalEmail field was added)
+    // If originalEmail is not set but email doesn't contain "_deleted_", use current email
+    if (!user.originalEmail) {
+      if (user.email.includes("_deleted_")) {
+        console.error(`Cannot reactivate user: original email not found. User may have been permanently deleted.`);
+        return;
+      } else {
+        // Legacy deleted user - email wasn't modified, so use current email
+        user.originalEmail = user.email;
+        console.log(`Note: This appears to be a legacy deleted user. Using current email as original email.`);
+      }
+    }
+
+    // Check if the original email is now taken by another active user
+    const emailTaken = await prisma.user.findFirst({
+      where: {
+        email: user.originalEmail,
+        status: { not: "DELETED" },
+      },
+      select: { id: true, email: true },
+    });
+
+    if (emailTaken) {
+      console.error(`Cannot reactivate user: The email ${user.originalEmail} is now in use by another user.`);
+      return;
+    }
+
+    const confirmed = await confirm(`\nAre you sure you want to reactivate ${user.originalEmail}${user.name ? ` (${user.name})` : ""}?`, false);
+    if (!confirmed) {
+      console.log("Reactivation cancelled.");
+      return;
+    }
+
+    const newStatus = user.emailVerified ? "ACTIVE" : "PENDING";
+
+    const reactivatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        email: user.originalEmail,
+        originalEmail: null,
+        status: newStatus,
+        scheduledForDeletionAt: null,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        emailVerified: true,
+      },
+    });
+
+    console.log(`\n✅ User ${reactivatedUser.email}${user.name ? ` (${user.name})` : ""} has been reactivated.`);
+    console.log(`   Status: ${reactivatedUser.status}`);
+    console.log(`   Email verified: ${reactivatedUser.emailVerified ? "Yes" : "No"}`);
+    if (!reactivatedUser.emailVerified) {
+      console.log(`   Note: User will need to verify their email before full access is granted.`);
+    }
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleBanInteractive() {
+  try {
+    await handleListWithFilters({});
+    separator();
+
+    const user = await selectUserInteractively();
+    if (!user) return;
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: user.email },
+      select: { id: true, email: true, name: true, status: true },
+    });
+
+    if (!currentUser) {
+      error(`User with email ${user.email} not found`);
+      return;
+    }
+
+    if (currentUser.status === "BANNED") {
+      warning(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} is already banned`);
+      return;
+    }
+
+    header("Ban User", `Ban ${currentUser.email}`);
+    sectionHeader("Current Status");
+    displayKeyValue("Status", formatStatus(currentUser.status));
+    separator();
+
+    warning("⚠️  WARNING: This will ban the user account and prevent them from logging in.");
+    info("They will be redirected to a ban page where they can request to be unbanned.");
+
+    const reason = await prompt("Ban reason (required):", {
+      required: true,
+      validate: (input) => {
+        if (!input.trim()) {
+          return "Ban reason is required";
+        }
+        return true;
+      },
+    });
+
+    const confirmed = await confirm(
+      `Are you sure you want to ban ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""}?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Ban cancelled");
+      return;
+    }
+
+    const spinner = createSpinner("Banning user...");
+    spinner.start();
+
+    // Delete all sessions to force logout
+    await prisma.session.deleteMany({
+      where: { userId: currentUser.id },
+    });
+
+    // Update user status to BANNED and set ban details
+    await prisma.user.update({
+      where: { id: currentUser.id },
+      data: {
+        status: "BANNED",
+        bannedAt: new Date(),
+        banReason: reason.trim(),
+      },
+    });
+
+    spinner.succeed("User banned successfully");
+    success(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} has been banned.`);
+    info(`Reason: ${reason.trim()}`);
+    info("All active sessions have been terminated.");
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleUnbanInteractive() {
+  try {
+    await handleListWithFilters({ status: "BANNED" });
+    separator();
+
+    const user = await selectUserInteractively();
+    if (!user) return;
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: user.email },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        bannedAt: true,
+        banReason: true,
+      },
+    });
+
+    if (!currentUser) {
+      error(`User with email ${user.email} not found`);
+      return;
+    }
+
+    if (currentUser.status !== "BANNED") {
+      warning(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} is not currently banned (status: ${formatStatus(currentUser.status)})`);
+      return;
+    }
+
+    header("Unban User", `Unban ${currentUser.email}`);
+    sectionHeader("Ban Information");
+    displayKeyValue("Status", formatStatus(currentUser.status));
+    if (currentUser.bannedAt) {
+      displayKeyValue("Banned On", currentUser.bannedAt.toLocaleString());
+    }
+    if (currentUser.banReason) {
+      displayKeyValue("Ban Reason", currentUser.banReason);
+    }
+    separator();
+
+    info("This will restore the user's access to the platform.");
+    info("Any pending unban requests will be automatically approved and associated tickets will be marked as resolved.");
+
+    const reason = await prompt("Unban reason (required):", {
+      required: true,
+      validate: (input) => {
+        if (!input.trim()) {
+          return "Unban reason is required";
+        }
+        return true;
+      },
+    });
+
+    const confirmed = await confirm(
+      `Are you sure you want to unban ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""}?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Unban cancelled");
+      return;
+    }
+
+    const spinner = createSpinner("Unbanning user...");
+    spinner.start();
+
+    // Import utilities for unban handling
+    const { isModuleEnabled } = await import("../server/actions/modules");
+    const { MODULE_KEYS } = await import("../lib/constants/modules");
+    const { logTicketActivity } = await import("../server/utils/ticket-activity-logger");
+
+    // Find pending unban requests for this user
+    const pendingRequests = await prisma.unbanRequest.findMany({
+      where: {
+        userId: currentUser.id,
+        status: "PENDING",
+      },
+      include: {
+        ticket: {
+          select: {
+            id: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    // Update user status to ACTIVE and clear ban fields
+    await prisma.user.update({
+      where: { id: currentUser.id },
+      data: {
+        status: "ACTIVE",
+        emailVerified: true,
+        bannedAt: null,
+        banReason: null,
+      },
+    });
+
+    // Handle unbanning: update unban requests and tickets
+    const ticketsEnabled = await isModuleEnabled(MODULE_KEYS.TICKETS);
+    const now = new Date();
+    const reasonText = reason.trim();
+
+    // Update all pending unban requests to APPROVED
+    for (const request of pendingRequests) {
+      await prisma.unbanRequest.update({
+        where: { id: request.id },
+        data: {
+          status: "APPROVED",
+          reviewedBy: null, // CLI doesn't have an admin user context
+          reviewedAt: now,
+          adminNotes: reasonText,
+        },
+      });
+
+      // If there's an associated ticket and tickets module is enabled, mark it as resolved
+      if (request.ticketId && request.ticket && ticketsEnabled) {
+        // Update ticket status to RESOLVED
+        await prisma.ticket.update({
+          where: { id: request.ticketId },
+          data: {
+            status: "RESOLVED",
+            resolvedAt: now,
+          },
+        });
+
+        // Add a comment to the ticket explaining the unban
+        await prisma.ticketComment.create({
+          data: {
+            ticketId: request.ticketId,
+            userId: null, // CLI doesn't have a user context
+            authorName: "System (CLI)",
+            content: `User has been unbanned via CLI.\n\nReason: ${reasonText}`,
+            isAgentOnly: false,
+          },
+        });
+
+        // Log ticket resolution activity
+        try {
+          await logTicketActivity(
+            request.ticketId,
+            "RESOLVED",
+            currentUser.id, // Use the unbanned user's ID as a fallback
+            "System (CLI)",
+            request.ticket.status,
+            "RESOLVED"
+          );
+        } catch (err) {
+          // Log error but don't fail the unban operation
+          console.error("Error logging ticket activity:", err);
+        }
+      }
+    }
+
+    spinner.succeed("User unbanned successfully");
+    success(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} has been unbanned.`);
+    info(`Reason: ${reasonText}`);
+    if (pendingRequests.length > 0) {
+      info(`${pendingRequests.length} pending unban request(s) have been approved.`);
+    }
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleBanInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
+  try {
+    header("Ban User", `Ban ${user.email}`);
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: user.email },
+      select: { id: true, email: true, name: true, status: true },
+    });
+
+    if (!currentUser) {
+      error(`User with email ${user.email} not found`);
+      return;
+    }
+
+    if (currentUser.status === "BANNED") {
+      warning(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} is already banned`);
+      return;
+    }
+
+    sectionHeader("Current Status");
+    displayKeyValue("Status", formatStatus(currentUser.status));
+    separator();
+
+    warning("⚠️  WARNING: This will ban the user account and prevent them from logging in.");
+    info("They will be redirected to a ban page where they can request to be unbanned.");
+
+    const reason = await prompt("Ban reason (required):", {
+      required: true,
+      validate: (input) => {
+        if (!input.trim()) {
+          return "Ban reason is required";
+        }
+        return true;
+      },
+    });
+
+    const confirmed = await confirm(
+      `Are you sure you want to ban ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""}?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Ban cancelled");
+      return;
+    }
+
+    const spinner = createSpinner("Banning user...");
+    spinner.start();
+
+    // Delete all sessions to force logout
+    await prisma.session.deleteMany({
+      where: { userId: currentUser.id },
+    });
+
+    // Update user status to BANNED and set ban details
+    await prisma.user.update({
+      where: { id: currentUser.id },
+      data: {
+        status: "BANNED",
+        bannedAt: new Date(),
+        banReason: reason.trim(),
+      },
+    });
+
+    spinner.succeed("User banned successfully");
+    success(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} has been banned.`);
+    info(`Reason: ${reason.trim()}`);
+    info("All active sessions have been terminated.");
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleUnbanInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
+  try {
+    header("Unban User", `Unban ${user.email}`);
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: user.email },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        bannedAt: true,
+        banReason: true,
+      },
+    });
+
+    if (!currentUser) {
+      error(`User with email ${user.email} not found`);
+      return;
+    }
+
+    if (currentUser.status !== "BANNED") {
+      warning(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} is not currently banned (status: ${formatStatus(currentUser.status)})`);
+      return;
+    }
+
+    sectionHeader("Ban Information");
+    displayKeyValue("Status", formatStatus(currentUser.status));
+    if (currentUser.bannedAt) {
+      displayKeyValue("Banned On", currentUser.bannedAt.toLocaleString());
+    }
+    if (currentUser.banReason) {
+      displayKeyValue("Ban Reason", currentUser.banReason);
+    }
+    separator();
+
+    info("This will restore the user's access to the platform.");
+    info("Any pending unban requests will be automatically approved and associated tickets will be marked as resolved.");
+
+    const reason = await prompt("Unban reason (required):", {
+      required: true,
+      validate: (input) => {
+        if (!input.trim()) {
+          return "Unban reason is required";
+        }
+        return true;
+      },
+    });
+
+    const confirmed = await confirm(
+      `Are you sure you want to unban ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""}?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Unban cancelled");
+      return;
+    }
+
+    const spinner = createSpinner("Unbanning user...");
+    spinner.start();
+
+    // Import utilities for unban handling
+    const { isModuleEnabled } = await import("../server/actions/modules");
+    const { MODULE_KEYS } = await import("../lib/constants/modules");
+    const { logTicketActivity } = await import("../server/utils/ticket-activity-logger");
+
+    // Find pending unban requests for this user
+    const pendingRequests = await prisma.unbanRequest.findMany({
+      where: {
+        userId: currentUser.id,
+        status: "PENDING",
+      },
+      include: {
+        ticket: {
+          select: {
+            id: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    // Update user status to ACTIVE and clear ban fields
+    await prisma.user.update({
+      where: { id: currentUser.id },
+      data: {
+        status: "ACTIVE",
+        emailVerified: true,
+        bannedAt: null,
+        banReason: null,
+      },
+    });
+
+    // Handle unbanning: update unban requests and tickets
+    const ticketsEnabled = await isModuleEnabled(MODULE_KEYS.TICKETS);
+    const now = new Date();
+    const reasonText = reason.trim();
+
+    // Update all pending unban requests to APPROVED
+    for (const request of pendingRequests) {
+      await prisma.unbanRequest.update({
+        where: { id: request.id },
+        data: {
+          status: "APPROVED",
+          reviewedBy: null, // CLI doesn't have an admin user context
+          reviewedAt: now,
+          adminNotes: reasonText,
+        },
+      });
+
+      // If there's an associated ticket and tickets module is enabled, mark it as resolved
+      if (request.ticketId && request.ticket && ticketsEnabled) {
+        // Update ticket status to RESOLVED
+        await prisma.ticket.update({
+          where: { id: request.ticketId },
+          data: {
+            status: "RESOLVED",
+            resolvedAt: now,
+          },
+        });
+
+        // Add a comment to the ticket explaining the unban
+        await prisma.ticketComment.create({
+          data: {
+            ticketId: request.ticketId,
+            userId: null, // CLI doesn't have a user context
+            authorName: "System (CLI)",
+            content: `User has been unbanned via CLI.\n\nReason: ${reasonText}`,
+            isAgentOnly: false,
+          },
+        });
+
+        // Log ticket resolution activity
+        try {
+          await logTicketActivity(
+            request.ticketId,
+            "RESOLVED",
+            currentUser.id, // Use the unbanned user's ID as a fallback
+            "System (CLI)",
+            request.ticket.status,
+            "RESOLVED"
+          );
+        } catch (err) {
+          // Log error but don't fail the unban operation
+          console.error("Error logging ticket activity:", err);
+        }
+      }
+    }
+
+    spinner.succeed("User unbanned successfully");
+    success(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} has been unbanned.`);
+    info(`Reason: ${reasonText}`);
+    if (pendingRequests.length > 0) {
+      info(`${pendingRequests.length} pending unban request(s) have been approved.`);
+    }
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleReactivateInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
+  try {
+    // Get full user details - find by ID or email/originalEmail to handle deleted users
+    const fullUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { id: user.id },
+          { email: user.email },
+          { originalEmail: user.email },
+        ],
+      },
+      select: {
+        id: true,
+        email: true,
+        originalEmail: true,
+        name: true,
+        status: true,
+        emailVerified: true,
+      },
+    });
+
+    if (!fullUser) {
+      console.error("User not found");
+      return;
+    }
+
+    if (fullUser.status !== "DELETED") {
+      console.log(`User ${fullUser.email}${fullUser.name ? ` (${fullUser.name})` : ""} is not deleted. Current status: ${fullUser.status}`);
+      return;
+    }
+
+    // Handle legacy deleted users (deleted before originalEmail field was added)
+    // If originalEmail is not set but email doesn't contain "_deleted_", use current email
+    if (!fullUser.originalEmail) {
+      if (fullUser.email.includes("_deleted_")) {
+        console.error(`Cannot reactivate user: original email not found. User may have been permanently deleted.`);
+        return;
+      } else {
+        // Legacy deleted user - email wasn't modified, so use current email
+        fullUser.originalEmail = fullUser.email;
+        console.log(`Note: This appears to be a legacy deleted user. Using current email as original email.`);
+      }
+    }
+
+    // Check if the original email is now taken by another active user
+    const emailTaken = await prisma.user.findFirst({
+      where: {
+        email: fullUser.originalEmail,
+        status: { not: "DELETED" },
+      },
+      select: { id: true, email: true },
+    });
+
+    if (emailTaken) {
+      console.error(`Cannot reactivate user: The email ${fullUser.originalEmail} is now in use by another user.`);
+      return;
+    }
+
+    const confirmed = await confirm(`\nAre you sure you want to reactivate ${fullUser.originalEmail}${fullUser.name ? ` (${fullUser.name})` : ""}?`, false);
+    if (!confirmed) {
+      console.log("Reactivation cancelled.");
+      return;
+    }
+
+    const newStatus = fullUser.emailVerified ? "ACTIVE" : "PENDING";
+
+    const reactivatedUser = await prisma.user.update({
+      where: { id: fullUser.id },
+      data: {
+        email: fullUser.originalEmail,
+        originalEmail: null,
+        status: newStatus,
+        scheduledForDeletionAt: null,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        status: true,
+        emailVerified: true,
+      },
+    });
+
+    console.log(`\n✅ User ${reactivatedUser.email}${fullUser.name ? ` (${fullUser.name})` : ""} has been reactivated.`);
+    console.log(`   Status: ${reactivatedUser.status}`);
+    console.log(`   Email verified: ${reactivatedUser.emailVerified ? "Yes" : "No"}`);
+    if (!reactivatedUser.emailVerified) {
+      console.log(`   Note: User will need to verify their email before full access is granted.`);
+    }
+    
+    // Update the user object passed in to reflect the reactivated state
+    user.email = reactivatedUser.email;
+    user.name = reactivatedUser.name;
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleCookieAcceptInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
+  try {
+    const currentUser = await prisma.user.findUnique({
+      where: { email: user.email },
+      select: { id: true, email: true, name: true, cookieConsentAccepted: true },
+    });
+
+    if (!currentUser) {
+      console.error(`User with email ${user.email} not found`);
+      return;
+    }
+
+    if (currentUser.cookieConsentAccepted) {
+      console.log(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} has already accepted cookie consent`);
+      return;
+    }
+
+    await prisma.user.update({
+      where: { email: user.email },
+      data: {
+        cookieConsentAccepted: true,
+        cookieConsentAcceptedAt: new Date(),
+      },
+    });
+
+    console.log(`✅ Cookie consent accepted for user ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""}`);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleCookieRevokeInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
+  try {
+    const currentUser = await prisma.user.findUnique({
+      where: { email: user.email },
+      select: { id: true, email: true, name: true, cookieConsentAccepted: true },
+    });
+
+    if (!currentUser) {
+      console.error(`User with email ${user.email} not found`);
+      return;
+    }
+
+    if (!currentUser.cookieConsentAccepted) {
+      console.log(`User ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""} has not accepted cookie consent yet`);
+      return;
+    }
+
+    await prisma.user.update({
+      where: { email: user.email },
+      data: {
+        cookieConsentAccepted: false,
+        cookieConsentAcceptedAt: null,
+      },
+    });
+
+    console.log(`✅ Cookie consent revoked for user ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""}`);
+    console.log(`   The user will see the cookie banner again on their next visit.`);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+export async function handleCookieStatusInteractiveWithUser(user: { id: string; email: string; name: string | null }) {
+  try {
+    const currentUser = await prisma.user.findUnique({
+      where: { email: user.email },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        cookieConsentAccepted: true,
+        cookieConsentAcceptedAt: true,
+      },
+    });
+
+    if (!currentUser) {
+      console.error(`User with email ${user.email} not found`);
+      return;
+    }
+
+    console.log("\n🍪 Cookie Consent Status:\n");
+    console.log(`User:            ${currentUser.email}${currentUser.name ? ` (${currentUser.name})` : ""}`);
+    console.log(`Status:          ${currentUser.cookieConsentAccepted ? "✅ Accepted" : "❌ Not accepted"}`);
+    if (currentUser.cookieConsentAcceptedAt) {
+      console.log(`Accepted Date:   ${currentUser.cookieConsentAcceptedAt.toLocaleString()}`);
+      const daysSince = Math.floor((Date.now() - currentUser.cookieConsentAcceptedAt.getTime()) / (1000 * 60 * 60 * 24));
+      console.log(`Days Since:      ${daysSince} day(s) ago`);
+    } else {
+      console.log(`Accepted Date:   Never`);
+    }
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+  }
+}
+
+// Bulk operation handlers
+export async function handleBulkUpdateStatusInteractive(users: { id: string; email: string; name: string | null }[]) {
+  try {
+    header("Bulk Update Status", `Update status for ${users.length} user(s)`);
+
+    const status = await select("Select new status:", ["PENDING", "ACTIVE", "SUSPENDED", "DELETED"]);
+
+    sectionHeader("Users to Update");
+    users.forEach((user, index) => {
+      console.log(chalk.gray(`${index + 1}.`), `${user.email}${user.name ? ` (${user.name})` : ""}`);
+    });
+    separator();
+
+    const confirmed = await confirm(
+      `Are you sure you want to update status to ${status} for ${users.length} user(s)?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Status update cancelled");
+      return;
+    }
+
+    const spinner = createSpinner(`Updating status for ${users.length} user(s)...`);
+    spinner.start();
+
+    let successCount = 0;
+    let failCount = 0;
+    const errors: string[] = [];
+
+    for (const user of users) {
+      try {
+        await prisma.user.update({
+          where: { email: user.email },
+          data: { status: status as any },
+        });
+        successCount++;
+      } catch (err) {
+        failCount++;
+        errors.push(`${user.email}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    spinner.succeed(`Updated ${successCount} user(s)`);
+
+    if (successCount > 0) {
+      success(`Successfully updated status to ${formatStatus(status)} for ${successCount} user(s)`);
+    }
+
+    if (failCount > 0) {
+      warning(`Failed to update ${failCount} user(s):`);
+      errors.forEach((err) => error(err));
+    }
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleBulkUpdateRoleInteractive(users: { id: string; email: string; name: string | null }[]) {
+  try {
+    header("Bulk Update Role", `Update role for ${users.length} user(s)`);
+
+    const role = await select("Select new role:", ["USER", "ADMIN", "MODERATOR", "AGENT"]);
+
+    sectionHeader("Users to Update");
+    users.forEach((user, index) => {
+      console.log(chalk.gray(`${index + 1}.`), `${user.email}${user.name ? ` (${user.name})` : ""}`);
+    });
+    separator();
+
+    const confirmed = await confirm(
+      `Are you sure you want to update role to ${role} for ${users.length} user(s)?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Role update cancelled");
+      return;
+    }
+
+    const spinner = createSpinner(`Updating role for ${users.length} user(s)...`);
+    spinner.start();
+
+    let successCount = 0;
+    let failCount = 0;
+    const errors: string[] = [];
+
+    for (const user of users) {
+      try {
+        await prisma.user.update({
+          where: { email: user.email },
+          data: { role: role as any },
+        });
+        successCount++;
+      } catch (err) {
+        failCount++;
+        errors.push(`${user.email}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    spinner.succeed(`Updated ${successCount} user(s)`);
+
+    if (successCount > 0) {
+      success(`Successfully updated role to ${formatRole(role)} for ${successCount} user(s)`);
+    }
+
+    if (failCount > 0) {
+      warning(`Failed to update ${failCount} user(s):`);
+      errors.forEach((err) => error(err));
+    }
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleBulkVerifyInteractive(users: { id: string; email: string; name: string | null }[]) {
+  try {
+    header("Bulk Verify Email", `Verify email for ${users.length} user(s)`);
+
+    sectionHeader("Users to Verify");
+    users.forEach((user, index) => {
+      console.log(chalk.gray(`${index + 1}.`), `${user.email}${user.name ? ` (${user.name})` : ""}`);
+    });
+    separator();
+
+    const confirmed = await confirm(
+      `Are you sure you want to verify email for ${users.length} user(s)?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Email verification cancelled");
+      return;
+    }
+
+    const spinner = createSpinner(`Verifying email for ${users.length} user(s)...`);
+    spinner.start();
+
+    let successCount = 0;
+    let activatedCount = 0;
+    let failCount = 0;
+    const errors: string[] = [];
+
+    for (const user of users) {
+      try {
+        const currentUser = await prisma.user.findUnique({
+          where: { email: user.email },
+          select: { id: true, status: true },
+        });
+
+        if (!currentUser) {
+          failCount++;
+          errors.push(`${user.email}: User not found`);
+          continue;
+        }
+
+        const updateData: { emailVerified: boolean; status?: "ACTIVE" } = {
+          emailVerified: true,
+        };
+
+        if (currentUser.status === "PENDING") {
+          updateData.status = "ACTIVE";
+          activatedCount++;
+        }
+
+        await prisma.user.update({
+          where: { email: user.email },
+          data: updateData,
+        });
+        successCount++;
+      } catch (err) {
+        failCount++;
+        errors.push(`${user.email}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    spinner.succeed(`Verified ${successCount} user(s)`);
+
+    if (successCount > 0) {
+      success(`Successfully verified email for ${successCount} user(s)`);
+      if (activatedCount > 0) {
+        info(`Activated ${activatedCount} user(s) (status changed from PENDING to ACTIVE)`);
+      }
+    }
+
+    if (failCount > 0) {
+      warning(`Failed to verify ${failCount} user(s):`);
+      errors.forEach((err) => error(err));
+    }
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleBulkCookieAcceptInteractive(users: { id: string; email: string; name: string | null }[]) {
+  try {
+    header("Bulk Accept Cookie Consent", `Accept cookie consent for ${users.length} user(s)`);
+
+    sectionHeader("Users to Update");
+    users.forEach((user, index) => {
+      console.log(chalk.gray(`${index + 1}.`), `${user.email}${user.name ? ` (${user.name})` : ""}`);
+    });
+    separator();
+
+    const confirmed = await confirm(
+      `Are you sure you want to accept cookie consent for ${users.length} user(s)?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Cookie consent update cancelled");
+      return;
+    }
+
+    const spinner = createSpinner(`Accepting cookie consent for ${users.length} user(s)...`);
+    spinner.start();
+
+    let successCount = 0;
+    let alreadyAcceptedCount = 0;
+    let failCount = 0;
+    const errors: string[] = [];
+
+    for (const user of users) {
+      try {
+        const currentUser = await prisma.user.findUnique({
+          where: { email: user.email },
+          select: { id: true, cookieConsentAccepted: true },
+        });
+
+        if (!currentUser) {
+          failCount++;
+          errors.push(`${user.email}: User not found`);
+          continue;
+        }
+
+        if (currentUser.cookieConsentAccepted) {
+          alreadyAcceptedCount++;
+          continue;
+        }
+
+        await prisma.user.update({
+          where: { email: user.email },
+          data: {
+            cookieConsentAccepted: true,
+            cookieConsentAcceptedAt: new Date(),
+          },
+        });
+        successCount++;
+      } catch (err) {
+        failCount++;
+        errors.push(`${user.email}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    spinner.succeed(`Updated ${successCount + alreadyAcceptedCount} user(s)`);
+
+    if (successCount > 0) {
+      success(`Successfully accepted cookie consent for ${successCount} user(s)`);
+    }
+
+    if (alreadyAcceptedCount > 0) {
+      info(`${alreadyAcceptedCount} user(s) already had cookie consent accepted`);
+    }
+
+    if (failCount > 0) {
+      warning(`Failed to update ${failCount} user(s):`);
+      errors.forEach((err) => error(err));
+    }
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleBulkCookieRevokeInteractive(users: { id: string; email: string; name: string | null }[]) {
+  try {
+    header("Bulk Revoke Cookie Consent", `Revoke cookie consent for ${users.length} user(s)`);
+
+    sectionHeader("Users to Update");
+    users.forEach((user, index) => {
+      console.log(chalk.gray(`${index + 1}.`), `${user.email}${user.name ? ` (${user.name})` : ""}`);
+    });
+    separator();
+
+    const confirmed = await confirm(
+      `Are you sure you want to revoke cookie consent for ${users.length} user(s)?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Cookie consent update cancelled");
+      return;
+    }
+
+    const spinner = createSpinner(`Revoking cookie consent for ${users.length} user(s)...`);
+    spinner.start();
+
+    let successCount = 0;
+    let notAcceptedCount = 0;
+    let failCount = 0;
+    const errors: string[] = [];
+
+    for (const user of users) {
+      try {
+        const currentUser = await prisma.user.findUnique({
+          where: { email: user.email },
+          select: { id: true, cookieConsentAccepted: true },
+        });
+
+        if (!currentUser) {
+          failCount++;
+          errors.push(`${user.email}: User not found`);
+          continue;
+        }
+
+        if (!currentUser.cookieConsentAccepted) {
+          notAcceptedCount++;
+          continue;
+        }
+
+        await prisma.user.update({
+          where: { email: user.email },
+          data: {
+            cookieConsentAccepted: false,
+            cookieConsentAcceptedAt: null,
+          },
+        });
+        successCount++;
+      } catch (err) {
+        failCount++;
+        errors.push(`${user.email}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    spinner.succeed(`Updated ${successCount + notAcceptedCount} user(s)`);
+
+    if (successCount > 0) {
+      success(`Successfully revoked cookie consent for ${successCount} user(s)`);
+      info(`The users will see the cookie banner again on their next visit.`);
+    }
+
+    if (notAcceptedCount > 0) {
+      info(`${notAcceptedCount} user(s) did not have cookie consent accepted`);
+    }
+
+    if (failCount > 0) {
+      warning(`Failed to update ${failCount} user(s):`);
+      errors.forEach((err) => error(err));
+    }
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function handleBulkDeleteInteractive(users: { id: string; email: string; name: string | null }[]) {
+  try {
+    header("Bulk Delete Users", `Permanently delete ${users.length} user(s)`);
+
+    notice("⚠️  WARNING: This action is PERMANENT and CANNOT be undone!", "error");
+
+    sectionHeader("Users to Delete");
+    users.forEach((user, index) => {
+      console.log(chalk.gray(`${index + 1}.`), `${user.email}${user.name ? ` (${user.name})` : ""}`);
+    });
+    separator();
+
+    const confirmed = await confirm(
+      `Are you ABSOLUTELY SURE you want to PERMANENTLY DELETE ${users.length} user(s)?`,
+      false
+    );
+
+    if (!confirmed) {
+      info("Deletion cancelled");
+      return;
+    }
+
+    const spinner = createSpinner(`Deleting ${users.length} user(s) and cleaning up data...`);
+    spinner.start();
+
+    let successCount = 0;
+    let failCount = 0;
+    const errors: string[] = [];
+
+    for (const user of users) {
+      try {
+        const fullUser = await prisma.user.findUnique({
+          where: { email: user.email },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+          },
+        });
+
+        if (!fullUser) {
+          failCount++;
+          errors.push(`${user.email}: User not found`);
+          continue;
+        }
+
+        // Delete all user sessions first
+        await prisma.session.deleteMany({
+          where: { userId: fullUser.id },
+        });
+
+        // Generate anonymized name: "Deleted User (full UUID)"
+        const anonymizedName = `Deleted User (${fullUser.id})`;
+
+        // Update all tickets created by this user to store anonymized name
+        await prisma.ticket.updateMany({
+          where: { createdById: fullUser.id },
+          data: {
+            createdByName: anonymizedName,
+          },
+        });
+
+        // Update all ticket comments by this user to store anonymized name and nullify user reference
+        await prisma.ticketComment.updateMany({
+          where: { userId: fullUser.id },
+          data: {
+            authorName: anonymizedName,
+            userId: null,
+          },
+        });
+
+        // Unassign user from any assigned tickets
+        await prisma.ticket.updateMany({
+          where: { assignedToId: fullUser.id },
+          data: {
+            assignedToId: null,
+          },
+        });
+
+        // Delete group memberships
+        await prisma.groupMembership.deleteMany({
+          where: { userId: fullUser.id },
+        });
+
+        // Hard delete: Permanently delete the user
+        await prisma.user.delete({
+          where: { id: fullUser.id },
+        });
+
+        successCount++;
+      } catch (err) {
+        failCount++;
+        errors.push(`${user.email}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    spinner.succeed(`Deleted ${successCount} user(s)`);
+
+    if (successCount > 0) {
+      success(`Successfully deleted ${successCount} user(s)`);
+      info(`Tickets and comments preserved with anonymized names.`);
+    }
+
+    if (failCount > 0) {
+      warning(`Failed to delete ${failCount} user(s):`);
+      errors.forEach((err) => error(err));
+    }
+  } catch (err) {
+    error(err instanceof Error ? err.message : String(err));
+  }
+}

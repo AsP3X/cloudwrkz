@@ -1,0 +1,79 @@
+name: Build and publish Docker images
+
+on:
+  push:
+    branches:
+      - master
+      - dev
+  pull_request:
+    branches:
+      - master
+      - dev
+
+jobs:
+  build-docker-image:
+    name: Build Docker image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine image tag
+        id: vars
+        run: |
+          BRANCH_NAME="${GITHUB_REF_NAME}"
+          BASE_REF="${GITHUB_BASE_REF}"
+          # Sanitize branch name for Docker tag (no slashes, lowercase)
+          SAFE_BRANCH_NAME="${BRANCH_NAME//\//-}"
+          SAFE_BRANCH_NAME="${SAFE_BRANCH_NAME,,}"
+          if [ "$BRANCH_NAME" = "master" ]; then
+            echo "TAG=latest" >> $GITHUB_OUTPUT
+          elif [ "$BRANCH_NAME" = "dev" ]; then
+            echo "TAG=preview" >> $GITHUB_OUTPUT
+          elif [ "$BASE_REF" = "dev" ]; then
+            # For PRs targeting the dev branch, prefix tag with 'preview-'
+            echo "TAG=preview-${SAFE_BRANCH_NAME}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          else
+            # For PRs from forks or other branches, use a short SHA tag
+            echo "TAG=${SAFE_BRANCH_NAME}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Compute lowercase image repository
+        id: image
+        run: |
+          REPO_LOWER=$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')
+          echo "repo=$REPO_LOWER" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/web
+          file: apps/web/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ steps.image.outputs.repo }}:${{ steps.vars.outputs.TAG }}
+          labels: |
+            org.opencontainers.image.title=cloudwrkz
+            org.opencontainers.image.description=Cloudwrkz web application and CLI (Next.js + PNPM)
+            org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.vars.outputs.TAG }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp || github.event.pull_request.updated_at || github.run_started_at }}
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.ref.name=${{ github.ref_name }}
+            org.opencontainers.image.workflow=${{ github.workflow }}

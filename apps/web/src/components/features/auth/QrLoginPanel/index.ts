@@ -1,0 +1,1 @@
+export { QrLoginPanel } from "./QrLoginPanel";

@@ -1,0 +1,1186 @@
+/*
+  Localizable.strings (English)
+  Generated from Localizable.xcstrings
+*/
+
+/* A colon displayed between the hours, minutes, and seconds of a duration picker. */
+":" = ":";
+
+/* A period used to separate related items in a list. */
+"·" = "·";
+
+/* A paragraph explaining that a selected time entry will be permanently removed and that this action cannot be undone. The text inside quotation marks is replaced with the name of the time entry. */
+"“%@” will be permanently removed. This action can’t be undone." = "“%@” will be permanently removed. This action can’t be undone.";
+
+/* A line of text showing the ticket number and title, truncated to two lines. */
+"%@ – %@" = "%1$@ – %2$@";
+
+/* A text label with two lines, showing a title and a path. The first argument is the title text. The second argument is the path text. */
+"%@ — %@" = "%1$@ — %2$@";
+
+/* A label with its corresponding value, used to display information about a ticket. The argument is the label text, and the second is the value to display. */
+"%@:" = "%@:";
+
+/* A label displaying the number of comments on a ticket. The argument is the number of comments on the ticket. */
+"%lld" = "%lld";
+
+"%lld result%@" = "%1$lld result%2$@";
+
+/* A label showing the number of entries that are currently selected for bulk actions. The argument is the count of selected entries. */
+"%lld selected" = "%lld selected";
+
+/* A text overlay showing the number of icons that have been successfully refreshed or processed. */
+"%lld/%lld" = "%1$lld/%2$lld";
+
+/* A text indicating that a certain amount of time has been deducted from the total duration of a time entry because of breaks. The argument is the formatted string representing the total duration of breaks. */
+"−%@ breaks deducted" = "−%@ breaks deducted";
+
+/* A button that navigates to the user's account settings. */
+"Account settings" = "Account settings";
+
+"account_settings.appearance" = "Appearance";
+
+"account_settings.biometric_lock" = "Biometric lock";
+
+"account_settings.biometric_not_available" = "Not available on this device";
+
+"account_settings.biometric_required" = "%@ required when returning to app";
+
+"account_settings.cache_cleared" = "Cache cleared";
+
+"account_settings.cache_size_on_device" = "Approximately %@ on this device";
+
+"account_settings.change_password" = "Change password";
+
+"account_settings.change_password_subtitle" = "Update your password";
+
+"account_settings.clear_cache" = "Clear local cache";
+
+"account_settings.clear_cache_alert" = "Clear local cache?";
+
+"account_settings.clear_cache_message" = "This will remove approximately %@ of cached data from this device. This won't affect your account or server data.";
+
+"account_settings.data_privacy" = "Data & Privacy";
+
+"account_settings.email_digest" = "Email digest";
+
+"account_settings.email_digest_subtitle" = "Daily or weekly summary";
+
+"account_settings.free_up_space" = "Free up space";
+
+"account_settings.language" = "Language";
+
+"account_settings.language_english" = "English";
+
+"account_settings.language_german" = "German";
+
+"account_settings.language_russian" = "Russian";
+
+"account_settings.language_restart_hint" = "The new language will apply after you restart the app.";
+
+"account_settings.language_restart_message" = "The app needs to restart for the new language to take effect.";
+
+"account_settings.language_restart_required" = "App restart required";
+
+"account_settings.language_system" = "System";
+
+"account_settings.later" = "Later";
+
+"account_settings.notifications" = "Notifications";
+
+"account_settings.privacy_policy" = "Privacy policy";
+
+"account_settings.privacy_subtitle" = "How we handle your data";
+
+"account_settings.export_data" = "Export my data";
+
+"account_settings.export_data_subtitle" = "Request a copy of your data (GDPR Art. 20)";
+
+"account_settings.export_data_sent" = "Export request sent";
+
+"account_settings.delete_account" = "Delete account";
+
+"account_settings.delete_account_subtitle" = "Permanently remove your account and data";
+
+"account_settings.delete_account_alert_title" = "Delete account?";
+
+"account_settings.delete_account_alert_message" = "This will permanently delete your account and all associated data. This action cannot be undone.";
+
+"account_settings.delete_account_confirm" = "Delete my account";
+
+"account_settings.delete_account_requested_title" = "Deletion requested";
+
+"account_settings.delete_account_requested_message" = "Your account deletion request has been submitted. You will receive a confirmation email. Your data will be deleted within 30 days as required by GDPR.";
+
+"account_settings.push_notifications" = "Push notifications";
+
+"account_settings.push_subtitle" = "Alerts and updates";
+
+"account_settings.restart" = "Restart";
+
+"account_settings.security" = "Security";
+
+"account_settings.server" = "Server";
+
+"account_settings.server_config" = "Server configuration";
+
+"account_settings.theme" = "Theme";
+
+"account_settings.theme_dark" = "Dark";
+
+"account_settings.theme_light" = "Light";
+
+"account_settings.theme_system" = "System";
+
+"account_settings.title" = "Account Settings";
+
+"account_settings.time_tracking" = "Time Tracking";
+"account_settings.time_tracking_default_range" = "Default date range";
+"account_settings.time_tracking_default_range_subtitle" = "Period shown in Time Tracking when you open it or reset filters.";
+"account_settings.time_tracking_period_month" = "1 month";
+"account_settings.time_tracking_period_week" = "Week";
+"account_settings.time_tracking_period_quarter" = "Quarter";
+"account_settings.time_tracking_period_year" = "Year";
+"account_settings.time_tracking_period_custom" = "Custom (days)";
+"account_settings.time_tracking_custom_days" = "Days";
+"account_settings.time_tracking_day" = "day";
+"account_settings.time_tracking_days" = "days";
+"account_settings.third_party_location_suggestions" = "External address suggestions";
+"account_settings.third_party_location_suggestions_subtitle" = "Send typed location queries to OpenStreetMap (Nominatim).";
+
+/* A label displayed above the list of currently active timers. */
+"ACTIVE TIMERS" = "ACTIVE TIMERS";
+
+/* The text on the button that adds a time entry. */
+"Add" = "Add";
+
+/* A heading describing the purpose of the view. */
+"Add a manual time entry" = "Add a manual time entry";
+
+/* A placeholder text for adding a tag in the tags section of the edit time entry sheet. */
+"Add a tag…" = "Add a tag…";
+
+/* A button label that triggers the addition of a new time entry. */
+"Add Entry" = "Add Entry";
+
+/* The title of the view that allows users to add a link to their content. */
+"Add Link" = "Add Link";
+
+/* A menu item that allows users to add a time entry manually. */
+"Add Manual Entry" = "Add Manual Entry";
+
+/* A placeholder text for a text field used to add tags to an entry. */
+"Add tag…" = "Add tag…";
+
+/* The title of the view. */
+"Add Time Entry" = "Add Time Entry";
+
+"add_todo.cancel" = "Cancel";
+
+"add_todo.description_optional" = "Description (optional)";
+
+"add_todo.description_placeholder" = "Description";
+
+"add_todo.parent_label" = "Parent";
+
+"add_todo.save" = "Save";
+
+"add_todo.subtodo_title" = "Add Subtodo";
+
+"add_todo.title" = "Add Todo";
+
+"add_todo.title_label" = "Title";
+
+"add_todo.title_placeholder" = "Todo title";
+
+/* A placeholder text for a text field where users can add additional details about an entry. */
+"Additional details…" = "Additional details…";
+
+/* The accessibility label for the biometric lock overlay view. */
+"App locked" = "App locked";
+
+/* The title of the archive view. */
+"Archive" = "Archive";
+
+/* A description of what will appear in the archive view when there are no archived items. */
+"Archived tickets, todos, time entries, and links will appear here." = "Archived tickets, todos, time entries, and links will appear here.";
+
+"auth.configure_server" = "Configure server in settings.";
+
+"auth.could_not_reach_server" = "Could not reach server.";
+
+"auth.email_label" = "EMAIL";
+
+"auth.email_placeholder" = "you@company.com";
+
+"auth.invalid_credentials" = "Invalid email or password.";
+
+"auth.password_label" = "PASSWORD";
+
+"auth.password_placeholder" = "Enter your password";
+
+"auth.please_enter_email_password" = "Please enter email and password.";
+
+"auth.sign_in" = "Sign in";
+
+/* A placeholder text for the optional name field in the start timer sheet. */
+"Auto-generated if empty" = "Auto-generated if empty";
+
+/* A toggle that allows users to mark their time entries as billable or not. */
+"Billable" = "Billable";
+
+/* A label indicating that a time entry is billable. */
+"BILLABLE" = "BILLABLE";
+
+"biometric.app_locked" = "App locked";
+
+"biometric.unlock_reason" = "Unlock Cloudwrkz";
+
+"biometric.unlock_with" = "Unlock with %@";
+
+"biometric.use_to_unlock" = "Use %@ to unlock";
+
+/* A heading for the list of breaks taken during a time entry. */
+"Breaks" = "Breaks";
+
+/* A label for a text field that lets the user enter a brief description of a link. */
+"Brief description" = "Brief description";
+
+/* A button that opens a GitHub repository in a web browser, specifically targeting a folder. */
+"Browse folder" = "Browse folder";
+
+/* A button that cancels an action. */
+"Cancel" = "Cancel";
+
+/* A label for a view style option that displays items in a grid format. */
+"Card view" = "Card view";
+
+/* A button label that appears when viewing and modifying the collections to which a link is added. */
+"Change collections…" = "Change collections…";
+
+/* The title of a view that allows a user to change their password. */
+"Change Password" = "Change Password";
+
+/* A label describing the action to change the user's profile photo. */
+"Change profile photo" = "Change profile photo";
+
+/* A description below the filter section of the archive overview view, explaining that users can change the filter or archive items from their respective lists. */
+"Change the filter above or archive items from their lists." = "Change the filter above or archive items from their lists.";
+
+/* A message displayed while waiting to fetch the server's health status. */
+"Checking server…" = "Checking server…";
+
+/* The title of the view that lets users choose which collections to add a link to. */
+"Choose Collections" = "Choose Collections";
+
+/* A label for a button that allows a user to choose which collections a newly added link should be associated with. */
+"Choose collections…" = "Choose collections…";
+
+/* A button label that clears a date selection. */
+"Clear" = "Clear";
+
+/* A label indicating that a feature is not yet available. */
+"Coming soon" = "Coming soon";
+
+/* A label for a text field where the user can enter comma-separated tags for an item. */
+"Comma-separated tags" = "Comma-separated tags";
+
+"common.assigned_to" = "Assigned to";
+
+"common.cancel" = "Cancel";
+
+"common.clear" = "Clear";
+
+"common.comment_count" = "%d comment";
+
+"common.comments_activity" = "Comments & activity";
+
+"common.comments_count" = "%d comments";
+
+"common.completed" = "Completed";
+
+"common.created_by" = "Created by";
+
+"common.created_date" = "Created %@";
+
+"common.description" = "Description";
+
+"common.done" = "Done";
+
+"common.due_date" = "Due date";
+
+"common.last_updated" = "Last updated";
+
+"common.linked_ticket" = "Linked ticket";
+
+"common.load_todo_error" = "Couldn't load todo";
+
+"common.loading" = "Loading…";
+
+"common.no_active_subtodos" = "No active subtodos";
+
+"common.no_description" = "No description provided.";
+
+"common.no_subtodos" = "No subtodos";
+
+"common.parent_todo" = "PARENT TODO";
+
+"common.priority" = "Priority";
+
+"common.status" = "Status";
+
+"common.subtodo_count" = "%d subtodo";
+
+"common.subtodos" = "Subtodos";
+
+"common.subtodos_count" = "%d subtodos";
+
+"common.tap_plus_to_add" = "Tap + to add one";
+
+"common.ticket_id" = "Ticket ID";
+
+"common.ticket_info" = "Ticket information";
+
+"common.todo_id" = "Todo ID";
+
+"common.todo_info" = "Todo information";
+
+"common.type" = "Type";
+
+"common.view_comments_web" = "View and add comments in the web app.";
+
+/* A label for the confirmation of a new password field. */
+"Confirm new password" = "Confirm new password";
+
+/* An error message displayed when an error occurs while loading the archive. */
+"Couldn't load archive" = "Couldn't load archive";
+
+/* A message displayed when an error occurs while loading time entries. */
+"Couldn't load time entries" = "Couldn't load time entries";
+
+/* A label displaying the date and time a link was created. The argument is the date and time the link was created. */
+"Created %@" = "Created %@";
+
+/* A label for the current password text field. */
+"Current password" = "Current password";
+
+"dashboard.menu.back_to_dashboard" = "Back to dashboard";
+
+"dashboard.menu.options" = "Options";
+
+"dashboard.menu.server_config_subtitle" = "Environment and connection";
+
+"dashboard.menu.subtitle" = "Dashboard options and account.";
+
+"dashboard.menu.title" = "Menu";
+
+"dashboard.quick_access" = "QUICK ACCESS";
+
+"dashboard.section.archive" = "Archive";
+
+"dashboard.section.archived_items" = "Archived items";
+
+"dashboard.section.home" = "Home";
+
+"dashboard.section.links" = "Links";
+
+"dashboard.section.my_time" = "My time";
+
+"dashboard.section.overview" = "Overview";
+
+"dashboard.section.saved_links" = "Saved links";
+
+"dashboard.section.support_tickets" = "Support tickets";
+
+"dashboard.section.tasks" = "Tasks";
+
+"dashboard.section.tickets" = "Tickets";
+
+"dashboard.section.time_tracking" = "Time tracking";
+
+"dashboard.section.todos" = "ToDo";
+
+"dashboard.title" = "Dashboard";
+
+"dashboard.welcome_back" = "Welcome back. Choose a section from the menu or use the shortcuts below.";
+
+"dashboard.no_modules.title" = "No modules available";
+"dashboard.no_modules.message" = "No modules are available due to a lack of permissions or because the modules are disabled. Contact your administrator if you need access.";
+
+/* A button that deletes an archive item permanently. */
+"Delete" = "Delete";
+
+/* A label inside the trash icon that describes the action of deleting multiple time entries. The argument is the count of time entries that will be deleted. */
+"Delete %lld entries?" = "Delete %lld entries?";
+
+/* A button label that triggers the deletion of a time entry. */
+"Delete Entry" = "Delete Entry";
+
+/* A confirmation dialog title. */
+"Delete permanently?" = "Delete permanently?";
+
+/* The title of an alert that appears when a user attempts to delete a time entry. */
+"Delete Time Entry" = "Delete Time Entry";
+
+/* A prompt in the delete confirmation dialog, asking the user if they want to delete a time entry. */
+"Delete time entry?" = "Delete time entry?";
+
+/* A label for a text field where they can enter a link's description. */
+"Description" = "Description";
+
+/* A button that toggles the selection state of a timer. */
+"Deselect" = "Deselect";
+
+/* The title of a button that deselects all selected time entries. */
+"Deselect All" = "Deselect All";
+
+/* A label for the details section of a time entry detail view. */
+"Details" = "Details";
+
+/* The text on a button that dismisses a sheet. In this context, it dismisses an archive filter sheet. */
+"Done" = "Done";
+
+/* A label displayed below the duration of a time entry. */
+"Duration" = "Duration";
+
+/* A placeholder text for a text field where the user can enter the name of an entry. */
+"e.g. Client meeting" = "e.g. Client meeting";
+
+/* A placeholder text for the location field in the "Add Time Entry" sheet. */
+"e.g. Office, Remote" = "e.g. Office, Remote";
+
+/* A placeholder text for the location field in the edit time entry sheet. */
+"e.g. Office, Remote, Home" = "e.g. Office, Remote, Home";
+
+/* A button that opens a sheet for editing a time tracking entry. */
+"Edit" = "Edit";
+
+/* The title of the view, indicating that it is used to edit a time entry. */
+"Edit Entry" = "Edit Entry";
+
+/* The title of the edit link sheet. */
+"Edit link" = "Edit link";
+
+/* The title of the view. */
+"Edit Link" = "Edit Link";
+
+/* A button title that opens an edit profile sheet. */
+"Edit profile" = "Edit profile";
+
+/* A title for the section that allows the user to edit the name, timing, description, and other details of a time entry. */
+"Edit time entry" = "Edit time entry";
+
+/* A label for the end date of a time entry. */
+"End" = "End";
+
+"End time can only be edited on stopped entries." = "End time can only be edited on stopped entries.";
+
+/* A description below the header that instructs the user to enter the duration and details of a completed task. */
+"Enter the duration and details for completed work." = "Enter the duration and details for completed work.";
+
+/* A label displayed above the list of all entries. */
+"ENTRIES" = "ENTRIES";
+
+/* The title of the sheet that appears when you tap the "Info" button next to a time entry in the list. */
+"Entry information" = "Entry information";
+
+/* A message displayed while a link's title and description are being extracted. */
+"Extracting title & description…" = "Extracting title & description…";
+
+/* A title for a debug view that appears when you double-tap the favicon image. */
+"Favicon Debug" = "Favicon Debug";
+
+/* A label displayed in the "Favorite" section of the edit link sheet. */
+"Favorite" = "Favorite";
+
+/* A label indicating that metadata is being fetched. */
+"Fetching…" = "Fetching…";
+
+/* The title of the filter sheet for the archive list. */
+"Filter archive" = "Filter archive";
+
+/* A label for the filter sheet that instructs the user to filter time entries. */
+"Filter time entries" = "Filter time entries";
+
+"filter_archive.active" = "Active";
+
+"filter_archive.archived" = "Archived";
+
+"filter_priority.all_priorities" = "All priorities";
+
+"filter_priority.high" = "High";
+
+"filter_priority.low" = "Low";
+
+"filter_priority.medium" = "Medium";
+
+"filter_priority.urgent" = "Urgent";
+
+"filter_sort.due_earliest" = "Due date (earliest)";
+
+"filter_sort.due_latest" = "Due date (latest)";
+
+"filter_sort.least_recently_updated" = "Least recently updated";
+
+"filter_sort.newest_first" = "Newest first";
+
+"filter_sort.oldest_first" = "Oldest first";
+
+"filter_sort.recently_updated" = "Recently updated";
+
+"filter_status.all_statuses" = "All statuses";
+
+"filter_status.blocked" = "Blocked";
+
+"filter_status.cancelled" = "Cancelled";
+
+"filter_status.closed" = "Closed";
+
+"filter_status.completed" = "Completed";
+
+"filter_status.in_progress" = "In progress";
+
+"filter_status.not_started" = "Not started";
+
+"filter_status.open" = "Open";
+
+"filter_status.pending" = "Pending";
+
+"filter_status.resolved" = "Resolved";
+
+"filter_status.unresolved" = "Unresolved";
+
+"filter_tickets.clear" = "Clear";
+
+"filter_tickets.created_from" = "Created from";
+
+"filter_tickets.created_to" = "Created to";
+
+"filter_tickets.date_range" = "Date range (optional)";
+
+"filter_tickets.not_set" = "Not set";
+
+"filter_tickets.set" = "Set";
+
+"filter_tickets.subtitle" = "Narrow the list by status, sort order, and date range.";
+
+"filter_tickets.title" = "Filter tickets";
+
+"filter_tickets.updated_from" = "Updated from";
+
+"filter_tickets.updated_to" = "Updated to";
+
+"filter_todos.include_subtodos" = "Include subtodos";
+
+"filter_todos.scope" = "Scope";
+
+"filter_todos.show" = "Show";
+
+"filter_todos.sort_by" = "Sort by";
+
+"filter_todos.subtitle" = "Narrow the list by scope, status, priority, sort, and archive.";
+
+"filter_todos.title" = "Filter todos";
+
+"filter_todos.top_level_only" = "Top-level only";
+
+/* A label for a GitHub repository when the repository name is empty. */
+"GITHUB PROFILE" = "GITHUB PROFILE";
+
+/* A placeholder text for a URL field in the "Add Link" view. */
+"https://example.com" = "https://example.com";
+
+/* A description under the "Start a new timer" header, explaining that the timer name can be left blank to generate an auto-generated ID. */
+"Leave the name blank for an auto-generated ID." = "Leave the name blank for an auto-generated ID.";
+
+/* A heading for the section that displays information about a link. */
+"Link information" = "Link information";
+
+/* A placeholder text for the title field in the edit link sheet. */
+"Link title" = "Link title";
+
+"links.all" = "All";
+
+"links.all_links" = "All links";
+
+"links.apply_to_links" = "Apply to %d link(s)";
+
+"links.assign_collections" = "Assign Collections";
+
+"links.choose_collections" = "Choose the collections to assign to %d link(s).";
+
+"links.collection" = "Collection";
+
+"links.delete" = "Delete";
+
+"links.delete_link" = "Delete link?";
+
+"links.delete_link_message" = "\"%@\" will be removed from this list. This action can't be undone.";
+
+"links.delete_links_message" = "The selected links will be permanently removed. This action can't be undone.";
+
+"links.delete_n_links" = "Delete %d links?";
+
+"links.deselect" = "Deselect";
+
+"links.deselect_all" = "Deselect All";
+
+"links.dismiss" = "Dismiss";
+
+"links.edit" = "Edit";
+
+"links.empty_web_hint" = "Add and organize bookmarks in the web app.";
+
+"links.failed_delete" = "Failed to delete %d link(s).";
+
+"links.failed_refresh" = "Failed to refresh %d link(s).";
+
+"links.failed_update" = "Failed to update %d link(s).";
+
+"links.filter_links" = "Filter links";
+
+"links.filter_subtitle" = "Sort and filter your saved links.";
+
+"links.load_error" = "Couldn't load links";
+
+"links.loading" = "Loading links…";
+
+"links.nav_title" = "Links";
+
+"links.no_collections" = "No collections available.";
+
+"links.no_links" = "No links";
+
+"links.no_links_in_collection" = "No links in this collection.";
+
+"links.processing" = "Processing…";
+
+"links.refreshing_icons" = "Refreshing icons…";
+
+"links.select" = "Select";
+
+"links.select_all" = "Select All";
+
+"links.selected_count" = "%d selected";
+
+/* A label describing a view style where items are listed. */
+"List view" = "List view";
+
+/* A message displayed while loading the user's archive. */
+"Loading archive…" = "Loading archive…";
+
+/* A message displayed while waiting for time entries to load. */
+"Loading time entries…" = "Loading time entries…";
+
+/* A button that logs out the user from their account. */
+"Log out" = "Log out";
+
+/* The title of the QR code login screen. */
+"Login with QR code" = "Login with QR code";
+
+/* A button label that allows a user to mark a time entry as completed. */
+"Mark as Completed" = "Mark as Completed";
+
+/* A description of what "Mark this entry as billable time." means. */
+"Mark this entry as billable time." = "Mark this entry as billable time.";
+
+/* A description of what it means to mark a link as a favorite. */
+"Mark this link as a favorite for quick access." = "Mark this link as a favorite for quick access.";
+
+"Modify details, refetch metadata, or update collections." = "Modify details, refetch metadata, or update collections.";
+
+/* A description of the functionality of the Edit Time Entry Sheet. */
+"Modify name, timing, description, and other details." = "Modify name, timing, description, and other details.";
+
+/* A description below the filter section, explaining its purpose. */
+"Narrow by search, type, sort order, and when items were archived." = "Narrow by search, type, sort order, and when items were archived.";
+
+/* A description below the filter section, explaining its purpose. */
+"Narrow the list by status, sort order, and date range." = "Narrow the list by status, sort order, and date range.";
+
+/* A label for the new password field. */
+"New password" = "New password";
+
+/* A label indicating that there are no items matching the current filter criteria in the archive. */
+"No %@ in archive" = "No %@ in archive";
+
+/* A label displayed when there are no archived items to display. */
+"No archived items" = "No archived items";
+
+/* A message displayed when a user has not selected any collections to share a link with. */
+"No collections selected" = "No collections selected";
+
+/* A message displayed when a user has not created any collections yet. It instructs the user to create one from the "Links" screen. */
+"No collections yet. Create one from the Links screen." = "No collections yet. Create one from the Links screen.";
+
+/* A label displayed when there are no search results. */
+"No matches" = "No matches";
+
+/* A label displayed when a user has no time entries to show. */
+"No time entries" = "No time entries";
+
+/* A label indicating that a date has not been set. */
+"Not set" = "Not set";
+
+/* A label indicating that a break is currently ongoing. */
+"Ongoing" = "Ongoing";
+
+/* A button label that says "Open". */
+"Open" = "Open";
+
+/* A hint that describes the action of opening the account settings screen. */
+"Opens account settings" = "Opens account settings";
+
+/* A hint that describes the action of tapping the "Edit profile" button in the profile view. */
+"Opens edit profile screen" = "Opens edit profile screen";
+
+/* The title of the password section in the change password view. */
+"PASSWORD" = "PASSWORD";
+
+/* A warning message displayed when the new password is too short. */
+"Password must be at least 8 characters" = "Password must be at least 8 characters";
+
+/* An error message displayed when the new password and its confirmation do not match. */
+"Passwords don't match" = "Passwords don't match";
+
+/* A button label that pauses a time entry. */
+"Pause" = "Pause";
+
+/* A placeholder text for a text field where a user can add personal notes to a link. */
+"Personal notes…" = "Personal notes…";
+
+/* A description under the QR code scanner that instructs the user to point their camera at the QR code on the website. */
+"Point your camera at the QR code on the website" = "Point your camera at the QR code on the website";
+
+"preview.unavailable" = "Preview unavailable";
+
+"Processing…" = "Processing…";
+
+/* A label describing the profile photo. */
+"Profile photo" = "Profile photo";
+
+"profile.account" = "ACCOUNT";
+
+"profile.account_settings" = "Account settings";
+
+"profile.account_settings_subtitle" = "Preferences and security";
+
+"profile.app_version" = "Cloudwrkz %@";
+
+"profile.edit_profile" = "Edit profile";
+
+"profile.edit_profile_nav" = "Edit Profile";
+
+"profile.edit_profile_subtitle" = "Name and photo";
+
+"profile.first_name" = "First name";
+
+"profile.help" = "Help";
+
+"profile.help_subtitle" = "Support and documentation";
+
+"profile.last_name" = "Last name";
+
+"profile.last_signed_in" = "Last signed in %@";
+
+"profile.log_out" = "Log out";
+
+"profile.log_out_subtitle" = "Sign out of your account";
+
+"profile.member_since" = "Member since %@";
+
+"profile.name_label" = "NAME";
+
+"profile.notifications" = "Notifications";
+
+"profile.notifications_subtitle" = "Alerts and preferences";
+
+"profile.qr_login" = "Login with QR code";
+
+"profile.qr_login_subtitle" = "Sign in on the website by scanning";
+
+"profile.session" = "SESSION";
+
+"profile.signed_in" = "Signed in";
+
+"profile.tap_to_change_photo" = "Tap to change photo";
+
+"profile.title" = "Profile";
+
+"profile.view_profile" = "View Profile";
+
+"profile.view_profile_subtitle" = "Name, avatar, settings";
+
+"qr_login.exchanging_keys" = "Exchanging keys";
+
+"qr_login.generating_keys" = "Generating keys";
+
+"qr_login.logged_in" = "Logged in";
+
+"qr_login.validating" = "Validating request";
+
+"qr_login.validating_final" = "Validating…";
+
+/* A label displayed above a section of quick links. */
+"QUICK LINKS" = "QUICK LINKS";
+
+/* A button to view the raw content of a file on GitHub. */
+"Raw" = "Raw";
+
+/* A description under the "Refresh Metadata" button in the */
+"Re-extract title, description, and icon from the URL." = "Re-extract title, description, and icon from the URL.";
+
+/* A description below the header that explains the purpose of this view. */
+"Real-time server and database status" = "Real-time server and database status";
+
+/* A button label that triggers the refetching of metadata for all their links. */
+"Refetch All Metadata" = "Refetch All Metadata";
+
+/* A button label that triggers the refetching of a link's icon. */
+"Refetch Icon" = "Refetch Icon";
+
+/* The label of a button that refreshes the server health status view. */
+"Refresh" = "Refresh";
+
+/* A button label that triggers the refresh of a link's metadata. */
+"Refresh Metadata" = "Refresh Metadata";
+
+"register.privacy_consent" = "I agree to the processing of my personal data in accordance with the privacy policy.";
+
+"register.view_privacy_policy" = "View privacy policy";
+
+"register.choose_password_placeholder" = "Choose a password";
+
+"register.confirm_password_label" = "CONFIRM PASSWORD";
+
+"register.confirm_password_placeholder" = "Confirm your password";
+
+"register.name_label" = "NAME";
+
+"register.name_min_length" = "Name must be at least 2 characters.";
+
+"register.name_placeholder" = "Your name";
+
+"register.password_min_length" = "Password must be at least 8 characters.";
+
+"register.passwords_do_not_match" = "Passwords do not match.";
+
+"register.please_choose_password" = "Please choose a password.";
+
+"register.please_enter_email" = "Please enter your email.";
+
+"register.please_enter_name" = "Please enter your name.";
+"register.consent_prefix" = "By creating an account, you agree to our";
+"register.privacy_policy_link" = "Privacy Policy";
+"register.consent_and" = "and";
+"register.terms_link" = "Terms of Service";
+"register.consent_required" = "Please agree to the Privacy Policy and Terms of Service to continue.";
+
+/* A button label that allows users to remove a previously-set favicon. */
+"Remove" = "Remove";
+
+/* A label describing a repository. */
+"REPOSITORY" = "REPOSITORY";
+
+/* A button label that resets all filters in the current view. */
+"Reset all filters" = "Reset all filters";
+
+/* A button label that resumes a time entry. */
+"Resume" = "Resume";
+
+/* A button that reloads the archive data when pressed. */
+"Retry" = "Retry";
+
+/* The text on a button that saves data. */
+"Save" = "Save";
+
+/* A message displayed while a link is being saved. */
+"Saving changes…" = "Saving changes…";
+
+/* A placeholder text in the search field of the archive filters view. */
+"Search in titles…" = "Search in titles…";
+
+"search.loading_more" = "Loading more…";
+
+"search.placeholder" = "Search…";
+
+"search.searching" = "Searching…";
+
+"search.subtitle" = "Tickets, tasks, people & more";
+
+"search.title" = "Search";
+
+"search.enhanced_hint" = "Use \"> search text\" or \"> type: ticket\" for filters.";
+
+/* A button that toggles the selection state of a timer. */
+"Select" = "Select";
+
+"Select All" = "Select All";
+
+"server_config.active_endpoint" = "Active endpoint";
+
+"server_config.connection_details" = "Connection details";
+
+"server_config.domain_placeholder" = "e.g. mycompany.com";
+
+"server_config.environment" = "Environment";
+
+"server_config.login_path" = "Login API path";
+
+"server_config.login_path_hint" = "If login returns 404, set this to the path your website uses (e.g. api/login).";
+
+"server_config.login_path_placeholder" = "api/login";
+
+"server_config.path_no_slash" = "Path (no leading slash)";
+
+"server_config.port_optional" = "Port (optional)";
+
+"server_config.port_placeholder" = "e.g. 8443";
+
+"server_config.server_domain" = "Server domain";
+
+"server_config.subtitle" = "Choose your environment and connection details.";
+
+"server_config.tenant_official" = "Use the official Cloudwrkz service";
+
+"server_config.tenant_onprem" = "Company or self‑hosted deployment";
+
+"server_config.title" = "Server configuration";
+
+"server_config.use_https" = "Use HTTPS";
+
+/* A title for the view that appears at the top of the screen. */
+"Service health" = "Service health";
+
+/* An accessibility label for the view that appears when a user's session expires. */
+"Session ended" = "Session ended";
+
+"session.back_to_sign_in" = "Back to Sign In";
+
+"session.ended_message" = "Your session was terminated from another device or by an administrator. Please sign in again to continue.";
+
+"session.session_ended" = "Session Ended";
+
+/* A button that sets a date when pressed. */
+"Set" = "Set";
+
+/* An accessibility hint for the "Log out" button in the ProfileView. */
+"Signs out of your account" = "Signs out of your account";
+
+"splash.app_name" = "Cloudwrkz";
+
+"splash.create_account" = "Create account";
+
+"splash.sign_in" = "Sign in";
+
+/* The text on the "Start" button in the StartTimerSheet. */
+"Start" = "Start";
+
+/* A heading describing the purpose of the view. */
+"Start a new timer" = "Start a new timer";
+
+/* A description below the buttons in the "Empty View" of the time tracking overview. */
+"Start a timer or add a manual entry to begin tracking your time." = "Start a timer or add a manual entry to begin tracking your time.";
+
+/* The title of the view. */
+"Start Timer" = "Start Timer";
+
+/* A button label that stops a time entry. */
+"Stop" = "Stop";
+
+/* A label displayed above a list of tags associated with a time entry. */
+"Tags" = "Tags";
+
+/* An accessibility hint for the "Back to Sign In" button in the session expired overlay. */
+"Tap Back to Sign In to return to the login screen" = "Tap Back to Sign In to return to the login screen";
+
+"tenant_status.checking" = "Checking…";
+
+"tenant_status.degraded" = "Degraded";
+
+"tenant_status.healthy" = "Healthy";
+
+"tenant_status.unreachable" = "Unreachable";
+
+/* A description of the consequences of deleting multiple time entries. */
+"The selected time entries will be permanently removed. This action can’t be undone." = "The selected time entries will be permanently removed. This action can’t be undone.";
+
+/* A message displayed when a user attempts to delete an item from the archive. */
+"This cannot be undone." = "This cannot be undone.";
+
+/* A message in an alert that appears when the user confirms deleting a time entry. The text inside the message is dynamically generated based on the name of the time entry that the user is trying to delete. */
+"This will permanently delete \"%@\". This action cannot be undone." = "This will permanently delete \"%@\". This action cannot be undone.";
+
+"ticket.archive" = "Archive";
+
+"ticket.archive_ticket" = "Archive ticket?";
+
+"ticket.archive_ticket_message" = "\"%@\" will be moved to the archive. You can restore it later.";
+
+"ticket.delete" = "Delete";
+
+"ticket.delete_ticket" = "Delete ticket?";
+
+"ticket.delete_ticket_message" = "\"%@\" will be permanently removed. This action can't be undone.";
+
+"ticket.empty_hint" = "Change filters or create a ticket in the web app.";
+
+"ticket.group" = "Group";
+
+"ticket.load_error" = "Couldn't load tickets";
+
+"ticket.loading" = "Loading tickets…";
+
+"ticket.nav_title" = "Tickets";
+
+"ticket.no_tickets" = "No tickets";
+
+/* The title of the time tracking screen. */
+"Time Tracking" = "Time Tracking";
+
+/* A placeholder text for a text field where a user can enter a name for a time entry. */
+"Timer name" = "Timer name";
+
+/* A label displayed when a time entry's timer is paused. */
+"Timer Paused" = "Timer Paused";
+
+/* A label displayed next to a green circle in the timer card, indicating that the timer is currently running. */
+"Timer Running" = "Timer Running";
+
+/* A label for the title text field in the "Add Link" view. */
+"Title" = "Title";
+
+"todo.archive" = "Archive";
+
+"todo.archive_todo" = "Archive todo?";
+
+"todo.archive_todo_message" = "\"%@\" will be moved to the archive. You can restore it later.";
+
+"todo.assigned" = "Assigned";
+
+"todo.card_view" = "Card view";
+
+"todo.completed_header" = "COMPLETED";
+
+"todo.context_complete" = "Mark as Complete";
+
+"todo.context_uncomplete" = "Mark as Incomplete";
+
+"todo.created" = "Created";
+
+"todo.delete" = "Delete";
+
+"todo.delete_todo" = "Delete todo?";
+
+"todo.delete_todo_message" = "\"%@\" will be permanently removed. This action can't be undone.";
+
+"todo.empty_hint" = "Change filters or tap + to add a todo.";
+
+"todo.list_view" = "List view";
+
+"todo.load_error" = "Couldn't load todos";
+
+"todo.loading" = "Loading todos…";
+
+"todo.nav_title" = "ToDo";
+
+"todo.no_server" = "No server configured.";
+
+"todo.no_todos" = "No todos";
+
+"todo.please_sign_in" = "Please sign in again.";
+
+"todo.retry" = "Retry";
+
+"todo.session_expired" = "Session expired. Sign in again.";
+
+"todo.unassigned" = "Unassigned";
+
+/* A label displayed below the current timer value, indicating the total duration of the time entry. */
+"Total duration" = "Total duration";
+
+/* A label displaying the total duration of the time entry, formatted as a string. The argument is the total duration in seconds. */
+"Total: %@" = "Total: %@";
+
+/* A message displayed when there are no matching search results in the archive. */
+"Try a different search or clear the filter." = "Try a different search or clear the filter.";
+
+/* A button that allows the user to try scanning the QR code again if they encounter an error. */
+"Try again" = "Try again";
+
+/* A menu item that unarchives an archived item. */
+"Unarchive" = "Unarchive";
+
+/* A label displaying the timestamp of the last update to the server health status. The argument is a `Date`. */
+"Updated %@" = "Updated %@";
+
+/* A label displaying the URL of the favicon image. */
+"URL: %@" = "URL: %@";
+
+/* A hint that appears when VoiceOver is used to read the content of the view. */
+"Use %@ to unlock" = "Use %@ to unlock";
+
+/* A description below the password field, instructing the user to use a strong password. */
+"Use at least 8 characters with uppercase, lowercase, and a number" = "Use at least 8 characters with uppercase, lowercase, and a number";
+
+/* A button label that says "View file". */
+"View file" = "View file";
+
+/* A label for the text field that asks for a description of the task. */
+"What are you working on?" = "What are you working on?";
+
+/* A prompt for users to describe what they were working on during a time entry. */
+"What were you working on?" = "What were you working on?";
+
+/* A message displayed after a successful QR code login. */
+"You're signed in" = "You're signed in";
+
+/* Privacy Policy */
+
+"privacy_policy.title" = "Privacy Policy";
+
+"privacy_policy.last_updated" = "Last updated: March 2026";
+
+"privacy_policy.controller_title" = "Data Controller";
+
+"privacy_policy.controller_body" = "The data controller for the Cloudwrkz app is the operator of your Cloudwrkz instance. If you are using the official Cloudwrkz service (cloudwrkz.com), the controller is Cloudwrkz GmbH. For self-hosted or on-premises deployments, the controller is your organization.\n\nFor questions regarding data protection, contact your administrator or privacy@cloudwrkz.com.";
+
+"privacy_policy.data_collection_title" = "Data We Collect";
+
+"privacy_policy.data_collection_body" = "We collect and process the following categories of personal data:\n\n• Account data: Name, email address, and password (encrypted) for authentication.\n• Profile data: First name, last name, and optional profile photo.\n• Device metadata: Device type (mobile/tablet), operating system version, and app version — sent during login for session management.\n• Usage data: Tickets, todos, time entries (including text-based location descriptions), links, and other content you create.\n• Technical data: Authentication tokens stored securely in the iOS Keychain; app preferences stored locally on your device.\n\nWe do NOT collect:\n• GPS or precise location data\n• Contacts, calendars, or health data\n• Advertising identifiers or tracking data\n• Data from third-party analytics SDKs";
+
+"privacy_policy.legal_basis_title" = "Legal Basis for Processing";
+
+"privacy_policy.legal_basis_body" = "We process your data on the following legal bases (GDPR Art. 6):\n\n• Contract performance (Art. 6(1)(b)): Processing necessary for providing the Cloudwrkz service, including authentication, data storage, and feature functionality.\n• Legitimate interests (Art. 6(1)(f)): Device metadata for session security and fraud prevention.\n• Consent (Art. 6(1)(a)): Optional features such as profile photo upload and biometric lock. You may withdraw consent at any time.";
+
+"privacy_policy.third_party_title" = "Third-Party Services";
+
+"privacy_policy.third_party_body" = "The app connects to the following third-party services:\n\n• OpenStreetMap Nominatim: Used for text-based address suggestions in time tracking. Your search queries are sent to nominatim.openstreetmap.org. No personal identifiers are included. Nominatim's privacy policy: https://osmfoundation.org/wiki/Privacy_Policy\n• YouTube (img.youtube.com): Used to load thumbnail images for links containing YouTube URLs. Only the video ID is transmitted.\n\nWe do not share your personal data with advertising networks, data brokers, or analytics providers.";
+
+"privacy_policy.data_storage_title" = "Data Storage & Security";
+
+"privacy_policy.data_storage_body" = "• Authentication token: Stored in the iOS Keychain (hardware-encrypted).\n• App preferences and profile data: Stored in local device storage (UserDefaults).\n• All data in transit: Transmitted via HTTPS/TLS encryption.\n• Server-side data: Stored on your Cloudwrkz server instance. For the official service, servers are located in the EU.\n\nOn logout, all local data (token, profile, preferences, caches) is cleared from the device.";
+
+"privacy_policy.data_retention_title" = "Data Retention";
+
+"privacy_policy.data_retention_body" = "• Local data: Cleared immediately upon logout or when you use \"Clear local cache\".\n• Server data: Retained for as long as your account is active. After account deletion, all personal data is removed within 30 days.\n• Backups: Server backups containing your data are purged within 90 days of account deletion.";
+
+"privacy_policy.your_rights_title" = "Your Rights (GDPR Art. 15–22)";
+
+"privacy_policy.your_rights_body" = "Under the GDPR/DSGVO, you have the following rights:\n\n• Right of access (Art. 15): Request information about the personal data we process.\n• Right to rectification (Art. 16): Correct inaccurate data via your profile settings.\n• Right to erasure (Art. 17): Request deletion of your account and all associated data.\n• Right to restriction (Art. 18): Request restriction of processing under certain conditions.\n• Right to data portability (Art. 20): Receive your data in a structured, machine-readable format.\n• Right to object (Art. 21): Object to processing based on legitimate interests.\n• Right regarding automated decisions (Art. 22): We do not make automated decisions or profiling that produce legal effects.\n\nYou can exercise your rights through the \"Data & Privacy\" section in Account Settings, or by contacting privacy@cloudwrkz.com.\n\nYou also have the right to lodge a complaint with a supervisory authority (Art. 77).";
+
+"privacy_policy.security_title" = "Security Measures";
+
+"privacy_policy.security_body" = "We implement appropriate technical and organizational measures (GDPR Art. 32):\n\n• End-to-end encryption for data in transit (TLS/HTTPS)\n• Hardware-encrypted Keychain storage for authentication tokens\n• Biometric authentication option (Face ID/Touch ID)\n• Session monitoring with automatic expiration\n• No third-party analytics or tracking SDKs\n• Minimal data collection principle";
+
+"privacy_policy.children_title" = "Children's Privacy";
+
+"privacy_policy.children_body" = "Cloudwrkz is a workplace productivity tool not intended for use by children under 16. We do not knowingly collect personal data from children. If you believe a child has provided us with personal data, please contact us at privacy@cloudwrkz.com.";
+
+"privacy_policy.changes_title" = "Changes to This Policy";
+
+"privacy_policy.changes_body" = "We may update this privacy policy from time to time. Material changes will be communicated through the app or via email. Continued use of the app after changes constitutes acceptance of the updated policy.";
+
+"privacy_policy.contact_title" = "Contact";
+
+"privacy_policy.contact_body" = "For privacy-related inquiries:\n\nEmail: privacy@cloudwrkz.com\n\nFor self-hosted instances, contact your organization's data protection officer.";

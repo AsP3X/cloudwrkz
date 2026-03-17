@@ -1,0 +1,312 @@
+"use server";
+
+import { prisma } from "@/lib/db/prisma";
+import { requireRole } from "@/lib/utils/auth-server";
+import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
+import { MODULE_KEYS } from "@/lib/constants/modules";
+import {
+  LINK_PAGE_SIZE_OPTIONS,
+  LINK_PAGE_SIZE_ALL,
+  DEFAULT_LINKS_PAGE_SIZE,
+  LINKS_DEFAULT_PAGE_SIZE_VALUES,
+} from "@/lib/constants/links";
+import { MIN_QR_REQUESTS_PER_MINUTE, MAX_QR_REQUESTS_PER_MINUTE } from "@/lib/constants/qr-login";
+import { QR_REQUESTS_PER_MINUTE_CACHE_TAG } from "@/server/lib/qr-login-rate-limit";
+
+const QR_REQUESTS_PER_MINUTE_SETTING_KEY = "qr_login_requests_per_minute";
+
+export type SystemInfo = {
+  totalUsers: number;
+  totalTickets: number;
+  totalGroups: number;
+  totalModules: number;
+  enabledModules: number;
+  activeSessions: number;
+  databaseSize?: string;
+};
+
+export type DatabaseStats = {
+  users: number;
+  sessions: number;
+  tickets: number;
+  ticketComments: number;
+  groups: number;
+  groupMemberships: number;
+  modules: number;
+};
+
+/**
+ * Get system information
+ */
+export async function getSystemInfo(): Promise<SystemInfo> {
+  await requireRole("ADMIN");
+  const { requirePermission } = await import("@/lib/utils/auth-server");
+  await requirePermission("admin.settings.manage");
+
+  const [
+    totalUsers,
+    totalTickets,
+    totalGroups,
+    totalModules,
+    enabledModules,
+    activeSessions,
+  ] = await Promise.all([
+    prisma.user.count(),
+    prisma.ticket.count(),
+    prisma.group.count(),
+    prisma.module.count(),
+    prisma.module.count({ where: { enabled: true } }),
+    prisma.session.count({
+      where: {
+        expiresAt: {
+          gt: new Date(),
+        },
+      },
+    }),
+  ]);
+
+  return {
+    totalUsers,
+    totalTickets,
+    totalGroups,
+    totalModules,
+    enabledModules,
+    activeSessions,
+  };
+}
+
+/**
+ * Get database statistics
+ */
+export async function getDatabaseStats(): Promise<DatabaseStats> {
+  await requireRole("ADMIN");
+  const { requirePermission } = await import("@/lib/utils/auth-server");
+  await requirePermission("admin.settings.manage");
+
+  const [
+    users,
+    sessions,
+    tickets,
+    ticketComments,
+    groups,
+    groupMemberships,
+    modules,
+  ] = await Promise.all([
+    prisma.user.count(),
+    prisma.session.count(),
+    prisma.ticket.count(),
+    prisma.ticketComment.count(),
+    prisma.group.count(),
+    prisma.groupMembership.count(),
+    prisma.module.count(),
+  ]);
+
+  return {
+    users,
+    sessions,
+    tickets,
+    ticketComments,
+    groups,
+    groupMemberships,
+    modules,
+  };
+}
+
+/**
+ * Purge deleted accounts (manual trigger)
+ */
+export async function purgeDeletedAccounts(): Promise<{ success: boolean; message: string; deletedCount: number }> {
+  await requireRole("ADMIN");
+  const { requirePermission } = await import("@/lib/utils/auth-server");
+  await requirePermission("admin.settings.manage");
+
+  // Find users scheduled for deletion (older than 30 days)
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const deletedUsers = await prisma.user.findMany({
+    where: {
+      status: "DELETED",
+      scheduledForDeletionAt: {
+        lte: thirtyDaysAgo,
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  const deletedCount = deletedUsers.length;
+
+  if (deletedCount === 0) {
+    return {
+      success: true,
+      message: "No accounts to purge",
+      deletedCount: 0,
+    };
+  }
+
+  // Delete sessions first
+  await prisma.session.deleteMany({
+    where: {
+      userId: {
+        in: deletedUsers.map((u) => u.id),
+      },
+    },
+  });
+
+  // Delete users (cascading deletes will handle related data)
+  await prisma.user.deleteMany({
+    where: {
+      id: {
+        in: deletedUsers.map((u) => u.id),
+      },
+    },
+  });
+
+  revalidatePath("/dashboard/admin/settings");
+
+  return {
+    success: true,
+    message: `Successfully purged ${deletedCount} deleted account(s)`,
+    deletedCount,
+  };
+}
+
+/**
+ * Get system health status
+ */
+export async function getSystemHealth(): Promise<{
+  status: "healthy" | "degraded" | "unhealthy";
+  checks: {
+    database: boolean;
+    sessions: boolean;
+    modules: boolean;
+  };
+  message: string;
+}> {
+  await requireRole("ADMIN");
+  const { requirePermission } = await import("@/lib/utils/auth-server");
+  await requirePermission("admin.settings.manage");
+
+  try {
+    // Check database connection
+    await prisma.$queryRaw`SELECT 1`;
+
+    // Check if there are any modules
+    const moduleCount = await prisma.module.count();
+    const hasModules = moduleCount > 0;
+
+    // Check active sessions
+    const activeSessions = await prisma.session.count({
+      where: {
+        expiresAt: {
+          gt: new Date(),
+        },
+      },
+    });
+
+    const checks = {
+      database: true,
+      sessions: true,
+      modules: hasModules,
+    };
+
+    const allHealthy = Object.values(checks).every((check) => check);
+
+    return {
+      status: allHealthy ? "healthy" : "degraded",
+      checks,
+      message: allHealthy
+        ? "All systems operational"
+        : "Some systems may be experiencing issues",
+    };
+  } catch (error) {
+    return {
+      status: "unhealthy",
+      checks: {
+        database: false,
+        sessions: false,
+        modules: false,
+      },
+      message: "System health check failed",
+    };
+  }
+}
+
+const LINKS_DEFAULT_PAGE_SIZE_CACHE_TAG = "links-default-page-size";
+
+async function getLinksDefaultPageSizeUncached(): Promise<number> {
+  const moduleRecord = await prisma.module.findUnique({
+    where: { key: MODULE_KEYS.LINKS },
+    select: { config: true },
+  });
+  if (!moduleRecord?.config || typeof moduleRecord.config !== "object") {
+    return DEFAULT_LINKS_PAGE_SIZE;
+  }
+  const config = moduleRecord.config as Record<string, unknown>;
+  const value = config.defaultPageSize;
+  if (typeof value === "number" && LINKS_DEFAULT_PAGE_SIZE_VALUES.includes(value as (typeof LINKS_DEFAULT_PAGE_SIZE_VALUES)[number])) {
+    return value;
+  }
+  return DEFAULT_LINKS_PAGE_SIZE;
+}
+
+/**
+ * Get the default page size for the links overview (cached; used when rendering links page for any user).
+ */
+export const getLinksDefaultPageSize = unstable_cache(
+  getLinksDefaultPageSizeUncached,
+  [LINKS_DEFAULT_PAGE_SIZE_CACHE_TAG],
+  { revalidate: 60, tags: [LINKS_DEFAULT_PAGE_SIZE_CACHE_TAG] }
+);
+
+/**
+ * Update the default page size for the links overview (admin only).
+ */
+export async function updateLinksDefaultPageSize(value: number): Promise<{ success: boolean; error?: string }> {
+  await requireRole("ADMIN");
+  const { requirePermission } = await import("@/lib/utils/auth-server");
+  await requirePermission("admin.settings.manage");
+  if (!LINKS_DEFAULT_PAGE_SIZE_VALUES.includes(value as (typeof LINKS_DEFAULT_PAGE_SIZE_VALUES)[number])) {
+    return { success: false, error: "Invalid page size" };
+  }
+  const moduleRecord = await prisma.module.findUnique({
+    where: { key: MODULE_KEYS.LINKS },
+    select: { config: true },
+  });
+  const existingConfig = (moduleRecord?.config as Record<string, unknown>) ?? {};
+  await prisma.module.update({
+    where: { key: MODULE_KEYS.LINKS },
+    data: {
+      config: { ...existingConfig, defaultPageSize: value },
+    },
+  });
+  revalidatePath("/dashboard/links");
+  revalidatePath("/dashboard/admin/settings");
+  revalidateTag(LINKS_DEFAULT_PAGE_SIZE_CACHE_TAG, "max");
+  return { success: true };
+}
+
+/**
+ * Update max QR login requests per minute (admin only).
+ */
+export async function updateQrLoginRequestsPerMinute(
+  value: number
+): Promise<{ success: boolean; error?: string }> {
+  await requireRole("ADMIN");
+  const { requirePermission } = await import("@/lib/utils/auth-server");
+  await requirePermission("admin.settings.manage");
+  const n = Math.floor(Number(value));
+  if (n < MIN_QR_REQUESTS_PER_MINUTE || n > MAX_QR_REQUESTS_PER_MINUTE) {
+    return { success: false, error: `Value must be between ${MIN_QR_REQUESTS_PER_MINUTE} and ${MAX_QR_REQUESTS_PER_MINUTE}` };
+  }
+  await prisma.systemSetting.upsert({
+    where: { key: QR_REQUESTS_PER_MINUTE_SETTING_KEY },
+    create: { key: QR_REQUESTS_PER_MINUTE_SETTING_KEY, value: n },
+    update: { value: n },
+  });
+  revalidatePath("/dashboard/admin/settings");
+  revalidateTag(QR_REQUESTS_PER_MINUTE_CACHE_TAG, "max");
+  return { success: true };
+}

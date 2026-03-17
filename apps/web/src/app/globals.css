@@ -1,0 +1,456 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* TipTap Editor Placeholder */
+.ProseMirror.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: rgb(163 163 163);
+  pointer-events: none;
+  height: 0;
+}
+
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: rgb(163 163 163);
+  pointer-events: none;
+  height: 0;
+}
+
+.dark .ProseMirror.is-editor-empty:first-child::before,
+.dark .ProseMirror p.is-editor-empty:first-child::before {
+  color: rgb(115 115 115);
+}
+
+@layer base {
+  :root {
+    --font-inter: "Inter", system-ui, sans-serif;
+  }
+
+  * {
+    @apply border-neutral-200 dark:border-neutral-800;
+  }
+
+  body {
+    @apply bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-50 antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Smooth scrolling */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Focus visible styles */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-primary-500 ring-offset-2 dark:ring-offset-neutral-950;
+  }
+}
+
+@layer utilities {
+  /* Screen reader only - for accessibility */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+
+  .focus\:not-sr-only:focus {
+    position: static;
+    width: auto;
+    height: auto;
+    padding: inherit;
+    margin: inherit;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
+  }
+
+  /* Custom scrollbar */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(163 163 163) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: rgb(163 163 163);
+    border-radius: 4px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(115 115 115);
+  }
+
+  .dark .scrollbar-thin {
+    scrollbar-color: rgb(115 115 115) transparent;
+  }
+
+  .dark .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: rgb(115 115 115);
+  }
+
+  .dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(163 163 163);
+  }
+
+  /* Hide scrollbar but allow scrolling */
+  .scrollbar-hide {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none; /* Chrome, Safari and Opera */
+  }
+
+  /* Safe area padding for mobile devices */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .h-safe {
+    height: env(safe-area-inset-bottom);
+  }
+
+  /* Animations for mobile modals */
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideIn {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.2s ease-out;
+  }
+
+  .animate-slide-in {
+    animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Text selection */
+  ::selection {
+    @apply bg-primary-200 text-primary-900 dark:bg-primary-800 dark:text-primary-100;
+  }
+
+  /* Ensure floating timer widget is always fixed to viewport */
+  #floating-timer-widget {
+    position: fixed !important;
+    bottom: 24px !important;
+    right: 24px !important;
+    z-index: 99999 !important;
+  }
+
+  /* Blockquote styling for rich text editor and display */
+  .prose blockquote,
+  blockquote {
+    border-left: 4px solid rgb(59 130 246) !important; /* primary-500 */
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+    padding-top: 0.75rem !important;
+    padding-bottom: 0.75rem !important;
+    margin-top: 1rem !important;
+    margin-bottom: 1rem !important;
+    background-color: rgb(245 245 244) !important; /* neutral-100 */
+    color: rgb(55 65 81) !important; /* neutral-700 */
+    font-style: italic !important;
+    border-radius: 0 0.5rem 0.5rem 0 !important;
+  }
+
+  .dark .prose blockquote,
+  .dark blockquote {
+    background-color: rgba(31, 41, 55, 0.5) !important; /* neutral-800/50 */
+    color: rgb(209 213 219) !important; /* neutral-300 */
+    border-left-color: rgb(59 130 246) !important; /* primary-500 */
+  }
+
+  /* Inline quote styling - using highlight mark with special color */
+  .prose mark[data-color="#inline-quote"],
+  mark[data-color="#inline-quote"],
+  .ProseMirror mark[data-color="#inline-quote"],
+  .prose span[data-type="inline-quote"],
+  span.inline-quote,
+  span[data-type="inline-quote"],
+  .ProseMirror span[data-type="inline-quote"],
+  .ProseMirror span.inline-quote {
+    border-left: 4px solid rgb(37 99 235) !important; /* primary-600 - darker blue for more visibility */
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+    padding-top: 0.25rem !important;
+    padding-bottom: 0.25rem !important;
+    background-color: rgb(219 234 254) !important; /* blue-100 - lighter blue background for better contrast */
+    color: rgb(30 58 138) !important; /* blue-900 - darker blue text for readability */
+    font-style: italic !important;
+    font-weight: 500 !important;
+    border-radius: 0.375rem !important;
+    display: inline-block !important; /* Changed from inline to inline-block for better visibility */
+    min-width: 2ch !important; /* Ensure empty quotes are visible */
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
+    position: relative !important;
+  }
+
+  .prose mark[data-color="#inline-quote"]::before,
+  mark[data-color="#inline-quote"]::before,
+  .ProseMirror mark[data-color="#inline-quote"]::before,
+  .prose span[data-type="inline-quote"]::before,
+  span.inline-quote::before,
+  span[data-type="inline-quote"]::before,
+  .ProseMirror span[data-type="inline-quote"]::before,
+  .ProseMirror span.inline-quote::before {
+    content: '"' !important;
+    font-size: 1.5em !important;
+    line-height: 1 !important;
+    margin-right: 0.25rem !important;
+    opacity: 0.7 !important;
+  }
+
+  .prose mark[data-color="#inline-quote"]::after,
+  mark[data-color="#inline-quote"]::after,
+  .ProseMirror mark[data-color="#inline-quote"]::after,
+  .prose span[data-type="inline-quote"]::after,
+  span.inline-quote::after,
+  span[data-type="inline-quote"]::after,
+  .ProseMirror span[data-type="inline-quote"]::after,
+  .ProseMirror span.inline-quote::after {
+    content: '"' !important;
+    font-size: 1.5em !important;
+    line-height: 1 !important;
+    margin-left: 0.25rem !important;
+    opacity: 0.7 !important;
+  }
+
+  .dark .prose mark[data-color="#inline-quote"],
+  .dark mark[data-color="#inline-quote"],
+  .dark .ProseMirror mark[data-color="#inline-quote"],
+  .dark .prose span[data-type="inline-quote"],
+  .dark span.inline-quote,
+  .dark span[data-type="inline-quote"],
+  .dark .ProseMirror span[data-type="inline-quote"],
+  .dark .ProseMirror span.inline-quote {
+    background-color: rgba(30, 58, 138, 0.3) !important; /* blue-900 with opacity */
+    color: rgb(191 219 254) !important; /* blue-200 - lighter blue text for dark mode */
+    border-left-color: rgb(96 165 250) !important; /* blue-400 - brighter blue border for dark mode */
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.2) !important;
+    display: inline-block !important; /* Changed from inline to inline-block for better visibility */
+    min-width: 2ch !important; /* Ensure empty quotes are visible */
+  }
+
+  .dark .prose mark[data-color="#inline-quote"]::before,
+  .dark mark[data-color="#inline-quote"]::before,
+  .dark .ProseMirror mark[data-color="#inline-quote"]::before,
+  .dark .prose span[data-type="inline-quote"]::before,
+  .dark span.inline-quote::before,
+  .dark span[data-type="inline-quote"]::before,
+  .dark .ProseMirror span[data-type="inline-quote"]::before,
+  .dark .ProseMirror span.inline-quote::before {
+    content: '"' !important;
+    font-size: 1.5em !important;
+    line-height: 1 !important;
+    margin-right: 0.25rem !important;
+    opacity: 0.7 !important;
+  }
+
+  .dark .prose mark[data-color="#inline-quote"]::after,
+  .dark mark[data-color="#inline-quote"]::after,
+  .dark .ProseMirror mark[data-color="#inline-quote"]::after,
+  .dark .prose span[data-type="inline-quote"]::after,
+  .dark span.inline-quote::after,
+  .dark span[data-type="inline-quote"]::after,
+  .dark .ProseMirror span[data-type="inline-quote"]::after,
+  .dark .ProseMirror span.inline-quote::after {
+    content: '"' !important;
+    font-size: 1.5em !important;
+    line-height: 1 !important;
+    margin-left: 0.25rem !important;
+    opacity: 0.7 !important;
+  }
+
+  /* List styling for rich text editor and display */
+  .prose ul,
+  .prose ol,
+  .ProseMirror ul,
+  .ProseMirror ol {
+    list-style-position: outside !important;
+    padding-left: 1.5rem !important;
+    margin-top: 0.5rem !important;
+    margin-bottom: 0.5rem !important;
+  }
+
+  .prose ul {
+    list-style-type: disc !important;
+  }
+
+  .prose ol {
+    list-style-type: decimal !important;
+  }
+
+  .ProseMirror ul {
+    list-style-type: disc !important;
+  }
+
+  .ProseMirror ol {
+    list-style-type: decimal !important;
+  }
+
+  .prose li,
+  .ProseMirror li {
+    margin-top: 0.25rem !important;
+    margin-bottom: 0.25rem !important;
+    padding-left: 0.25rem !important;
+    color: rgb(55 65 81) !important; /* neutral-700 */
+  }
+
+  .dark .prose li,
+  .dark .ProseMirror li {
+    color: rgb(209 213 219) !important; /* neutral-300 */
+  }
+
+  /* Ensure list markers are visible */
+  .prose ul li::marker,
+  .prose ol li::marker,
+  .ProseMirror ul li::marker,
+  .ProseMirror ol li::marker {
+    color: rgb(55 65 81) !important; /* neutral-700 */
+    font-weight: 500 !important;
+  }
+
+  .dark .prose ul li::marker,
+  .dark .prose ol li::marker,
+  .dark .ProseMirror ul li::marker,
+  .dark .ProseMirror ol li::marker {
+    color: rgb(209 213 219) !important; /* neutral-300 */
+  }
+
+  /* Ensure text is black on bright highlight colors for readability */
+  .prose mark[data-color="#FEF08A"],
+  .prose mark[data-color="#BBF7D0"],
+  .prose mark[data-color="#BFDBFE"],
+  .prose mark[data-color="#FCE7F3"],
+  .prose mark[data-color="#FED7AA"],
+  .prose mark[data-color="#E9D5FF"],
+  .prose mark[data-color="#FECACA"],
+  .ProseMirror mark[data-color="#FEF08A"],
+  .ProseMirror mark[data-color="#BBF7D0"],
+  .ProseMirror mark[data-color="#BFDBFE"],
+  .ProseMirror mark[data-color="#FCE7F3"],
+  .ProseMirror mark[data-color="#FED7AA"],
+  .ProseMirror mark[data-color="#E9D5FF"],
+  .ProseMirror mark[data-color="#FECACA"],
+  mark[data-color="#FEF08A"],
+  mark[data-color="#BBF7D0"],
+  mark[data-color="#BFDBFE"],
+  mark[data-color="#FCE7F3"],
+  mark[data-color="#FED7AA"],
+  mark[data-color="#E9D5FF"],
+  mark[data-color="#FECACA"] {
+    color: rgb(0 0 0) !important; /* black text for readability on bright backgrounds */
+  }
+
+  /* Also handle highlights applied via inline styles (bright colors) */
+  .prose mark[style*="background-color: #FEF08A"],
+  .prose mark[style*="background-color:#FEF08A"],
+  .prose mark[style*="background-color: #BBF7D0"],
+  .prose mark[style*="background-color:#BBF7D0"],
+  .prose mark[style*="background-color: #BFDBFE"],
+  .prose mark[style*="background-color:#BFDBFE"],
+  .prose mark[style*="background-color: #FCE7F3"],
+  .prose mark[style*="background-color:#FCE7F3"],
+  .prose mark[style*="background-color: #FED7AA"],
+  .prose mark[style*="background-color:#FED7AA"],
+  .prose mark[style*="background-color: #E9D5FF"],
+  .prose mark[style*="background-color:#E9D5FF"],
+  .prose mark[style*="background-color: #FECACA"],
+  .prose mark[style*="background-color:#FECACA"],
+  .ProseMirror mark[style*="background-color: #FEF08A"],
+  .ProseMirror mark[style*="background-color:#FEF08A"],
+  .ProseMirror mark[style*="background-color: #BBF7D0"],
+  .ProseMirror mark[style*="background-color:#BBF7D0"],
+  .ProseMirror mark[style*="background-color: #BFDBFE"],
+  .ProseMirror mark[style*="background-color:#BFDBFE"],
+  .ProseMirror mark[style*="background-color: #FCE7F3"],
+  .ProseMirror mark[style*="background-color:#FCE7F3"],
+  .ProseMirror mark[style*="background-color: #FED7AA"],
+  .ProseMirror mark[style*="background-color:#FED7AA"],
+  .ProseMirror mark[style*="background-color: #E9D5FF"],
+  .ProseMirror mark[style*="background-color:#E9D5FF"],
+  .ProseMirror mark[style*="background-color: #FECACA"],
+  .ProseMirror mark[style*="background-color:#FECACA"],
+  mark[style*="background-color: #FEF08A"],
+  mark[style*="background-color:#FEF08A"],
+  mark[style*="background-color: #BBF7D0"],
+  mark[style*="background-color:#BBF7D0"],
+  mark[style*="background-color: #BFDBFE"],
+  mark[style*="background-color:#BFDBFE"],
+  mark[style*="background-color: #FCE7F3"],
+  mark[style*="background-color:#FCE7F3"],
+  mark[style*="background-color: #FED7AA"],
+  mark[style*="background-color:#FED7AA"],
+  mark[style*="background-color: #E9D5FF"],
+  mark[style*="background-color:#E9D5FF"],
+  mark[style*="background-color: #FECACA"],
+  mark[style*="background-color:#FECACA"] {
+    color: rgb(0 0 0) !important; /* black text for readability on bright backgrounds */
+  }
+
+}
+
+/* Fix calendar picker icon visibility in dark mode - outside layer for higher specificity */
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(0);
+  cursor: pointer;
+  opacity: 1;
+}
+
+html.dark input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+.dark input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(2) contrast(1.2);
+  opacity: 1;
+}
+
+/* Specifically target the startedAt field with maximum specificity */
+input#startedAt[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(0);
+  cursor: pointer;
+  opacity: 1;
+}
+
+html.dark input#startedAt[type="datetime-local"]::-webkit-calendar-picker-indicator,
+.dark input#startedAt[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(2) contrast(1.2) !important;
+  opacity: 1 !important;
+}
+
+/* Alternative approach using background for browsers that support it */
+html.dark input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+.dark input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  background-color: transparent;
+  color-scheme: dark;
+}

@@ -1,0 +1,62 @@
+PROPRIETARY SOFTWARE LICENSE
+
+Copyright (c) 2024 CloudWrkz. All Rights Reserved.
+
+NOTICE: This software and associated documentation files (the "Software") are the 
+proprietary and confidential property of CloudWrkz. Unauthorized copying, 
+modification, distribution, or use of this Software, via any medium, is strictly 
+prohibited.
+
+TERMS AND CONDITIONS:
+
+1. OWNERSHIP
+   The Software is owned by CloudWrkz and is protected by copyright laws and 
+   international copyright treaties, as well as other intellectual property laws 
+   and treaties.
+
+2. RESTRICTED USE
+   You may NOT:
+   - Copy, reproduce, or duplicate the Software in any form
+   - Modify, adapt, or create derivative works based on the Software
+   - Distribute, sublicense, lease, rent, loan, or otherwise transfer the Software
+   - Sell, resell, or commercialize the Software or any portion thereof
+   - Fork, clone, or create a separate project based on this codebase
+   - Use the Software for any commercial purpose
+   - Remove or alter any proprietary notices or labels on the Software
+
+3. PERMITTED USE - SECURITY AND BUG AUDITS ONLY
+   You MAY:
+   - Inspect the source code for the sole purpose of identifying security 
+     vulnerabilities and bugs
+   - Report security vulnerabilities and bugs to the copyright holder
+   - Review the code for security audit purposes
+
+   Any such inspection or review must be:
+   - Conducted in good faith for security and bug identification purposes only
+   - Reported to the copyright holder if vulnerabilities or issues are discovered
+   - Not used as a basis for creating competing or derivative works
+
+4. NO WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+5. LIMITATION OF LIABILITY
+   IN NO EVENT SHALL THE COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR 
+   OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
+   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS 
+   IN THE SOFTWARE.
+
+6. TERMINATION
+   This license is effective until terminated. Your rights under this license will 
+   terminate automatically without notice if you fail to comply with any of its 
+   terms. Upon termination, you must destroy all copies of the Software in your 
+   possession.
+
+7. CONTACT
+   For questions regarding this license or to report security vulnerabilities, 
+   please contact the copyright holder.
+
+By accessing, viewing, or using this Software, you acknowledge that you have read 
+this license, understand it, and agree to be bound by its terms and conditions. 
+If you do not agree to these terms, you must not access, view, or use the Software.

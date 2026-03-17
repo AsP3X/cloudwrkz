@@ -1,0 +1,695 @@
+/*
+  Localizable.strings (German)
+  Generated from Localizable.xcstrings
+*/
+
+"%@ ? %@" = "%1$@ ? %2$@";
+
+/* A text label with two lines, showing a title and a path. The first argument is the title text. The second argument is the path text. */
+"%@ ? %@" = "%1$@ ? %2$@";
+
+"%lld result%@" = "%1$lld Ergebnis%2$@";
+
+/* A text overlay showing the number of icons that have been successfully refreshed or processed. */
+"%lld/%lld" = "%1$lld/%2$lld";
+
+"account_settings.appearance" = "Darstellung";
+
+"account_settings.biometric_lock" = "Biometrische Sperre";
+
+"account_settings.biometric_not_available" = "Auf diesem Ger?t nicht verf?gbar";
+
+"account_settings.biometric_required" = "%@ beim Zur?ckkehren zur App erforderlich";
+
+"account_settings.cache_cleared" = "Cache geleert";
+
+"account_settings.cache_size_on_device" = "Etwa %@ auf diesem Ger?t";
+
+"account_settings.change_password" = "Passwort ?ndern";
+
+"account_settings.change_password_subtitle" = "Passwort aktualisieren";
+
+"account_settings.clear_cache" = "Lokalen Cache leeren";
+
+"account_settings.clear_cache_alert" = "Lokalen Cache leeren?";
+
+"account_settings.clear_cache_message" = "Dies entfernt etwa %@ zwischengespeicherte Daten von diesem Ger?t. Dein Konto und Serverdaten sind nicht betroffen.";
+
+"account_settings.data_privacy" = "Daten & Datenschutz";
+
+"account_settings.email_digest" = "E-Mail-Zusammenfassung";
+
+"account_settings.email_digest_subtitle" = "T?gliche oder w?chentliche Zusammenfassung";
+
+"account_settings.free_up_space" = "Speicherplatz freigeben";
+
+"account_settings.language" = "Sprache";
+
+"account_settings.language_english" = "Englisch";
+
+"account_settings.language_german" = "Deutsch";
+
+"account_settings.language_russian" = "Russisch";
+
+"account_settings.language_restart_hint" = "Die neue Sprache wird nach einem Neustart der App aktiv.";
+
+"account_settings.language_restart_message" = "Die App muss neu gestartet werden, damit die neue Sprache wirksam wird.";
+
+"account_settings.language_restart_required" = "App-Neustart erforderlich";
+
+"account_settings.language_system" = "System";
+
+"account_settings.later" = "Sp?ter";
+
+"account_settings.notifications" = "Benachrichtigungen";
+
+"account_settings.privacy_policy" = "Datenschutzrichtlinie";
+
+"account_settings.privacy_subtitle" = "Umgang mit deinen Daten";
+
+"account_settings.export_data" = "Meine Daten exportieren";
+
+"account_settings.export_data_subtitle" = "Kopie deiner Daten anfordern (DSGVO Art. 20)";
+
+"account_settings.export_data_sent" = "Exportanfrage gesendet";
+
+"account_settings.delete_account" = "Konto l?schen";
+
+"account_settings.delete_account_subtitle" = "Konto und Daten dauerhaft entfernen";
+
+"account_settings.delete_account_alert_title" = "Konto l?schen?";
+
+"account_settings.delete_account_alert_message" = "Dein Konto und alle zugeh?rigen Daten werden dauerhaft gel?scht. Diese Aktion kann nicht r?ckg?ngig gemacht werden.";
+
+"account_settings.delete_account_confirm" = "Mein Konto l?schen";
+
+"account_settings.delete_account_requested_title" = "L?schung angefragt";
+
+"account_settings.delete_account_requested_message" = "Deine Kontol?schungsanfrage wurde eingereicht. Du erh?ltst eine Best?tigungs-E-Mail. Deine Daten werden innerhalb von 30 Tagen gem?? DSGVO gel?scht.";
+
+"account_settings.push_notifications" = "Push-Benachrichtigungen";
+
+"account_settings.push_subtitle" = "Hinweise und Aktualisierungen";
+
+"account_settings.restart" = "Neustart";
+
+"account_settings.security" = "Sicherheit";
+
+"account_settings.server" = "Server";
+
+"account_settings.server_config" = "Serverkonfiguration";
+
+"account_settings.theme" = "Design";
+
+"account_settings.theme_dark" = "Dunkel";
+
+"account_settings.theme_light" = "Hell";
+
+"account_settings.theme_system" = "System";
+
+"account_settings.title" = "Kontoeinstellungen";
+
+"account_settings.time_tracking" = "Zeiterfassung";
+"account_settings.time_tracking_default_range" = "Standard-Zeitraum";
+"account_settings.time_tracking_default_range_subtitle" = "Zeitraum in der Zeiterfassung beim ?ffnen oder nach Filter-Reset.";
+"account_settings.time_tracking_period_month" = "1 Monat";
+"account_settings.time_tracking_period_week" = "Woche";
+"account_settings.time_tracking_period_quarter" = "Quartal";
+"account_settings.time_tracking_period_year" = "Jahr";
+"account_settings.time_tracking_period_custom" = "Benutzerdefiniert (Tage)";
+"account_settings.time_tracking_custom_days" = "Tage";
+"account_settings.time_tracking_day" = "Tag";
+"account_settings.time_tracking_days" = "Tage";
+"account_settings.third_party_location_suggestions" = "Externe Adressvorschl?ge";
+"account_settings.third_party_location_suggestions_subtitle" = "Eingegebene Ortsanfragen an OpenStreetMap (Nominatim) senden.";
+
+"add_todo.cancel" = "Abbrechen";
+
+"add_todo.description_optional" = "Beschreibung (optional)";
+
+"add_todo.description_placeholder" = "Beschreibung";
+
+"add_todo.parent_label" = "?bergeordnet";
+
+"add_todo.save" = "Speichern";
+
+"add_todo.subtodo_title" = "Unteraufgabe hinzuf?gen";
+
+"add_todo.title" = "Aufgabe hinzuf?gen";
+
+"add_todo.title_label" = "Titel";
+
+"add_todo.title_placeholder" = "Titel der Aufgabe";
+
+"auth.configure_server" = "Server in den Einstellungen konfigurieren.";
+
+"auth.could_not_reach_server" = "Server konnte nicht erreicht werden.";
+
+"auth.email_label" = "E-MAIL";
+
+"auth.email_placeholder" = "sie@firma.de";
+
+"auth.invalid_credentials" = "Ung?ltige E-Mail oder Passwort.";
+
+"auth.password_label" = "PASSWORT";
+
+"auth.password_placeholder" = "Passwort eingeben";
+
+"auth.please_enter_email_password" = "Bitte E-Mail und Passwort eingeben.";
+
+"auth.sign_in" = "Anmelden";
+
+"biometric.app_locked" = "App gesperrt";
+
+"biometric.unlock_reason" = "Cloudwrkz entsperren";
+
+"biometric.unlock_with" = "Mit %@ entsperren";
+
+"biometric.use_to_unlock" = "%@ zum Entsperren verwenden";
+
+"common.assigned_to" = "Zugewiesen an";
+
+"common.cancel" = "Abbrechen";
+
+"common.clear" = "L?schen";
+
+"common.comment_count" = "%d Kommentar";
+
+"common.comments_activity" = "Kommentare & Aktivit?t";
+
+"common.comments_count" = "%d Kommentare";
+
+"common.completed" = "Abgeschlossen";
+
+"common.created_by" = "Erstellt von";
+
+"common.created_date" = "Erstellt %@";
+
+"common.description" = "Beschreibung";
+
+"common.done" = "Fertig";
+
+"common.due_date" = "F?llig am";
+
+"common.last_updated" = "Zuletzt aktualisiert";
+
+"common.linked_ticket" = "Verkn?pftes Ticket";
+
+"common.load_todo_error" = "Aufgabe konnte nicht geladen werden";
+
+"common.loading" = "Laden?";
+
+"common.no_active_subtodos" = "Keine aktiven Unteraufgaben";
+
+"common.no_description" = "Keine Beschreibung.";
+
+"common.no_subtodos" = "Keine Unteraufgaben";
+
+"common.parent_todo" = "?BERGEORDNETE AUFGABE";
+
+"common.priority" = "Priorit?t";
+
+"common.status" = "Status";
+
+"common.subtodo_count" = "%d Unteraufgabe";
+
+"common.subtodos" = "Unteraufgaben";
+
+"common.subtodos_count" = "%d Unteraufgaben";
+
+"common.tap_plus_to_add" = "Tippe auf +, um eine hinzuzuf?gen";
+
+"common.ticket_id" = "Ticket-ID";
+
+"common.ticket_info" = "Ticketinformationen";
+
+"common.todo_id" = "Aufgaben-ID";
+
+"common.todo_info" = "Aufgabeninformationen";
+
+"common.type" = "Typ";
+
+"common.view_comments_web" = "Kommentare in der Web-App ansehen und hinzuf?gen.";
+
+"dashboard.menu.back_to_dashboard" = "Zur?ck zum Dashboard";
+
+"dashboard.menu.options" = "Optionen";
+
+"dashboard.menu.server_config_subtitle" = "Umgebung und Verbindung";
+
+"dashboard.menu.subtitle" = "Dashboard-Optionen und Konto.";
+
+"dashboard.menu.title" = "Men?";
+
+"dashboard.quick_access" = "SCHNELLZUGRIFF";
+
+"dashboard.section.archive" = "Archiv";
+
+"dashboard.section.archived_items" = "Archivierte Elemente";
+
+"dashboard.section.home" = "Start";
+
+"dashboard.section.links" = "Links";
+
+"dashboard.section.my_time" = "Meine Zeit";
+
+"dashboard.section.overview" = "?bersicht";
+
+"dashboard.section.saved_links" = "Gespeicherte Links";
+
+"dashboard.section.support_tickets" = "Support-Tickets";
+
+"dashboard.section.tasks" = "Aufgaben";
+
+"dashboard.section.tickets" = "Tickets";
+
+"dashboard.section.time_tracking" = "Zeiterfassung";
+
+"dashboard.section.todos" = "ToDo";
+
+"dashboard.title" = "?bersicht";
+
+"dashboard.welcome_back" = "Willkommen zur?ck. W?hle einen Bereich im Men? oder nutze die Verkn?pfungen unten.";
+
+"dashboard.no_modules.title" = "Keine Module verf?gbar";
+"dashboard.no_modules.message" = "Es sind keine Module verf?gbar ? entweder fehlen Berechtigungen oder die Module sind deaktiviert. Wenden Sie sich an Ihren Administrator, wenn Sie Zugriff ben?tigen.";
+
+"filter_archive.active" = "Aktiv";
+
+"filter_archive.archived" = "Archiviert";
+
+"filter_priority.all_priorities" = "Alle Priorit?ten";
+
+"filter_priority.high" = "Hoch";
+
+"filter_priority.low" = "Niedrig";
+
+"filter_priority.medium" = "Mittel";
+
+"filter_priority.urgent" = "Dringend";
+
+"filter_sort.due_earliest" = "F?lligkeit (fr?heste zuerst)";
+
+"filter_sort.due_latest" = "F?lligkeit (sp?teste zuerst)";
+
+"filter_sort.least_recently_updated" = "Am l?ngsten nicht aktualisiert";
+
+"filter_sort.newest_first" = "Neueste zuerst";
+
+"filter_sort.oldest_first" = "?lteste zuerst";
+
+"filter_sort.recently_updated" = "K?rzlich aktualisiert";
+
+"filter_status.all_statuses" = "Alle Status";
+
+"filter_status.blocked" = "Blockiert";
+
+"filter_status.cancelled" = "Abgebrochen";
+
+"filter_status.closed" = "Geschlossen";
+
+"filter_status.completed" = "Abgeschlossen";
+
+"filter_status.in_progress" = "In Bearbeitung";
+
+"filter_status.not_started" = "Nicht begonnen";
+
+"filter_status.open" = "Offen";
+
+"filter_status.pending" = "Ausstehend";
+
+"filter_status.resolved" = "Gel?st";
+
+"filter_status.unresolved" = "Ungel?st";
+
+"filter_tickets.clear" = "L?schen";
+
+"filter_tickets.created_from" = "Erstellt von";
+
+"filter_tickets.created_to" = "Erstellt bis";
+
+"filter_tickets.date_range" = "Datumsbereich (optional)";
+
+"filter_tickets.not_set" = "Nicht festgelegt";
+
+"filter_tickets.set" = "Festlegen";
+
+"filter_tickets.subtitle" = "Liste nach Status, Sortierung und Datumsbereich eingrenzen.";
+
+"filter_tickets.title" = "Tickets filtern";
+
+"filter_tickets.updated_from" = "Aktualisiert von";
+
+"filter_tickets.updated_to" = "Aktualisiert bis";
+
+"filter_todos.include_subtodos" = "Unteraufgaben einbeziehen";
+
+"filter_todos.scope" = "Bereich";
+
+"filter_todos.show" = "Anzeigen";
+
+"filter_todos.sort_by" = "Sortieren nach";
+
+"filter_todos.subtitle" = "Liste nach Bereich, Status, Priorit?t, Sortierung und Archiv eingrenzen.";
+
+"filter_todos.title" = "Aufgaben filtern";
+
+"filter_todos.top_level_only" = "Nur oberste Ebene";
+
+"links.all" = "Alle";
+
+"links.all_links" = "Alle Links";
+
+"links.apply_to_links" = "Auf %d Link(s) anwenden";
+
+"links.assign_collections" = "Sammlungen zuweisen";
+
+"links.choose_collections" = "Sammlungen f?r %d Link(s) ausw?hlen.";
+
+"links.collection" = "Sammlung";
+
+"links.delete" = "L?schen";
+
+"links.delete_link" = "Link l?schen?";
+
+"links.delete_link_message" = "\"%@\" wird aus dieser Liste entfernt. Diese Aktion kann nicht r?ckg?ngig gemacht werden.";
+
+"links.delete_links_message" = "Die ausgew?hlten Links werden dauerhaft entfernt. Diese Aktion kann nicht r?ckg?ngig gemacht werden.";
+
+"links.delete_n_links" = "%d Links l?schen?";
+
+"links.deselect" = "Abw?hlen";
+
+"links.deselect_all" = "Alle abw?hlen";
+
+"links.dismiss" = "Schlie?en";
+
+"links.edit" = "Bearbeiten";
+
+"links.empty_web_hint" = "Lesezeichen in der Web-App hinzuf?gen und verwalten.";
+
+"links.failed_delete" = "%d Link(s) konnten nicht gel?scht werden.";
+
+"links.failed_refresh" = "%d Link(s) konnten nicht aktualisiert werden.";
+
+"links.failed_update" = "%d Link(s) konnten nicht aktualisiert werden.";
+
+"links.filter_links" = "Links filtern";
+
+"links.filter_subtitle" = "Gespeicherte Links sortieren und filtern.";
+
+"links.load_error" = "Links konnten nicht geladen werden";
+
+"links.loading" = "Links werden geladen?";
+
+"links.nav_title" = "Links";
+
+"links.no_collections" = "Keine Sammlungen verf?gbar.";
+
+"links.no_links" = "Keine Links";
+
+"links.no_links_in_collection" = "Keine Links in dieser Sammlung.";
+
+"links.processing" = "Wird verarbeitet?";
+
+"links.refreshing_icons" = "Symbole werden aktualisiert?";
+
+"links.select" = "Ausw?hlen";
+
+"links.select_all" = "Alle ausw?hlen";
+
+"links.selected_count" = "%d ausgew?hlt";
+
+"preview.unavailable" = "Vorschau nicht verf?gbar";
+
+"profile.account" = "KONTO";
+
+"profile.account_settings" = "Kontoeinstellungen";
+
+"profile.account_settings_subtitle" = "Einstellungen und Sicherheit";
+
+"profile.app_version" = "Cloudwrkz %@";
+
+"profile.edit_profile" = "Profil bearbeiten";
+
+"profile.edit_profile_nav" = "Profil bearbeiten";
+
+"profile.edit_profile_subtitle" = "Name und Foto";
+
+"profile.first_name" = "Vorname";
+
+"profile.help" = "Hilfe";
+
+"profile.help_subtitle" = "Support und Dokumentation";
+
+"profile.last_name" = "Nachname";
+
+"profile.last_signed_in" = "Zuletzt angemeldet %@";
+
+"profile.log_out" = "Abmelden";
+
+"profile.log_out_subtitle" = "Von deinem Konto abmelden";
+
+"profile.member_since" = "Mitglied seit %@";
+
+"profile.name_label" = "NAME";
+
+"profile.notifications" = "Benachrichtigungen";
+
+"profile.notifications_subtitle" = "Hinweise und Einstellungen";
+
+"profile.qr_login" = "Mit QR-Code anmelden";
+
+"profile.qr_login_subtitle" = "Auf der Website anmelden durch Scannen";
+
+"profile.session" = "SESSION";
+
+"profile.signed_in" = "Angemeldet";
+
+"profile.tap_to_change_photo" = "Tippen zum ?ndern des Fotos";
+
+"profile.title" = "Profil";
+
+"profile.view_profile" = "Profil anzeigen";
+
+"profile.view_profile_subtitle" = "Name, Avatar, Einstellungen";
+
+"qr_login.exchanging_keys" = "Schl?ssel werden ausgetauscht";
+
+"qr_login.generating_keys" = "Schl?ssel werden erzeugt";
+
+"qr_login.logged_in" = "Angemeldet";
+
+"qr_login.validating" = "Anfrage wird gepr?ft";
+
+"qr_login.validating_final" = "Wird gepr?ft?";
+
+"register.privacy_consent" = "Ich stimme der Verarbeitung meiner personenbezogenen Daten gem?? der Datenschutzrichtlinie zu.";
+
+"register.view_privacy_policy" = "Datenschutzrichtlinie anzeigen";
+
+"register.choose_password_placeholder" = "Passwort w?hlen";
+
+"register.confirm_password_label" = "PASSWORT BEST?TIGEN";
+
+"register.confirm_password_placeholder" = "Passwort best?tigen";
+
+"register.name_label" = "NAME";
+
+"register.name_min_length" = "Der Name muss mindestens 2 Zeichen haben.";
+
+"register.name_placeholder" = "Dein Name";
+
+"register.password_min_length" = "Das Passwort muss mindestens 8 Zeichen haben.";
+
+"register.passwords_do_not_match" = "Die Passw?rter stimmen nicht ?berein.";
+
+"register.please_choose_password" = "Bitte w?hle ein Passwort.";
+
+"register.please_enter_email" = "Bitte gib deine E-Mail-Adresse ein.";
+
+"register.please_enter_name" = "Bitte gib deinen Namen ein.";
+
+"search.loading_more" = "Weitere werden geladen?";
+
+"search.placeholder" = "Suchen?";
+
+"search.searching" = "Suche?";
+
+"search.subtitle" = "Tickets, Aufgaben, Personen & mehr";
+
+"search.title" = "Suchen";
+
+"search.enhanced_hint" = "Nutze \"> search text\" oder \"> type: ticket\" f?r Filter.";
+
+"server_config.active_endpoint" = "Aktiver Endpunkt";
+
+"server_config.connection_details" = "Verbindungsdetails";
+
+"server_config.domain_placeholder" = "z. B. meinefirma.de";
+
+"server_config.environment" = "Umgebung";
+
+"server_config.login_path" = "Login-API-Pfad";
+
+"server_config.login_path_hint" = "Wenn der Login 404 zur?ckgibt, setze dies auf den Pfad deiner Website (z. B. api/login).";
+
+"server_config.login_path_placeholder" = "api/login";
+
+"server_config.path_no_slash" = "Pfad (ohne f?hrenden Schr?gstrich)";
+
+"server_config.port_optional" = "Port (optional)";
+
+"server_config.port_placeholder" = "z. B. 8443";
+
+"server_config.server_domain" = "Server-Domain";
+
+"server_config.subtitle" = "Umgebung und Verbindungsdetails w?hlen.";
+
+"server_config.tenant_official" = "Offiziellen Cloudwrkz-Dienst nutzen";
+
+"server_config.tenant_onprem" = "Firmen- oder eigene Bereitstellung";
+
+"server_config.title" = "Serverkonfiguration";
+
+"server_config.use_https" = "HTTPS verwenden";
+
+"session.back_to_sign_in" = "Zur?ck zur Anmeldung";
+
+"session.ended_message" = "Deine Sitzung wurde von einem anderen Ger?t oder einem Administrator beendet. Bitte melde dich erneut an, um fortzufahren.";
+
+"session.session_ended" = "Sitzung beendet";
+
+"splash.app_name" = "Cloudwrkz";
+
+"splash.create_account" = "Konto erstellen";
+
+"splash.sign_in" = "Anmelden";
+
+"tenant_status.checking" = "Wird gepr?ft?";
+
+"tenant_status.degraded" = "Eingeschr?nkt";
+
+"tenant_status.healthy" = "Gesund";
+
+"tenant_status.unreachable" = "Nicht erreichbar";
+
+"ticket.archive" = "Archivieren";
+
+"ticket.archive_ticket" = "Ticket archivieren?";
+
+"ticket.archive_ticket_message" = "?%@\" wird ins Archiv verschoben. Du kannst es sp?ter wiederherstellen.";
+
+"ticket.delete" = "L?schen";
+
+"ticket.delete_ticket" = "Ticket l?schen?";
+
+"ticket.delete_ticket_message" = "?%@\" wird dauerhaft entfernt. Diese Aktion kann nicht r?ckg?ngig gemacht werden.";
+
+"ticket.empty_hint" = "Filter ?ndern oder ein Ticket in der Web-App erstellen.";
+
+"ticket.group" = "Gruppe";
+
+"ticket.load_error" = "Tickets konnten nicht geladen werden";
+
+"ticket.loading" = "Tickets werden geladen?";
+
+"ticket.nav_title" = "Tickets";
+
+"ticket.no_tickets" = "Keine Tickets";
+
+"todo.archive" = "Archivieren";
+
+"todo.archive_todo" = "Aufgabe archivieren?";
+
+"todo.archive_todo_message" = "?%@\" wird ins Archiv verschoben. Du kannst es sp?ter wiederherstellen.";
+
+"todo.assigned" = "Zugewiesen";
+
+"todo.card_view" = "Kartenansicht";
+
+"todo.completed_header" = "ABGESCHLOSSEN";
+
+"todo.context_complete" = "Als erledigt markieren";
+
+"todo.context_uncomplete" = "Als nicht erledigt markieren";
+
+"todo.created" = "Erstellt";
+
+"todo.delete" = "L?schen";
+
+"todo.delete_todo" = "Aufgabe l?schen?";
+
+"todo.delete_todo_message" = "?%@\" wird dauerhaft entfernt. Diese Aktion kann nicht r?ckg?ngig gemacht werden.";
+
+"todo.empty_hint" = "Filter ?ndern oder auf + tippen, um eine Aufgabe hinzuzuf?gen.";
+
+"todo.list_view" = "Listenansicht";
+
+"todo.load_error" = "Aufgaben konnten nicht geladen werden";
+
+"todo.loading" = "Aufgaben werden geladen?";
+
+"todo.nav_title" = "ToDo";
+
+"todo.no_server" = "Kein Server konfiguriert.";
+
+"todo.no_todos" = "Keine Aufgaben";
+
+"todo.please_sign_in" = "Bitte melde dich erneut an.";
+
+"todo.retry" = "Erneut versuchen";
+
+"todo.session_expired" = "Sitzung abgelaufen. Bitte erneut anmelden.";
+
+"todo.unassigned" = "Nicht zugewiesen";
+
+/* Datenschutzrichtlinie */
+
+"privacy_policy.title" = "Datenschutzrichtlinie";
+
+"privacy_policy.last_updated" = "Zuletzt aktualisiert: M?rz 2026";
+
+"privacy_policy.controller_title" = "Verantwortlicher";
+
+"privacy_policy.controller_body" = "Verantwortlicher f?r die Datenverarbeitung in der Cloudwrkz-App ist der Betreiber Ihrer Cloudwrkz-Instanz. Bei Nutzung des offiziellen Cloudwrkz-Dienstes (cloudwrkz.com) ist der Verantwortliche die Cloudwrkz GmbH. Bei selbst gehosteten Installationen ist Ihre Organisation verantwortlich.\n\nF?r Fragen zum Datenschutz wenden Sie sich an Ihren Administrator oder an privacy@cloudwrkz.com.";
+
+"privacy_policy.data_collection_title" = "Welche Daten wir erheben";
+
+"privacy_policy.data_collection_body" = "Wir erheben und verarbeiten folgende Kategorien personenbezogener Daten:\n\n? Kontodaten: Name, E-Mail-Adresse und Passwort (verschl?sselt) zur Authentifizierung.\n? Profildaten: Vorname, Nachname und optionales Profilbild.\n? Ger?temetadaten: Ger?tetyp (Mobiltelefon/Tablet), Betriebssystemversion und App-Version ? werden bei der Anmeldung zur Sitzungsverwaltung ?bermittelt.\n? Nutzungsdaten: Tickets, Aufgaben, Zeiteintr?ge (einschlie?lich textbasierter Ortsbeschreibungen), Links und andere von Ihnen erstellte Inhalte.\n? Technische Daten: Authentifizierungstoken sicher im iOS-Schl?sselbund gespeichert; App-Einstellungen lokal auf Ihrem Ger?t gespeichert.\n\nWir erheben NICHT:\n? GPS- oder pr?zise Standortdaten\n? Kontakte, Kalender oder Gesundheitsdaten\n? Werbeidentifikatoren oder Tracking-Daten\n? Daten von Drittanbieter-Analyse-SDKs";
+
+"privacy_policy.legal_basis_title" = "Rechtsgrundlage der Verarbeitung";
+
+"privacy_policy.legal_basis_body" = "Wir verarbeiten Ihre Daten auf folgenden Rechtsgrundlagen (DSGVO Art. 6):\n\n? Vertragserf?llung (Art. 6 Abs. 1 lit. b): Verarbeitung, die f?r die Bereitstellung des Cloudwrkz-Dienstes erforderlich ist, einschlie?lich Authentifizierung, Datenspeicherung und Funktionalit?t.\n? Berechtigte Interessen (Art. 6 Abs. 1 lit. f): Ger?temetadaten f?r Sitzungssicherheit und Betrugspr?vention.\n? Einwilligung (Art. 6 Abs. 1 lit. a): Optionale Funktionen wie Profilbild-Upload und biometrische Sperre. Sie k?nnen Ihre Einwilligung jederzeit widerrufen.";
+
+"privacy_policy.third_party_title" = "Drittanbieterdienste";
+
+"privacy_policy.third_party_body" = "Die App verbindet sich mit folgenden Drittanbieterdiensten:\n\n? OpenStreetMap Nominatim: Wird f?r textbasierte Adressvorschl?ge in der Zeiterfassung verwendet. Ihre Suchanfragen werden an nominatim.openstreetmap.org gesendet. Es werden keine pers?nlichen Identifikatoren ?bermittelt. Datenschutzrichtlinie von Nominatim: https://osmfoundation.org/wiki/Privacy_Policy\n? YouTube (img.youtube.com): Wird zum Laden von Vorschaubildern f?r Links mit YouTube-URLs verwendet. Es wird nur die Video-ID ?bertragen.\n\nWir geben Ihre personenbezogenen Daten nicht an Werbenetzwerke, Datenh?ndler oder Analyseanbieter weiter.";
+
+"privacy_policy.data_storage_title" = "Datenspeicherung & Sicherheit";
+
+"privacy_policy.data_storage_body" = "? Authentifizierungstoken: Im iOS-Schl?sselbund gespeichert (hardwareverschl?sselt).\n? App-Einstellungen und Profildaten: Im lokalen Ger?tespeicher (UserDefaults) gespeichert.\n? Alle Daten bei der ?bertragung: ?ber HTTPS/TLS-Verschl?sselung ?bermittelt.\n? Serverseitige Daten: Auf Ihrer Cloudwrkz-Serverinstanz gespeichert. Beim offiziellen Dienst befinden sich die Server in der EU.\n\nBeim Abmelden werden alle lokalen Daten (Token, Profil, Einstellungen, Caches) vom Ger?t gel?scht.";
+
+"privacy_policy.data_retention_title" = "Datenaufbewahrung";
+
+"privacy_policy.data_retention_body" = "? Lokale Daten: Werden sofort beim Abmelden oder bei Nutzung von ?Lokalen Cache leeren\" gel?scht.\n? Serverdaten: Werden solange aufbewahrt, wie Ihr Konto aktiv ist. Nach Kontol?schung werden alle personenbezogenen Daten innerhalb von 30 Tagen entfernt.\n? Backups: Server-Backups mit Ihren Daten werden innerhalb von 90 Tagen nach Kontol?schung bereinigt.";
+
+"privacy_policy.your_rights_title" = "Ihre Rechte (DSGVO Art. 15?22)";
+
+"privacy_policy.your_rights_body" = "Nach der DSGVO haben Sie folgende Rechte:\n\n? Auskunftsrecht (Art. 15): Auskunft ?ber die von uns verarbeiteten personenbezogenen Daten anfordern.\n? Recht auf Berichtigung (Art. 16): Unrichtige Daten ?ber Ihre Profileinstellungen korrigieren.\n? Recht auf L?schung (Art. 17): L?schung Ihres Kontos und aller zugeh?rigen Daten anfordern.\n? Recht auf Einschr?nkung (Art. 18): Einschr?nkung der Verarbeitung unter bestimmten Bedingungen anfordern.\n? Recht auf Daten?bertragbarkeit (Art. 20): Ihre Daten in einem strukturierten, maschinenlesbaren Format erhalten.\n? Widerspruchsrecht (Art. 21): Der Verarbeitung aufgrund berechtigter Interessen widersprechen.\n? Recht bei automatisierten Entscheidungen (Art. 22): Wir treffen keine automatisierten Entscheidungen oder Profiling mit rechtlicher Wirkung.\n\nSie k?nnen Ihre Rechte ?ber den Bereich ?Daten & Datenschutz\" in den Kontoeinstellungen aus?ben oder uns unter privacy@cloudwrkz.com kontaktieren.\n\nSie haben au?erdem das Recht, Beschwerde bei einer Aufsichtsbeh?rde einzulegen (Art. 77).";
+
+"privacy_policy.security_title" = "Sicherheitsma?nahmen";
+
+"privacy_policy.security_body" = "Wir setzen angemessene technische und organisatorische Ma?nahmen um (DSGVO Art. 32):\n\n? Ende-zu-Ende-Verschl?sselung bei der Daten?bertragung (TLS/HTTPS)\n? Hardwareverschl?sselte Schl?sselbundspeicherung f?r Authentifizierungstoken\n? Biometrische Authentifizierungsoption (Face ID/Touch ID)\n? Sitzungs?berwachung mit automatischem Ablauf\n? Keine Drittanbieter-Analyse- oder Tracking-SDKs\n? Prinzip der Datenminimierung";
+
+"privacy_policy.children_title" = "Datenschutz f?r Kinder";
+
+"privacy_policy.children_body" = "Cloudwrkz ist ein Produktivit?tswerkzeug f?r den Arbeitsplatz und nicht f?r die Nutzung durch Kinder unter 16 Jahren bestimmt. Wir erheben wissentlich keine personenbezogenen Daten von Kindern. Wenn Sie glauben, dass ein Kind uns personenbezogene Daten ?bermittelt hat, kontaktieren Sie uns bitte unter privacy@cloudwrkz.com.";
+
+"privacy_policy.changes_title" = "?nderungen dieser Richtlinie";
+
+"privacy_policy.changes_body" = "Wir k?nnen diese Datenschutzrichtlinie von Zeit zu Zeit aktualisieren. Wesentliche ?nderungen werden ?ber die App oder per E-Mail mitgeteilt. Die weitere Nutzung der App nach ?nderungen gilt als Annahme der aktualisierten Richtlinie.";
+
+"privacy_policy.contact_title" = "Kontakt";
+
+"privacy_policy.contact_body" = "F?r datenschutzbezogene Anfragen:\n\nE-Mail: privacy@cloudwrkz.com\n\nBei selbst gehosteten Instanzen wenden Sie sich an den Datenschutzbeauftragten Ihrer Organisation.";

@@ -1,0 +1,796 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+  MODERATOR
+  AGENT
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  BANNED
+  DELETED
+}
+
+model User {
+  id                String     @id @default(cuid())
+  email             String     @unique
+  emailVerified     Boolean    @default(false)
+  name              String?
+  password          String // Hashed password
+  role              Role       @default(USER)
+  status            UserStatus @default(PENDING)
+  timezone          String     @default("UTC") // IANA timezone identifier, e.g. "Europe/Berlin"
+  theme             String     @default("system") // Theme preference: "light", "dark", or "system"
+  locale            String     @default("en") // Display language: "en", "de", "system", etc.
+  filterPreferences Json? // User's filter preferences per module (e.g., { "ticket": { "status": "OPEN", ... } })
+  viewPreferences   Json? // User's view mode preferences per module (e.g., { "ticket": "table", "timeEntry": "card" })
+
+  // Email verification
+  emailVerificationToken   String?
+  emailVerificationExpires DateTime?
+
+  // Password reset
+  passwordResetToken   String?
+  passwordResetExpires DateTime?
+
+  // Profile
+  avatar String?
+  bio    String?
+
+  // Metadata
+  lastLoginAt             DateTime?
+  lastLoginIp             String?
+  cookieConsentAccepted   Boolean   @default(false)
+  cookieConsentAcceptedAt DateTime?
+
+  // Account deletion
+  scheduledForDeletionAt DateTime? // When account was flagged for deletion
+  originalEmail          String? // Original email before deletion (for reactivation)
+
+  // Account ban
+  bannedAt  DateTime? // When account was banned
+  banReason String? // Reason for the ban
+
+  // Relations
+  sessions              Session[]
+  createdTickets        Ticket[]           @relation("TicketCreator")
+  assignedTickets       Ticket[]           @relation("TicketAssignee")
+  ticketComments        TicketComment[]
+  ticketActivities      TicketActivity[]   @relation("TicketActivityChanger")
+  groupMemberships      GroupMembership[]
+  permissions           UserPermission[] // User permissions
+  timeEntries           TimeEntry[]
+  assignedTodos         Todo[]             @relation("TodoAssignee")
+  unbanRequests         UnbanRequest[]
+  locationHistories     LocationHistory[]
+  links                 Link[]
+  linksSharedWithMe     LinkShare[]       @relation("LinksSharedWithMe")
+  ownedCollections      Collection[]       @relation("CollectionOwner")
+  collectionMemberships CollectionMember[] @relation("CollectionMember")
+  auditLogs             AuditLog[]
+  notifications         Notification[]
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@index([emailVerificationToken])
+  @@index([passwordResetToken])
+  @@index([scheduledForDeletionAt])
+  @@map("users")
+}
+
+// Session model for user authentication
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Session lifetime
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Device + client metadata for this session
+  deviceId       String?  // Stable client-generated identifier for the physical/browser device
+  deviceName     String?  // Human-friendly name, e.g. "John's MacBook (Chrome)"
+  deviceType     String?  // desktop, laptop, tablet, mobile, bot, unknown
+  deviceOs       String?  // e.g. "macOS", "Windows", "iOS"
+  deviceBrowser  String?  // e.g. "Chrome", "Safari"
+  userAgent      String?  // Raw User-Agent header
+  ipAddress      String?  // Last seen IP for this session
+  recentlyViewed Json?    // Array of recently viewed items: [{ type, id, title, url, viewedAt }]
+
+  @@index([token])
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([deviceId])
+  @@map("sessions")
+}
+
+// One-time QR login: website shows QR with requestId; app scans and approves with session; browser polls and gets session.
+model QrLoginRequest {
+  id            String    @id @default(cuid())
+  browserToken  String    @unique // Secret for polling; never put in QR. Crypto random.
+  status        String    @default("PENDING") // PENDING | APPROVED | EXPIRED
+  expiresAt     DateTime
+  userId        String?   // Set when app approves
+  sessionToken  String?   // New web session token; set when approved
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([id])
+  @@index([browserToken])
+  @@index([expiresAt])
+  @@index([status])
+  @@map("qr_login_requests")
+}
+
+// System-wide settings (key-value); e.g. QR login rate limit
+model SystemSetting {
+  key   String @id
+  value Json   // number, string, or object
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+// Module management - controls which modules are enabled
+model Module {
+  id          String   @id @default(cuid())
+  key         String   @unique // e.g., "tickets", "accounting", "timetracking"
+  name        String // Display name
+  description String?
+  enabled     Boolean  @default(false)
+  config      Json? // Module-specific configuration
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([key])
+  @@index([enabled])
+  @@map("modules")
+}
+
+// Ticket Priority
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// Ticket Status
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  PENDING
+  RESOLVED
+  CLOSED
+  CANCELLED
+}
+
+// Ticket Type
+enum TicketType {
+  BUG
+  FEATURE
+  QUESTION
+  SUPPORT
+  TASK
+}
+
+// Time Entry Status
+enum TimeEntryStatus {
+  RUNNING
+  PAUSED
+  STOPPED
+  COMPLETED
+}
+
+// Permission model - defines all available permissions
+model Permission {
+  id          String  @id @default(cuid())
+  key         String  @unique // e.g., "tickets.create", "projects.view"
+  name        String // Display name
+  description String? // Description of what this permission allows
+  category    String // e.g., "tickets", "projects", "admin", "time_tracking"
+  module      String? // Optional: link to module (tickets, projects, timetracking)
+
+  // Relations
+  groupPermissions GroupPermission[]
+  userPermissions  UserPermission[]
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([key])
+  @@index([category])
+  @@index([module])
+  @@map("permissions")
+}
+
+// GroupPermission model - links Groups to Permissions
+model GroupPermission {
+  id           String     @id @default(cuid())
+  groupId      String
+  permissionId String
+  group        Group      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([groupId, permissionId])
+  @@index([groupId])
+  @@index([permissionId])
+  @@map("group_permissions")
+}
+
+// UserPermission model - links Users to Permissions
+model UserPermission {
+  id           String     @id @default(cuid())
+  userId       String
+  permissionId String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([userId, permissionId])
+  @@index([userId])
+  @@index([permissionId])
+  @@map("user_permissions")
+}
+
+// Agent Groups - only for agents
+model Group {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  description String?
+
+  // Relations
+  members     GroupMembership[]
+  tickets     Ticket[]
+  permissions GroupPermission[] // Group permissions
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([name])
+  @@map("groups")
+}
+
+// Many-to-many relationship between Users (agents) and Groups
+model GroupMembership {
+  id        String   @id @default(cuid())
+  userId    String
+  groupId   String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, groupId])
+  @@index([userId])
+  @@index([groupId])
+  @@map("group_memberships")
+}
+
+// Ticket model for the ticket system module
+model Ticket {
+  id               String         @id @default(cuid())
+  ticketNumber     String         @unique // e.g., #INC-000001, #SRC-000001
+  title            String
+  description      String? // Legacy plain text field (will be migrated)
+  descriptionHtml  String? // Rich text HTML (sanitized)
+  descriptionPlain String? // Plain text version for search/indexing
+  type             TicketType     @default(BUG)
+  status           TicketStatus   @default(OPEN)
+  priority         TicketPriority @default(MEDIUM)
+
+  // Relations
+  createdById       String?
+  createdBy         User?   @relation("TicketCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdByName     String? // Store anonymized name when creator is deleted
+  assignedToId      String?
+  assignedTo        User?   @relation("TicketAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedToGroupId String?
+  assignedToGroup   Group?  @relation(fields: [assignedToGroupId], references: [id], onDelete: SetNull)
+
+  // Ticket metadata
+  tags        String[] @default([])
+  attachments String[] @default([])
+
+  // Relations
+  comments     TicketComment[]
+  activities   TicketActivity[]
+  timeEntries  TimeEntry[]
+  todos        Todo[]           @relation("TodoTicket")
+  unbanRequest UnbanRequest?
+
+  // Timestamps
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  resolvedAt DateTime?
+  closedAt   DateTime?
+  dueDate    DateTime? // Optional due date for SLA / overdue tracking
+  archivedAt DateTime? // When set, ticket is considered archived (hidden from default lists)
+
+  @@index([createdById])
+  @@index([assignedToId])
+  @@index([assignedToGroupId])
+  @@index([status])
+  @@index([priority])
+  @@index([type])
+  @@index([ticketNumber])
+  @@index([createdAt])
+  @@index([archivedAt])
+  @@map("tickets")
+}
+
+// Ticket Activity Types
+enum TicketActivityType {
+  CREATED
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  TYPE_CHANGED
+  TITLE_CHANGED
+  DESCRIPTION_CHANGED
+  ASSIGNED_TO_AGENT
+  UNASSIGNED_FROM_AGENT
+  ASSIGNED_TO_GROUP
+  UNASSIGNED_FROM_GROUP
+  TAGS_CHANGED
+  RESOLVED
+  CLOSED
+  REOPENED
+  COMMENT_ADDED
+  TIMER_CREATED
+  TIMER_ASSIGNED
+  TIMER_UNASSIGNED
+  TIMER_STARTED
+  TIMER_PAUSED
+  TIMER_RESUMED
+  TIMER_STOPPED
+}
+
+// Ticket Comments
+model TicketComment {
+  id           String   @id @default(cuid())
+  content      String // Legacy plain text field (will be migrated)
+  contentHtml  String? // Rich text HTML (sanitized)
+  contentPlain String? // Plain text version for search/indexing
+  // When this comment was merged from another ticket, store original ticket number (e.g. #BUG-000123)
+  mergedFromTicketNumber String?
+  ticketId     String
+  ticket       Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  userId       String?
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  authorName   String? // Store anonymized name when author is deleted
+  isAgentOnly  Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([ticketId])
+  @@index([userId])
+  @@map("ticket_comments")
+}
+
+// Ticket Activity Log - tracks all changes to tickets
+model TicketActivity {
+  id            String             @id @default(cuid())
+  ticketId      String
+  ticket        Ticket             @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  activityType  TicketActivityType
+  // When this activity was merged from another ticket, store original ticket number (e.g. #BUG-000123)
+  mergedFromTicketNumber String?
+  changedById   String?
+  changedBy     User?              @relation("TicketActivityChanger", fields: [changedById], references: [id], onDelete: SetNull)
+  changedByName String? // Store anonymized name when changer is deleted
+  oldValue      String? // JSON string or plain string for old value
+  newValue      String? // JSON string or plain string for new value
+  metadata      Json? // Additional metadata (e.g., group name, agent name)
+  createdAt     DateTime           @default(now())
+
+  @@index([ticketId])
+  @@index([changedById])
+  @@index([activityType])
+  @@index([createdAt])
+  @@map("ticket_activities")
+}
+
+// Time Entry model for time tracking module
+model TimeEntry {
+  id          String  @id @default(cuid())
+  name        String // Timer name (user-provided or auto-generated)
+  description String? // Optional description
+
+  // Status and timing
+  status      TimeEntryStatus @default(RUNNING)
+  startedAt   DateTime        @default(now())
+  pausedAt    DateTime? // Last pause time
+  stoppedAt   DateTime? // When timer was stopped
+  completedAt DateTime? // When timer was completed
+
+  // Accumulated time (in seconds)
+  totalDuration Int       @default(0) // Total accumulated time including paused periods
+  lastResumedAt DateTime? // When timer was last resumed (for calculating running time)
+
+  // Relations
+  userId   String
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ticketId String? // Link to ticket
+  ticket   Ticket? @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  // When this time entry was merged from another ticket, store original ticket number (e.g. #BUG-000123)
+  mergedFromTicketNumber String?
+
+  // Tags and metadata
+  tags       String[]  @default([])
+  billable   Boolean   @default(false) // Future: Billable flag
+  location   String? // Optional location/address
+  timezone   String? // Optional timezone override (IANA timezone identifier, e.g., "Europe/Berlin")
+  archivedAt DateTime? // When set, time entry is considered archived (hidden from default lists)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  breaks TimeEntryBreak[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([ticketId])
+  @@index([createdAt])
+  @@index([archivedAt])
+  @@map("time_entries")
+}
+
+// Time Entry Break model - tracks breaks that should be deducted from total duration
+model TimeEntryBreak {
+  id          String    @id @default(cuid())
+  timeEntryId String
+  timeEntry   TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+
+  // Break timing
+  startedAt DateTime  @default(now()) // When the break started
+  endedAt   DateTime? // When the break ended (null if break is still ongoing)
+
+  // Break duration in seconds (calculated from startedAt to endedAt, or current time if endedAt is null)
+  duration Int @default(0) // Duration in seconds
+
+  // Optional metadata
+  description String? // Optional description/reason for the break
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([timeEntryId])
+  @@index([startedAt])
+  @@map("time_entry_breaks")
+}
+
+// Location history for corrected/adjusted addresses used in time entries
+model LocationHistory {
+  id      String @id @default(cuid())
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  address String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, address])
+  @@index([userId])
+  @@map("location_history")
+}
+
+// Todo Status
+enum TodoStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  BLOCKED
+  COMPLETED
+  CANCELLED
+}
+
+// Todo Priority
+enum TodoPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// Project Todo
+model Todo {
+  id           String  @id @default(cuid())
+  todoNumber   String? @unique // e.g., #TDO-000001
+  parentTodoId String? // For hierarchical todos
+  parentTodo   Todo?   @relation("TodoHierarchy", fields: [parentTodoId], references: [id], onDelete: SetNull)
+  subtodos     Todo[]  @relation("TodoHierarchy")
+
+  title            String
+  description      String? // Legacy plain text field (will be migrated)
+  descriptionHtml  String? // Rich text HTML (sanitized)
+  descriptionPlain String? // Plain text version for search/indexing
+  status           TodoStatus   @default(NOT_STARTED)
+  priority         TodoPriority @default(MEDIUM)
+
+  // Assignment
+  assignedToId String?
+  assignedTo   User?   @relation("TodoAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  // Estimates and tracking
+  estimatedHours Float? // Estimated time in hours
+  actualHours    Float? // Actual time spent (calculated from time entries)
+
+  // Dates
+  startDate     DateTime?
+  dueDate       DateTime?
+  completedDate DateTime?
+  archivedAt    DateTime? // When set, todo is considered archived (hidden from overview)
+
+  // Ticket relation (optional - todo can be linked to a ticket)
+  ticketId String?
+  ticket   Ticket? @relation("TodoTicket", fields: [ticketId], references: [id], onDelete: SetNull)
+
+  // Dependencies
+  dependencies TodoDependency[] @relation("TodoDependency")
+  dependents   TodoDependency[] @relation("TodoDependent")
+
+  order     Int      @default(0) // For ordering tasks
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([parentTodoId])
+  @@index([assignedToId])
+  @@index([status])
+  @@index([priority])
+  @@index([ticketId])
+  @@index([todoNumber])
+  @@index([archivedAt])
+  @@map("todos")
+}
+
+// Todo Dependency Type
+enum TodoDependencyType {
+  FINISH_TO_START // Todo B can't start until Todo A finishes
+  START_TO_START // Todo B can't start until Todo A starts
+  FINISH_TO_FINISH // Todo B can't finish until Todo A finishes
+  START_TO_FINISH // Todo B can't finish until Todo A starts
+}
+
+// Todo Dependencies
+model TodoDependency {
+  id              String             @id @default(cuid())
+  todoId          String // The todo that depends on another
+  todo            Todo               @relation("TodoDependency", fields: [todoId], references: [id], onDelete: Cascade)
+  dependsOnTodoId String // The todo that this todo depends on
+  dependsOnTodo   Todo               @relation("TodoDependent", fields: [dependsOnTodoId], references: [id], onDelete: Cascade)
+  type            TodoDependencyType @default(FINISH_TO_START)
+  createdAt       DateTime           @default(now())
+
+  @@unique([todoId, dependsOnTodoId])
+  @@index([todoId])
+  @@index([dependsOnTodoId])
+  @@map("todo_dependencies")
+}
+
+// Unban Request model for banned users to request account unban
+model UnbanRequest {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reason     String // User's reason for requesting unban
+  status     String    @default("PENDING") // PENDING, APPROVED, REJECTED
+  reviewedBy String? // Admin who reviewed the request
+  reviewedAt DateTime?
+  adminNotes String? // Admin's notes on the request
+  ticketId   String?   @unique // Linked ticket ID
+  ticket     Ticket?   @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("unban_requests")
+}
+
+// Link Type
+enum LinkType {
+  WEBSITE
+  FILE
+  DOCUMENT
+  VIDEO
+  IMAGE
+  OTHER
+}
+
+// Link model for the link collection module
+model Link {
+  id          String   @id @default(cuid())
+  title       String
+  url         String
+  normalizedUrl String? // Normalized URL for duplicate detection (protocol, www, trailing slash removed)
+  description String?
+  favicon     String? // URL to favicon or stored favicon path
+  linkType    LinkType @default(WEBSITE) // WEBSITE, FILE, DOCUMENT, etc.
+
+  // Metadata
+  tags                String[]  @default([])
+  notes               String? // Personal annotations/notes for the link
+  isFavorite          Boolean   @default(false) // Favorite flag
+  rating              Int? // Rating 1-5 (optional)
+  metadata            Json? // Extracted metadata (og:title, og:description, og:image, etc.)
+  metadataExtractedAt DateTime? // When metadata was last fetched
+
+  // Relations
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  collections LinkCollection[] // Many-to-many with collections
+  sharedWith  LinkShare[]      // Direct link shares to other users
+
+  // Archiving
+  archivedAt DateTime? // When set, link is considered archived
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, normalizedUrl])
+  @@index([linkType])
+  @@index([archivedAt])
+  @@index([createdAt])
+  @@index([isFavorite])
+  @@index([rating])
+  @@index([url]) // For duplicate detection
+  @@map("links")
+}
+
+// Collection Role (used for both CollectionMember and LinkShare)
+enum CollectionRole {
+  VIEWER // Can view links in collection
+  EDITOR // Can add/remove links and edit collection
+}
+
+// LinkShare - Direct share of a single link with another user (appears in "Shared with me")
+model LinkShare {
+  id               String         @id @default(cuid())
+  linkId           String
+  link             Link           @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  sharedWithUserId String
+  sharedWithUser   User           @relation("LinksSharedWithMe", fields: [sharedWithUserId], references: [id], onDelete: Cascade)
+  role             CollectionRole @default(VIEWER) // VIEWER = read only, EDITOR = can edit link
+  createdAt        DateTime       @default(now())
+
+  @@unique([linkId, sharedWithUserId])
+  @@index([linkId])
+  @@index([sharedWithUserId])
+  @@map("link_shares")
+}
+
+// Collection model for organizing links
+model Collection {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  color       String? // Optional color for UI (hex code)
+
+  // Relations
+  ownerId String
+  owner   User               @relation("CollectionOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  links   LinkCollection[] // Many-to-many with links
+  members CollectionMember[] // Users with access to this collection
+
+  // Archiving
+  archivedAt DateTime?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([archivedAt])
+  @@index([createdAt])
+  @@map("collections")
+}
+
+// LinkCollection - Many-to-many relationship between Links and Collections
+model LinkCollection {
+  id           String     @id @default(cuid())
+  linkId       String
+  link         Link       @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  collectionId String
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([linkId, collectionId])
+  @@index([linkId])
+  @@index([collectionId])
+  @@map("link_collections")
+}
+
+// CollectionMember - Model for sharing collections with other users
+model CollectionMember {
+  id           String         @id @default(cuid())
+  collectionId String
+  collection   Collection     @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User           @relation("CollectionMember", fields: [userId], references: [id], onDelete: Cascade)
+  role         CollectionRole @default(VIEWER) // VIEWER, EDITOR
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@unique([collectionId, userId])
+  @@index([collectionId])
+  @@index([userId])
+  @@map("collection_members")
+}
+
+// Notification types
+enum NotificationType {
+  TICKET_ASSIGNED
+  TICKET_STATUS_CHANGED
+  TICKET_COMMENT_ADDED
+  TODO_ASSIGNED
+  UNBAN_REVIEWED
+}
+
+// Per-user in-app notifications
+model Notification {
+  id           String           @id @default(cuid())
+  userId       String
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         NotificationType
+  title        String
+  body         String?
+  resourceType String?          // e.g. "ticket", "todo"
+  resourceId   String?          // ID of the related resource
+  resourceUrl  String?          // Deep link URL
+  read         Boolean          @default(false)
+  createdAt    DateTime         @default(now())
+
+  @@index([userId, read])
+  @@index([userId, createdAt])
+  @@index([resourceType, resourceId])
+  @@map("notifications")
+}
+
+// Application-wide audit log (who did what, when) - queryable and retainable
+model AuditLog {
+  id           String   @id @default(cuid())
+  userId       String?  // Nullable for system/anon or failed login
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action       String   // e.g. "auth.login.attempt", "links.create", "collections.delete"
+  resourceType String?  // e.g. "link", "collection", "ticket"
+  resourceId   String?  // ID of the affected resource
+  context      Json?    // Flexible payload (outcome, failureReason, device fields, etc.)
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([resourceType])
+  @@index([resourceId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

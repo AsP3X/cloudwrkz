@@ -1,0 +1,1 @@
+export { TipsTooltip } from "./TipsTooltip";

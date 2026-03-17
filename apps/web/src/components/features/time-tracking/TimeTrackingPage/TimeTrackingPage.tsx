@@ -1,0 +1,380 @@
+"use client";
+
+import React, { Suspense } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { Button } from "@/components/ui/Button";
+import { TimeEntryList } from "../TimeEntryList";
+import { StartTimerDialog } from "../StartTimerDialog";
+import { AddTimeEntryDialog } from "../AddTimeEntryDialog";
+import { TimeTrackingFilterButton } from "../TimeTrackingFilterButton";
+import { TimeEntryViewToggle } from "../TimeEntryViewToggle";
+import { TimeEntryViewProvider, useTimeEntryView } from "../TimeEntryViewContext";
+import { getActiveTimeEntries } from "@/server/actions/time-tracking";
+import { useTimeTrackingEvents } from "@/lib/hooks/useTimeTrackingEvents";
+import { normalizeActiveEntry } from "@/lib/hooks/useActiveTimers";
+import { type TimeEntryStatus } from "@prisma/client";
+import { calculateElapsedTime } from "@/lib/utils/time-tracking";
+import { formatDateTimeInTimezone } from "@/lib/utils/date";
+import { ROUTES } from "@/lib/constants/routes";
+
+// Client-only component to calculate total time to avoid hydration mismatch
+function TotalTimeDisplay({ entries }: { entries: TimeEntry[] }) {
+  const [totalHours, setTotalHours] = React.useState(0);
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  React.useEffect(() => {
+    if (!mounted) return;
+
+    const calculateTotal = () => {
+      const total = entries.reduce((sum, e) => {
+        return sum + calculateElapsedTime(e);
+      }, 0);
+      setTotalHours(Math.floor(total / 3600));
+    };
+
+    calculateTotal();
+
+    // Update every second for running timers
+    const interval = setInterval(calculateTotal, 1000);
+
+    return () => clearInterval(interval);
+  }, [entries, mounted]);
+
+  // Show static value during SSR to match initial client render
+  const staticTotal = entries.reduce((sum, e) => sum + e.totalDuration, 0);
+  const staticHours = Math.floor(staticTotal / 3600);
+
+  return (
+    <span className="text-sm sm:text-2xl font-bold text-neutral-900 dark:text-neutral-100 sm:block sm:mt-1" suppressHydrationWarning>
+      {mounted ? totalHours : staticHours}h
+    </span>
+  );
+}
+
+type TimeEntry = {
+  id: string;
+  name: string;
+  description: string | null;
+  status: TimeEntryStatus;
+  startedAt: Date;
+  pausedAt: Date | null;
+  stoppedAt: Date | null;
+  completedAt: Date | null;
+  totalDuration: number;
+  lastResumedAt: Date | null;
+  tags: string[];
+  location: string | null;
+  timezone: string | null;
+  billable: boolean;
+  ticket: {
+    id: string;
+    ticketNumber: string;
+    title: string;
+  } | null;
+};
+
+interface TimeTrackingPageProps {
+  initialEntries: TimeEntry[];
+  initialTotal: number;
+  initialPage: number;
+  userTimezone: string;
+}
+
+function formatDateForInput(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function TimeTrackingPageContent({ initialEntries, initialTotal, initialPage, userTimezone }: TimeTrackingPageProps) {
+  const { viewMode, setViewMode } = useTimeEntryView();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const [showStartDialog, setShowStartDialog] = React.useState(false);
+  const [showAddDialog, setShowAddDialog] = React.useState(false);
+  const [activeEntries, setActiveEntries] = React.useState<TimeEntry[]>(
+    initialEntries.filter((e) => e.status === "RUNNING" || e.status === "PAUSED")
+  );
+
+  // Initial load of active entries so the "Active Timers" count reflects
+  // all running/paused timers, regardless of the current list filters.
+  React.useEffect(() => {
+    const loadActiveEntries = async () => {
+      try {
+        const active = await getActiveTimeEntries();
+        setActiveEntries((Array.isArray(active) ? active.map(normalizeActiveEntry) : []) as TimeEntry[]);
+      } catch (error) {
+        console.error("Error fetching active entries:", error);
+      }
+    };
+
+    void loadActiveEntries();
+  }, []);
+
+  // Use SSE for real-time updates
+  useTimeTrackingEvents({
+    onEvent: async (event) => {
+      // Refresh active entries when events occur
+      try {
+        const active = await getActiveTimeEntries();
+        setActiveEntries((Array.isArray(active) ? active.map(normalizeActiveEntry) : []) as TimeEntry[]);
+      } catch (error) {
+        console.error("Error fetching active entries:", error);
+      }
+    },
+    enabled: true,
+  });
+
+  // Fallback: Poll for active entries updates every 30 seconds (as backup)
+  React.useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const active = await getActiveTimeEntries();
+        setActiveEntries((Array.isArray(active) ? active.map(normalizeActiveEntry) : []) as TimeEntry[]);
+      } catch (error) {
+        console.error("Error fetching active entries:", error);
+      }
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const dateFromParam = searchParams.get("dateFrom") || "";
+  const dateToParam = searchParams.get("dateTo") || "";
+
+  const today = new Date();
+  const todayStr = formatDateForInput(today);
+
+  // Calculate starts for current week (Mon-Sun), month, and year
+  const weekStart = new Date(today);
+  const day = weekStart.getDay(); // 0 (Sun) - 6 (Sat)
+  const diffToMonday = (day + 6) % 7; // number of days to subtract to get Monday
+  weekStart.setDate(weekStart.getDate() - diffToMonday);
+  const weekStartStr = formatDateForInput(weekStart);
+
+  const monthStart = new Date(today);
+  monthStart.setDate(1);
+  const monthStartStr = formatDateForInput(monthStart);
+
+  const yearStart = new Date(today);
+  yearStart.setMonth(0, 1);
+  const yearStartStr = formatDateForInput(yearStart);
+
+  let activeRange: "today" | "thisWeek" | "thisMonth" | "thisYear" | null = null;
+  if (dateFromParam && dateToParam) {
+    if (dateFromParam === todayStr && dateToParam === todayStr) {
+      activeRange = "today";
+    } else if (dateFromParam === weekStartStr && dateToParam === todayStr) {
+      activeRange = "thisWeek";
+    } else if (dateFromParam === monthStartStr && dateToParam === todayStr) {
+      activeRange = "thisMonth";
+    } else if (dateFromParam === yearStartStr && dateToParam === todayStr) {
+      activeRange = "thisYear";
+    }
+  }
+
+  const handleQuickRange = React.useCallback(
+    (range: "today" | "thisWeek" | "thisMonth" | "thisYear") => {
+      const params = new URLSearchParams(searchParams.toString());
+      const currentFrom = params.get("dateFrom") || "";
+      const currentTo = params.get("dateTo") || "";
+
+      const now = new Date();
+      const end = new Date(now);
+      const start = new Date(now);
+
+      if (range === "today") {
+        const rangeFrom = formatDateForInput(start);
+        const rangeTo = rangeFrom;
+
+        if (currentFrom === rangeFrom && currentTo === rangeTo) {
+          params.delete("dateFrom");
+          params.delete("dateTo");
+        } else {
+          params.set("dateFrom", rangeFrom);
+          params.set("dateTo", rangeTo);
+        }
+      } else if (range === "thisWeek") {
+        const dayOfWeek = start.getDay();
+        const diffMonday = (dayOfWeek + 6) % 7;
+        start.setDate(start.getDate() - diffMonday);
+        const rangeFrom = formatDateForInput(start);
+        const rangeTo = formatDateForInput(end);
+
+        if (currentFrom === rangeFrom && currentTo === rangeTo) {
+          params.delete("dateFrom");
+          params.delete("dateTo");
+        } else {
+          params.set("dateFrom", rangeFrom);
+          params.set("dateTo", rangeTo);
+        }
+      } else if (range === "thisMonth") {
+        start.setDate(1);
+        const rangeFrom = formatDateForInput(start);
+        const rangeTo = formatDateForInput(end);
+
+        if (currentFrom === rangeFrom && currentTo === rangeTo) {
+          params.delete("dateFrom");
+          params.delete("dateTo");
+        } else {
+          params.set("dateFrom", rangeFrom);
+          params.set("dateTo", rangeTo);
+        }
+      } else if (range === "thisYear") {
+        start.setMonth(0, 1);
+        const rangeFrom = formatDateForInput(start);
+        const rangeTo = formatDateForInput(end);
+
+        if (currentFrom === rangeFrom && currentTo === rangeTo) {
+          params.delete("dateFrom");
+          params.delete("dateTo");
+        } else {
+          params.set("dateFrom", rangeFrom);
+          params.set("dateTo", rangeTo);
+        }
+      }
+
+      router.push(`${pathname}?${params.toString()}`);
+    },
+    [router, searchParams, pathname]
+  );
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100">Time Tracking</h1>
+          <p className="text-neutral-600 dark:text-neutral-400 mt-1">
+            Track and manage your time entries
+          </p>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <TimeEntryViewToggle currentView={viewMode} onViewChange={setViewMode} />
+          <TimeTrackingFilterButton />
+          <Link href={`${ROUTES.ARCHIVE}?type=time`}>
+            <Button variant="outline">Archive</Button>
+          </Link>
+          <Button variant="outline" onClick={() => setShowAddDialog(true)}>
+            <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Entry
+          </Button>
+          <Button variant="primary" onClick={() => setShowStartDialog(true)}>
+            <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Start Timer
+          </Button>
+        </div>
+      </div>
+
+      {/* Stats Cards - Show before list on all screen sizes */}
+      {/* Mobile: Single compact card with horizontal layout */}
+      <div className="sm:hidden">
+        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-3">
+          <div className="flex items-center justify-between">
+            <div className="flex-1 text-center">
+              <div className="text-xs text-neutral-600 dark:text-neutral-400 mb-1">Total Entries</div>
+              <div className="text-lg font-bold text-neutral-900 dark:text-neutral-100">{initialTotal}</div>
+            </div>
+            <div className="w-px h-12 bg-neutral-200 dark:bg-neutral-700 mx-2"></div>
+            <div className="flex-1 text-center">
+              <div className="text-xs text-neutral-600 dark:text-neutral-400 mb-1">Active Timers</div>
+              <div className="text-lg font-bold text-neutral-900 dark:text-neutral-100">
+                {activeEntries.length}
+              </div>
+            </div>
+            <div className="w-px h-12 bg-neutral-200 dark:bg-neutral-700 mx-2"></div>
+            <div className="flex-1 text-center">
+              <div className="text-xs text-neutral-600 dark:text-neutral-400 mb-1">Total Time</div>
+              <div className="text-lg font-bold text-neutral-900 dark:text-neutral-100">
+                <TotalTimeDisplay entries={initialEntries} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {/* Desktop: Original card layout */}
+      <div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
+          <div className="text-sm text-neutral-600 dark:text-neutral-400">Total Entries</div>
+          <div className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-1">{initialTotal}</div>
+        </div>
+        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
+          <div className="text-sm text-neutral-600 dark:text-neutral-400">Active Timers</div>
+          <div className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-1">
+            {activeEntries.length}
+          </div>
+        </div>
+        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
+          <div className="text-sm text-neutral-600 dark:text-neutral-400">Total Time</div>
+          <TotalTimeDisplay entries={initialEntries} />
+        </div>
+      </div>
+
+      {/* Timeframe quick range controls */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-neutral-600 dark:text-neutral-400">Timeframe:</span>
+        <Button
+          variant={activeRange === "today" ? "primary" : "ghost"}
+          size="sm"
+          onClick={() => handleQuickRange("today")}
+          aria-pressed={activeRange === "today"}
+        >
+          Today
+        </Button>
+        <Button
+          variant={activeRange === "thisWeek" ? "primary" : "ghost"}
+          size="sm"
+          onClick={() => handleQuickRange("thisWeek")}
+          aria-pressed={activeRange === "thisWeek"}
+        >
+          This week
+        </Button>
+        <Button
+          variant={activeRange === "thisMonth" ? "primary" : "ghost"}
+          size="sm"
+          onClick={() => handleQuickRange("thisMonth")}
+          aria-pressed={activeRange === "thisMonth"}
+        >
+          This month
+        </Button>
+        <Button
+          variant={activeRange === "thisYear" ? "primary" : "ghost"}
+          size="sm"
+          onClick={() => handleQuickRange("thisYear")}
+          aria-pressed={activeRange === "thisYear"}
+        >
+          This year
+        </Button>
+      </div>
+
+      {/* Time Entries List */}
+      <TimeEntryList entries={initialEntries} userTimezone={userTimezone} />
+
+      {/* Dialogs */}
+      <StartTimerDialog open={showStartDialog} onOpenChange={setShowStartDialog} />
+      <AddTimeEntryDialog open={showAddDialog} onOpenChange={setShowAddDialog} />
+    </div>
+  );
+}
+
+export function TimeTrackingPage(props: TimeTrackingPageProps) {
+  return (
+    <TimeEntryViewProvider>
+      <Suspense fallback={null}>
+        <TimeTrackingPageContent {...props} />
+      </Suspense>
+    </TimeEntryViewProvider>
+  );
+}

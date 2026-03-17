@@ -1,0 +1,73 @@
+# Monorepo: run from repo root or apps/web. The cloudwrkz volume below is
+# deployment-specific; for local dev from apps/web you can override with .:/cloudwrkz
+services:
+  cloudwrkz:
+    image: ubuntu:latest
+    container_name: cloudwrkz
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    environment:
+      SHELL: bash
+    volumes:
+      - /home/cloudwrkz/docker/services/cloudwrkz:/cloudwrkz
+    ports:
+      - "0.0.0.0:3000:3000"
+    networks:
+      - cloudwrkz-network
+      - proxy-network
+    command: bash
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: cloudwrkz-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cloudwrkz
+      POSTGRES_PASSWORD: PASSWORD_HERE
+      POSTGRES_DB: cloudwrkz
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloudwrkz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cloudwrkz-network
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: cloudwrkz-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@cloudwrkz.test
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_CHECK_EMAIL_DELIVERABILITY: 'False'
+      PGADMIN_CONFIG_ALLOW_SPECIAL_EMAIL_DOMAINS: 'cloudwrkz.test'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - cloudwrkz-network
+
+volumes:
+  postgres_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+networks:
+  cloudwrkz-network:
+    driver: bridge
+  proxy-network:
+    external: true
