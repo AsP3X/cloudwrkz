@@ -234,7 +234,7 @@ Cloudwrkz/
 ## 9. Checklist Summary
 
 - **Web (Vite+)**
-  - [ ] New Vite+ React app in monorepo
+  - [x] New Vite+ React app in monorepo
   - [ ] Same UI (layout, pages, components) with React Router
   - [ ] API client with configurable base URL and auth token
   - [ ] All server actions replaced by API calls to Rust API
