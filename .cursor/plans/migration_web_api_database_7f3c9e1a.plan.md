@@ -24,7 +24,7 @@ todos:
     content: Rust API (Axum + SQLx) with health/ping, CORS, pooling
     status: pending
   - id: api-versioning
-    content: API versioning: v1 under /api/v1; unversioned health/ping
+    content: "API versioning: v1 under /api/v1; unversioned health/ping"
     status: pending
   - id: api-rust-routes
     content: Port all current API routes under /api/v1; same contract for Web and iOS
