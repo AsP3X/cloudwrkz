@@ -19,25 +19,25 @@ todos:
     status: completed
   - id: web-vite-server-actions
     content: All server actions replaced by API calls (to Rust API when ready)
-    status: in_progress
+    status: completed
   - id: api-rust-setup
     content: Rust API (Axum + SQLx) with health/ping, CORS, pooling
-    status: pending
+    status: completed
   - id: api-versioning
     content: "API versioning: v1 under /api/v1; unversioned health/ping"
-    status: pending
+    status: completed
   - id: api-rust-routes
     content: Port all current API routes under /api/v1; same contract for Web and iOS
-    status: pending
+    status: completed
   - id: api-rust-auth
     content: Auth session table + token validation; bcrypt/argon2
-    status: pending
+    status: completed
   - id: db-migrations
     content: PostgreSQL; migrations in Rust repo or Prisma; single source of truth
-    status: pending
+    status: completed
   - id: repo-ops
     content: Monorepo apps/web-vite, apps/api, apps/ios; Docker/Compose; production LB + CDN
-    status: pending
+    status: completed
 isProject: true
 ---
 
@@ -209,7 +209,7 @@ From current `apps/web/src/app/api`, exposed under `**/api/v1/`**:
 - `**apps/api`** (Rust crate/workspace):
   - `**Cargo.toml`**: Axum, SQLx, tokio, serde, argon2, tower (middleware), tracing.
   - `**src/main.rs`**: Load config from env, create `PgPool` (SQLx), CORS layer, router. Mount v1 at `/api/v1`; mount `/api/health`, `/api/ping` (and `/api/ready`). Graceful shutdown on SIGTERM.
-  - `**src/config.rs**`: Parse and validate env vars; expose `ApiConfig`, `DatabaseConfig`, `CorsConfig`, `AuthConfig`.
+  - `**src/config.rs`**: Parse and validate env vars; expose `ApiConfig`, `DatabaseConfig`, `CorsConfig`, `AuthConfig`.
   - `**src/routes/**`: `mod.rs` (v1 router assembly), `auth.rs`, `me.rs`, `tickets.rs`, `todos.rs`, `links.rs`, `collections.rs`, `time_tracking.rs`, `search.rs`, `profile.rs`, `contact.rs`, `admin.rs`, `favicons.rs`, `health.rs` (health/ping/ready only).
   - `**src/db/**`: `pool.rs` (PgPool creation), `repositories/` or inline queries per domain (sessions, users, tickets, todos, links, etc.).
   - `**src/models/**`: Structs for DB rows and API request/response DTOs; serde for JSON.
