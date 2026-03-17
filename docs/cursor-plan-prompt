@@ -1,0 +1,113 @@
+You are a senior enterprise architect + staff engineer with deep experience in scalable SaaS and on‑prem ERP systems, Rust backend engineering (Axum/SQLx), PostgreSQL scaling, event-driven design, and migration planning.
+
+TASK
+Create a high-quality markdown adjustment plan that modifies an existing migration plan named "XXXXXX" (placeholder) to incorporate a Rust-based "Replication Layer" component, without breaking the existing Web (Vite+ SPA), API (Rust), Database (PostgreSQL) separation.
+
+CONTEXT (do not ignore)
+We are migrating from a Next.js full-stack (App Router + API routes + server actions + Prisma + Postgres) into 3 scalable parts:
+1) Web: Vite+ React SPA (static assets; CDN or Nginx; horizontally scalable)
+2) API: Rust (Axum + SQLx) under /api/v1, stateless, scalable
+3) DB: Postgres as system of record; vertical scaling + optional read replicas; no DB access from Web
+
+We now want a Rust-based "Replication Layer" inspired by the concept of separating shared state/synchronization from compute nodes.
+
+IMPORTANT: This replication layer is ERP-appropriate.
+- NOT a game-engine entity graph
+- NOT multi-primary Postgres
+- NOT a custom distributed DB
+
+It should focus on:
+- durable propagation of state changes
+- resilience/crash recovery patterns
+- eventing for async workflows (search index, notifications, reporting)
+- future tenant sharding routing (optional, later)
+
+CURRENT STATUS
+- Vite+ web app exists and is largely complete; it currently proxies /api to the legacy Next API while Rust API is not started.
+- Rust API does not exist yet in repo.
+- Postgres exists; Prisma migrations currently live in Next app.
+- API versioning rule: /api/v1/* for app endpoints; unversioned /api/health and /api/ping.
+
+GOAL OF THIS OUTPUT
+Produce a comprehensive markdown plan that is an "adjustment" to XXXXXX (not a brand new plan), adding:
+- a Replication Layer design
+- phased implementation steps
+- repo structure changes
+- how it interacts with Postgres and the Rust API
+- how it enables horizontal scaling (DB scale patterns like read replicas + tenant sharding readiness)
+
+CONSTRAINTS
+- Keep Web purely static SPA. No server actions, no Prisma, no DB access.
+- API remains stateless and horizontally scalable.
+- Postgres remains the system of record. We can add read replicas; we can plan for tenant sharding later.
+- Must support SaaS, self-host (Docker Compose), and enterprise on‑prem (Kubernetes/Helm).
+- Avoid vendor lock-in. Use standard primitives (Postgres, Redis optional, message broker optional).
+- Keep API versioning: /api/v1 for business endpoints; /api/health and /api/ping unversioned.
+
+API CONTRACT POLICY (UPDATED)
+We DO NOT need to preserve existing API contract shapes at all costs.
+- Prefer minimal client changes when feasible.
+- However, breaking changes ARE welcome when they provide clear improvements in:
+  - security (auth, session handling, token storage, CSRF mitigation, rate limiting)
+  - performance (payload shape, pagination, caching semantics, DB efficiency)
+  - operability (observability, idempotency, error contracts, tracing)
+- Any breaking change must be managed with discipline:
+  - document the change and rationale
+  - provide a migration path for clients (Web + iOS)
+  - use API versioning or compatibility shims if needed
+  - provide deprecation window guidance
+
+DEFINE "REPLICATION LAYER" (ERP MEANING)
+In this plan, the replication layer means:
+- A Rust service (or small set of services) providing a durable command/event backbone and synchronization mechanism.
+- Use Transactional Outbox pattern: write business data + outbox event in SAME DB transaction.
+- An outbox publisher reads events and publishes to a broker (Kafka/Rabbit/NATS) OR to a lightweight internal queue if broker isn’t deployed yet.
+- Downstream consumers (workers) process events for: search indexing, notifications, reporting, audit expansions.
+- Add idempotency keys and retries for safe reprocessing.
+- Optional: provide WebSocket/SSE to push updates to clients (phase later).
+- Optional: in future, become a tenant/shard router when DB is sharded (tenant_id -> shard mapping).
+
+DELIVERABLE FORMAT (MARKDOWN)
+Write a markdown document with:
+1) Executive Summary (what changes and why)
+2) Updated Target Architecture (include a mermaid diagram)
+3) Component Responsibilities (Web, API, Replication Layer, DB, optional broker/redis/search)
+4) Data & Event Flow (command -> tx -> outbox -> publish -> consume -> read models)
+5) Migration Phases (minimum 5 phases) with acceptance criteria per phase
+6) Repo/Folder Structure Changes (monorepo; apps/web-vite, apps/api, apps/replication-layer or integrated, workers, infra)
+7) API Contract & Versioning policy:
+   - what can change, what must remain stable
+   - error envelope standardization
+   - pagination/caching conventions
+   - auth token/cookie strategy and rationale
+8) Database implications:
+   - tables: sessions, outbox, idempotency, audit
+   - pooling strategy, connection limits
+   - read replica usage (read vs write pools)
+   - shard-readiness (tenant_id everywhere, routing boundaries)
+9) Operational Plan:
+   - Docker Compose + Helm approach
+   - health/readiness checks
+   - observability (structured logs, tracing IDs, metrics)
+   - config/env vars
+10) Risks & Mitigations:
+   - eventual consistency pitfalls
+   - outbox backlog
+   - duplicates/idempotency failure modes
+   - client migration risks (Web/iOS)
+   - rollout and rollback strategy
+11) Definition of Done checklist
+
+QUALITY BAR
+- Be specific: name tables, endpoints, services, env vars, and failure modes.
+- Provide realistic sequencing and rollback options.
+- Avoid vague statements; include acceptance criteria and measurable outcomes.
+- Do not require rewriting the UI. Web remains already-migrated Vite+ SPA.
+- Emphasize that replication layer decouples async work and enables safe horizontal growth.
+- Include an incremental path: start without broker (polling outbox), then add broker, then add consumers.
+
+IMPORTANT: NAME PLACEHOLDER
+Refer to the existing migration plan as "XXXXXX" everywhere; do not invent another name.
+
+OUTPUT ONLY
+Return only the markdown plan. No preamble, no meta commentary.

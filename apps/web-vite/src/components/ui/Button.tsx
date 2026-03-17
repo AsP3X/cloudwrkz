@@ -1,0 +1,107 @@
+import React from "react";
+import { Link } from "react-router-dom";
+import { cn } from "@/lib/utils/cn";
+
+export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "danger";
+export type ButtonSize = "sm" | "md" | "lg";
+
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  loading?: boolean;
+  asChild?: boolean;
+  href?: string;
+}
+
+const Spinner = () => (
+  <svg
+    className="mr-2 h-4 w-4 animate-spin"
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+  >
+    <circle
+      className="opacity-25"
+      cx="12"
+      cy="12"
+      r="10"
+      stroke="currentColor"
+      strokeWidth="4"
+    />
+    <path
+      className="opacity-75"
+      fill="currentColor"
+      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+    />
+  </svg>
+);
+
+export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  (
+    {
+      children,
+      variant = "primary",
+      size = "md",
+      className,
+      disabled,
+      loading,
+      asChild,
+      href,
+      onClick,
+      ...props
+    },
+    ref
+  ) => {
+    const baseStyles =
+      "inline-flex items-center justify-center rounded-md font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-neutral-900 disabled:pointer-events-none disabled:opacity-50";
+
+    const variants = {
+      primary:
+        "bg-primary-700 dark:bg-primary-600 text-white !text-white hover:bg-primary-800 dark:hover:bg-primary-700",
+      secondary:
+        "bg-secondary-600 dark:bg-secondary-500 text-white hover:bg-secondary-700 dark:hover:bg-secondary-600",
+      outline:
+        "border-2 border-neutral-300 dark:border-neutral-700 bg-transparent text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800",
+      ghost:
+        "bg-transparent text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800",
+      danger:
+        "bg-error-600 dark:bg-error-500 text-white hover:bg-error-700 dark:hover:bg-error-600",
+    };
+
+    const sizes = {
+      sm: "h-8 px-3 text-sm",
+      md: "h-10 px-4 text-base",
+      lg: "h-12 px-6 text-lg",
+    };
+
+    const classes = cn(baseStyles, variants[variant], sizes[size], className);
+
+    if (asChild && href) {
+      return (
+        <Link
+          to={href}
+          className={classes}
+          onClick={onClick as unknown as React.MouseEventHandler<HTMLAnchorElement>}
+        >
+          {loading && <Spinner />}
+          {children}
+        </Link>
+      );
+    }
+
+    return (
+      <button
+        ref={ref}
+        className={classes}
+        disabled={disabled || loading}
+        onClick={onClick}
+        {...props}
+      >
+        {loading && <Spinner />}
+        {children}
+      </button>
+    );
+  }
+);
+
+Button.displayName = "Button";
