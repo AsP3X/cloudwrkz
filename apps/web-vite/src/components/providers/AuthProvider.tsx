@@ -26,6 +26,23 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+interface MeResponse {
+  name: string | null;
+  email: string;
+  modules: string[];
+}
+
+interface LoginApiResponse {
+  token: string;
+  user: { name: string | null; email: string };
+}
+
+interface RegisterApiResponse {
+  message: string;
+  user_id?: string;
+  email?: string;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -33,8 +50,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchUser = useCallback(async () => {
     try {
-      const data = await api.get<{ user: User }>("/me");
-      setUser(data.user);
+      const data = await api.get<MeResponse>("/me");
+      setUser({
+        id: "",
+        email: data.email,
+        name: data.name,
+        role: "USER",
+        status: "ACTIVE",
+        avatar: null,
+        timezone: null,
+        emailVerified: true,
+        createdAt: "",
+      });
     } catch {
       setUser(null);
     } finally {
@@ -57,17 +84,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string, rememberMe = false) => {
     try {
-      const result = await api.post<{ success: boolean; token?: string; user?: User; error?: string }>(
-        "/login",
-        { email, password, rememberMe },
+      const result = await api.post<LoginApiResponse>(
+        "/auth/login",
+        { email, password, remember_me: rememberMe },
       );
-      if (result.success && result.token) {
+      if (result.token) {
         localStorage.setItem("auth_token", result.token);
-        if (result.user) setUser(result.user);
-        else await fetchUser();
+        setUser({
+          id: "",
+          email: result.user.email,
+          name: result.user.name,
+          role: "USER",
+          status: "ACTIVE",
+          avatar: null,
+          timezone: null,
+          emailVerified: true,
+          createdAt: "",
+        });
+        await fetchUser();
         return { success: true };
       }
-      return { success: false, error: result.error || "Login failed" };
+      return { success: false, error: "Login failed" };
     } catch (err) {
       if (err instanceof ApiError) {
         return { success: false, error: err.message };
@@ -78,8 +115,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = async (data: { name: string; email: string; password: string; confirmPassword: string }) => {
     try {
-      const result = await api.post<{ success: boolean; error?: string }>("/register", data);
-      return { success: result.success, error: result.error };
+      await api.post<RegisterApiResponse>("/auth/register", {
+        name: data.name,
+        email: data.email,
+        password: data.password,
+        confirm_password: data.confirmPassword,
+      });
+      return { success: true };
     } catch (err) {
       if (err instanceof ApiError) {
         return { success: false, error: err.message };
@@ -90,7 +132,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
-      await api.post("/logout");
+      await api.post("/auth/logout");
     } catch {
       // Ignore errors during logout
     }
