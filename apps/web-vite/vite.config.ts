@@ -65,6 +65,13 @@ export default defineConfig({
         target: "http://localhost:8080",
         changeOrigin: true,
       },
+      // Proxy for legacy Next.js API (used for fuzzy search endpoints).
+      // The Vite app calls `/next-api/...`, which is rewritten to `/api/...` on the Next.js server.
+      "/next-api": {
+        target: "http://localhost:3000",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/next-api/, "/api"),
+      },
     },
   },
 });

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { Link } from "react-router-dom";
-import { api } from "@/api/client";
+import { api, searchApi } from "@/api/client";
 import type { SearchResult } from "../types";
 import { cn } from "@/lib/utils/cn";
 import { formatDate } from "@/lib/utils/date";
@@ -82,10 +82,10 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
     const timeoutId = setTimeout(async () => {
       setIsLoading(true);
       try {
-        if (isEnhanced && parsed) {
-          const response = await api.post<{ results: SearchResult[]; total: number }>(
+        if (isEnhanced) {
+          const response = await searchApi.post<{ results: SearchResult[]; total: number }>(
             "/search/enhanced",
-            parsed
+            { query: trimmed }
           );
           setResults(Array.isArray(response?.results) ? response.results : []);
           setTotalResults(response?.total ?? 0);

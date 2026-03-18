@@ -4,6 +4,12 @@ import { log } from "@/lib/logger";
 const API_BASE_URL =
   import.meta.env.DEV ? "/api/v1" : (import.meta.env.VITE_API_URL || "/api/v1");
 
+// Search endpoints currently live on the legacy Next.js app under `/api`.
+// This separate base URL allows us to reuse the full fuzzy search implementation there.
+// In dev, we proxy `/next-api` to the Next.js app (see `vite.config.ts`).
+const SEARCH_API_BASE_URL =
+  import.meta.env.VITE_SEARCH_API_URL || "/next-api";
+
 /** API error body: { error: { code, message, fields? } } */
 function getErrorMessage(data: unknown, statusText: string): string {
   if (data && typeof data === "object" && "error" in data) {
@@ -26,11 +32,12 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(
+async function requestWithBase<T>(
+  baseUrl: string,
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const url = `${API_BASE_URL}${path}`;
+  const url = `${baseUrl}${path}`;
   const method = (options.method || "GET").toUpperCase();
 
   const headers: HeadersInit = {
@@ -110,6 +117,13 @@ async function request<T>(
   return response.json();
 }
 
+async function request<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  return requestWithBase<T>(API_BASE_URL, path, options);
+}
+
 export const api = {
   get: <T>(path: string, options?: RequestInit) =>
     request<T>(path, { ...options, method: "GET" }),
@@ -185,4 +199,19 @@ export const api = {
       return response.json() as Promise<T>;
     });
   },
+};
+
+export const searchApi = {
+  get: <T>(path: string, options?: RequestInit) =>
+    requestWithBase<T>(SEARCH_API_BASE_URL, path, {
+      ...options,
+      method: "GET",
+    }),
+
+  post: <T>(path: string, body?: unknown, options?: RequestInit) =>
+    requestWithBase<T>(SEARCH_API_BASE_URL, path, {
+      ...options,
+      method: "POST",
+      body: body ? JSON.stringify(body) : undefined,
+    }),
 };
