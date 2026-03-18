@@ -268,20 +268,20 @@ async function handleCreate() {
   try {
     // Generate ticket number
     const existingTickets = await prisma.ticket.findMany({
-      where: { ticketNumber: { startsWith: "#INC-" } },
+      where: { ticketNumber: { startsWith: "#TSK-" } },
       orderBy: { ticketNumber: "desc" },
       take: 1,
     });
 
     let nextNumber = 1;
     if (existingTickets.length > 0) {
-      const match = existingTickets[0].ticketNumber.match(/#INC-(\d+)/);
+      const match = existingTickets[0].ticketNumber.match(/#TSK-(\d+)/);
       if (match) {
         nextNumber = parseInt(match[1], 10) + 1;
       }
     }
 
-    const ticketNumber = `#INC-${nextNumber.toString().padStart(6, "0")}`;
+    const ticketNumber = `#TSK-${nextNumber.toString().padStart(6, "0")}`;
 
     const ticket = await prisma.ticket.create({
       data: {

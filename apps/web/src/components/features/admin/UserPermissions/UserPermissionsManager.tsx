@@ -602,7 +602,7 @@ export function UserPermissionsManager({
               Dynamic Permissions
             </h3>
             <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
-              Ticket-specific permissions (e.g., tickets.INC-000001.view)
+              Ticket-specific permissions (e.g., tickets.TSK-000001.view)
             </p>
           </div>
           <Button

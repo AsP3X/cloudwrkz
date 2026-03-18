@@ -310,7 +310,7 @@ export function GroupDetailPage({ group: initialGroup, canManagePermissions = fa
                                       Dynamic Permissions ({dynamicPermissions.length})
                                     </h4>
                                     <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
-                                      Ticket-specific permissions (e.g., tickets.INC-000001.view)
+                                      Ticket-specific permissions (e.g., tickets.TSK-000001.view)
                                     </p>
                                   </div>
                                   <div className="p-4 bg-white dark:bg-neutral-800">

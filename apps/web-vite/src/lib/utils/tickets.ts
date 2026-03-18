@@ -1,11 +1,13 @@
+/** Entity identifier prefixes (always 3 letters): TSK=tickets, TDO=todos, TMR=timers, LNK=links. */
 export type TicketType = "BUG" | "FEATURE" | "QUESTION" | "SUPPORT" | "TASK";
 
+/** All tickets use the 3-letter prefix TSK. */
 export const TICKET_TYPE_PREFIXES: Record<TicketType, string> = {
-  BUG: "INC",
-  SUPPORT: "SRC",
+  BUG: "TSK",
+  SUPPORT: "TSK",
   TASK: "TSK",
-  FEATURE: "CH",
-  QUESTION: "QST",
+  FEATURE: "TSK",
+  QUESTION: "TSK",
 };
 
 export const TICKET_TYPE_LABELS: Record<TicketType, string> = {

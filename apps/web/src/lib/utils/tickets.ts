@@ -1,18 +1,20 @@
 /**
- * Ticket type utilities and mappings
+ * Ticket type utilities and mappings.
+ * Entity identifier prefixes (always 3 letters): TSK=tickets, TDO=todos, TMR=timers, LNK=links.
  */
 
 export type TicketType = "BUG" | "FEATURE" | "QUESTION" | "SUPPORT" | "TASK";
 
 /**
- * Map ticket type to prefix for ticket number generation
+ * Map ticket type to prefix for ticket number generation.
+ * All tickets use the 3-letter prefix TSK.
  */
 export const TICKET_TYPE_PREFIXES: Record<TicketType, string> = {
-  BUG: "INC",      // Incident
-  SUPPORT: "SRC",  // Service Request
-  TASK: "TSK",     // Task
-  FEATURE: "CH",   // Change
-  QUESTION: "QST", // Question
+  BUG: "TSK",
+  SUPPORT: "TSK",
+  TASK: "TSK",
+  FEATURE: "TSK",
+  QUESTION: "TSK",
 };
 
 /**

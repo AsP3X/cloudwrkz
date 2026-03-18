@@ -12,16 +12,9 @@ use crate::models::ticket::*;
 use crate::routes::helpers::{check_permission, fetch_group_summary, fetch_user_summary, get_user_permission_keys};
 use crate::routes::AppState;
 
-/// Map ticket type to prefix for ticket number (matches Next.js TICKET_TYPE_PREFIXES).
-fn ticket_type_prefix(t: &str) -> &'static str {
-    match t {
-        "BUG" => "INC",
-        "SUPPORT" => "SRC",
-        "TASK" => "TSK",
-        "FEATURE" => "CH",
-        "QUESTION" => "QST",
-        _ => "QST",
-    }
+/// Map ticket type to prefix for ticket number. All tickets use the 3-letter prefix TSK.
+fn ticket_type_prefix(_t: &str) -> &'static str {
+    "TSK"
 }
 
 /// Generate next sequential ticket number for the given type: PREFIX-000001.

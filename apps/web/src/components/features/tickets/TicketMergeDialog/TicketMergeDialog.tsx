@@ -124,7 +124,7 @@ export const TicketMergeDialog: React.FC<TicketMergeDialogProps> = ({
               id="ticket-merge-source"
               value={sourceIdentifier}
               onChange={(e) => setSourceIdentifier(e.target.value)}
-              placeholder="#BUG-000123 or ticket UUID"
+              placeholder="#TSK-000123 or ticket UUID"
             />
             {isSearching && (
               <p className="text-xs text-neutral-400 dark:text-neutral-500">Searching tickets…</p>

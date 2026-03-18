@@ -293,7 +293,7 @@ model GroupMembership {
 // Ticket model for the ticket system module
 model Ticket {
   id               String         @id @default(cuid())
-  ticketNumber     String         @unique // e.g., #INC-000001, #SRC-000001
+  ticketNumber     String         @unique // e.g., #TSK-000001
   title            String
   description      String? // Legacy plain text field (will be migrated)
   descriptionHtml  String? // Rich text HTML (sanitized)
@@ -374,7 +374,7 @@ model TicketComment {
   content      String // Legacy plain text field (will be migrated)
   contentHtml  String? // Rich text HTML (sanitized)
   contentPlain String? // Plain text version for search/indexing
-  // When this comment was merged from another ticket, store original ticket number (e.g. #BUG-000123)
+  // When this comment was merged from another ticket, store original ticket number (e.g. #TSK-000123)
   mergedFromTicketNumber String?
   ticketId     String
   ticket       Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
@@ -396,7 +396,7 @@ model TicketActivity {
   ticketId      String
   ticket        Ticket             @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   activityType  TicketActivityType
-  // When this activity was merged from another ticket, store original ticket number (e.g. #BUG-000123)
+  // When this activity was merged from another ticket, store original ticket number (e.g. #TSK-000123)
   mergedFromTicketNumber String?
   changedById   String?
   changedBy     User?              @relation("TicketActivityChanger", fields: [changedById], references: [id], onDelete: SetNull)
@@ -435,7 +435,7 @@ model TimeEntry {
   user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   ticketId String? // Link to ticket
   ticket   Ticket? @relation(fields: [ticketId], references: [id], onDelete: SetNull)
-  // When this time entry was merged from another ticket, store original ticket number (e.g. #BUG-000123)
+  // When this time entry was merged from another ticket, store original ticket number (e.g. #TSK-000123)
   mergedFromTicketNumber String?
 
   // Tags and metadata

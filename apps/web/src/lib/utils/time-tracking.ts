@@ -181,7 +181,7 @@ export function parseTimerNumber(timerName: string): { prefix: string; sequence:
  * Format timer number to ensure it's in #TMR-000000 format (6 digits)
  * If the input is already in TMR-XXXXXX or #TMR-XXXXXX format, it will be reformatted to have 6 digits
  * If the input doesn't match the format, tries to extract TMR pattern from the string
- * For custom names (like "#INC-000001 - Test - 1"), extracts the number and formats as #TMR
+ * For custom names (like "#TSK-000001 - Test - 1"), extracts the number and formats as #TMR
  * If no number can be extracted, returns the original string
  */
 export function formatTimerNumber(timerName: string, entryId?: string): string {
@@ -200,7 +200,7 @@ export function formatTimerNumber(timerName: string, entryId?: string): string {
     return generateTimerNumber(sequence);
   }
   
-  // For custom names like "#INC-000001 - Test - 1", try to extract the number at the end
+  // For custom names like "#TSK-000001 - Test - 1", try to extract the number at the end
   // Pattern: " - 1" or " - 123" at the end of the string
   const customNamePattern = /\s*-\s*(\d+)\s*$/;
   const customMatch = timerName.match(customNamePattern);
