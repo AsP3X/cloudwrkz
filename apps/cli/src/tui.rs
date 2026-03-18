@@ -20,14 +20,21 @@ use std::io::{self, Stdout};
 
 const SIDEBAR_WIDTH: u16 = 28;
 
+/// Which panel has keyboard focus (Tab switches between them).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PanelFocus {
+    Sidebar,
+    Content,
+}
+
 /// Result of running the TUI. Indices refer to the current sidebar and content lists.
 #[derive(Debug)]
 pub enum TuiExit {
     /// User selected an item: (sidebar_index, content_index)
     Select(usize, usize),
-    /// User pressed Esc (go back)
+    /// User pressed Left (navigate back one view)
     Back,
-    /// User pressed q (quit app)
+    /// User pressed q (quit app; not emitted when in search input)
     Quit,
     /// User pressed Ctrl+F (open global search)
     OpenSearch,
@@ -42,6 +49,8 @@ pub enum TuiExit {
 pub struct TuiState {
     pub sidebar_index: usize,
     pub content_index: usize,
+    /// Which panel has focus; Tab switches between Sidebar and Content.
+    pub focus: PanelFocus,
     list_state: ListState,
     content_state: ListState,
 }
@@ -55,6 +64,7 @@ impl TuiState {
         Self {
             sidebar_index: 0,
             content_index: 0,
+            focus: PanelFocus::Sidebar,
             list_state,
             content_state,
         }
@@ -186,40 +196,37 @@ fn run_tui_loop(
                     return Ok(TuiExit::OpenSearch);
                 }
                 match key.code {
+                    KeyCode::Tab => {
+                        state.focus = match state.focus {
+                            PanelFocus::Sidebar => PanelFocus::Content,
+                            PanelFocus::Content => PanelFocus::Sidebar,
+                        };
+                    }
                     KeyCode::Char('q') => return Ok(TuiExit::Quit),
-                    KeyCode::Esc => return Ok(TuiExit::Back),
+                    KeyCode::Left => return Ok(TuiExit::Back),
+                    KeyCode::Right | KeyCode::Esc => {}
                     KeyCode::Up => {
-                        if key.modifiers.contains(KeyModifiers::CONTROL) && state.sidebar_index > 0 {
-                            state.sidebar_index = state.sidebar_index.saturating_sub(1);
-                            state.content_index = 0;
-                        } else if slen > 0 && state.sidebar_index > 0 && clen == 0 {
-                            state.sidebar_index = state.sidebar_index.saturating_sub(1);
-                        } else if clen > 0 {
-                            state.content_index = state.content_index.saturating_sub(1);
+                        match state.focus {
+                            PanelFocus::Sidebar if slen > 0 && state.sidebar_index > 0 => {
+                                state.sidebar_index = state.sidebar_index.saturating_sub(1);
+                                state.content_index = 0;
+                            }
+                            PanelFocus::Content if clen > 0 => {
+                                state.content_index = state.content_index.saturating_sub(1);
+                            }
+                            _ => {}
                         }
                     }
                     KeyCode::Down => {
-                        if key.modifiers.contains(KeyModifiers::CONTROL)
-                            && state.sidebar_index < slen.saturating_sub(1)
-                        {
-                            state.sidebar_index = (state.sidebar_index + 1).min(slen.saturating_sub(1));
-                            state.content_index = 0;
-                        } else if slen > 0 && state.sidebar_index < slen.saturating_sub(1) && clen == 0 {
-                            state.sidebar_index = (state.sidebar_index + 1).min(slen.saturating_sub(1));
-                        } else if clen > 0 {
-                            state.content_index = (state.content_index + 1).min(clen - 1);
-                        }
-                    }
-                    KeyCode::Left => {
-                        if state.sidebar_index > 0 {
-                            state.sidebar_index = state.sidebar_index.saturating_sub(1);
-                            state.content_index = 0;
-                        }
-                    }
-                    KeyCode::Right => {
-                        if state.sidebar_index < slen.saturating_sub(1) {
-                            state.sidebar_index = (state.sidebar_index + 1).min(slen.saturating_sub(1));
-                            state.content_index = 0;
+                        match state.focus {
+                            PanelFocus::Sidebar if state.sidebar_index < slen.saturating_sub(1) => {
+                                state.sidebar_index = (state.sidebar_index + 1).min(slen.saturating_sub(1));
+                                state.content_index = 0;
+                            }
+                            PanelFocus::Content if clen > 0 => {
+                                state.content_index = (state.content_index + 1).min(clen - 1);
+                            }
+                            _ => {}
                         }
                     }
                     KeyCode::Enter => {
@@ -300,6 +307,7 @@ fn ui(
         .constraints([Constraint::Length(SIDEBAR_WIDTH), Constraint::Min(24)])
         .split(main_area);
 
+    let sidebar_focused = state.focus == PanelFocus::Sidebar;
     let sidebar_list: Vec<ListItem> = sidebar_items
         .iter()
         .enumerate()
@@ -313,17 +321,23 @@ fn ui(
         })
         .collect();
     state.list_state.select(Some(state.sidebar_index));
+    let sidebar_border = if sidebar_focused {
+        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::Cyan)
+    };
     let sidebar = List::new(sidebar_list)
         .block(
             Block::default()
                 .title(format!("  {}  ", title_left))
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Cyan)),
+                .border_style(sidebar_border),
         )
         .highlight_style(Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD))
         .highlight_symbol("▸ ");
     f.render_stateful_widget(sidebar, chunks[0], &mut state.list_state);
 
+    let content_focused = state.focus == PanelFocus::Content;
     let content_list: Vec<ListItem> = content_items
         .iter()
         .enumerate()
@@ -341,28 +355,33 @@ fn ui(
     } else {
         Some(state.content_index.min(content_items.len().saturating_sub(1)))
     });
+    let content_border = if content_focused {
+        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
     let content = List::new(content_list)
         .block(
             Block::default()
                 .title(format!("  {}  ", title_right))
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::DarkGray)),
+                .border_style(content_border),
         )
         .highlight_style(Style::default().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD))
         .highlight_symbol("  › ");
     f.render_stateful_widget(content, chunks[1], &mut state.content_state);
 
     let help = Paragraph::new(Line::from(vec![
+        Span::styled(" Tab ", Style::default().fg(Color::DarkGray)),
+        Span::raw("switch panel  "),
         Span::styled(" ↑↓ ", Style::default().fg(Color::DarkGray)),
         Span::raw("navigate  "),
         Span::styled(" Enter ", Style::default().fg(Color::DarkGray)),
         Span::raw("select  "),
-        Span::styled(" ←→ ", Style::default().fg(Color::DarkGray)),
-        Span::raw("sidebar  "),
+        Span::styled(" ← ", Style::default().fg(Color::DarkGray)),
+        Span::raw("back  "),
         Span::styled(" Ctrl+F ", Style::default().fg(Color::DarkGray)),
         Span::raw("search  "),
-        Span::styled(" Esc ", Style::default().fg(Color::DarkGray)),
-        Span::raw("back  "),
         Span::styled(" q ", Style::default().fg(Color::DarkGray)),
         Span::raw("quit"),
     ]))
