@@ -154,7 +154,7 @@ const NAV_SECTIONS = Object.freeze([
         name: "My time",
         href: "/dashboard/time-tracking",
         icon: TimeTrackingIcon,
-        moduleKey: "timetracking",
+        moduleKey: "time_tracking",
       }),
     ]),
   }),

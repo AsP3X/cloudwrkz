@@ -10,20 +10,53 @@ import { TimeTrackingFilterButton } from "@/components/features/time-tracking/Ti
 import { TimeEntryList } from "@/components/features/time-tracking/TimeEntryList";
 import { StartTimerDialog } from "@/components/features/time-tracking/StartTimerDialog";
 import { AddTimeEntryDialog } from "@/components/features/time-tracking/AddTimeEntryDialog";
+import { FloatingTimerWidget } from "@/components/features/time-tracking/FloatingTimerWidget";
 import { ROUTES } from "@/lib/constants/routes";
 import { Link } from "react-router-dom";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { AccessIssueTicketDialog } from "@/components/features/tickets/AccessIssueTicketDialog";
+import { calculateElapsedTime } from "@/lib/utils/time-tracking";
 
-function formatDuration(seconds: number) {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  return `${h}h ${m}m`;
+function formatDateForInput(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/** Total time (hours) from entries, updating every second when there are running timers */
+function TotalTimeDisplay({ entries }: { entries: TimeEntry[] }) {
+  const [totalHours, setTotalHours] = useState(0);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    const calc = () => {
+      const total = entries.reduce((sum, e) => sum + calculateElapsedTime(e), 0);
+      setTotalHours(Math.floor(total / 3600));
+    };
+    calc();
+    const interval = setInterval(calc, 1000);
+    return () => clearInterval(interval);
+  }, [entries, mounted]);
+
+  const staticTotal = entries.reduce((sum, e) => sum + (e.total_duration || 0), 0);
+  const staticHours = Math.floor(staticTotal / 3600);
+
+  return (
+    <span className="text-sm sm:text-2xl font-bold text-neutral-900 dark:text-neutral-100 sm:block sm:mt-1">
+      {mounted ? totalHours : staticHours}h
+    </span>
+  );
 }
 
 function TimeTrackingPageContent() {
-  const { modules } = useAuth();
-  const [searchParams] = useSearchParams();
+  const { modules, user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { viewMode, setViewMode } = useTimeEntryView();
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,28 +99,70 @@ function TimeTrackingPageContent() {
   const runningEntries = entries.filter(
     (e) => e.status === "RUNNING" || e.status === "PAUSED"
   );
-  const todayEntries = entries.filter((e) => {
-    const d = new Date(e.started_at);
-    const now = new Date();
-    return d.toDateString() === now.toDateString();
-  });
-  const todaySeconds = todayEntries.reduce(
-    (sum, e) => sum + (e.total_duration || 0),
-    0 );
 
-  const now = new Date();
-  const weekStart = new Date(now);
-  const day = weekStart.getDay();
-  const diffToMonday = (day + 6) % 7;
+  const dateFromParam = searchParams.get("dateFrom") || "";
+  const dateToParam = searchParams.get("dateTo") || "";
+  const today = new Date();
+  const todayStr = formatDateForInput(today);
+  const weekStart = new Date(today);
+  const diffToMonday = (today.getDay() + 6) % 7;
   weekStart.setDate(weekStart.getDate() - diffToMonday);
-  const thisWeekEntries = entries.filter((e) => {
-    const d = new Date(e.started_at);
-    return d >= weekStart && d <= now;
-  });
-  const weekSeconds = thisWeekEntries.reduce(
-    (sum, e) => sum + (e.total_duration || 0),
-    0
+  const weekStartStr = formatDateForInput(weekStart);
+  const monthStart = new Date(today);
+  monthStart.setDate(1);
+  const monthStartStr = formatDateForInput(monthStart);
+  const yearStart = new Date(today);
+  yearStart.setMonth(0, 1);
+  const yearStartStr = formatDateForInput(yearStart);
+
+  type QuickRange = "today" | "thisWeek" | "thisMonth" | "thisYear";
+  let activeRange: QuickRange | null = null;
+  if (dateFromParam && dateToParam) {
+    if (dateFromParam === todayStr && dateToParam === todayStr) activeRange = "today";
+    else if (dateFromParam === weekStartStr && dateToParam === todayStr) activeRange = "thisWeek";
+    else if (dateFromParam === monthStartStr && dateToParam === todayStr) activeRange = "thisMonth";
+    else if (dateFromParam === yearStartStr && dateToParam === todayStr) activeRange = "thisYear";
+  }
+
+  const handleQuickRange = useCallback(
+    (range: QuickRange) => {
+      const params = new URLSearchParams(searchParams.toString());
+      const now = new Date();
+      const end = new Date(now);
+      const start = new Date(now);
+      let rangeFrom: string;
+      let rangeTo = formatDateForInput(end);
+
+      if (range === "today") {
+        rangeFrom = formatDateForInput(start);
+      } else if (range === "thisWeek") {
+        const dayOfWeek = start.getDay();
+        const diffMonday = (dayOfWeek + 6) % 7;
+        start.setDate(start.getDate() - diffMonday);
+        rangeFrom = formatDateForInput(start);
+      } else if (range === "thisMonth") {
+        start.setDate(1);
+        rangeFrom = formatDateForInput(start);
+      } else {
+        start.setMonth(0, 1);
+        rangeFrom = formatDateForInput(start);
+      }
+
+      const currentFrom = params.get("dateFrom") || "";
+      const currentTo = params.get("dateTo") || "";
+      if (currentFrom === rangeFrom && currentTo === rangeTo) {
+        params.delete("dateFrom");
+        params.delete("dateTo");
+      } else {
+        params.set("dateFrom", rangeFrom);
+        params.set("dateTo", rangeTo);
+      }
+      setSearchParams(params, { replace: true });
+    },
+    [searchParams, setSearchParams]
   );
+
+  const userTimezone = (user as { timezone?: string } | undefined)?.timezone ?? "UTC";
 
   if (!modules.includes("time_tracking")) {
     return (
@@ -117,7 +192,7 @@ function TimeTrackingPageContent() {
             Time Tracking
           </h1>
           <p className="text-neutral-600 dark:text-neutral-400 mt-1">
-            Track time for tasks and projects
+            Track and manage your time entries
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -156,39 +231,58 @@ function TimeTrackingPageContent() {
         </div>
       </div>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-5">
-          <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">
-            Today
-          </p>
-          <p className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-1">
-            {formatDuration(todaySeconds)}
-          </p>
+      {/* Stats cards: Total Entries, Active Timers, Total Time */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
+          <div className="text-sm text-neutral-600 dark:text-neutral-400">Total Entries</div>
+          <div className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-1">{entries.length}</div>
         </div>
-        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-5">
-          <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">
-            This Week
-          </p>
-          <p className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-1">
-            {formatDuration(weekSeconds)}
-          </p>
+        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
+          <div className="text-sm text-neutral-600 dark:text-neutral-400">Active Timers</div>
+          <div className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-1">{runningEntries.length}</div>
         </div>
-        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-5">
-          <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">
-            Running Timers
-          </p>
-          <p className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mt-1">
-            {runningEntries.length}
-          </p>
+        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
+          <div className="text-sm text-neutral-600 dark:text-neutral-400">Total Time</div>
+          <TotalTimeDisplay entries={entries} />
         </div>
       </div>
 
-      {entries.length > 0 && (
-        <div className="text-sm text-neutral-600 dark:text-neutral-400">
-          Showing {entries.length} entr{entries.length !== 1 ? "ies" : "y"}
-        </div>
-      )}
+      {/* Timeframe quick filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-neutral-600 dark:text-neutral-400">Timeframe:</span>
+        <Button
+          variant={activeRange === "today" ? "primary" : "ghost"}
+          size="sm"
+          onClick={() => handleQuickRange("today")}
+          aria-pressed={activeRange === "today"}
+        >
+          Today
+        </Button>
+        <Button
+          variant={activeRange === "thisWeek" ? "primary" : "ghost"}
+          size="sm"
+          onClick={() => handleQuickRange("thisWeek")}
+          aria-pressed={activeRange === "thisWeek"}
+        >
+          This week
+        </Button>
+        <Button
+          variant={activeRange === "thisMonth" ? "primary" : "ghost"}
+          size="sm"
+          onClick={() => handleQuickRange("thisMonth")}
+          aria-pressed={activeRange === "thisMonth"}
+        >
+          This month
+        </Button>
+        <Button
+          variant={activeRange === "thisYear" ? "primary" : "ghost"}
+          size="sm"
+          onClick={() => handleQuickRange("thisYear")}
+          aria-pressed={activeRange === "thisYear"}
+        >
+          This year
+        </Button>
+      </div>
 
       {entries.length === 0 ? (
         <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-12 text-center">
@@ -218,7 +312,7 @@ function TimeTrackingPageContent() {
       ) : (
         <TimeEntryList
           entries={entries}
-          userTimezone={undefined}
+          userTimezone={userTimezone}
           onRefresh={fetchEntries}
         />
       )}
@@ -233,6 +327,12 @@ function TimeTrackingPageContent() {
         onOpenChange={setAddEntryOpen}
         onCreated={fetchEntries}
       />
+      {runningEntries.length > 0 && (
+        <FloatingTimerWidget
+          activeEntries={runningEntries}
+          onRefresh={fetchEntries}
+        />
+      )}
     </div>
   );
 }

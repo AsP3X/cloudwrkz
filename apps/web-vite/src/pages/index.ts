@@ -16,6 +16,7 @@ export { default as TicketDetailPage } from "./dashboard/TicketDetailPage";
 export { default as TodosPage } from "./dashboard/TodosPage";
 export { default as LinksPage } from "./dashboard/LinksPage";
 export { default as TimeTrackingPage } from "./dashboard/TimeTrackingPage";
+export { default as TimeEntryDetailPage } from "./dashboard/TimeEntryDetailPage";
 export { default as ProfilePage } from "./dashboard/ProfilePage";
 export { default as SettingsPage } from "./dashboard/SettingsPage";
 export { default as SearchPage } from "./dashboard/SearchPage";

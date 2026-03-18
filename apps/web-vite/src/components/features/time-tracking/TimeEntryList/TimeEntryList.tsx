@@ -431,6 +431,16 @@ export function TimeEntryList({ entries, userTimezone = "UTC", onRefresh }: Time
                       {entry.description}
                     </div>
                   )}
+                  {entry.ticket_id && (
+                    <div className="mb-2">
+                      <Link
+                        to={`/dashboard/tickets/${entry.ticket_id}`}
+                        className="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+                      >
+                        View ticket
+                      </Link>
+                    </div>
+                  )}
                   <div className="flex flex-wrap items-center gap-2 mb-2">
                     <Badge className={getStatusColor(entry.status)}>{getStatusLabel(entry.status)}</Badge>
                     <DurationDisplay
@@ -576,6 +586,9 @@ export function TimeEntryList({ entries, userTimezone = "UTC", onRefresh }: Time
               <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                 Name
               </th>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden md:table-cell">
+                Ticket
+              </th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                 Status
               </th>
@@ -648,6 +661,18 @@ export function TimeEntryList({ entries, userTimezone = "UTC", onRefresh }: Time
                         )}
                       </div>
                     </Link>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm hidden md:table-cell">
+                    {entry.ticket_id ? (
+                      <Link
+                        to={`/dashboard/tickets/${entry.ticket_id}`}
+                        className="text-primary-600 dark:text-primary-400 hover:underline font-medium"
+                      >
+                        View ticket
+                      </Link>
+                    ) : (
+                      <span className="text-neutral-400">&mdash;</span>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <Badge className={getStatusColor(entry.status)}>{getStatusLabel(entry.status)}</Badge>

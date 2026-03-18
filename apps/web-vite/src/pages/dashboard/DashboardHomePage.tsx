@@ -31,6 +31,11 @@ const IconMail = () => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
   </svg>
 );
+const IconClock = () => (
+  <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
 
 export default function DashboardHomePage() {
   const { user, modules } = useAuth();
@@ -38,6 +43,7 @@ export default function DashboardHomePage() {
   const [ticketCount, setTicketCount] = useState<number | null>(null);
   const [todoItems, setTodoItems] = useState<DashboardTodoItem[]>([]);
   const [favoriteItems, setFavoriteItems] = useState<DashboardFavoriteItem[]>([]);
+  const [timeTrackingActiveCount, setTimeTrackingActiveCount] = useState<number | null>(null);
   const [alerts] = useState<DashboardAlert[]>([]);
   const [recentSections] = useState<RecentSection[]>([]);
 
@@ -90,6 +96,14 @@ export default function DashboardHomePage() {
         );
       }
 
+      if (modules.includes("time_tracking")) {
+        promises.push(
+          api.get<{ timeEntries: unknown[] }>("/time-tracking?status=RUNNING")
+            .then((d) => setTimeTrackingActiveCount(Array.isArray(d?.timeEntries) ? d.timeEntries.length : 0))
+            .catch(() => setTimeTrackingActiveCount(0))
+        );
+      }
+
       await Promise.allSettled(promises);
       setLoading(false);
     }
@@ -119,6 +133,15 @@ export default function DashboardHomePage() {
             href={ROUTES.TICKETS}
             icon={<IconTicket />}
             accent="primary"
+          />
+        )}
+        {modules.includes("time_tracking") && (
+          <DashboardStatCard
+            title="Active timers"
+            value={timeTrackingActiveCount ?? "—"}
+            href="/dashboard/time-tracking"
+            icon={<IconClock />}
+            accent="secondary"
           />
         )}
         <DashboardStatCard

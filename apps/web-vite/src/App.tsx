@@ -23,6 +23,7 @@ import {
   TodosPage,
   LinksPage,
   TimeTrackingPage,
+  TimeEntryDetailPage,
   ProfilePage,
   SettingsPage,
   SearchPage,
@@ -67,6 +68,7 @@ export default function App() {
                 <Route path="todos" element={<TodosPage />} />
                 <Route path="links" element={<LinksPage />} />
                 <Route path="time-tracking" element={<TimeTrackingPage />} />
+                <Route path="time-tracking/:id" element={<TimeEntryDetailPage />} />
                 <Route path="profile" element={<ProfilePage />} />
                 <Route path="settings" element={<SettingsPage />} />
                 <Route path="search" element={<SearchPage />} />

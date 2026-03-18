@@ -5,6 +5,7 @@ use axum::{
     Json, Router,
 };
 use chrono::Utc;
+use serde::Deserialize;
 use sqlx::Row;
 
 use crate::auth::extractors::AuthUser;
@@ -17,6 +18,9 @@ pub fn router() -> Router<AppState> {
         .route("/time-tracking", get(list_entries).post(create_entry))
         .route("/time-tracking/active", get(active_entries))
         .route("/time-tracking/add", post(add_manual_entry))
+        .route("/time-tracking/bulk-update", post(bulk_update_entries))
+        .route("/time-tracking/bulk-archive", post(bulk_archive_entries))
+        .route("/time-tracking/bulk-delete", post(bulk_delete_entries))
         .route(
             "/time-tracking/{id}",
             get(get_entry)
@@ -392,6 +396,73 @@ async fn delete_break(
     check_owned(&state.pool, &id, &user.id).await?;
     sqlx::query("DELETE FROM time_entry_breaks WHERE id = $1 AND time_entry_id = $2")
         .bind(&break_id).bind(&id).execute(&state.pool).await?;
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
+#[derive(Debug, Deserialize)]
+struct BulkUpdateTimeEntriesRequest {
+    ids: Vec<String>,
+    status: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BulkIdsRequest {
+    ids: Vec<String>,
+}
+
+async fn bulk_update_entries(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Json(body): Json<BulkUpdateTimeEntriesRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let status = match body.status.as_deref() {
+        Some("RUNNING" | "PAUSED" | "STOPPED" | "COMPLETED") => body.status.unwrap(),
+        _ => return Err(AppError::bad_request("Invalid or missing status")),
+    };
+    for id in &body.ids {
+        if check_owned(&state.pool, id, &user.id).await.is_ok() {
+            let _ = sqlx::query("UPDATE time_entries SET status = $1, updated_at = NOW() WHERE id = $2 AND user_id = $3")
+                .bind(&status)
+                .bind(id)
+                .bind(&user.id)
+                .execute(&state.pool)
+                .await;
+        }
+    }
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
+async fn bulk_archive_entries(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Json(body): Json<BulkIdsRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    for id in &body.ids {
+        if check_owned(&state.pool, id, &user.id).await.is_ok() {
+            let _ = sqlx::query("UPDATE time_entries SET archived_at = NOW(), updated_at = NOW() WHERE id = $1 AND user_id = $2")
+                .bind(id)
+                .bind(&user.id)
+                .execute(&state.pool)
+                .await;
+        }
+    }
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
+async fn bulk_delete_entries(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Json(body): Json<BulkIdsRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    for id in &body.ids {
+        if check_owned(&state.pool, id, &user.id).await.is_ok() {
+            let _ = sqlx::query("DELETE FROM time_entries WHERE id = $1 AND user_id = $2")
+                .bind(id)
+                .bind(&user.id)
+                .execute(&state.pool)
+                .await;
+        }
+    }
     Ok(Json(serde_json::json!({ "success": true })))
 }
 
