@@ -129,7 +129,7 @@ export default function TicketDetailPage() {
           customPrimary={
             <AccessIssueTicketDialog
               primaryLabel="Create Ticket"
-              hiddenFields={{ context: "ticket_detail", entityId: id }}
+              hiddenFields={{ context: "ticket_detail", entityId: id ?? "" }}
               dialogDescription="If you believe you should have access to the Tickets module, please describe why. Your explanation will be included in the support ticket."
             />
           }

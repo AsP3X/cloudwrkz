@@ -46,3 +46,20 @@ export function sanitizeHtml(html: string): string {
       /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
   });
 }
+
+/**
+ * Extracts plain text from HTML for search indexing / description_plain
+ */
+export function extractPlainText(html: string): string {
+  if (!html) return "";
+  let text = html.replace(/<[^>]*>/g, "");
+  text = text
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&[^;]+;/g, " ");
+  return text.replace(/\s+/g, " ").trim();
+}

@@ -11,6 +11,13 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
+    "@tiptap/extension-code-block": "3.20.4",
+    "@tiptap/extension-highlight": "3.20.4",
+    "@tiptap/extension-image": "3.20.4",
+    "@tiptap/extension-link": "3.20.4",
+    "@tiptap/extension-placeholder": "3.20.4",
+    "@tiptap/react": "3.20.4",
+    "@tiptap/starter-kit": "3.20.4",
     "clsx": "^2.1.1",
     "dompurify": "^3.3.3",
     "fuse.js": "^7.1.0",

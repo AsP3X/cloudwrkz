@@ -1,9 +1,9 @@
 import React from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/Input";
-import { Textarea } from "@/components/ui/Textarea";
+import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { createTicketSchema, type CreateTicketInput } from "@/lib/validations/tickets";
@@ -74,6 +74,9 @@ export function TicketForm({
   const {
     register,
     handleSubmit,
+    control,
+    setValue,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<CreateTicketInput>({
     resolver: zodResolver(createTicketSchema),
@@ -151,13 +154,21 @@ export function TicketForm({
         {...register("title")}
       />
 
-      <Textarea
-        label="Description"
-        placeholder="Provide detailed information about your issue, request, or question..."
-        error={errors.description?.message}
-        helperText="Include any relevant details, steps to reproduce, or context that would help us assist you"
-        rows={5}
-        {...register("description")}
+      <Controller
+        name="description"
+        control={control}
+        render={() => (
+          <RichTextEditor
+            label="Description"
+            placeholder="Provide detailed information about your issue, request, or question..."
+            error={errors.description?.message}
+            helperText="Include any relevant details, steps to reproduce, or context that would help us assist you"
+            value={watch("description") || ""}
+            onChange={(html) => setValue("description", html, { shouldValidate: true })}
+            minHeight="200px"
+            showToolbar
+          />
+        )}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

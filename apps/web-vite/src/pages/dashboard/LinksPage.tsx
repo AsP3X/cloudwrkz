@@ -14,6 +14,7 @@ import { LinkList } from "@/components/features/links/LinkList";
 import { LinksPagination } from "@/components/features/links/LinksPagination";
 import { AddLinkDialog } from "@/components/features/links/AddLinkDialog";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
+import { AccessIssueTicketDialog } from "@/components/features/tickets/AccessIssueTicketDialog";
 
 function LinksPageContent() {
   const { user } = useAuth();

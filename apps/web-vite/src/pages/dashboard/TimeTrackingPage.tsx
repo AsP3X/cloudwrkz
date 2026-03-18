@@ -13,6 +13,7 @@ import { AddTimeEntryDialog } from "@/components/features/time-tracking/AddTimeE
 import { ROUTES } from "@/lib/constants/routes";
 import { Link } from "react-router-dom";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
+import { AccessIssueTicketDialog } from "@/components/features/tickets/AccessIssueTicketDialog";
 
 function formatDuration(seconds: number) {
   const h = Math.floor(seconds / 3600);

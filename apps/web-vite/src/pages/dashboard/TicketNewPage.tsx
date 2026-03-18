@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { TicketForm } from "@/components/features/tickets/TicketForm";
 import type { TicketFormUser, TicketFormGroup } from "@/components/features/tickets/TicketForm";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
+import { TipsTooltip } from "@/components/features/tickets/TipsTooltip";
 
 export default function TicketNewPage() {
   const { user, can } = useAuth();
@@ -82,6 +83,9 @@ export default function TicketNewPage() {
               Back to Tickets
             </Button>
           </Link>
+          <div className="flex-shrink-0">
+            <TipsTooltip />
+          </div>
         </div>
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-neutral-100">
