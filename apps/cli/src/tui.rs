@@ -204,9 +204,11 @@ fn run_tui_loop(
                             PanelFocus::Content => PanelFocus::Sidebar,
                         };
                     }
+                    KeyCode::Left => state.focus = PanelFocus::Sidebar,
+                    KeyCode::Right => state.focus = PanelFocus::Content,
+                    KeyCode::Backspace => return Ok(TuiExit::Back),
                     KeyCode::Char('q') => return Ok(TuiExit::Quit),
-                    KeyCode::Left => return Ok(TuiExit::Back),
-                    KeyCode::Right | KeyCode::Esc => {}
+                    KeyCode::Esc => {}
                     KeyCode::Up => {
                         match state.focus {
                             PanelFocus::Sidebar if slen > 0 && state.sidebar_index > 0 => {
@@ -382,15 +384,17 @@ fn ui(
     f.render_stateful_widget(content, chunks[1], &mut state.content_state);
 
     let help = Paragraph::new(Line::from(vec![
+        Span::styled(" ← → ", Style::default().fg(Color::DarkGray)),
+        Span::raw("left/right panel  "),
         Span::styled(" Tab ", Style::default().fg(Color::DarkGray)),
-        Span::raw("switch panel  "),
+        Span::raw("toggle panel  "),
         Span::styled(" ↑↓ ", Style::default().fg(Color::DarkGray)),
         Span::raw("navigate  "),
         Span::styled(" Space ", Style::default().fg(Color::DarkGray)),
         Span::raw("toggle select  "),
         Span::styled(" Enter ", Style::default().fg(Color::DarkGray)),
         Span::raw("select  "),
-        Span::styled(" ← ", Style::default().fg(Color::DarkGray)),
+        Span::styled(" Backspace ", Style::default().fg(Color::DarkGray)),
         Span::raw("back  "),
         Span::styled(" Ctrl+F ", Style::default().fg(Color::DarkGray)),
         Span::raw("search  "),
