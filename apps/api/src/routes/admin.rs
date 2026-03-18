@@ -41,6 +41,10 @@ pub fn router() -> Router<AppState> {
         .route("/admin/sessions", get(list_sessions))
         .route("/admin/sessions/{id}", axum::routing::delete(revoke_session))
         .route("/admin/statistics", get(admin_statistics))
+        .route("/admin/dashboard-stats", get(admin_dashboard_stats))
+        .route("/admin/settings", get(admin_settings))
+        .route("/admin/settings/links-page-size", axum::routing::patch(update_links_page_size))
+        .route("/admin/settings/qr-login-rate-limit", axum::routing::patch(update_qr_login_rate_limit))
         .route("/notifications", get(list_notifications))
         .route("/notifications/{id}/read", post(mark_notification_read))
 }
@@ -115,22 +119,215 @@ async fn purge_deleted(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" {
-        return Err(AppError::forbidden("Admin only"));
-    }
+    require_admin_settings(&state.pool, &user.id).await?;
 
     let cutoff = chrono::Utc::now().naive_utc() - chrono::Duration::days(30);
-    let result = sqlx::query(
-        "DELETE FROM users WHERE status = 'DELETED' AND scheduled_for_deletion_at IS NOT NULL AND scheduled_for_deletion_at < $1",
+    let deleted_ids: Vec<String> = sqlx::query_scalar(
+        "SELECT id FROM users WHERE status = 'DELETED' AND scheduled_for_deletion_at IS NOT NULL AND scheduled_for_deletion_at < $1",
     )
     .bind(cutoff)
-    .execute(&state.pool)
-    .await?;
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+    let deleted_count = deleted_ids.len() as i64;
+    if deleted_count > 0 {
+        sqlx::query("DELETE FROM sessions WHERE user_id = ANY($1)")
+            .bind(&deleted_ids)
+            .execute(&state.pool)
+            .await?;
+        sqlx::query("DELETE FROM users WHERE id = ANY($1)")
+            .bind(&deleted_ids)
+            .execute(&state.pool)
+            .await?;
+    }
+
+    let purged = deleted_count;
+    Ok(Json(serde_json::json!({
+        "purged": purged,
+        "deletedCount": purged,
+        "message": if purged > 0 {
+            format!("Successfully purged {} deleted account(s)", purged)
+        } else {
+            "No accounts to purge".to_string()
+        }
+    })))
+}
+
+async fn require_admin_settings(pool: &sqlx::PgPool, user_id: &str) -> Result<(), AppError> {
+    if !check_permission(pool, user_id, "admin.settings.manage").await {
+        return Err(AppError::forbidden("admin.settings.manage required"));
+    }
+    Ok(())
+}
+
+async fn admin_settings(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_admin_settings(&state.pool, &user.id).await?;
+
+    let total_users: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+    let total_tickets: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tickets")
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+    let total_groups: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM groups")
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+    let total_modules: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM modules")
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+    let enabled_modules: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM modules WHERE enabled = true")
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+    let active_sessions: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sessions WHERE expires_at > NOW()")
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+
+    let db_users: i64 = total_users;
+    let db_sessions: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sessions")
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+    let db_tickets: i64 = total_tickets;
+    let ticket_comments: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM ticket_comments")
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+    let db_groups: i64 = total_groups;
+    let group_memberships: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM group_memberships")
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+    let db_modules: i64 = total_modules;
+
+    let db_ok = sqlx::query_scalar::<_, i32>("SELECT 1")
+        .fetch_one(&state.pool)
+        .await
+        .is_ok();
+    let sessions_ok = true;
+    let modules_ok = total_modules > 0;
+    let health_status = if db_ok && sessions_ok && modules_ok {
+        "healthy"
+    } else if !db_ok {
+        "unhealthy"
+    } else {
+        "degraded"
+    };
+    let health_message = if health_status == "healthy" {
+        "All systems operational"
+    } else if health_status == "unhealthy" {
+        "System health check failed"
+    } else {
+        "Some systems may be experiencing issues"
+    };
+
+    let links_default_page_size: i64 = sqlx::query_scalar(
+        r#"SELECT COALESCE((config->>'defaultPageSize')::int, 50) FROM modules WHERE key = 'links' LIMIT 1"#,
+    )
+    .fetch_optional(&state.pool)
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or(50);
+    let valid_page_sizes = [10_i64, 25, 50, 100, 10000];
+    let links_default_page_size = if valid_page_sizes.contains(&links_default_page_size) {
+        links_default_page_size
+    } else {
+        50
+    };
+
+    let qr_requests_per_minute: i64 = sqlx::query_scalar(
+        r#"SELECT (value#>>'{}')::int FROM system_settings WHERE key = 'qr_login_requests_per_minute' LIMIT 1"#,
+    )
+    .fetch_optional(&state.pool)
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or(20);
+    let qr_requests_per_minute = qr_requests_per_minute.clamp(1, 120);
 
     Ok(Json(serde_json::json!({
-        "purged": result.rows_affected(),
-        "message": format!("Purged {} deleted accounts", result.rows_affected())
+        "systemInfo": {
+            "totalUsers": total_users,
+            "totalTickets": total_tickets,
+            "totalGroups": total_groups,
+            "totalModules": total_modules,
+            "enabledModules": enabled_modules,
+            "activeSessions": active_sessions,
+        },
+        "databaseStats": {
+            "users": db_users,
+            "sessions": db_sessions,
+            "tickets": db_tickets,
+            "ticketComments": ticket_comments,
+            "groups": db_groups,
+            "groupMemberships": group_memberships,
+            "modules": db_modules,
+        },
+        "health": {
+            "status": health_status,
+            "checks": { "database": db_ok, "sessions": sessions_ok, "modules": modules_ok },
+            "message": health_message,
+        },
+        "linksDefaultPageSize": links_default_page_size,
+        "qrLoginRequestsPerMinute": qr_requests_per_minute,
     })))
+}
+
+#[derive(Deserialize)]
+struct LinksPageSizeBody {
+    value: i64,
+}
+
+async fn update_links_page_size(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Json(body): Json<LinksPageSizeBody>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_admin_settings(&state.pool, &user.id).await?;
+    const VALID: [i64; 5] = [10, 25, 50, 100, 10000];
+    if !VALID.contains(&body.value) {
+        return Err(AppError::bad_request("Invalid page size"));
+    }
+    let config_value = serde_json::json!({ "defaultPageSize": body.value });
+    sqlx::query(
+        r#"UPDATE modules SET config = COALESCE(config, '{}'::jsonb) || $1::jsonb, updated_at = NOW() WHERE key = 'links'"#,
+    )
+    .bind(config_value.to_string())
+    .execute(&state.pool)
+    .await?;
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
+#[derive(Deserialize)]
+struct QrRateLimitBody {
+    value: i64,
+}
+
+async fn update_qr_login_rate_limit(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Json(body): Json<QrRateLimitBody>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_admin_settings(&state.pool, &user.id).await?;
+    let v = body.value.clamp(1, 120);
+    let value_json = serde_json::json!(v);
+    sqlx::query(
+        r#"INSERT INTO system_settings (key, value, updated_at) VALUES ('qr_login_requests_per_minute', $1, NOW())
+           ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()"#,
+    )
+    .bind(&value_json)
+    .execute(&state.pool)
+    .await?;
+    Ok(Json(serde_json::json!({ "success": true })))
 }
 
 #[derive(Deserialize)]
@@ -769,6 +966,121 @@ async fn admin_statistics(
         "links": link_count,
         "activeSessions": session_count,
         "openTickets": open_tickets,
+    })))
+}
+
+async fn admin_dashboard_stats(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if user.role != "ADMIN" {
+        return Err(AppError::forbidden("Admin only"));
+    }
+
+    let total_users: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+
+    let user_status_rows = sqlx::query(
+        "SELECT status::text as status, COUNT(*) as cnt FROM users GROUP BY status",
+    )
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let mut users_by_status = serde_json::json!({
+        "ACTIVE": 0,
+        "PENDING": 0,
+        "SUSPENDED": 0,
+        "DELETED": 0,
+    });
+    let obj = users_by_status.as_object_mut().unwrap();
+    for row in &user_status_rows {
+        let status: String = row.get::<String, _>("status");
+        let cnt: i64 = row.get::<i64, _>("cnt");
+        if obj.contains_key(&status) {
+            obj[&status] = serde_json::json!(cnt);
+        }
+    }
+
+    let total_tickets: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tickets")
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+
+    let ticket_status_rows = sqlx::query(
+        "SELECT status::text as status, COUNT(*) as cnt FROM tickets GROUP BY status",
+    )
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let mut tickets_by_status = serde_json::json!({
+        "OPEN": 0,
+        "IN_PROGRESS": 0,
+        "PENDING": 0,
+        "RESOLVED": 0,
+        "CLOSED": 0,
+        "CANCELLED": 0,
+    });
+    let tobj = tickets_by_status.as_object_mut().unwrap();
+    for row in &ticket_status_rows {
+        let status: String = row.get::<String, _>("status");
+        let cnt: i64 = row.get::<i64, _>("cnt");
+        if tobj.contains_key(&status) {
+            tobj[&status] = serde_json::json!(cnt);
+        }
+    }
+
+    let active_sessions: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sessions WHERE expires_at > NOW()")
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+
+    let enabled_modules: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM modules WHERE enabled = true")
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+
+    let total_modules: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM modules")
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+
+    let total_groups: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM groups")
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+
+    let seven_days_ago = chrono::Utc::now().naive_utc() - chrono::Duration::days(7);
+    let recent_registrations: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM users WHERE created_at >= $1",
+    )
+    .bind(seven_days_ago)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(0);
+
+    let recent_tickets: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM tickets WHERE created_at >= $1",
+    )
+    .bind(seven_days_ago)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(0);
+
+    Ok(Json(serde_json::json!({
+        "totalUsers": total_users,
+        "usersByStatus": users_by_status,
+        "totalTickets": total_tickets,
+        "ticketsByStatus": tickets_by_status,
+        "activeSessions": active_sessions,
+        "enabledModules": enabled_modules,
+        "totalModules": total_modules,
+        "totalGroups": total_groups,
+        "recentRegistrations": recent_registrations,
+        "recentTickets": recent_tickets,
     })))
 }
 

@@ -15,6 +15,7 @@ import {
   type DashboardAlert,
   type RecentSection,
 } from "@/components/features/dashboard";
+import { AdminDashboard } from "@/components/features/admin/AdminDashboard";
 
 const IconTicket = () => (
   <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -52,6 +53,10 @@ export default function DashboardHomePage() {
   useEffect(() => {
     async function load() {
       setLoading(true);
+      if (user?.role === "ADMIN") {
+        setLoading(false);
+        return;
+      }
       const promises: Promise<void>[] = [];
 
       if (modules.includes("tickets")) {
@@ -108,13 +113,21 @@ export default function DashboardHomePage() {
       setLoading(false);
     }
     load();
-  }, [modules]);
+  }, [modules, user?.role]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-200 border-t-primary-600" />
       </div>
+    );
+  }
+
+  if (user?.role === "ADMIN") {
+    return (
+      <AdminDashboard
+        displayName={displayName}
+      />
     );
   }
 

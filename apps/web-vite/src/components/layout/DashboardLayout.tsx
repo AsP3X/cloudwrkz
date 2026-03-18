@@ -3,6 +3,7 @@ import { Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { SidebarProvider } from "./SidebarContext";
 import { DashboardSidebar, type NavCounts } from "./DashboardSidebar";
+import { AdminSidebar } from "./AdminSidebar";
 import { DashboardHeader } from "./DashboardHeader";
 import { ROUTES } from "@/lib/constants/routes";
 import { cn } from "@/lib/utils/cn";
@@ -18,7 +19,7 @@ const Spinner = () => (
 );
 
 function DashboardLayoutContent() {
-  const { user, modules } = useAuth();
+  const { user, modules, can } = useAuth();
   const [navCounts, setNavCounts] = useState<NavCounts>({});
 
   useEffect(() => {
@@ -39,9 +40,36 @@ function DashboardLayoutContent() {
 
   if (!user) return null;
 
+  const isAdmin = user.role === "ADMIN";
+
+  if (isAdmin) {
+    return (
+      <>
+        <AdminSidebar
+          enabledModuleKeys={modules}
+          canViewUsers={can("admin.users.view") || can("admin.users.create") || can("admin.users.update") || can("admin.users.delete")}
+          canManageGroups={can("admin.groups.manage")}
+          canViewSessions={can("admin.sessions.view")}
+          canViewPermissions={can("admin.permissions.view") || can("admin.permissions.manage")}
+          canManagePermissions={can("admin.permissions.manage")}
+          canViewStatistics={can("admin.statistics.view")}
+          canManageModules={can("admin.modules.manage")}
+          canViewAuditLog={can("audit.view")}
+          canViewDbConsole={can("admin.db.view")}
+          canManageSettings={can("admin.settings.manage")}
+        />
+        <DashboardHeader user={user} />
+      </>
+    );
+  }
+
   return (
     <>
-      <DashboardSidebar enabledModuleKeys={modules} userRole={user.role} navCounts={navCounts} />
+      <DashboardSidebar
+        enabledModuleKeys={modules}
+        userRole={user.role}
+        navCounts={navCounts}
+      />
       <DashboardHeader user={user} />
     </>
   );
