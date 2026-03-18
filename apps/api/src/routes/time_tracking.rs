@@ -102,6 +102,7 @@ async fn list_entries(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let archive = params.archive.as_deref().unwrap_or("unarchived");
     let status = params.status.clone();
+    let _ = (&params.sort, &params.date_from, &params.date_to);
 
     let sql = format!(
         "{ENTRY_SELECT} FROM time_entries

@@ -1,8 +1,14 @@
-use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
+use axum::{
+    extract::State,
+    http::{HeaderMap, StatusCode},
+    routing::post,
+    Json, Router,
+};
 use chrono::Utc;
 use sqlx::Row;
 use tracing::{info, warn};
 
+use crate::audit::{self, WriteAuditParams};
 use crate::auth::extractors::AuthUser;
 use crate::auth::password::{hash_password, verify_password};
 use crate::auth::session::generate_token;
@@ -19,14 +25,41 @@ pub fn router() -> Router<AppState> {
         .route("/auth/extend-session", post(extend_session))
 }
 
+fn audit_ip_and_agent(headers: &HeaderMap, body_user_agent: &Option<String>) -> (Option<String>, Option<String>) {
+    let ip = audit::client_ip_from_headers(headers);
+    let ua = body_user_agent
+        .clone()
+        .or_else(|| {
+            headers
+                .get("user-agent")
+                .and_then(|v| v.to_str().ok())
+                .map(String::from)
+        });
+    (ip, ua)
+}
+
 async fn login(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(body): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, AppError> {
+    let (ip, user_agent) = audit_ip_and_agent(&headers, &body.user_agent);
     let email = body.email.to_lowercase().trim().to_string();
     info!(path = "/auth/login", email = %email, "auth request");
     if email.is_empty() || body.password.is_empty() {
         warn!(path = "/auth/login", "invalid email or password (empty)");
+        audit::write_audit_log(
+            &state.pool,
+            WriteAuditParams {
+                user_id: None,
+                action: "auth.login.attempt".into(),
+                resource_type: None,
+                resource_id: None,
+                context: Some(serde_json::json!({ "outcome": "empty_credentials" })),
+                ip_address: ip,
+                user_agent: user_agent.clone(),
+            },
+        );
         return Err(AppError::unauthorized("Invalid email or password"));
     }
 
@@ -40,6 +73,18 @@ async fn login(
     .await?
     .ok_or_else(|| {
         warn!(path = "/auth/login", email = %email, "user not found or invalid password");
+        audit::write_audit_log(
+            &state.pool,
+            WriteAuditParams {
+                user_id: None,
+                action: "auth.login.attempt".into(),
+                resource_type: None,
+                resource_id: None,
+                context: Some(serde_json::json!({ "outcome": "user_not_found" })),
+                ip_address: ip.clone(),
+                user_agent: user_agent.clone(),
+            },
+        );
         AppError::unauthorized("Invalid email or password")
     })?;
 
@@ -50,6 +95,18 @@ async fn login(
     let status: String = user.get("status");
 
     if status == "DELETED" {
+        audit::write_audit_log(
+            &state.pool,
+            WriteAuditParams {
+                user_id: Some(user_id.clone()),
+                action: "auth.login.attempt".into(),
+                resource_type: None,
+                resource_id: None,
+                context: Some(serde_json::json!({ "outcome": "deleted_account" })),
+                ip_address: ip.clone(),
+                user_agent: user_agent.clone(),
+            },
+        );
         return Err(AppError::unauthorized(
             "This account has been deleted. Please contact an administrator.",
         ));
@@ -63,10 +120,34 @@ async fn login(
         .map_err(|_| AppError::internal("Password verification failed"))?;
 
     if !valid {
+        audit::write_audit_log(
+            &state.pool,
+            WriteAuditParams {
+                user_id: Some(user_id.clone()),
+                action: "auth.login.attempt".into(),
+                resource_type: None,
+                resource_id: None,
+                context: Some(serde_json::json!({ "outcome": "invalid_password" })),
+                ip_address: ip.clone(),
+                user_agent: user_agent.clone(),
+            },
+        );
         return Err(AppError::unauthorized("Invalid email or password"));
     }
 
     if status == "BANNED" {
+        audit::write_audit_log(
+            &state.pool,
+            WriteAuditParams {
+                user_id: Some(user_id.clone()),
+                action: "auth.login.attempt".into(),
+                resource_type: None,
+                resource_id: None,
+                context: Some(serde_json::json!({ "outcome": "banned" })),
+                ip_address: ip.clone(),
+                user_agent: user_agent.clone(),
+            },
+        );
         return Err(AppError {
             status: StatusCode::FORBIDDEN,
             code: "FORBIDDEN".into(),
@@ -75,6 +156,18 @@ async fn login(
         });
     }
     if status == "SUSPENDED" {
+        audit::write_audit_log(
+            &state.pool,
+            WriteAuditParams {
+                user_id: Some(user_id.clone()),
+                action: "auth.login.attempt".into(),
+                resource_type: None,
+                resource_id: None,
+                context: Some(serde_json::json!({ "outcome": "suspended" })),
+                ip_address: ip.clone(),
+                user_agent: user_agent.clone(),
+            },
+        );
         return Err(AppError {
             status: StatusCode::FORBIDDEN,
             code: "FORBIDDEN".into(),
@@ -118,6 +211,19 @@ async fn login(
     .execute(&state.pool)
     .await?;
 
+    audit::write_audit_log(
+        &state.pool,
+        WriteAuditParams {
+            user_id: Some(user_id),
+            action: "auth.login".into(),
+            resource_type: None,
+            resource_id: None,
+            context: None,
+            ip_address: ip,
+            user_agent,
+        },
+    );
+
     Ok(Json(LoginResponse {
         token,
         user: LoginUserInfo {
@@ -129,6 +235,7 @@ async fn login(
 
 async fn register(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(body): Json<RegisterRequest>,
 ) -> Result<(StatusCode, Json<RegisterResponse>), AppError> {
     let email = body.email.to_lowercase().trim().to_string();
@@ -152,7 +259,10 @@ async fn register(
     if let Some(ref confirm) = body.confirm_password {
         if *confirm != body.password {
             warn!(path = "/auth/register", email = %email, "validation: passwords do not match");
-            return Err(AppError::bad_request("Passwords do not match"));
+            return Err(AppError::validation(
+                "Validation failed",
+                serde_json::json!({ "password": ["Passwords do not match"] }),
+            ));
         }
     }
 
@@ -199,6 +309,20 @@ async fn register(
         e
     })?;
 
+    let (ip, user_agent) = audit_ip_and_agent(&headers, &None::<String>);
+    audit::write_audit_log(
+        &state.pool,
+        WriteAuditParams {
+            user_id: Some(user_id.clone()),
+            action: "auth.register".into(),
+            resource_type: Some("user".into()),
+            resource_id: Some(user_id.clone()),
+            context: None,
+            ip_address: ip,
+            user_agent,
+        },
+    );
+
     info!(path = "/auth/register", email = %email, user_id = %user_id, "register success");
     Ok((
         StatusCode::CREATED,
@@ -212,13 +336,30 @@ async fn register(
 
 async fn logout(
     State(state): State<AppState>,
-    headers: axum::http::HeaderMap,
+    headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    let (ip, user_agent) = audit_ip_and_agent(&headers, &None::<String>);
     if let Some(token) = crate::auth::extractors::extract_token_from_headers(&headers) {
+        let user_id: Option<String> = sqlx::query_scalar("SELECT user_id FROM sessions WHERE token = $1")
+            .bind(&token)
+            .fetch_optional(&state.pool)
+            .await?;
         let _ = sqlx::query("DELETE FROM sessions WHERE token = $1")
             .bind(&token)
             .execute(&state.pool)
             .await;
+        audit::write_audit_log(
+            &state.pool,
+            WriteAuditParams {
+                user_id,
+                action: "auth.logout".into(),
+                resource_type: None,
+                resource_id: None,
+                context: None,
+                ip_address: ip,
+                user_agent,
+            },
+        );
     }
     Ok(Json(serde_json::json!({ "message": "Logged out" })))
 }
@@ -235,24 +376,31 @@ async fn change_password(
     }
     if let Some(ref confirm) = body.confirm_password {
         if *confirm != body.new_password {
-            return Err(AppError::bad_request("Passwords do not match"));
+            return Err(AppError::validation(
+                "Validation failed",
+                serde_json::json!({ "password": ["Passwords do not match"] }),
+            ));
         }
     }
 
-    let row = sqlx::query("SELECT id, password, status::text as status FROM users WHERE id = $1")
-        .bind(&user.id)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or_else(|| AppError::not_found("User not found"))?;
+    let row: Option<UserRow> = sqlx::query_as(
+        r#"SELECT id, email, name, password, role::text as role, status::text as status,
+                  email_verified, timezone, theme, locale, avatar, bio,
+                  last_login_at, last_login_ip, created_at, updated_at
+           FROM users WHERE id = $1"#,
+    )
+    .bind(&user.id)
+    .fetch_optional(&state.pool)
+    .await?;
 
-    let db_status: String = row.get("status");
-    if db_status != "ACTIVE" {
+    let row = row.ok_or_else(|| AppError::not_found("User not found"))?;
+    if row.status != "ACTIVE" {
         return Err(AppError::forbidden(
             "Your account is not active. Password cannot be changed.",
         ));
     }
 
-    let db_hash: String = row.get("password");
+    let db_hash = row.password.clone();
     let current = body.current_password.clone();
     let valid = tokio::task::spawn_blocking(move || verify_password(&current, &db_hash))
         .await
@@ -274,6 +422,19 @@ async fn change_password(
         .bind(&user.id)
         .execute(&state.pool)
         .await?;
+
+    audit::write_audit_log(
+        &state.pool,
+        WriteAuditParams {
+            user_id: Some(user.id.clone()),
+            action: "auth.password.change".into(),
+            resource_type: Some("user".into()),
+            resource_id: Some(user.id),
+            context: None,
+            ip_address: None,
+            user_agent: None,
+        },
+    );
 
     Ok(Json(serde_json::json!({ "message": "Password updated" })))
 }

@@ -39,6 +39,11 @@ import {
   AdminStatisticsPage,
   AuditPage,
   DbConsolePage,
+  UserDetailPage,
+  UserPermissionsListPage,
+  UserPermissionDetailPage,
+  GroupPermissionsListPage,
+  GroupPermissionDetailPage,
 } from "@/pages";
 
 export default function App() {
@@ -79,6 +84,7 @@ export default function App() {
                 {/* Admin routes */}
                 <Route path="admin">
                   <Route path="users" element={<UsersPage />} />
+                  <Route path="users/:id" element={<UserDetailPage />} />
                   <Route path="groups" element={<GroupsPage />} />
                   <Route path="modules" element={<ModulesPage />} />
                   <Route path="settings" element={<AdminSettingsPage />} />
@@ -87,6 +93,12 @@ export default function App() {
                   <Route path="statistics" element={<AdminStatisticsPage />} />
                   <Route path="audit" element={<AuditPage />} />
                   <Route path="db" element={<DbConsolePage />} />
+                  <Route path="permissions">
+                    <Route path="users" element={<UserPermissionsListPage />} />
+                    <Route path="users/:id" element={<UserPermissionDetailPage />} />
+                    <Route path="groups" element={<GroupPermissionsListPage />} />
+                    <Route path="groups/:id" element={<GroupPermissionDetailPage />} />
+                  </Route>
                 </Route>
               </Route>
 

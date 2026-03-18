@@ -6,9 +6,7 @@ pub struct AppConfig {
     pub api_host: String,
     pub api_port: u16,
     pub cors_origins: Vec<String>,
-    #[allow(dead_code)]
     pub cookie_domain: Option<String>,
-    #[allow(dead_code)]
     pub cookie_secure: bool,
     pub session_max_age_secs: i64,
     pub max_body_size: usize,
@@ -47,5 +45,13 @@ impl AppConfig {
 
     pub fn bind_addr(&self) -> String {
         format!("{}:{}", self.api_host, self.api_port)
+    }
+
+    pub fn cookie_domain(&self) -> Option<&str> {
+        self.cookie_domain.as_deref()
+    }
+
+    pub fn cookie_secure(&self) -> bool {
+        self.cookie_secure
     }
 }

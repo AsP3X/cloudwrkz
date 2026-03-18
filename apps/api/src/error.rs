@@ -63,7 +63,6 @@ impl AppError {
         }
     }
 
-    #[allow(dead_code)]
     pub fn validation(msg: impl Into<String>, fields: serde_json::Value) -> Self {
         Self {
             status: StatusCode::BAD_REQUEST,
@@ -118,5 +117,18 @@ impl From<sqlx::Error> for AppError {
     fn from(err: sqlx::Error) -> Self {
         tracing::error!("Database error: {:?}", err);
         Self::internal("A database error occurred")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validation_error_has_fields() {
+        let e = AppError::validation("Invalid", serde_json::json!({"x": ["required"]}));
+        assert_eq!(e.code, "VALIDATION_ERROR");
+        assert_eq!(e.message, "Invalid");
+        assert!(e.fields.is_some());
     }
 }

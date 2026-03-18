@@ -7,21 +7,35 @@ use axum::{
 use serde::Deserialize;
 use sqlx::Row;
 
+use crate::audit::{self, WriteAuditParams};
 use crate::auth::extractors::AuthUser;
 use crate::error::AppError;
-use crate::routes::helpers::check_permission;
+use crate::models::audit_log::AuditLogRow;
+use crate::models::notification::NotificationRow;
+use crate::routes::helpers::{check_permission, get_user_permission_keys};
 use crate::routes::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new()
+        .route("/admin/audit/entries", get(audit_entries))
+        .route("/admin/audit/actions", get(audit_actions))
+        .route("/admin/audit/export", get(audit_export))
         .route("/admin/audit/events", get(audit_events))
         .route("/admin/db-query", post(db_query))
+        .route("/admin/db-tables", get(db_tables))
+        .route("/admin/db-row", post(db_row_update).delete(db_row_delete))
         .route("/admin/purge-deleted-accounts", post(purge_deleted))
         .route("/admin/users", get(list_users))
         .route(
             "/admin/users/{id}",
             get(get_user).patch(update_user).delete(delete_user),
         )
+        .route(
+            "/admin/users/{id}/effective-permissions",
+            get(get_user_effective_permissions),
+        )
+        .route("/admin/users/{id}/ban", post(ban_user))
+        .route("/admin/users/{id}/unban", post(unban_user))
         .route(
             "/admin/users/{id}/permissions",
             get(list_user_permissions).post(grant_user_permission),
@@ -36,10 +50,19 @@ pub fn router() -> Router<AppState> {
             "/admin/groups/{id}",
             get(get_group).patch(update_group).delete(delete_group),
         )
+        .route(
+            "/admin/groups/{id}/permissions",
+            get(list_group_permissions).post(grant_group_permission),
+        )
+        .route(
+            "/admin/groups/{id}/permissions/{key}",
+            axum::routing::delete(revoke_group_permission),
+        )
         .route("/admin/modules", get(list_modules))
         .route("/admin/modules/{id}", patch(toggle_module))
         .route("/admin/sessions", get(list_sessions))
         .route("/admin/sessions/{id}", axum::routing::delete(revoke_session))
+        .route("/admin/statistics/analytics", get(admin_statistics_analytics))
         .route("/admin/statistics", get(admin_statistics))
         .route("/admin/dashboard-stats", get(admin_dashboard_stats))
         .route("/admin/settings", get(admin_settings))
@@ -47,6 +70,343 @@ pub fn router() -> Router<AppState> {
         .route("/admin/settings/qr-login-rate-limit", axum::routing::patch(update_qr_login_rate_limit))
         .route("/notifications", get(list_notifications))
         .route("/notifications/{id}/read", post(mark_notification_read))
+}
+
+const MAX_AUDIT_PAGE_LIMIT: i64 = 200;
+const AUDIT_EXPORT_LIMIT: i64 = 10_000;
+
+#[derive(Deserialize)]
+struct AuditEntriesQuery {
+    page: Option<u32>,
+    limit: Option<u32>,
+    action: Option<String>,
+    user_id: Option<String>,
+    resource_type: Option<String>,
+    resource_id: Option<String>,
+    from: Option<String>,
+    to: Option<String>,
+    user_search: Option<String>,
+    sort_order: Option<String>,
+}
+
+async fn audit_entries(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Query(q): Query<AuditEntriesQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if !check_permission(&state.pool, &user.id, "audit.view").await && user.role != "ADMIN" {
+        return Err(AppError::forbidden("Insufficient permissions"));
+    }
+
+    let page = q.page.unwrap_or(1).max(1);
+    let limit = q
+        .limit
+        .unwrap_or(50)
+        .min(MAX_AUDIT_PAGE_LIMIT as u32)
+        .max(1);
+    let skip: i64 = (page - 1) as i64 * limit as i64;
+    let sort_desc = q.sort_order.as_deref() != Some("asc");
+
+    let user_search = q.user_search.as_ref().and_then(|s| {
+        let t = s.trim();
+        if t.is_empty() {
+            None
+        } else {
+            Some(format!("%{t}%"))
+        }
+    });
+
+    // Build dynamic filters. Use a single query with LEFT JOIN users for user_search.
+    let total: i64 = if user_search.is_some() {
+        let count: (i64,) = sqlx::query_as(
+            r#"SELECT COUNT(*) FROM audit_logs a
+               LEFT JOIN users u ON a.user_id = u.id
+               WHERE ($1::text IS NULL OR a.action = $1)
+                 AND ($2::text IS NULL OR a.user_id = $2)
+                 AND ($3::text IS NULL OR a.resource_type = $3)
+                 AND ($4::text IS NULL OR a.resource_id = $4)
+                 AND ($5::text IS NULL OR a.created_at >= ($5::text || 'T00:00:00')::timestamp)
+                 AND ($6::text IS NULL OR a.created_at <= ($6::text || 'T23:59:59.999')::timestamp)
+                 AND ($7::text IS NULL OR u.email ILIKE $7 OR u.name ILIKE $7)"#,
+        )
+        .bind(&q.action)
+        .bind(&q.user_id)
+        .bind(&q.resource_type)
+        .bind(&q.resource_id)
+        .bind(&q.from)
+        .bind(&q.to)
+        .bind(&user_search)
+        .fetch_one(&state.pool)
+        .await?;
+        count.0
+    } else {
+        let count: (i64,) = sqlx::query_as(
+            r#"SELECT COUNT(*) FROM audit_logs a
+               WHERE ($1::text IS NULL OR a.action = $1)
+                 AND ($2::text IS NULL OR a.user_id = $2)
+                 AND ($3::text IS NULL OR a.resource_type = $3)
+                 AND ($4::text IS NULL OR a.resource_id = $4)
+                 AND ($5::text IS NULL OR a.created_at >= ($5::text || 'T00:00:00')::timestamp)
+                 AND ($6::text IS NULL OR a.created_at <= ($6::text || 'T23:59:59.999')::timestamp)"#,
+        )
+        .bind(&q.action)
+        .bind(&q.user_id)
+        .bind(&q.resource_type)
+        .bind(&q.resource_id)
+        .bind(&q.from)
+        .bind(&q.to)
+        .fetch_one(&state.pool)
+        .await?;
+        count.0
+    };
+
+    let (list_sql_with_search, list_sql_no_search) = if sort_desc {
+        (
+            r#"SELECT a.id, a.user_id, a.action, a.resource_type, a.resource_id,
+                      a.context, a.ip_address, a.user_agent, a.created_at,
+                      u.email as user_email, u.name as user_name
+               FROM audit_logs a
+               LEFT JOIN users u ON a.user_id = u.id
+               WHERE ($1::text IS NULL OR a.action = $1)
+                 AND ($2::text IS NULL OR a.user_id = $2)
+                 AND ($3::text IS NULL OR a.resource_type = $3)
+                 AND ($4::text IS NULL OR a.resource_id = $4)
+                 AND ($5::text IS NULL OR a.created_at >= ($5::text || 'T00:00:00')::timestamp)
+                 AND ($6::text IS NULL OR a.created_at <= ($6::text || 'T23:59:59.999')::timestamp)
+                 AND ($7::text IS NULL OR u.email ILIKE $7 OR u.name ILIKE $7)
+               ORDER BY a.created_at DESC LIMIT $8 OFFSET $9"#,
+            r#"SELECT a.id, a.user_id, a.action, a.resource_type, a.resource_id,
+                      a.context, a.ip_address, a.user_agent, a.created_at,
+                      u.email as user_email, u.name as user_name
+               FROM audit_logs a
+               LEFT JOIN users u ON a.user_id = u.id
+               WHERE ($1::text IS NULL OR a.action = $1)
+                 AND ($2::text IS NULL OR a.user_id = $2)
+                 AND ($3::text IS NULL OR a.resource_type = $3)
+                 AND ($4::text IS NULL OR a.resource_id = $4)
+                 AND ($5::text IS NULL OR a.created_at >= ($5::text || 'T00:00:00')::timestamp)
+                 AND ($6::text IS NULL OR a.created_at <= ($6::text || 'T23:59:59.999')::timestamp)
+               ORDER BY a.created_at DESC LIMIT $7 OFFSET $8"#,
+        )
+    } else {
+        (
+            r#"SELECT a.id, a.user_id, a.action, a.resource_type, a.resource_id,
+                      a.context, a.ip_address, a.user_agent, a.created_at,
+                      u.email as user_email, u.name as user_name
+               FROM audit_logs a
+               LEFT JOIN users u ON a.user_id = u.id
+               WHERE ($1::text IS NULL OR a.action = $1)
+                 AND ($2::text IS NULL OR a.user_id = $2)
+                 AND ($3::text IS NULL OR a.resource_type = $3)
+                 AND ($4::text IS NULL OR a.resource_id = $4)
+                 AND ($5::text IS NULL OR a.created_at >= ($5::text || 'T00:00:00')::timestamp)
+                 AND ($6::text IS NULL OR a.created_at <= ($6::text || 'T23:59:59.999')::timestamp)
+                 AND ($7::text IS NULL OR u.email ILIKE $7 OR u.name ILIKE $7)
+               ORDER BY a.created_at ASC LIMIT $8 OFFSET $9"#,
+            r#"SELECT a.id, a.user_id, a.action, a.resource_type, a.resource_id,
+                      a.context, a.ip_address, a.user_agent, a.created_at,
+                      u.email as user_email, u.name as user_name
+               FROM audit_logs a
+               LEFT JOIN users u ON a.user_id = u.id
+               WHERE ($1::text IS NULL OR a.action = $1)
+                 AND ($2::text IS NULL OR a.user_id = $2)
+                 AND ($3::text IS NULL OR a.resource_type = $3)
+                 AND ($4::text IS NULL OR a.resource_id = $4)
+                 AND ($5::text IS NULL OR a.created_at >= ($5::text || 'T00:00:00')::timestamp)
+                 AND ($6::text IS NULL OR a.created_at <= ($6::text || 'T23:59:59.999')::timestamp)
+               ORDER BY a.created_at ASC LIMIT $7 OFFSET $8"#,
+        )
+    };
+
+    let rows = if user_search.is_some() {
+        sqlx::query(list_sql_with_search)
+            .bind(&q.action)
+            .bind(&q.user_id)
+            .bind(&q.resource_type)
+            .bind(&q.resource_id)
+            .bind(&q.from)
+            .bind(&q.to)
+            .bind(&user_search)
+            .bind(limit as i64)
+            .bind(skip)
+            .fetch_all(&state.pool)
+            .await?
+    } else {
+        sqlx::query(list_sql_no_search)
+            .bind(&q.action)
+            .bind(&q.user_id)
+            .bind(&q.resource_type)
+            .bind(&q.resource_id)
+            .bind(&q.from)
+            .bind(&q.to)
+            .bind(limit as i64)
+            .bind(skip)
+            .fetch_all(&state.pool)
+            .await?
+    };
+
+    let entries: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            let created_at: chrono::NaiveDateTime = r.get("created_at");
+            serde_json::json!({
+                "id": r.get::<String, _>("id"),
+                "user_id": r.get::<Option<String>, _>("user_id"),
+                "action": r.get::<String, _>("action"),
+                "resource_type": r.get::<Option<String>, _>("resource_type"),
+                "resource_id": r.get::<Option<String>, _>("resource_id"),
+                "context": r.get::<Option<serde_json::Value>, _>("context"),
+                "ip_address": r.get::<Option<String>, _>("ip_address"),
+                "user_agent": r.get::<Option<String>, _>("user_agent"),
+                "created_at": created_at.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(),
+                "user": match (r.get::<Option<String>, _>("user_email"), r.get::<Option<String>, _>("user_name")) {
+                    (Some(email), name) => serde_json::json!({ "email": email, "name": name }),
+                    (None, _) => serde_json::Value::Null,
+                },
+            })
+        })
+        .collect();
+
+    let total_pages = (total + limit as i64 - 1) / limit as i64;
+    let total_pages = total_pages.max(1);
+
+    Ok(Json(serde_json::json!({
+        "entries": entries,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "totalPages": total_pages,
+    })))
+}
+
+async fn audit_actions(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if !check_permission(&state.pool, &user.id, "audit.view").await && user.role != "ADMIN" {
+        return Err(AppError::forbidden("Insufficient permissions"));
+    }
+    let rows: Vec<(String,)> = sqlx::query_as("SELECT DISTINCT action FROM audit_logs ORDER BY action")
+        .fetch_all(&state.pool)
+        .await?;
+    let actions: Vec<String> = rows.into_iter().map(|r| r.0).collect();
+    Ok(Json(serde_json::json!({ "actions": actions })))
+}
+
+#[derive(Deserialize)]
+struct AuditExportQuery {
+    format: Option<String>,
+    action: Option<String>,
+    user_id: Option<String>,
+    user_search: Option<String>,
+    resource_type: Option<String>,
+    resource_id: Option<String>,
+    from: Option<String>,
+    to: Option<String>,
+}
+
+async fn audit_export(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Query(q): Query<AuditExportQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if !check_permission(&state.pool, &user.id, "audit.export").await && user.role != "ADMIN" {
+        return Err(AppError::forbidden("Insufficient permissions"));
+    }
+
+    let format = q.format.as_deref().unwrap_or("json");
+    if format != "json" && format != "csv" {
+        return Err(AppError::bad_request("format must be json or csv"));
+    }
+
+    let user_search = q.user_search.as_ref().and_then(|s| {
+        let t = s.trim();
+        if t.is_empty() {
+            None
+        } else {
+            Some(format!("%{t}%"))
+        }
+    });
+
+    let rows = if user_search.is_some() {
+        sqlx::query(
+            r#"SELECT a.id, a.user_id, a.action, a.resource_type, a.resource_id,
+                      a.context, a.ip_address, a.user_agent, a.created_at,
+                      u.email as user_email, u.name as user_name
+               FROM audit_logs a
+               LEFT JOIN users u ON a.user_id = u.id
+               WHERE ($1::text IS NULL OR a.action = $1)
+                 AND ($2::text IS NULL OR a.user_id = $2)
+                 AND ($3::text IS NULL OR a.resource_type = $3)
+                 AND ($4::text IS NULL OR a.resource_id = $4)
+                 AND ($5::text IS NULL OR a.created_at >= ($5::text || 'T00:00:00')::timestamp)
+                 AND ($6::text IS NULL OR a.created_at <= ($6::text || 'T23:59:59.999')::timestamp)
+                 AND ($7::text IS NULL OR u.email ILIKE $7 OR u.name ILIKE $7)
+               ORDER BY a.created_at DESC LIMIT $8"#,
+        )
+        .bind(&q.action)
+        .bind(&q.user_id)
+        .bind(&q.resource_type)
+        .bind(&q.resource_id)
+        .bind(&q.from)
+        .bind(&q.to)
+        .bind(&user_search)
+        .bind(AUDIT_EXPORT_LIMIT)
+        .fetch_all(&state.pool)
+        .await?
+    } else {
+        sqlx::query(
+            r#"SELECT a.id, a.user_id, a.action, a.resource_type, a.resource_id,
+                      a.context, a.ip_address, a.user_agent, a.created_at,
+                      u.email as user_email, u.name as user_name
+               FROM audit_logs a
+               LEFT JOIN users u ON a.user_id = u.id
+               WHERE ($1::text IS NULL OR a.action = $1)
+                 AND ($2::text IS NULL OR a.user_id = $2)
+                 AND ($3::text IS NULL OR a.resource_type = $3)
+                 AND ($4::text IS NULL OR a.resource_id = $4)
+                 AND ($5::text IS NULL OR a.created_at >= ($5::text || 'T00:00:00')::timestamp)
+                 AND ($6::text IS NULL OR a.created_at <= ($6::text || 'T23:59:59.999')::timestamp)
+               ORDER BY a.created_at DESC LIMIT $7"#,
+        )
+        .bind(&q.action)
+        .bind(&q.user_id)
+        .bind(&q.resource_type)
+        .bind(&q.resource_id)
+        .bind(&q.from)
+        .bind(&q.to)
+        .bind(AUDIT_EXPORT_LIMIT)
+        .fetch_all(&state.pool)
+        .await?
+    };
+
+    let entries: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            let created_at: chrono::NaiveDateTime = r.get("created_at");
+            serde_json::json!({
+                "id": r.get::<String, _>("id"),
+                "user_id": r.get::<Option<String>, _>("user_id"),
+                "action": r.get::<String, _>("action"),
+                "resource_type": r.get::<Option<String>, _>("resource_type"),
+                "resource_id": r.get::<Option<String>, _>("resource_id"),
+                "context": r.get::<Option<serde_json::Value>, _>("context"),
+                "ip_address": r.get::<Option<String>, _>("ip_address"),
+                "user_agent": r.get::<Option<String>, _>("user_agent"),
+                "created_at": created_at.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(),
+                "user": match (r.get::<Option<String>, _>("user_email"), r.get::<Option<String>, _>("user_name")) {
+                    (Some(email), name) => serde_json::json!({ "email": email, "name": name }),
+                    (None, _) => serde_json::Value::Null,
+                },
+            })
+        })
+        .collect();
+
+    Ok(Json(serde_json::json!({
+        "format": format,
+        "entries": entries,
+        "filename": format!("audit-log-{}", chrono::Utc::now().format("%Y-%m-%d")),
+    })))
 }
 
 async fn audit_events(
@@ -57,7 +417,7 @@ async fn audit_events(
         return Err(AppError::forbidden("Insufficient permissions"));
     }
 
-    let rows = sqlx::query(
+    let rows: Vec<AuditLogRow> = sqlx::query_as(
         r#"SELECT id, user_id, action, resource_type, resource_id,
                   context, ip_address, user_agent, created_at
            FROM audit_logs ORDER BY created_at DESC LIMIT 200"#,
@@ -69,15 +429,15 @@ async fn audit_events(
         .iter()
         .map(|r| {
             serde_json::json!({
-                "id": r.get::<String, _>("id"),
-                "user_id": r.get::<Option<String>, _>("user_id"),
-                "action": r.get::<String, _>("action"),
-                "resource_type": r.get::<Option<String>, _>("resource_type"),
-                "resource_id": r.get::<Option<String>, _>("resource_id"),
-                "context": r.get::<Option<serde_json::Value>, _>("context"),
-                "ip_address": r.get::<Option<String>, _>("ip_address"),
-                "user_agent": r.get::<Option<String>, _>("user_agent"),
-                "created_at": r.get::<chrono::NaiveDateTime, _>("created_at"),
+                "id": r.id,
+                "user_id": r.user_id,
+                "action": r.action,
+                "resource_type": r.resource_type,
+                "resource_id": r.resource_id,
+                "context": r.context,
+                "ip_address": r.ip_address,
+                "user_agent": r.user_agent,
+                "created_at": r.created_at,
             })
         })
         .collect();
@@ -113,6 +473,155 @@ async fn db_query(
     .await?;
 
     Ok(Json(serde_json::json!({ "rows": rows })))
+}
+
+async fn db_tables(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if !check_permission(&state.pool, &user.id, "admin.db.view").await
+        && !check_permission(&state.pool, &user.id, "admin.db.view_entries").await
+        && user.role != "ADMIN"
+    {
+        return Err(AppError::forbidden("Insufficient permissions"));
+    }
+
+    let table_names: Vec<String> = sqlx::query_scalar(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name",
+    )
+    .fetch_all(&state.pool)
+    .await?;
+
+    Ok(Json(serde_json::json!({ "tables": table_names })))
+}
+
+fn sanitize_identifier(value: &str) -> Result<String, AppError> {
+    if !value.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return Err(AppError::bad_request("Invalid identifier"));
+    }
+    Ok(value.to_string())
+}
+
+fn format_sql_value(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Null => "NULL".to_string(),
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::Bool(b) => {
+            if *b {
+                "TRUE".to_string()
+            } else {
+                "FALSE".to_string()
+            }
+        }
+        serde_json::Value::String(s) => {
+            let escaped = s.replace('\'', "''");
+            format!("'{escaped}'")
+        }
+        _ => {
+            let escaped = value.to_string().replace('\'', "''");
+            format!("'{escaped}'")
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DbRowUpdateRequest {
+    table: String,
+    id_column: Option<String>,
+    id_value: serde_json::Value,
+    data: serde_json::Value,
+}
+
+async fn db_row_update(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Json(body): Json<DbRowUpdateRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if !check_permission(&state.pool, &user.id, "admin.db.edit_entries").await
+        && user.role != "ADMIN"
+    {
+        return Err(AppError::forbidden("Insufficient permissions"));
+    }
+
+    let table = sanitize_identifier(body.table.trim())?;
+    let id_column = body
+        .id_column
+        .as_deref()
+        .unwrap_or("id")
+        .trim();
+    let id_column = sanitize_identifier(id_column)?;
+    let data = match &body.data {
+        serde_json::Value::Object(m) if !m.is_empty() => m,
+        _ => return Err(AppError::bad_request("data object with at least one field is required")),
+    };
+
+    let mut set_clauses = Vec::with_capacity(data.len());
+    for (key, value) in data {
+        if key.as_str() == id_column.as_str() {
+            continue;
+        }
+        let col = sanitize_identifier(key)?;
+        set_clauses.push(format!(r#""{col}" = {}"#, format_sql_value(value)));
+    }
+
+    if set_clauses.is_empty() {
+        return Err(AppError::bad_request("No updatable fields provided"));
+    }
+
+    let where_value = format_sql_value(&body.id_value);
+    let query = format!(
+        r#"UPDATE "public"."{table}" SET {} WHERE "{id_column}" = {where_value}"#,
+        set_clauses.join(", ")
+    );
+
+    let result = sqlx::query(&query).execute(&state.pool).await?;
+    let updated_count = result.rows_affected();
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "updatedCount": updated_count
+    })))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DbRowDeleteRequest {
+    table: String,
+    id_column: Option<String>,
+    id_value: serde_json::Value,
+}
+
+async fn db_row_delete(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Json(body): Json<DbRowDeleteRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if !check_permission(&state.pool, &user.id, "admin.db.delete_entries").await
+        && user.role != "ADMIN"
+    {
+        return Err(AppError::forbidden("Insufficient permissions"));
+    }
+
+    let table = sanitize_identifier(body.table.trim())?;
+    let id_column = body
+        .id_column
+        .as_deref()
+        .unwrap_or("id")
+        .trim();
+    let id_column = sanitize_identifier(id_column)?;
+    let where_value = format_sql_value(&body.id_value);
+    let query = format!(
+        r#"DELETE FROM "public"."{table}" WHERE "{id_column}" = {where_value}"#
+    );
+
+    let result = sqlx::query(&query).execute(&state.pool).await?;
+    let deleted_count = result.rows_affected();
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "deletedCount": deleted_count
+    })))
 }
 
 async fn purge_deleted(
@@ -354,14 +863,15 @@ async fn list_users(
     let pattern = format!("%{search}%");
 
     let rows = sqlx::query(
-        r#"SELECT id, email, name, role::text as role, status::text as status,
-                  email_verified, avatar, timezone, theme, locale, bio,
-                  last_login_at, created_at, updated_at
-           FROM users
-           WHERE ($1::text = '' OR name ILIKE $2 OR email ILIKE $2)
-             AND ($3::text IS NULL OR status::text = $3)
-             AND ($4::text IS NULL OR role::text = $4)
-           ORDER BY created_at DESC
+        r#"SELECT u.id, u.email, u.name, u.role::text as role, u.status::text as status,
+                  u.email_verified, u.avatar, u.timezone, u.theme, u.locale, u.bio,
+                  u.last_login_at, u.created_at, u.updated_at,
+                  (SELECT COUNT(*) FROM user_permissions up WHERE up.user_id = u.id) as permission_count
+           FROM users u
+           WHERE ($1::text = '' OR u.name ILIKE $2 OR u.email ILIKE $2)
+             AND ($3::text IS NULL OR u.status::text = $3)
+             AND ($4::text IS NULL OR u.role::text = $4)
+           ORDER BY u.created_at DESC
            LIMIT $5 OFFSET $6"#,
     )
     .bind(&search)
@@ -405,6 +915,7 @@ async fn list_users(
                 "lastLoginAt": r.get::<Option<chrono::NaiveDateTime>, _>("last_login_at"),
                 "createdAt": r.get::<chrono::NaiveDateTime, _>("created_at"),
                 "updatedAt": r.get::<chrono::NaiveDateTime, _>("updated_at"),
+                "permissionCount": r.get::<i64, _>("permission_count"),
             })
         })
         .collect();
@@ -424,13 +935,55 @@ async fn get_user(
     let r = sqlx::query(
         r#"SELECT id, email, name, role::text as role, status::text as status,
                   email_verified, avatar, timezone, theme, locale, bio,
-                  last_login_at, created_at, updated_at
+                  last_login_at, banned_at, ban_reason, created_at, updated_at
            FROM users WHERE id = $1"#,
     )
     .bind(&id)
     .fetch_optional(&state.pool)
     .await?
     .ok_or_else(|| AppError::not_found("User not found"))?;
+
+    let created_tickets: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tickets WHERE created_by_id = $1")
+        .bind(&id)
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+    let assigned_tickets: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tickets WHERE assigned_to_id = $1")
+        .bind(&id)
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+    let ticket_comments: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM ticket_comments WHERE user_id = $1")
+        .bind(&id)
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+    let group_memberships_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM group_memberships WHERE user_id = $1")
+        .bind(&id)
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+
+    let group_rows = sqlx::query(
+        r#"SELECT gm.id as membership_id, g.id, g.name, g.description FROM group_memberships gm
+           JOIN groups g ON g.id = gm.group_id WHERE gm.user_id = $1 ORDER BY g.name"#,
+    )
+    .bind(&id)
+    .fetch_all(&state.pool)
+    .await?;
+    let group_memberships: Vec<serde_json::Value> = group_rows
+        .iter()
+        .map(|row| {
+            serde_json::json!({
+                "id": row.get::<String, _>("membership_id"),
+                "group": {
+                    "id": row.get::<String, _>("id"),
+                    "name": row.get::<String, _>("name"),
+                    "description": row.get::<Option<String>, _>("description"),
+                },
+            })
+        })
+        .collect();
 
     Ok(Json(serde_json::json!({
         "user": {
@@ -446,10 +999,102 @@ async fn get_user(
             "locale": r.get::<Option<String>, _>("locale"),
             "bio": r.get::<Option<String>, _>("bio"),
             "lastLoginAt": r.get::<Option<chrono::NaiveDateTime>, _>("last_login_at"),
+            "bannedAt": r.get::<Option<chrono::NaiveDateTime>, _>("banned_at"),
+            "banReason": r.get::<Option<String>, _>("ban_reason"),
             "createdAt": r.get::<chrono::NaiveDateTime, _>("created_at"),
             "updatedAt": r.get::<chrono::NaiveDateTime, _>("updated_at"),
+            "_count": {
+                "createdTickets": created_tickets,
+                "assignedTickets": assigned_tickets,
+                "ticketComments": ticket_comments,
+                "groupMemberships": group_memberships_count,
+            },
+            "groupMemberships": group_memberships,
         }
     })))
+}
+
+async fn get_user_effective_permissions(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if user.role != "ADMIN" && user.role != "MODERATOR" {
+        return Err(AppError::forbidden("Admin access required"));
+    }
+    let keys = get_user_permission_keys(&state.pool, &id).await;
+    Ok(Json(serde_json::json!({ "permissions": keys })))
+}
+
+#[derive(Deserialize)]
+struct BanUserRequest {
+    reason: String,
+}
+
+async fn ban_user(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+    Json(body): Json<BanUserRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if user.role != "ADMIN" {
+        return Err(AppError::forbidden("Admin only"));
+    }
+    sqlx::query(
+        r#"UPDATE users SET status = 'BANNED', banned_at = NOW(), ban_reason = $1, updated_at = NOW() WHERE id = $2"#,
+    )
+    .bind(body.reason.trim())
+    .bind(&id)
+    .execute(&state.pool)
+    .await?;
+    audit::write_audit_log(
+        &state.pool,
+        WriteAuditParams {
+            user_id: Some(user.id),
+            action: "admin.users.ban".into(),
+            resource_type: Some("user".into()),
+            resource_id: Some(id.clone()),
+            context: Some(serde_json::json!({ "reason": body.reason.trim() })),
+            ip_address: None,
+            user_agent: None,
+        },
+    );
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
+#[derive(Deserialize)]
+struct UnbanUserRequest {
+    reason: Option<String>,
+}
+
+async fn unban_user(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+    Json(body): Json<UnbanUserRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if user.role != "ADMIN" {
+        return Err(AppError::forbidden("Admin only"));
+    }
+    sqlx::query(
+        r#"UPDATE users SET status = 'ACTIVE', banned_at = NULL, ban_reason = NULL, updated_at = NOW() WHERE id = $1"#,
+    )
+    .bind(&id)
+    .execute(&state.pool)
+    .await?;
+    audit::write_audit_log(
+        &state.pool,
+        WriteAuditParams {
+            user_id: Some(user.id),
+            action: "admin.users.unban".into(),
+            resource_type: Some("user".into()),
+            resource_id: Some(id),
+            context: body.reason.as_ref().map(|r| serde_json::json!({ "reason": r })),
+            ip_address: None,
+            user_agent: None,
+        },
+    );
+    Ok(Json(serde_json::json!({ "success": true })))
 }
 
 #[derive(Deserialize)]
@@ -518,8 +1163,12 @@ async fn list_permissions(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" && user.role != "MODERATOR" {
-        return Err(AppError::forbidden("Admin access required"));
+    let can_view = user.role == "ADMIN"
+        || user.role == "MODERATOR"
+        || check_permission(&state.pool, &user.id, "admin.permissions.view").await
+        || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
+    if !can_view {
+        return Err(AppError::forbidden("Permission required: admin.permissions.view or admin.permissions.manage"));
     }
     let rows = sqlx::query(
         r#"SELECT id, key, name, description, category, module, created_at, updated_at
@@ -550,11 +1199,15 @@ async fn list_user_permissions(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" && user.role != "MODERATOR" {
-        return Err(AppError::forbidden("Admin access required"));
+    let can_view = user.role == "ADMIN"
+        || user.role == "MODERATOR"
+        || check_permission(&state.pool, &user.id, "admin.permissions.view").await
+        || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
+    if !can_view {
+        return Err(AppError::forbidden("Permission required: admin.permissions.view or admin.permissions.manage"));
     }
     let rows = sqlx::query(
-        r#"SELECT p.key, p.name, p.category FROM user_permissions up
+        r#"SELECT p.id, p.key, p.name, p.category FROM user_permissions up
            JOIN permissions p ON up.permission_id = p.id
            WHERE up.user_id = $1 ORDER BY p.category, p.key"#,
     )
@@ -565,6 +1218,7 @@ async fn list_user_permissions(
         .iter()
         .map(|r| {
             serde_json::json!({
+                "id": r.get::<String, _>("id"),
                 "key": r.get::<String, _>("key"),
                 "name": r.get::<String, _>("name"),
                 "category": r.get::<String, _>("category"),
@@ -585,8 +1239,9 @@ async fn grant_user_permission(
     Path(id): Path<String>,
     Json(body): Json<GrantPermissionRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" {
-        return Err(AppError::forbidden("Admin only"));
+    let can_manage = user.role == "ADMIN" || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
+    if !can_manage {
+        return Err(AppError::forbidden("Permission required: admin.permissions.manage"));
     }
     let key = body.key.trim();
     if key.is_empty() {
@@ -608,6 +1263,18 @@ async fn grant_user_permission(
     .bind(&perm_id)
     .execute(&state.pool)
     .await?;
+    audit::write_audit_log(
+        &state.pool,
+        WriteAuditParams {
+            user_id: Some(user.id),
+            action: "admin.permissions.grant".into(),
+            resource_type: Some("user".into()),
+            resource_id: Some(id),
+            context: Some(serde_json::json!({ "permission": key })),
+            ip_address: None,
+            user_agent: None,
+        },
+    );
     Ok(Json(serde_json::json!({ "success": true })))
 }
 
@@ -616,8 +1283,9 @@ async fn revoke_user_permission(
     AuthUser(user): AuthUser,
     Path((id, key)): Path<(String, String)>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" {
-        return Err(AppError::forbidden("Admin only"));
+    let can_manage = user.role == "ADMIN" || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
+    if !can_manage {
+        return Err(AppError::forbidden("Permission required: admin.permissions.manage"));
     }
     let perm_id: Option<String> = sqlx::query_scalar("SELECT id FROM permissions WHERE key = $1")
         .bind(key.trim())
@@ -629,6 +1297,136 @@ async fn revoke_user_permission(
         .bind(&perm_id)
         .execute(&state.pool)
         .await?;
+    audit::write_audit_log(
+        &state.pool,
+        WriteAuditParams {
+            user_id: Some(user.id),
+            action: "admin.permissions.revoke".into(),
+            resource_type: Some("user".into()),
+            resource_id: Some(id),
+            context: Some(serde_json::json!({ "permission": key })),
+            ip_address: None,
+            user_agent: None,
+        },
+    );
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
+async fn list_group_permissions(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let can_view = user.role == "ADMIN"
+        || user.role == "MODERATOR"
+        || check_permission(&state.pool, &user.id, "admin.permissions.view").await
+        || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
+    if !can_view {
+        return Err(AppError::forbidden("Permission required: admin.permissions.view or admin.permissions.manage"));
+    }
+    let rows = sqlx::query(
+        r#"SELECT p.id, p.key, p.name, p.category FROM group_permissions gp
+           JOIN permissions p ON gp.permission_id = p.id
+           WHERE gp.group_id = $1 ORDER BY p.category, p.key"#,
+    )
+    .bind(&id)
+    .fetch_all(&state.pool)
+    .await?;
+    let permissions: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "id": r.get::<String, _>("id"),
+                "key": r.get::<String, _>("key"),
+                "name": r.get::<String, _>("name"),
+                "category": r.get::<String, _>("category"),
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({ "permissions": permissions })))
+}
+
+#[derive(Deserialize)]
+struct GrantGroupPermissionRequest {
+    key: String,
+}
+
+async fn grant_group_permission(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+    Json(body): Json<GrantGroupPermissionRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let can_manage = user.role == "ADMIN" || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
+    if !can_manage {
+        return Err(AppError::forbidden("Permission required: admin.permissions.manage"));
+    }
+    let key = body.key.trim();
+    if key.is_empty() {
+        return Err(AppError::bad_request("Permission key is required"));
+    }
+    let perm_id: Option<String> = sqlx::query_scalar("SELECT id FROM permissions WHERE key = $1")
+        .bind(key)
+        .fetch_optional(&state.pool)
+        .await?;
+    let perm_id = perm_id.ok_or_else(|| AppError::not_found("Permission not found"))?;
+    let gp_id = crate::id::new_cuid();
+    sqlx::query(
+        r#"INSERT INTO group_permissions (id, group_id, permission_id, created_at)
+           VALUES ($1, $2, $3, NOW())
+           ON CONFLICT (group_id, permission_id) DO NOTHING"#,
+    )
+    .bind(&gp_id)
+    .bind(&id)
+    .bind(&perm_id)
+    .execute(&state.pool)
+    .await?;
+    audit::write_audit_log(
+        &state.pool,
+        WriteAuditParams {
+            user_id: Some(user.id),
+            action: "admin.permissions.grant".into(),
+            resource_type: Some("group".into()),
+            resource_id: Some(id),
+            context: Some(serde_json::json!({ "permission": key })),
+            ip_address: None,
+            user_agent: None,
+        },
+    );
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
+async fn revoke_group_permission(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path((id, key)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let can_manage = user.role == "ADMIN" || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
+    if !can_manage {
+        return Err(AppError::forbidden("Permission required: admin.permissions.manage"));
+    }
+    let perm_id: Option<String> = sqlx::query_scalar("SELECT id FROM permissions WHERE key = $1")
+        .bind(key.trim())
+        .fetch_optional(&state.pool)
+        .await?;
+    let perm_id = perm_id.ok_or_else(|| AppError::not_found("Permission not found"))?;
+    sqlx::query("DELETE FROM group_permissions WHERE group_id = $1 AND permission_id = $2")
+        .bind(&id)
+        .bind(&perm_id)
+        .execute(&state.pool)
+        .await?;
+    audit::write_audit_log(
+        &state.pool,
+        WriteAuditParams {
+            user_id: Some(user.id),
+            action: "admin.permissions.revoke".into(),
+            resource_type: Some("group".into()),
+            resource_id: Some(id),
+            context: Some(serde_json::json!({ "permission": key })),
+            ip_address: None,
+            user_agent: None,
+        },
+    );
     Ok(Json(serde_json::json!({ "success": true })))
 }
 
@@ -642,7 +1440,8 @@ async fn list_groups(
 
     let rows = sqlx::query(
         r#"SELECT g.id, g.name, g.description, g.created_at, g.updated_at,
-                  (SELECT COUNT(*) FROM group_memberships gm WHERE gm.group_id = g.id) as member_count
+                  (SELECT COUNT(*) FROM group_memberships gm WHERE gm.group_id = g.id) as member_count,
+                  (SELECT COUNT(*) FROM group_permissions gp WHERE gp.group_id = g.id) as permission_count
            FROM groups g ORDER BY g.name ASC"#,
     )
     .fetch_all(&state.pool)
@@ -656,6 +1455,7 @@ async fn list_groups(
                 "name": r.get::<String, _>("name"),
                 "description": r.get::<Option<String>, _>("description"),
                 "memberCount": r.get::<i64, _>("member_count"),
+                "permissionCount": r.get::<i64, _>("permission_count"),
                 "createdAt": r.get::<chrono::NaiveDateTime, _>("created_at"),
                 "updatedAt": r.get::<chrono::NaiveDateTime, _>("updated_at"),
             })
@@ -915,10 +1715,29 @@ async fn revoke_session(
         return Err(AppError::forbidden("Admin only"));
     }
 
+    let target_user_id: Option<String> =
+        sqlx::query_scalar("SELECT user_id FROM sessions WHERE id = $1")
+            .bind(&id)
+            .fetch_optional(&state.pool)
+            .await?;
+
     sqlx::query("DELETE FROM sessions WHERE id = $1")
         .bind(&id)
         .execute(&state.pool)
         .await?;
+
+    audit::write_audit_log(
+        &state.pool,
+        WriteAuditParams {
+            user_id: Some(user.id),
+            action: "admin.sessions.revoke".into(),
+            resource_type: Some("session".into()),
+            resource_id: Some(id),
+            context: target_user_id.map(|uid| serde_json::json!({ "target_user_id": uid })),
+            ip_address: None,
+            user_agent: None,
+        },
+    );
 
     Ok(Json(serde_json::json!({ "success": true })))
 }
@@ -1070,11 +1889,23 @@ async fn admin_dashboard_stats(
     .await
     .unwrap_or(0);
 
+    let total_todos: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM todos")
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+
+    let total_links: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM links")
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0);
+
     Ok(Json(serde_json::json!({
         "totalUsers": total_users,
         "usersByStatus": users_by_status,
         "totalTickets": total_tickets,
         "ticketsByStatus": tickets_by_status,
+        "todos": total_todos,
+        "links": total_links,
         "activeSessions": active_sessions,
         "enabledModules": enabled_modules,
         "totalModules": total_modules,
@@ -1084,12 +1915,114 @@ async fn admin_dashboard_stats(
     })))
 }
 
+/// Time-series and breakdowns for admin analytics (tickets over time, time tracked, priority).
+async fn admin_statistics_analytics(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if user.role != "ADMIN" {
+        return Err(AppError::forbidden("Admin only"));
+    }
+
+    let days = 30;
+    let start = chrono::Utc::now().naive_utc().date() - chrono::Duration::days(days);
+
+    let tickets_by_day: Vec<(chrono::NaiveDate, i64)> = sqlx::query_as(
+        r#"SELECT (created_at AT TIME ZONE 'UTC')::date as d, COUNT(*)::bigint
+           FROM tickets WHERE (created_at AT TIME ZONE 'UTC')::date >= $1
+           GROUP BY (created_at AT TIME ZONE 'UTC')::date ORDER BY d"#,
+    )
+    .bind(start)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let time_by_day: Vec<(chrono::NaiveDate, i64)> = sqlx::query_as(
+        r#"SELECT (created_at AT TIME ZONE 'UTC')::date as d, COALESCE(SUM(total_duration), 0)::bigint
+           FROM time_entries WHERE archived_at IS NULL AND (created_at AT TIME ZONE 'UTC')::date >= $1
+           GROUP BY (created_at AT TIME ZONE 'UTC')::date ORDER BY d"#,
+    )
+    .bind(start)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let users_by_day: Vec<(chrono::NaiveDate, i64)> = sqlx::query_as(
+        r#"SELECT (created_at AT TIME ZONE 'UTC')::date as d, COUNT(*)::bigint
+           FROM users WHERE (created_at AT TIME ZONE 'UTC')::date >= $1
+           GROUP BY (created_at AT TIME ZONE 'UTC')::date ORDER BY d"#,
+    )
+    .bind(start)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let tickets_by_priority_rows = sqlx::query(
+        r#"SELECT priority::text as priority, COUNT(*)::bigint as cnt FROM tickets GROUP BY priority"#,
+    )
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let mut tickets_by_priority = serde_json::json!({
+        "LOW": 0,
+        "MEDIUM": 0,
+        "HIGH": 0,
+        "URGENT": 0,
+    });
+    let pobj = tickets_by_priority.as_object_mut().unwrap();
+    for row in &tickets_by_priority_rows {
+        let p: String = row.get::<String, _>("priority");
+        let cnt: i64 = row.get::<i64, _>("cnt");
+        if pobj.contains_key(&p) {
+            pobj[&p] = serde_json::json!(cnt);
+        }
+    }
+
+    let tickets_created_by_day: Vec<serde_json::Value> = tickets_by_day
+        .iter()
+        .map(|(d, c)| {
+            serde_json::json!({
+                "date": d.format("%Y-%m-%d").to_string(),
+                "count": c,
+            })
+        })
+        .collect();
+
+    let time_tracked_by_day: Vec<serde_json::Value> = time_by_day
+        .iter()
+        .map(|(d, s)| {
+            serde_json::json!({
+                "date": d.format("%Y-%m-%d").to_string(),
+                "totalSeconds": s,
+            })
+        })
+        .collect();
+
+    let users_created_by_day: Vec<serde_json::Value> = users_by_day
+        .iter()
+        .map(|(d, c)| {
+            serde_json::json!({
+                "date": d.format("%Y-%m-%d").to_string(),
+                "count": c,
+            })
+        })
+        .collect();
+
+    Ok(Json(serde_json::json!({
+        "ticketsCreatedByDay": tickets_created_by_day,
+        "timeTrackedByDay": time_tracked_by_day,
+        "usersCreatedByDay": users_created_by_day,
+        "ticketsByPriority": tickets_by_priority,
+    })))
+}
+
 async fn list_notifications(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let rows = sqlx::query(
-        r#"SELECT id, type::text as type, title, body, resource_type, resource_id,
+    let rows: Vec<NotificationRow> = sqlx::query_as(
+        r#"SELECT id, user_id, type::text as type, title, body, resource_type, resource_id,
                   resource_url, read, created_at
            FROM notifications
            WHERE user_id = $1
@@ -1104,15 +2037,15 @@ async fn list_notifications(
         .iter()
         .map(|r| {
             serde_json::json!({
-                "id": r.get::<String, _>("id"),
-                "type": r.get::<String, _>("type"),
-                "title": r.get::<String, _>("title"),
-                "body": r.get::<Option<String>, _>("body"),
-                "resourceType": r.get::<Option<String>, _>("resource_type"),
-                "resourceId": r.get::<Option<String>, _>("resource_id"),
-                "resourceUrl": r.get::<Option<String>, _>("resource_url"),
-                "read": r.get::<bool, _>("read"),
-                "createdAt": r.get::<chrono::NaiveDateTime, _>("created_at"),
+                "id": r.id,
+                "type": r.r#type,
+                "title": r.title,
+                "body": r.body,
+                "resourceType": r.resource_type,
+                "resourceId": r.resource_id,
+                "resourceUrl": r.resource_url,
+                "read": r.read,
+                "createdAt": r.created_at,
             })
         })
         .collect();

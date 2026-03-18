@@ -49,6 +49,33 @@ fn row_to_item(r: &sqlx::postgres::PgRow) -> TodoListItem {
     }
 }
 
+fn todo_row_to_item(r: &TodoRow) -> TodoListItem {
+    TodoListItem {
+        id: r.id.clone(),
+        todo_number: r.todo_number.clone(),
+        parent_todo_id: r.parent_todo_id.clone(),
+        title: r.title.clone(),
+        description: r.description.clone(),
+        description_html: r.description_html.clone(),
+        description_plain: r.description_plain.clone(),
+        status: r.status.clone(),
+        priority: r.priority.clone(),
+        assigned_to_id: r.assigned_to_id.clone(),
+        estimated_hours: r.estimated_hours,
+        actual_hours: r.actual_hours,
+        start_date: r.start_date,
+        due_date: r.due_date,
+        completed_date: r.completed_date,
+        archived_at: r.archived_at,
+        ticket_id: r.ticket_id.clone(),
+        order: r.order,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+        assigned_to: None,
+        subtodos: vec![],
+    }
+}
+
 const TODO_SELECT: &str = r#"SELECT id, todo_number, parent_todo_id, title, description,
        description_html, description_plain, status::text as status, priority::text as priority,
        assigned_to_id, estimated_hours, actual_hours, start_date, due_date,
@@ -62,6 +89,7 @@ async fn list_todos(
     let archive = params.archive.as_deref().unwrap_or("unarchived");
     let priority = params.priority.clone();
     let is_root_only = params.kind.as_deref() == Some("root");
+    let _ = &params.sort;
 
     let statuses: Vec<String> = params
         .status
@@ -119,23 +147,23 @@ async fn get_todo(
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let sql = format!("{TODO_SELECT} FROM todos WHERE id = $1 AND assigned_to_id = $2");
-    let row = sqlx::query(&sql)
+    let row: Option<TodoRow> = sqlx::query_as(&sql)
         .bind(&id)
         .bind(&user.id)
         .fetch_optional(&state.pool)
-        .await?
-        .ok_or_else(|| AppError::not_found("Todo not found"))?;
+        .await?;
+    let row = row.ok_or_else(|| AppError::not_found("Todo not found"))?;
 
     let subtodo_sql = format!(
         "{TODO_SELECT} FROM todos WHERE parent_todo_id = $1 ORDER BY \"order\" ASC, created_at ASC"
     );
-    let subtodo_rows = sqlx::query(&subtodo_sql)
+    let subtodo_rows: Vec<TodoRow> = sqlx::query_as(&subtodo_sql)
         .bind(&id)
         .fetch_all(&state.pool)
         .await?;
 
-    let mut todo = row_to_item(&row);
-    todo.subtodos = subtodo_rows.iter().map(row_to_item).collect();
+    let mut todo = todo_row_to_item(&row);
+    todo.subtodos = subtodo_rows.iter().map(todo_row_to_item).collect();
 
     Ok(Json(serde_json::json!({ "todo": todo })))
 }
@@ -154,12 +182,14 @@ async fn create_todo(
     let priority = body.priority.as_deref().unwrap_or("MEDIUM");
     let assigned_to = body.assigned_to_id.as_deref().unwrap_or(&user.id);
 
+    let start_ts = body.start_date.as_deref().and_then(|s| s.parse::<chrono::NaiveDateTime>().ok());
+    let due_ts = body.due_date.as_deref().and_then(|s| s.parse::<chrono::NaiveDateTime>().ok());
     sqlx::query(
         r#"INSERT INTO todos (id, title, description, description_html,
                               status, priority, assigned_to_id, parent_todo_id,
-                              ticket_id, estimated_hours, "order", created_at, updated_at)
+                              ticket_id, estimated_hours, start_date, due_date, "order", created_at, updated_at)
            VALUES ($1, $2, $3, $4, $5::"TodoStatus", $6::"TodoPriority",
-                   $7, $8, $9, $10, 0, NOW(), NOW())"#,
+                   $7, $8, $9, $10, $11, $12, 0, NOW(), NOW())"#,
     )
     .bind(&id)
     .bind(body.title.trim())
@@ -171,6 +201,8 @@ async fn create_todo(
     .bind(&body.parent_todo_id)
     .bind(&body.ticket_id)
     .bind(body.estimated_hours)
+    .bind(&start_ts)
+    .bind(&due_ts)
     .execute(&state.pool)
     .await?;
 
@@ -204,6 +236,59 @@ async fn update_todo(
     if let Some(ref desc) = body.description {
         sqlx::query("UPDATE todos SET description = $1, updated_at = NOW() WHERE id = $2")
             .bind(desc)
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
+    }
+    if let Some(ref desc_html) = body.description_html {
+        sqlx::query("UPDATE todos SET description_html = $1, updated_at = NOW() WHERE id = $2")
+            .bind(desc_html)
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
+    }
+    if let Some(ref aid) = body.assigned_to_id {
+        let s: Option<String> = aid.as_str().map(|s| s.to_string()).filter(|s| !s.is_empty());
+        sqlx::query("UPDATE todos SET assigned_to_id = $1, updated_at = NOW() WHERE id = $2")
+            .bind(&s)
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
+    }
+    if let Some(est) = body.estimated_hours {
+        sqlx::query("UPDATE todos SET estimated_hours = $1, updated_at = NOW() WHERE id = $2")
+            .bind(est)
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
+    }
+    if let Some(act) = body.actual_hours {
+        sqlx::query("UPDATE todos SET actual_hours = $1, updated_at = NOW() WHERE id = $2")
+            .bind(act)
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
+    }
+    if body.start_date.is_some() {
+        let v = body.start_date.as_ref().and_then(|v| v.as_str()).and_then(|s| s.parse::<chrono::NaiveDateTime>().ok());
+        sqlx::query("UPDATE todos SET start_date = $1, updated_at = NOW() WHERE id = $2")
+            .bind(&v)
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
+    }
+    if body.due_date.is_some() {
+        let v = body.due_date.as_ref().and_then(|v| v.as_str()).and_then(|s| s.parse::<chrono::NaiveDateTime>().ok());
+        sqlx::query("UPDATE todos SET due_date = $1, updated_at = NOW() WHERE id = $2")
+            .bind(&v)
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
+    }
+    if body.ticket_id.is_some() {
+        let v = body.ticket_id.as_ref().and_then(|v| v.as_str()).filter(|s| !s.is_empty());
+        sqlx::query("UPDATE todos SET ticket_id = $1, updated_at = NOW() WHERE id = $2")
+            .bind(v)
             .bind(&id)
             .execute(&state.pool)
             .await?;

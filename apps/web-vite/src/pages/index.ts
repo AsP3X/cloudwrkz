@@ -33,3 +33,8 @@ export { default as AdminTicketsPage } from "./dashboard/admin/AdminTicketsPage"
 export { default as AdminStatisticsPage } from "./dashboard/admin/AdminStatisticsPage";
 export { default as AuditPage } from "./dashboard/admin/AuditPage";
 export { default as DbConsolePage } from "./dashboard/admin/DbConsolePage";
+export { default as UserDetailPage } from "./dashboard/admin/UserDetailPage";
+export { default as UserPermissionsListPage } from "./dashboard/admin/permissions/UserPermissionsListPage";
+export { default as UserPermissionDetailPage } from "./dashboard/admin/permissions/UserPermissionDetailPage";
+export { default as GroupPermissionsListPage } from "./dashboard/admin/permissions/GroupPermissionsListPage";
+export { default as GroupPermissionDetailPage } from "./dashboard/admin/permissions/GroupPermissionDetailPage";

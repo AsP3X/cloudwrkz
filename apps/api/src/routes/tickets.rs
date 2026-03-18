@@ -8,7 +8,9 @@ use sqlx::{PgPool, Row};
 
 use crate::auth::extractors::AuthUser;
 use crate::error::AppError;
-use crate::models::ticket::*;
+use crate::models::ticket::{
+    TicketCreateRequest, TicketListItem, TicketListParams, TicketRow, TicketUpdateRequest,
+};
 use crate::routes::helpers::{check_permission, fetch_group_summary, fetch_user_summary, get_user_permission_keys};
 use crate::routes::AppState;
 
@@ -79,6 +81,15 @@ async fn list_tickets(
         || permission_keys.iter().any(|k| k == "admin.tickets.manage");
     let status_filter = params.status.as_deref().unwrap_or("UNRESOLVED");
     let archive = params.archive.as_deref().unwrap_or("unarchived");
+    let _ = (
+        &params.sort,
+        &params.created_by,
+        &params.assigned_to_group,
+        &params.created_from,
+        &params.created_to,
+        &params.updated_from,
+        &params.updated_to,
+    );
 
     let statuses: Vec<&str> = status_filter.split(',').map(|s| s.trim()).collect();
     let use_multi = statuses.len() > 1
@@ -195,11 +206,11 @@ async fn get_ticket(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let can_view_all = check_permission(&state.pool, &user.id, "tickets.view_all").await;
 
-    let r = sqlx::query(
+    let r: Option<TicketRow> = sqlx::query_as(
         r#"SELECT id, ticket_number, title, description, description_plain,
-                  type::text, status::text, priority::text,
-                  created_by_id, assigned_to_id, assigned_to_group_id,
-                  archived_at, created_at, updated_at
+                  type::text as type, status::text as status, priority::text as priority,
+                  tags, attachments, created_by_id, assigned_to_id, assigned_to_group_id,
+                  archived_at, due_date, resolved_at, closed_at, created_at, updated_at
            FROM tickets
            WHERE id = $1
              AND ($2::bool OR created_by_id = $3 OR assigned_to_id = $3)"#,
@@ -208,25 +219,9 @@ async fn get_ticket(
     .bind(can_view_all)
     .bind(&user.id)
     .fetch_optional(&state.pool)
-    .await?
-    .ok_or_else(|| AppError::not_found("Ticket not found"))?;
+    .await?;
+    let r = r.ok_or_else(|| AppError::not_found("Ticket not found"))?;
 
-    let created_by_id: Option<String> = r.get("created_by_id");
-    let assigned_to_id: Option<String> = r.get("assigned_to_id");
-    let assigned_to_group_id: Option<String> = r.get("assigned_to_group_id");
-
-    let created_by = match created_by_id {
-        Some(ref uid) => fetch_user_summary(&state.pool, uid).await,
-        None => None,
-    };
-    let assigned_to = match assigned_to_id {
-        Some(ref uid) => fetch_user_summary(&state.pool, uid).await,
-        None => None,
-    };
-    let assigned_to_group = match assigned_to_group_id {
-        Some(ref gid) => fetch_group_summary(&state.pool, gid).await,
-        None => None,
-    };
     let comment_count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM ticket_comments WHERE ticket_id = $1")
             .bind(&id)
@@ -234,18 +229,31 @@ async fn get_ticket(
             .await
             .unwrap_or(0);
 
+    let created_by = match &r.created_by_id {
+        Some(uid) => fetch_user_summary(&state.pool, uid).await,
+        None => None,
+    };
+    let assigned_to = match &r.assigned_to_id {
+        Some(uid) => fetch_user_summary(&state.pool, uid).await,
+        None => None,
+    };
+    let assigned_to_group = match &r.assigned_to_group_id {
+        Some(gid) => fetch_group_summary(&state.pool, gid).await,
+        None => None,
+    };
+
     let ticket = TicketListItem {
-        id: r.get("id"),
-        ticket_number: r.get("ticket_number"),
-        title: r.get("title"),
-        description: r.get("description"),
-        description_plain: r.get("description_plain"),
-        r#type: r.get("type"),
-        status: r.get("status"),
-        priority: r.get("priority"),
-        archived_at: r.get("archived_at"),
-        created_at: r.get("created_at"),
-        updated_at: r.get("updated_at"),
+        id: r.id,
+        ticket_number: r.ticket_number,
+        title: r.title,
+        description: r.description,
+        description_plain: r.description_plain,
+        r#type: r.r#type,
+        status: r.status,
+        priority: r.priority,
+        archived_at: r.archived_at,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
         created_by,
         assigned_to,
         assigned_to_group,
@@ -277,12 +285,13 @@ async fn create_ticket(
     let ticket_number = next_ticket_number(&state.pool, ticket_type).await?;
     let priority = body.priority.as_deref().unwrap_or("MEDIUM");
 
+    let tags = body.tags.as_deref().unwrap_or(&[]);
     sqlx::query(
         r#"INSERT INTO tickets (id, ticket_number, title, description, description_plain,
-                                type, status, priority, created_by_id, assigned_to_id,
+                                type, status, priority, tags, created_by_id, assigned_to_id,
                                 assigned_to_group_id, created_at, updated_at)
            VALUES ($1, $2, $3, $4, $5, $6::"TicketType", 'OPEN'::"TicketStatus",
-                   $7::"TicketPriority", $8, $9, $10, NOW(), NOW())"#,
+                   $7::"TicketPriority", $8, $9, $10, $11, NOW(), NOW())"#,
     )
     .bind(&id)
     .bind(&ticket_number)
@@ -291,6 +300,7 @@ async fn create_ticket(
     .bind(&body.description_plain)
     .bind(ticket_type)
     .bind(priority)
+    .bind(tags)
     .bind(&user.id)
     .bind(&body.assigned_to_id)
     .bind(&body.assigned_to_group_id)
@@ -355,6 +365,50 @@ async fn update_ticket(
         .bind(&id)
         .execute(&state.pool)
         .await?;
+    }
+    if let Some(ref desc) = body.description {
+        sqlx::query("UPDATE tickets SET description = $1, updated_at = NOW() WHERE id = $2")
+            .bind(desc)
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
+    }
+    if let Some(ref t) = body.r#type {
+        sqlx::query("UPDATE tickets SET type = $1::\"TicketType\", updated_at = NOW() WHERE id = $2")
+            .bind(t)
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
+    }
+    if let Some(ref v) = body.assigned_to_id {
+        let opt: Option<String> = if v.is_empty() { None } else { Some(v.clone()) };
+        sqlx::query("UPDATE tickets SET assigned_to_id = $1, updated_at = NOW() WHERE id = $2")
+            .bind(&opt)
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
+    }
+    if let Some(ref v) = body.assigned_to_group_id {
+        let opt: Option<String> = if v.is_empty() { None } else { Some(v.clone()) };
+        sqlx::query("UPDATE tickets SET assigned_to_group_id = $1, updated_at = NOW() WHERE id = $2")
+            .bind(&opt)
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
+    }
+    if let Some(ref tags) = body.tags {
+        sqlx::query("UPDATE tickets SET tags = $1, updated_at = NOW() WHERE id = $2")
+            .bind(tags)
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
+    }
+    if let Some(ref due) = body.due_date {
+        sqlx::query("UPDATE tickets SET due_date = $1::timestamp, updated_at = NOW() WHERE id = $2")
+            .bind(due)
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
     }
 
     Ok(Json(

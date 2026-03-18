@@ -144,6 +144,28 @@ export interface AuditEvent {
   created_at: string;
 }
 
+/** Audit log entry from GET /admin/audit/entries (includes user email/name when present). */
+export interface AuditEntry {
+  id: string;
+  user_id: string | null;
+  action: string;
+  resource_type: string | null;
+  resource_id: string | null;
+  context: Record<string, unknown> | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string;
+  user: { email: string; name: string | null } | null;
+}
+
+export interface AuditEntriesResponse {
+  entries: AuditEntry[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 export interface AdminUser {
   id: string;
   email: string;
@@ -159,6 +181,7 @@ export interface AdminUser {
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
+  permissionCount?: number;
 }
 
 export interface AdminGroup {
@@ -166,6 +189,7 @@ export interface AdminGroup {
   name: string;
   description: string | null;
   memberCount: number;
+  permissionCount?: number;
   createdAt: string;
   updatedAt: string;
   members?: Array<{ id: string; name: string | null; email: string; role: string }>;

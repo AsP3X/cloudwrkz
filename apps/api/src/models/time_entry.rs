@@ -83,7 +83,6 @@ pub struct CreateBreakRequest {
 }
 
 #[derive(Debug, Deserialize, Default)]
-#[allow(dead_code)]
 pub struct TimeEntryListParams {
     pub status: Option<String>,
     pub sort: Option<String>,

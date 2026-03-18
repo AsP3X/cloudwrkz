@@ -29,6 +29,7 @@ async fn list_links(
     let archive = params.archive.as_deref().unwrap_or("unarchived");
     let is_fav = params.is_favorite.clone();
     let collection_id = params.collection_id.clone();
+    let _ = (&params.sort, &params.link_type, &params.search);
 
     let total: i64 = sqlx::query_scalar(
         r#"SELECT COUNT(*) FROM links
@@ -223,6 +224,27 @@ async fn update_link(
                 .execute(&state.pool)
                 .await?;
         }
+    }
+    if let Some(ref notes) = body.notes {
+        sqlx::query("UPDATE links SET notes = $1, updated_at = NOW() WHERE id = $2")
+            .bind(notes)
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
+    }
+    if let Some(ref link_type) = body.link_type {
+        sqlx::query("UPDATE links SET link_type = $1::\"LinkType\", updated_at = NOW() WHERE id = $2")
+            .bind(link_type)
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
+    }
+    if let Some(ref rating) = body.rating {
+        sqlx::query("UPDATE links SET rating = $1, updated_at = NOW() WHERE id = $2")
+            .bind(rating)
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
     }
 
     if let Some(ref collection_ids) = body.collection_ids {

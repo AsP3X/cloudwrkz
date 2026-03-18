@@ -14,7 +14,6 @@ pub struct CurrentUser {
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
-#[allow(dead_code)]
 pub struct UserRow {
     pub id: String,
     pub email: String,

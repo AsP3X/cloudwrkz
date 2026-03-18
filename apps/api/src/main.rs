@@ -1,3 +1,4 @@
+mod audit;
 mod auth;
 mod config;
 mod db;
@@ -43,6 +44,11 @@ async fn main() {
 
     let config = AppConfig::from_env();
     tracing::info!(bind = %config.bind_addr(), "Starting CloudWrkz API");
+    tracing::debug!(
+        cookie_domain = ?config.cookie_domain(),
+        cookie_secure = config.cookie_secure(),
+        "cookie settings"
+    );
 
     let pool = db::create_pool(&config.database_url)
         .await
