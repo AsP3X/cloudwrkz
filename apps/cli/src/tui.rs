@@ -35,6 +35,8 @@ pub enum TuiExit {
     SearchDone(String),
     /// User cancelled search (Esc in search bar)
     SearchCancel,
+    /// User changed search query (live update)
+    SearchChanged(String),
 }
 
 pub struct TuiState {
@@ -76,10 +78,16 @@ impl TuiState {
     }
 }
 
+/// Optional callback: given current sidebar index, returns the content list for the right panel.
+/// When set, the right panel is updated live when the user changes the sidebar selection (e.g. categories).
+pub type ContentForSidebarFn = dyn FnMut(usize) -> Vec<String>;
+
 /// Run the TUI with the given sidebar and content. Titles are used for the panel headers.
 /// If `header` is `Some((lines, title))`, a box with that title and lines is drawn at the top.
 /// If `search_bar` is `Some(query)`, the top area shows a search bar and key input is captured
 /// until Enter (SearchDone) or Esc (SearchCancel). Search bar replaces the header when active.
+/// If `content_for_sidebar` is `Some`, it is called each frame with the current sidebar index
+/// to get the right-panel content, so the list updates live when the user changes the sidebar.
 pub fn run_tui(
     state: &mut TuiState,
     title_left: &str,
@@ -88,6 +96,7 @@ pub fn run_tui(
     content_items: &[String],
     header: Option<(&[String], &str)>,
     search_bar: Option<&mut String>,
+    content_for_sidebar: Option<&mut ContentForSidebarFn>,
 ) -> io::Result<TuiExit> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -104,6 +113,7 @@ pub fn run_tui(
         content_items,
         header,
         search_bar,
+        content_for_sidebar,
     );
 
     disable_raw_mode()?;
@@ -122,13 +132,20 @@ fn run_tui_loop(
     content_items: &[String],
     header: Option<(&[String], &str)>,
     mut search_bar: Option<&mut String>,
+    mut content_for_sidebar: Option<&mut ContentForSidebarFn>,
 ) -> io::Result<TuiExit> {
     loop {
         let slen = sidebar_items.len();
-        let clen = content_items.len();
+        let current_content: Vec<String> = if let Some(ref mut f) = content_for_sidebar {
+            f(state.sidebar_index)
+        } else {
+            content_items.to_vec()
+        };
+        let clen = current_content.len();
         state.ensure_indices(slen, clen);
 
         let in_search_mode = search_bar.is_some();
+        let content_ref = current_content.as_slice();
         terminal.draw(|f| {
             ui(
                 f,
@@ -136,7 +153,7 @@ fn run_tui_loop(
                 title_left,
                 sidebar_items,
                 title_right,
-                content_items,
+                content_ref,
                 if in_search_mode { None } else { header },
                 search_bar.as_ref().map(|s| (*s).as_str()),
             )
@@ -154,9 +171,11 @@ fn run_tui_loop(
                             KeyCode::Enter => return Ok(TuiExit::SearchDone(query.clone())),
                             KeyCode::Backspace => {
                                 query.pop();
+                                return Ok(TuiExit::SearchChanged(query.clone()));
                             }
                             KeyCode::Char(c) => {
                                 query.push(c);
+                                return Ok(TuiExit::SearchChanged(query.clone()));
                             }
                             _ => {}
                         }

@@ -424,7 +424,6 @@ enum AppScreen {
     StatusChoice { user_id: String, email: String },
     RoleChoice { user_id: String, email: String },
     Permissions { user_id: String, email: String, status: String },
-    GrantCategory { categories: Vec<String>, email: String, status: String },
     GrantPermission { permissions: Vec<PermissionOption>, categories: Vec<String>, email: String, status: String },
     RevokeCategory { categories: Vec<String>, email: String, status: String },
     RevokePermission { permissions: Vec<PermissionOption>, categories: Vec<String>, email: String, status: String },
@@ -547,19 +546,6 @@ fn build_ui(
             ];
             (" Permissions ".to_string(), sidebar, " Sub menu options ".to_string(), content, Some((header, "Permissions".to_string())))
         }
-        AppScreen::GrantCategory { categories: cats, email, status } => {
-            let header = vec![
-                format!("Root → User [{}] → Grant permission", email),
-                format!("Status: {}", status),
-                format!("Email: {}", email),
-            ];
-            let mut sidebar = vec!["All".to_string()];
-            sidebar.extend(cats.clone());
-            let mut content = vec!["All".to_string()];
-            content.extend(cats.clone());
-            content.push("← Back".to_string());
-            (" Grant ".to_string(), sidebar, " Categories ".to_string(), content, Some((header, "Grant permission".to_string())))
-        }
         AppScreen::GrantPermission { permissions: perms, categories: cats, email, status } => {
             let header = vec![
                 format!("Root → User [{}] → Grant permission", email),
@@ -568,6 +554,7 @@ fn build_ui(
             ];
             let mut sidebar = vec!["All".to_string()];
             sidebar.extend(cats.clone());
+            // When sidebar_index is 0, "All" is selected → show all permissions; otherwise filter by category.
             let filter = if sidebar_index == 0 { None } else { cats.get(sidebar_index.saturating_sub(1)).cloned() };
             let filtered: Vec<&PermissionOption> = if let Some(ref c) = filter {
                 perms.iter().filter(|p| p.category == *c).collect()
@@ -576,7 +563,7 @@ fn build_ui(
             };
             let mut content: Vec<String> = filtered.iter().map(|p| format!("{} — {} ({})", p.key, p.name, p.category)).collect();
             content.push("← Back".to_string());
-            (" Grant ".to_string(), sidebar, " Select to grant ".to_string(), content, Some((header, "Grant permission".to_string())))
+            (" Grant ".to_string(), sidebar, " Permissions ".to_string(), content, Some((header, "Grant permission".to_string())))
         }
         AppScreen::RevokeCategory { categories: cats, email, status } => {
             let header = vec![
@@ -760,6 +747,65 @@ async fn run_interactive() -> Result<(), Box<dyn std::error::Error + Send + Sync
             (sidebar_items.clone(), content_items.clone())
         };
 
+        // When the right panel depends on sidebar selection (Grant/Revoke permission), provide a callback
+        // so the permissions list updates live when the user changes category with arrow keys.
+        let mut content_callback: Option<Box<dyn FnMut(usize) -> Vec<String>>> = None;
+        match &screen {
+            AppScreen::GrantPermission { permissions, categories, .. } => {
+                let perms = permissions.clone();
+                let cats = categories.clone();
+                content_callback = Some(Box::new(move |sidebar_index: usize| {
+                    let filter = if sidebar_index == 0 {
+                        None
+                    } else {
+                        cats.get(sidebar_index.saturating_sub(1)).cloned()
+                    };
+                    let filtered: Vec<String> = if let Some(ref c) = filter {
+                        perms
+                            .iter()
+                            .filter(|p| p.category == *c)
+                            .map(|p| format!("{} — {} ({})", p.key, p.name, p.category))
+                            .collect()
+                    } else {
+                        perms
+                            .iter()
+                            .map(|p| format!("{} — {} ({})", p.key, p.name, p.category))
+                            .collect()
+                    };
+                    let mut out = filtered;
+                    out.push(BACK_LABEL.to_string());
+                    out
+                }));
+            }
+            AppScreen::RevokePermission { permissions, categories, .. } => {
+                let perms = permissions.clone();
+                let cats = categories.clone();
+                content_callback = Some(Box::new(move |sidebar_index: usize| {
+                    let filter = if sidebar_index == 0 {
+                        None
+                    } else {
+                        cats.get(sidebar_index.saturating_sub(1)).cloned()
+                    };
+                    let filtered: Vec<String> = if let Some(ref c) = filter {
+                        perms
+                            .iter()
+                            .filter(|p| p.category == *c)
+                            .map(|p| format!("{} — {} ({})", p.key, p.name, p.category))
+                            .collect()
+                    } else {
+                        perms
+                            .iter()
+                            .map(|p| format!("{} — {} ({})", p.key, p.name, p.category))
+                            .collect()
+                    };
+                    let mut out = filtered;
+                    out.push(BACK_LABEL.to_string());
+                    out
+                }));
+            }
+            _ => {}
+        }
+
         let exit = tui::run_tui(
             &mut tui_state,
             &title_left,
@@ -772,6 +818,7 @@ async fn run_interactive() -> Result<(), Box<dyn std::error::Error + Send + Sync
             } else {
                 None
             },
+            content_callback.as_deref_mut(),
         )
         .map_err(Box::new)?;
 
@@ -787,19 +834,30 @@ async fn run_interactive() -> Result<(), Box<dyn std::error::Error + Send + Sync
             }
             tui::TuiExit::OpenSearch => {
                 search_active = true;
+                // Start with an empty query; results will live-update on each keypress.
                 search_query.clear();
+                search_filter = None;
+            }
+            tui::TuiExit::SearchChanged(query) => {
+                search_active = true;
+                search_filter = if query.is_empty() { None } else { Some(query.clone()) };
+                search_query = query;
             }
             tui::TuiExit::SearchDone(query) => {
                 search_active = false;
-                search_filter = if query.is_empty() { None } else { Some(query) };
+                search_filter = if query.is_empty() { None } else { Some(query.clone()) };
+                search_query = query;
             }
             tui::TuiExit::SearchCancel => {
                 search_active = false;
+                search_filter = None;
+                search_query.clear();
             }
             tui::TuiExit::Select(sb_idx, content_idx) => {
                 let real_sb = sidebar_orig_indices.get(sb_idx).copied().unwrap_or(sb_idx);
                 let real_content = content_orig_indices.get(content_idx).copied().unwrap_or(content_idx);
                 let handled = dispatch_tui_action(
+                    &mut tui_state,
                     &mut stack,
                     &screen,
                     real_sb,
@@ -829,6 +887,7 @@ enum DispatchResult {
 }
 
 async fn dispatch_tui_action(
+    tui_state: &mut tui::TuiState,
     stack: &mut Vec<AppScreen>,
     screen: &AppScreen,
     sb_idx: usize,
@@ -1015,20 +1074,14 @@ async fn dispatch_tui_action(
                         .collect();
                     available.sort_by(|a, b| a.category.cmp(&b.category).then_with(|| a.key.cmp(&b.key)));
                     let categories = categories_from_permissions(&available);
-                    if categories.is_empty() {
-                        stack.push(AppScreen::GrantPermission {
-                            permissions: available,
-                            categories: vec![],
-                            email: email.clone(),
-                            status: status.clone(),
-                        });
-                    } else {
-                        stack.push(AppScreen::GrantCategory {
-                            categories,
-                            email: email.clone(),
-                            status: status.clone(),
-                        });
-                    }
+                    tui_state.sidebar_index = 0;
+                    tui_state.content_index = 0;
+                    stack.push(AppScreen::GrantPermission {
+                        permissions: available,
+                        categories,
+                        email: email.clone(),
+                        status: status.clone(),
+                    });
                 }
                 2 => {
                     let res = api_client.list_user_permissions(user_id).await?;
@@ -1060,47 +1113,6 @@ async fn dispatch_tui_action(
                 }
                 _ => {}
             }
-        }
-        AppScreen::GrantCategory { categories: cats, email, status } => {
-            if is_back {
-                stack.pop();
-                return Ok(DispatchResult::Continue);
-            }
-            let user_id_for_filter = stack.iter().rev().find_map(|s| {
-                if let AppScreen::Permissions { user_id, .. } = s {
-                    Some(user_id.as_str())
-                } else {
-                    None
-                }
-            }).unwrap_or("");
-            let all = api_client.list_permissions().await?;
-            let user_perms = api_client.list_user_permissions(user_id_for_filter).await.ok();
-            let existing: std::collections::HashSet<String> = user_perms
-                .as_ref()
-                .map(|r| {
-                    r.permissions
-                        .iter()
-                        .filter_map(|p| p.get("key").and_then(|v| v.as_str()).map(String::from))
-                        .collect()
-                })
-                .unwrap_or_default();
-            let mut available: Vec<PermissionOption> = all
-                .permissions
-                .iter()
-                .filter(|p| {
-                    let k = p.get("key").and_then(|v| v.as_str()).unwrap_or("");
-                    !existing.contains(k)
-                })
-                .map(permission_option_from_json)
-                .collect();
-            available.sort_by(|a, b| a.category.cmp(&b.category).then_with(|| a.key.cmp(&b.key)));
-            stack.pop();
-            stack.push(AppScreen::GrantPermission {
-                permissions: available,
-                categories: cats.clone(),
-                email: email.clone(),
-                status: status.clone(),
-            });
         }
         AppScreen::GrantPermission { permissions: perms, categories: cats, email: _, .. } => {
             if is_back {
