@@ -18,6 +18,8 @@ import {
   BannedPage,
   DashboardHomePage,
   TicketsPage,
+  TicketNewPage,
+  TicketDetailPage,
   TodosPage,
   LinksPage,
   TimeTrackingPage,
@@ -60,6 +62,8 @@ export default function App() {
               <Route path={ROUTES.DASHBOARD} element={<DashboardLayout />}>
                 <Route index element={<DashboardHomePage />} />
                 <Route path="tickets" element={<TicketsPage />} />
+                <Route path="tickets/new" element={<TicketNewPage />} />
+                <Route path="tickets/:id" element={<TicketDetailPage />} />
                 <Route path="todos" element={<TodosPage />} />
                 <Route path="links" element={<LinksPage />} />
                 <Route path="time-tracking" element={<TimeTrackingPage />} />

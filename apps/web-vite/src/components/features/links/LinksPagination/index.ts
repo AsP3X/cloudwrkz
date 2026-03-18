@@ -1,0 +1,1 @@
+export { LinksPagination } from "./LinksPagination";

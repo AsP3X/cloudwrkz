@@ -1,6 +1,7 @@
 /**
  * Client logger aligned with the Rust API (tracing-style levels).
  * Level controlled by VITE_LOG_LEVEL (default: info in dev, warn in prod).
+ * In dev, error and warn are also sent to the Vite dev server so they appear in the terminal.
  */
 
 const LEVELS = ["trace", "debug", "info", "warn", "error", "silent"] as const;
@@ -38,6 +39,20 @@ function formatPayload(level: Level, message: string, data?: unknown): string {
   }
 }
 
+/** In dev, send error/warn to Vite terminal so they appear where you run `pnpm dev`. */
+function sendToDevServer(level: "warn" | "error", message: string, data?: unknown): void {
+  if (!import.meta.env.DEV || typeof fetch === "undefined") return;
+  try {
+    fetch("/__dev-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ level, message, data }),
+    }).catch(() => {});
+  } catch {
+    // ignore
+  }
+}
+
 export const log = {
   trace(message: string, data?: unknown): void {
     if (shouldLog("trace")) {
@@ -60,12 +75,14 @@ export const log = {
   warn(message: string, data?: unknown): void {
     if (shouldLog("warn")) {
       console.warn(formatPayload("warn", message, data));
+      sendToDevServer("warn", message, data);
     }
   },
 
   error(message: string, data?: unknown): void {
     if (shouldLog("error")) {
       console.error(formatPayload("error", message, data));
+      sendToDevServer("error", message, data);
     }
   },
 };

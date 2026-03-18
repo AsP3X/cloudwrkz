@@ -1,6 +1,8 @@
 pub mod admin;
+pub mod archive;
 pub mod auth;
 pub mod collections;
+pub mod filter_preferences;
 pub mod contact;
 pub mod favicons;
 pub mod health;
@@ -33,6 +35,8 @@ pub fn v1_router(pool: PgPool, config: AppConfig) -> Router {
         .merge(profile::router())
         .merge(contact::router())
         .merge(admin::router())
+        .merge(archive::router())
+        .merge(filter_preferences::router())
         .merge(favicons::router())
         .merge(location_history::router())
         .with_state(AppState { pool, config })

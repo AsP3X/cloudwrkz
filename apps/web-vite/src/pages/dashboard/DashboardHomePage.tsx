@@ -1,72 +1,163 @@
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { api } from "@/api/client";
 import { ROUTES } from "@/lib/constants/routes";
+import type { Todo, Link as LinkType, Ticket } from "@/lib/types";
+import {
+  WelcomeHero,
+  DashboardStatCard,
+  DashboardTodoWidget,
+  DashboardPinnedFavorites,
+  RecentActivityPanel,
+  DashboardNotificationsAlerts,
+  type DashboardTodoItem,
+  type DashboardFavoriteItem,
+  type DashboardAlert,
+  type RecentSection,
+} from "@/components/features/dashboard";
+
+const IconTicket = () => (
+  <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+  </svg>
+);
+const IconCheck = () => (
+  <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+const IconMail = () => (
+  <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+  </svg>
+);
 
 export default function DashboardHomePage() {
-  const { user } = useAuth();
+  const { user, modules } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [ticketCount, setTicketCount] = useState<number | null>(null);
+  const [todoItems, setTodoItems] = useState<DashboardTodoItem[]>([]);
+  const [favoriteItems, setFavoriteItems] = useState<DashboardFavoriteItem[]>([]);
+  const [alerts] = useState<DashboardAlert[]>([]);
+  const [recentSections] = useState<RecentSection[]>([]);
+
   const displayName = user?.name || user?.email?.split("@")[0] || "User";
-  const currentDate = new Date().toLocaleDateString(undefined, {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const promises: Promise<void>[] = [];
+
+      if (modules.includes("tickets")) {
+        promises.push(
+          api.get<{ tickets: Ticket[] }>("/tickets?status=UNRESOLVED")
+            .then((d) => setTicketCount(Array.isArray(d?.tickets) ? d.tickets.length : 0))
+            .catch(() => setTicketCount(0))
+        );
+      }
+
+      if (modules.includes("todos")) {
+        promises.push(
+          api.get<{ todos: Todo[] }>("/todos")
+            .then((d) => {
+              const active = (Array.isArray(d?.todos) ? d.todos : [])
+                .filter((t) => t.status === "NOT_STARTED" || t.status === "IN_PROGRESS")
+                .slice(0, 5);
+              setTodoItems(active.map((t) => ({
+                id: t.id,
+                title: t.title,
+                status: t.status,
+                href: ROUTES.TODOS,
+                dueDate: t.due_date,
+              })));
+            })
+            .catch(() => {})
+        );
+      }
+
+      if (modules.includes("links")) {
+        promises.push(
+          api.get<{ links: LinkType[] }>("/links?is_favorite=true&limit=5")
+            .then((d) => {
+              setFavoriteItems(d.links.map((l) => ({
+                id: l.id,
+                title: l.title,
+                url: l.url,
+                href: l.url,
+              })));
+            })
+            .catch(() => {})
+        );
+      }
+
+      await Promise.allSettled(promises);
+      setLoading(false);
+    }
+    load();
+  }, [modules]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-200 border-t-primary-600" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-primary-100/30 to-secondary-100/30 dark:from-primary-900/30 dark:to-secondary-900/30 rounded-full blur-3xl -mr-32 -mt-32" />
-        <div className="relative z-10">
-          <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-primary-600 to-secondary-600 dark:from-primary-400 dark:to-secondary-400 bg-clip-text text-transparent mb-2">
-            Welcome back, {displayName}
-          </h1>
-          <p className="text-neutral-600 dark:text-neutral-400 text-lg">
-            {currentDate}
-          </p>
-        </div>
+      <WelcomeHero
+        name={displayName}
+        role={(user?.role as "USER" | "AGENT" | "ADMIN" | "MODERATOR") || "USER"}
+      />
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {modules.includes("tickets") && (
+          <DashboardStatCard
+            title="Unresolved tickets"
+            value={ticketCount ?? "—"}
+            href={ROUTES.TICKETS}
+            icon={<IconTicket />}
+            accent="primary"
+          />
+        )}
+        <DashboardStatCard
+          title="Account status"
+          value={user?.status?.toLowerCase() || "active"}
+          icon={<IconCheck />}
+          accent="success"
+        />
+        <DashboardStatCard
+          title="Email"
+          value={user?.emailVerified ? "Verified" : "Unverified"}
+          icon={<IconMail />}
+          accent="secondary"
+        />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
-          <h3 className="text-sm font-medium text-neutral-600 dark:text-neutral-400 mb-1">Overview</h3>
-          <p className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Coming soon</p>
-        </div>
-        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
-          <h3 className="text-sm font-medium text-neutral-600 dark:text-neutral-400 mb-1">Activity</h3>
-          <p className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Coming soon</p>
-        </div>
-        <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
-          <h3 className="text-sm font-medium text-neutral-600 dark:text-neutral-400 mb-1">Status</h3>
-          <p className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Coming soon</p>
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {modules.includes("todos") && (
+          <DashboardTodoWidget
+            items={todoItems}
+            viewAllHref={ROUTES.TODOS}
+          />
+        )}
+        {modules.includes("links") && (
+          <DashboardPinnedFavorites
+            items={favoriteItems}
+            viewAllHref={ROUTES.LINKS}
+          />
+        )}
       </div>
 
-      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
-        <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <Link
-            to={ROUTES.TODOS}
-            className="p-4 border-2 border-neutral-200 dark:border-neutral-800 rounded-xl hover:border-primary-300 dark:hover:border-primary-700 transition-colors"
-          >
-            <span className="font-medium text-neutral-900 dark:text-neutral-100">ToDo</span>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">Manage tasks</p>
-          </Link>
-          <Link
-            to={ROUTES.LINKS}
-            className="p-4 border-2 border-neutral-200 dark:border-neutral-800 rounded-xl hover:border-primary-300 dark:hover:border-primary-700 transition-colors"
-          >
-            <span className="font-medium text-neutral-900 dark:text-neutral-100">My Links</span>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">Bookmarks</p>
-          </Link>
-          <Link
-            to="/dashboard/profile"
-            className="p-4 border-2 border-neutral-200 dark:border-neutral-800 rounded-xl hover:border-primary-300 dark:hover:border-primary-700 transition-colors"
-          >
-            <span className="font-medium text-neutral-900 dark:text-neutral-100">Profile</span>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">View profile</p>
-          </Link>
-        </div>
-      </div>
+      {alerts.length > 0 && <DashboardNotificationsAlerts alerts={alerts} />}
+
+      <RecentActivityPanel
+        sections={recentSections.length > 0 ? recentSections : [
+          { title: "Continue where you left off", items: [], emptyMessage: "Nothing recent." },
+        ]}
+        title="Recent activity"
+      />
     </div>
   );
 }

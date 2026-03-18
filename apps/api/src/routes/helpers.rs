@@ -34,6 +34,42 @@ pub async fn check_permission(pool: &PgPool, user_id: &str, permission_key: &str
     group > 0
 }
 
+/// Returns all permission keys the user has (from user_permissions and group_permissions).
+pub async fn get_user_permission_keys(pool: &PgPool, user_id: &str) -> Vec<String> {
+    let mut keys = std::collections::HashSet::new();
+
+    let direct: Vec<String> = sqlx::query_scalar(
+        r#"SELECT p.key FROM user_permissions up
+           JOIN permissions p ON up.permission_id = p.id
+           WHERE up.user_id = $1"#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    for k in direct {
+        keys.insert(k);
+    }
+
+    let from_groups: Vec<String> = sqlx::query_scalar(
+        r#"SELECT DISTINCT p.key FROM group_permissions gp
+           JOIN permissions p ON gp.permission_id = p.id
+           JOIN group_memberships gm ON gm.group_id = gp.group_id
+           WHERE gm.user_id = $1"#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    for k in from_groups {
+        keys.insert(k);
+    }
+
+    keys.into_iter().collect()
+}
+
 pub async fn fetch_user_summary(pool: &PgPool, user_id: &str) -> Option<UserSummary> {
     sqlx::query("SELECT id, name, email, status::text as status FROM users WHERE id = $1")
         .bind(user_id)

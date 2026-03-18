@@ -1,6 +1,8 @@
 import { log } from "@/lib/logger";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "/api/v1";
+// In dev, always use the Vite proxy (relative URL) so CORS is not required when the app runs on a different port (e.g. 5174)
+const API_BASE_URL =
+  import.meta.env.DEV ? "/api/v1" : (import.meta.env.VITE_API_URL || "/api/v1");
 
 /** API error body: { error: { code, message, fields? } } */
 function getErrorMessage(data: unknown, statusText: string): string {
@@ -51,16 +53,28 @@ async function request<T>(
       credentials: "include",
     });
   } catch (err) {
-    log.error("API request failed (network)", { method, path, url, err: String(err) });
+    const message = err instanceof Error ? err.message : String(err);
+    log.error("API request failed (network)", {
+      method,
+      path,
+      url,
+      message,
+      err: err instanceof Error ? err : String(err),
+    });
     throw err;
   }
 
-  log.info("API response", {
-    method,
-    path,
-    status: response.status,
-    statusText: response.statusText,
-  });
+  const isMe401 = path === "/me" && response.status === 401;
+  if (isMe401) {
+    log.debug("API response", { method, path, status: 401 });
+  } else {
+    log.info("API response", {
+      method,
+      path,
+      status: response.status,
+      statusText: response.statusText,
+    });
+  }
 
   if (response.status === 401) {
     localStorage.removeItem("auth_token");
@@ -75,13 +89,17 @@ async function request<T>(
       data = undefined;
     }
     const message = getErrorMessage(data, response.statusText);
-    log.error("API error response", {
-      method,
-      path,
-      status: response.status,
-      message,
-      body: data,
-    });
+    if (isMe401) {
+      log.debug("GET /me returned 401 (not logged in)", { path, status: 401 });
+    } else {
+      log.error("API error response", {
+        method,
+        path,
+        status: response.status,
+        message,
+        body: data,
+      });
+    }
     throw new ApiError(response.status, message, data);
   }
 
@@ -134,7 +152,13 @@ export const api = {
       headers,
       body: formData,
       credentials: "include",
-    }).then(async (response) => {
+    })
+    .catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      log.error("API upload failed (network)", { path, url, message, err });
+      throw err;
+    })
+    .then(async (response) => {
       log.info("API response", {
         method: "POST",
         path,

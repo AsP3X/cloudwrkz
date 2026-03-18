@@ -60,25 +60,54 @@ async fn list_todos(
     Query(params): Query<TodoListParams>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let archive = params.archive.as_deref().unwrap_or("unarchived");
-    let status = params.status.clone();
     let priority = params.priority.clone();
+    let is_root_only = params.kind.as_deref() == Some("root");
 
-    let sql = format!(
+    let statuses: Vec<String> = params
+        .status
+        .as_deref()
+        .map(|s| s.split(',').map(|v| v.trim().to_string()).collect())
+        .unwrap_or_default();
+
+    let mut sql = format!(
         "{TODO_SELECT} FROM todos
          WHERE assigned_to_id = $1
-           AND ($2::text IS NULL OR status::text = $2)
-           AND ($3::text IS NULL OR priority::text = $3)
-           AND (($4 = 'archived' AND archived_at IS NOT NULL) OR ($4 != 'archived' AND archived_at IS NULL))
-         ORDER BY created_at DESC"
+           AND ($2::text IS NULL OR priority::text = $2)
+           AND (($3 = 'archived' AND archived_at IS NOT NULL) OR ($3 != 'archived' AND archived_at IS NULL))"
     );
 
-    let rows = sqlx::query(&sql)
+    if !statuses.is_empty() {
+        let placeholders: Vec<String> = statuses
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("${}", i + 4))
+            .collect();
+        sql.push_str(&format!(
+            " AND status::text IN ({})",
+            placeholders.join(", ")
+        ));
+    }
+
+    if is_root_only {
+        sql.push_str(" AND parent_todo_id IS NULL");
+    }
+
+    sql.push_str(" ORDER BY created_at DESC");
+
+    if let Some(limit) = params.limit {
+        sql.push_str(&format!(" LIMIT {}", limit.max(0)));
+    }
+
+    let mut query = sqlx::query(&sql)
         .bind(&user.id)
-        .bind(&status)
         .bind(&priority)
-        .bind(archive)
-        .fetch_all(&state.pool)
-        .await?;
+        .bind(archive);
+
+    for s in &statuses {
+        query = query.bind(s);
+    }
+
+    let rows = query.fetch_all(&state.pool).await?;
 
     let todos: Vec<TodoListItem> = rows.iter().map(row_to_item).collect();
     Ok(Json(serde_json::json!({ "todos": todos })))

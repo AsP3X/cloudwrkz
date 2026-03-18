@@ -6,7 +6,9 @@ pub struct AppConfig {
     pub api_host: String,
     pub api_port: u16,
     pub cors_origins: Vec<String>,
+    #[allow(dead_code)]
     pub cookie_domain: Option<String>,
+    #[allow(dead_code)]
     pub cookie_secure: bool,
     pub session_max_age_secs: i64,
     pub max_body_size: usize,

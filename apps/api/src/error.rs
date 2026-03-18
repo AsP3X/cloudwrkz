@@ -63,6 +63,7 @@ impl AppError {
         }
     }
 
+    #[allow(dead_code)]
     pub fn validation(msg: impl Into<String>, fields: serde_json::Value) -> Self {
         Self {
             status: StatusCode::BAD_REQUEST,

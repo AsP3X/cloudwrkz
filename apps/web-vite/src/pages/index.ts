@@ -11,6 +11,8 @@ export { default as BannedPage } from "./BannedPage";
 
 export { default as DashboardHomePage } from "./dashboard/DashboardHomePage";
 export { default as TicketsPage } from "./dashboard/TicketsPage";
+export { default as TicketNewPage } from "./dashboard/TicketNewPage";
+export { default as TicketDetailPage } from "./dashboard/TicketDetailPage";
 export { default as TodosPage } from "./dashboard/TodosPage";
 export { default as LinksPage } from "./dashboard/LinksPage";
 export { default as TimeTrackingPage } from "./dashboard/TimeTrackingPage";

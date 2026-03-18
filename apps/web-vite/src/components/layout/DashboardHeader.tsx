@@ -4,6 +4,8 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { log } from "@/lib/logger";
 import { useSidebar } from "./SidebarContext";
 import { getAvatarUrl } from "@/lib/utils/users";
+import { GlobalSearch } from "@/components/features/search/GlobalSearch";
+import { NotificationBell } from "@/components/features/notifications/NotificationBell";
 import type { User } from "@/components/providers/AuthProvider";
 
 interface DashboardHeaderProps {
@@ -76,6 +78,9 @@ export const DashboardHeader = ({ user }: DashboardHeaderProps) => {
           </div>
 
           <div className="flex items-center gap-1 sm:gap-4 flex-1 lg:flex-initial justify-end min-w-0">
+            <GlobalSearch />
+            <NotificationBell />
+
             <div className="relative">
               <button
                 ref={menuButtonRef}

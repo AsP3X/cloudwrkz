@@ -1,6 +1,7 @@
 use serde::Serialize;
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
+#[allow(dead_code)]
 pub struct NotificationRow {
     pub id: String,
     pub user_id: String,

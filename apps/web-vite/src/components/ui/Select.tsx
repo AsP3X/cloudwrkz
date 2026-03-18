@@ -7,11 +7,11 @@ export interface SelectOption {
 }
 
 export interface SelectProps
-  extends Omit<React.SelectHTMLAttributes<HTMLSelectElement>, "children"> {
+  extends React.SelectHTMLAttributes<HTMLSelectElement> {
   label?: string;
   error?: string;
   helperText?: string;
-  options: readonly SelectOption[];
+  options?: readonly SelectOption[];
   placeholder?: string;
 }
 
@@ -25,6 +25,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
       id,
       options,
       placeholder,
+      children,
       ...props
     },
     ref
@@ -73,11 +74,13 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
                 {placeholder}
               </option>
             )}
-            {options.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
+            {children
+              ? children
+              : options?.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
           </select>
           <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
             <svg

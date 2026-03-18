@@ -14,6 +14,7 @@ pub struct CurrentUser {
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
+#[allow(dead_code)]
 pub struct UserRow {
     pub id: String,
     pub email: String,
@@ -86,9 +87,25 @@ pub struct ChangePasswordRequest {
 
 #[derive(Debug, Serialize)]
 pub struct MeResponse {
+    pub id: String,
     pub name: Option<String>,
     pub email: String,
+    pub role: String,
+    pub status: String,
+    pub avatar: Option<String>,
+    pub timezone: String,
+    pub theme: String,
+    #[serde(rename = "emailVerified")]
+    pub email_verified: bool,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bio: Option<String>,
+    #[serde(rename = "lastLoginAt", skip_serializing_if = "Option::is_none")]
+    pub last_login_at: Option<String>,
     pub modules: Vec<String>,
+    /// Permission keys the user has (from user_permissions + group_permissions). Used by frontend for UI and route guards.
+    pub permissions: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]

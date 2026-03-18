@@ -170,10 +170,14 @@ With the **Rust API**, seeding is done via SQL migrations. No separate Node/Pris
   ```bash
   cargo build --release -p cloudwrkz-cli
   export DATABASE_URL="postgresql://cloudwrkz:cloudwrkz_dev_password@localhost:5432/cloudwrkz"  # or use apps/api/.env
+  ./target/release/cloudwrkz-cli              # Interactive menu (no args)
   ./target/release/cloudwrkz-cli db seed    # Run seed SQL only (idempotent)
   ./target/release/cloudwrkz-cli db migrate # Run all pending migrations
   ./target/release/cloudwrkz-cli db status   # Check connection
   ./target/release/cloudwrkz-cli db stats    # Table row counts
+  # Create first admin (when you have no admin yet; requires CLOUDWRKZ_BOOTSTRAP_SECRET):
+  export CLOUDWRKZ_BOOTSTRAP_SECRET=local-dev
+  ./target/release/cloudwrkz-cli admin create-admin admin@example.com "YourPassword" "Admin"
   ```
   See `apps/cli/README.md` for details. Alternatively, restart the API (Docker or `cargo run`) to apply pending migrations on startup.
 

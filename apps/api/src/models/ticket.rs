@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
+#[allow(dead_code)]
 pub struct TicketRow {
     pub id: String,
     pub ticket_number: String,
@@ -53,6 +54,7 @@ pub struct GroupSummary {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct TicketUpdateRequest {
     pub archived_at: Option<serde_json::Value>,
     pub title: Option<String>,
@@ -66,7 +68,21 @@ pub struct TicketUpdateRequest {
     pub due_date: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+pub struct TicketCreateRequest {
+    pub title: String,
+    pub description: Option<String>,
+    pub description_plain: Option<String>,
+    pub r#type: Option<String>,
+    pub priority: Option<String>,
+    pub assigned_to_id: Option<String>,
+    pub assigned_to_group_id: Option<String>,
+    pub tags: Option<Vec<String>>,
+}
+
 #[derive(Debug, Deserialize, Default)]
+#[allow(dead_code)]
 pub struct TicketListParams {
     pub status: Option<String>,
     pub sort: Option<String>,

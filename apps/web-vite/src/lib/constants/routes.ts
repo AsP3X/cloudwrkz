@@ -21,6 +21,7 @@ export const ROUTES = {
   ADMIN_AUDIT: "/dashboard/admin/audit",
   ADMIN_DB_CONSOLE: "/dashboard/admin/db",
   TIME_TRACKING: "/dashboard/time-tracking",
+  TICKETS: "/dashboard/tickets",
   TODOS: "/dashboard/todos",
   TODOS_ARCHIVE: "/dashboard/todos/archive",
   LINKS: "/dashboard/links",

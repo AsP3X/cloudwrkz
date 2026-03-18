@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
+#[allow(dead_code)]
 pub struct TodoRow {
     pub id: String,
     pub todo_number: Option<String>,
@@ -53,6 +54,7 @@ pub struct TodoListItem {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct CreateTodoRequest {
     pub title: String,
     pub description: Option<String>,
@@ -68,6 +70,7 @@ pub struct CreateTodoRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct UpdateTodoRequest {
     pub title: Option<String>,
     pub description: Option<String>,
@@ -85,9 +88,12 @@ pub struct UpdateTodoRequest {
 }
 
 #[derive(Debug, Deserialize, Default)]
+#[allow(dead_code)]
 pub struct TodoListParams {
     pub status: Option<String>,
     pub priority: Option<String>,
     pub sort: Option<String>,
     pub archive: Option<String>,
+    pub kind: Option<String>,
+    pub limit: Option<i64>,
 }

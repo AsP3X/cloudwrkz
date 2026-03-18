@@ -43,6 +43,7 @@ pub struct CreateLinkRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct UpdateLinkRequest {
     pub title: Option<String>,
     pub url: Option<String>,
@@ -57,6 +58,7 @@ pub struct UpdateLinkRequest {
 }
 
 #[derive(Debug, Deserialize, Default)]
+#[allow(dead_code)]
 pub struct LinkListParams {
     pub sort: Option<String>,
     pub limit: Option<i64>,

@@ -5,8 +5,11 @@ type UserWithStatus = {
   status?: "PENDING" | "ACTIVE" | "SUSPENDED" | "BANNED" | "DELETED";
 };
 
+/** Accepts UserSummary (from API) or UserWithStatus - both have name, email, status */
+type UserLike = UserWithStatus | { id?: string; name: string | null; email: string; status?: string };
+
 export function formatUserName(
-  user: UserWithStatus | null | undefined,
+  user: UserLike | null | undefined,
   storedName?: string | null
 ): string {
   if (!user && storedName) return storedName;
