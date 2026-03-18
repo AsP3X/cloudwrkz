@@ -32,6 +32,8 @@ pub enum PanelFocus {
 pub enum TuiExit {
     /// User selected an item: (sidebar_index, content_index)
     Select(usize, usize),
+    /// User pressed Space to toggle selection (e.g. grant/revoke permission bulk): (sidebar_index, content_index)
+    ToggleSelect(usize, usize),
     /// User pressed Left (navigate back one view)
     Back,
     /// User pressed q (quit app; not emitted when in search input)
@@ -229,6 +231,14 @@ fn run_tui_loop(
                             _ => {}
                         }
                     }
+                    KeyCode::Char(' ') => {
+                        if state.focus == PanelFocus::Content && clen > 0 {
+                            return Ok(TuiExit::ToggleSelect(
+                                state.sidebar_index,
+                                state.content_index,
+                            ));
+                        }
+                    }
                     KeyCode::Enter => {
                         if clen > 0 {
                             return Ok(TuiExit::Select(state.sidebar_index, state.content_index));
@@ -376,6 +386,8 @@ fn ui(
         Span::raw("switch panel  "),
         Span::styled(" ↑↓ ", Style::default().fg(Color::DarkGray)),
         Span::raw("navigate  "),
+        Span::styled(" Space ", Style::default().fg(Color::DarkGray)),
+        Span::raw("toggle select  "),
         Span::styled(" Enter ", Style::default().fg(Color::DarkGray)),
         Span::raw("select  "),
         Span::styled(" ← ", Style::default().fg(Color::DarkGray)),

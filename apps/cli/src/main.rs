@@ -12,6 +12,7 @@
 mod api;
 mod tui;
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -424,9 +425,9 @@ enum AppScreen {
     StatusChoice { user_id: String, email: String },
     RoleChoice { user_id: String, email: String },
     Permissions { user_id: String, email: String, status: String },
-    GrantPermission { permissions: Vec<PermissionOption>, categories: Vec<String>, email: String, status: String },
+    GrantPermission { permissions: Vec<PermissionOption>, categories: Vec<String>, email: String, status: String, selected: HashSet<String> },
     RevokeCategory { categories: Vec<String>, email: String, status: String },
-    RevokePermission { permissions: Vec<PermissionOption>, categories: Vec<String>, email: String, status: String },
+    RevokePermission { permissions: Vec<PermissionOption>, categories: Vec<String>, email: String, status: String, selected: HashSet<String> },
     ConfirmDelete { user_id: String, email: String },
     ConfirmRevoke { user_id: String, key: String },
     GroupsList(Vec<serde_json::Value>),
@@ -546,11 +547,12 @@ fn build_ui(
             ];
             (" Permissions ".to_string(), sidebar, " Sub menu options ".to_string(), content, Some((header, "Permissions".to_string())))
         }
-        AppScreen::GrantPermission { permissions: perms, categories: cats, email, status } => {
+        AppScreen::GrantPermission { permissions: perms, categories: cats, email, status, selected } => {
             let header = vec![
                 format!("Root → User [{}] → Grant permission", email),
                 format!("Status: {}", status),
                 format!("Email: {}", email),
+                "Space: toggle selection  Enter: add selected".to_string(),
             ];
             let mut sidebar = vec!["All".to_string()];
             sidebar.extend(cats.clone());
@@ -561,7 +563,13 @@ fn build_ui(
             } else {
                 perms.iter().collect()
             };
-            let mut content: Vec<String> = filtered.iter().map(|p| format!("{} — {} ({})", p.key, p.name, p.category)).collect();
+            let mut content: Vec<String> = filtered
+                .iter()
+                .map(|p| {
+                    let mark = if selected.contains(&p.key) { "☑ " } else { "  " };
+                    format!("{}{} — {} ({})", mark, p.key, p.name, p.category)
+                })
+                .collect();
             content.push("← Back".to_string());
             (" Grant ".to_string(), sidebar, " Permissions ".to_string(), content, Some((header, "Grant permission".to_string())))
         }
@@ -576,11 +584,12 @@ fn build_ui(
             content.push("← Back".to_string());
             (" Revoke ".to_string(), sidebar, " Categories ".to_string(), content, Some((header, "Revoke permission".to_string())))
         }
-        AppScreen::RevokePermission { permissions: perms, categories: cats, email, status } => {
+        AppScreen::RevokePermission { permissions: perms, categories: cats, email, status, selected } => {
             let header = vec![
                 format!("Root → User [{}] → Revoke permission", email),
                 format!("Status: {}", status),
                 format!("Email: {}", email),
+                "Space: toggle selection  Enter: revoke selected".to_string(),
             ];
             let sidebar = cats.clone();
             let filter = cats.get(sidebar_index).cloned();
@@ -589,7 +598,13 @@ fn build_ui(
             } else {
                 perms.iter().collect()
             };
-            let mut content: Vec<String> = filtered.iter().map(|p| format!("{} — {} ({})", p.key, p.name, p.category)).collect();
+            let mut content: Vec<String> = filtered
+                .iter()
+                .map(|p| {
+                    let mark = if selected.contains(&p.key) { "☑ " } else { "  " };
+                    format!("{}{} — {} ({})", mark, p.key, p.name, p.category)
+                })
+                .collect();
             content.push("← Back".to_string());
             (" Revoke ".to_string(), sidebar, " Select to revoke ".to_string(), content, Some((header, "Revoke permission".to_string())))
         }
@@ -751,9 +766,10 @@ async fn run_interactive() -> Result<(), Box<dyn std::error::Error + Send + Sync
         // so the permissions list updates live when the user changes category with arrow keys.
         let mut content_callback: Option<Box<dyn FnMut(usize) -> Vec<String>>> = None;
         match &screen {
-            AppScreen::GrantPermission { permissions, categories, .. } => {
+            AppScreen::GrantPermission { permissions, categories, selected, .. } => {
                 let perms = permissions.clone();
                 let cats = categories.clone();
+                let sel = selected.clone();
                 content_callback = Some(Box::new(move |sidebar_index: usize| {
                     let filter = if sidebar_index == 0 {
                         None
@@ -764,12 +780,18 @@ async fn run_interactive() -> Result<(), Box<dyn std::error::Error + Send + Sync
                         perms
                             .iter()
                             .filter(|p| p.category == *c)
-                            .map(|p| format!("{} — {} ({})", p.key, p.name, p.category))
+                            .map(|p| {
+                                let mark = if sel.contains(&p.key) { "☑ " } else { "  " };
+                                format!("{}{} — {} ({})", mark, p.key, p.name, p.category)
+                            })
                             .collect()
                     } else {
                         perms
                             .iter()
-                            .map(|p| format!("{} — {} ({})", p.key, p.name, p.category))
+                            .map(|p| {
+                                let mark = if sel.contains(&p.key) { "☑ " } else { "  " };
+                                format!("{}{} — {} ({})", mark, p.key, p.name, p.category)
+                            })
                             .collect()
                     };
                     let mut out = filtered;
@@ -777,25 +799,28 @@ async fn run_interactive() -> Result<(), Box<dyn std::error::Error + Send + Sync
                     out
                 }));
             }
-            AppScreen::RevokePermission { permissions, categories, .. } => {
+            AppScreen::RevokePermission { permissions, categories, selected, .. } => {
                 let perms = permissions.clone();
                 let cats = categories.clone();
+                let sel = selected.clone();
                 content_callback = Some(Box::new(move |sidebar_index: usize| {
-                    let filter = if sidebar_index == 0 {
-                        None
-                    } else {
-                        cats.get(sidebar_index.saturating_sub(1)).cloned()
-                    };
+                    let filter = cats.get(sidebar_index).cloned();
                     let filtered: Vec<String> = if let Some(ref c) = filter {
                         perms
                             .iter()
                             .filter(|p| p.category == *c)
-                            .map(|p| format!("{} — {} ({})", p.key, p.name, p.category))
+                            .map(|p| {
+                                let mark = if sel.contains(&p.key) { "☑ " } else { "  " };
+                                format!("{}{} — {} ({})", mark, p.key, p.name, p.category)
+                            })
                             .collect()
                     } else {
                         perms
                             .iter()
-                            .map(|p| format!("{} — {} ({})", p.key, p.name, p.category))
+                            .map(|p| {
+                                let mark = if sel.contains(&p.key) { "☑ " } else { "  " };
+                                format!("{}{} — {} ({})", mark, p.key, p.name, p.category)
+                            })
                             .collect()
                     };
                     let mut out = filtered;
@@ -852,6 +877,59 @@ async fn run_interactive() -> Result<(), Box<dyn std::error::Error + Send + Sync
                 search_active = false;
                 search_filter = None;
                 search_query.clear();
+            }
+            tui::TuiExit::ToggleSelect(sb_idx, content_idx) => {
+                if let Some(top) = stack.last_mut() {
+                    match top {
+                        AppScreen::GrantPermission {
+                            permissions,
+                            categories,
+                            selected,
+                            ..
+                        } => {
+                            let filter = if sb_idx == 0 {
+                                None
+                            } else {
+                                categories.get(sb_idx.saturating_sub(1)).cloned()
+                            };
+                            let filtered: Vec<&PermissionOption> = if let Some(ref c) = filter {
+                                permissions.iter().filter(|p| p.category == *c).collect()
+                            } else {
+                                permissions.iter().collect()
+                            };
+                            if content_idx < filtered.len() {
+                                let key = filtered[content_idx].key.clone();
+                                if selected.contains(&key) {
+                                    selected.remove(&key);
+                                } else {
+                                    selected.insert(key);
+                                }
+                            }
+                        }
+                        AppScreen::RevokePermission {
+                            permissions,
+                            categories,
+                            selected,
+                            ..
+                        } => {
+                            let filter = categories.get(sb_idx).cloned();
+                            let filtered: Vec<&PermissionOption> = if let Some(ref c) = filter {
+                                permissions.iter().filter(|p| p.category == *c).collect()
+                            } else {
+                                permissions.iter().collect()
+                            };
+                            if content_idx < filtered.len() {
+                                let key = filtered[content_idx].key.clone();
+                                if selected.contains(&key) {
+                                    selected.remove(&key);
+                                } else {
+                                    selected.insert(key);
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
             }
             tui::TuiExit::Select(sb_idx, content_idx) => {
                 let real_sb = sidebar_orig_indices.get(sb_idx).copied().unwrap_or(sb_idx);
@@ -1081,6 +1159,7 @@ async fn dispatch_tui_action(
                         categories,
                         email: email.clone(),
                         status: status.clone(),
+                        selected: HashSet::new(),
                     });
                 }
                 2 => {
@@ -1105,6 +1184,7 @@ async fn dispatch_tui_action(
                             categories,
                             email: email.clone(),
                             status: status.clone(),
+                            selected: HashSet::new(),
                         });
                     }
                 }
@@ -1114,28 +1194,49 @@ async fn dispatch_tui_action(
                 _ => {}
             }
         }
-        AppScreen::GrantPermission { permissions: perms, categories: cats, email: _, .. } => {
+        AppScreen::GrantPermission {
+            permissions: perms,
+            categories: cats,
+            email: _,
+            selected,
+            ..
+        } => {
             if is_back {
                 stack.pop();
                 return Ok(DispatchResult::Continue);
             }
-            let filter = if sb_idx == 0 { None } else { cats.get(sb_idx.saturating_sub(1)).cloned() };
-            let filtered: Vec<&PermissionOption> = if let Some(ref c) = filter {
-                perms.iter().filter(|p| p.category == *c).collect()
-            } else {
-                perms.iter().collect()
-            };
-            if let Some(opt) = filtered.get(content_idx) {
-                let user_id = stack.iter().rev().find_map(|s| {
+            let user_id = stack
+                .iter()
+                .rev()
+                .find_map(|s| {
                     if let AppScreen::Permissions { user_id, .. } = s {
                         Some(user_id.clone())
                     } else {
                         None
                     }
-                }).unwrap_or_default();
-                let _ = api_client.grant_user_permission(&user_id, &opt.key).await;
+                })
+                .unwrap_or_default();
+            if !selected.is_empty() {
+                for key in selected.iter() {
+                    let _ = api_client.grant_user_permission(&user_id, key).await;
+                }
+                stack.pop();
+            } else {
+                let filter = if sb_idx == 0 {
+                    None
+                } else {
+                    cats.get(sb_idx.saturating_sub(1)).cloned()
+                };
+                let filtered: Vec<&PermissionOption> = if let Some(ref c) = filter {
+                    perms.iter().filter(|p| p.category == *c).collect()
+                } else {
+                    perms.iter().collect()
+                };
+                if let Some(opt) = filtered.get(content_idx) {
+                    let _ = api_client.grant_user_permission(&user_id, &opt.key).await;
+                }
+                stack.pop();
             }
-            stack.pop();
         }
         AppScreen::RevokeCategory { categories: cats, email, status } => {
             if is_back {
@@ -1159,31 +1260,48 @@ async fn dispatch_tui_action(
                 categories: cats.clone(),
                 email: email.clone(),
                 status: status.clone(),
+                selected: HashSet::new(),
             });
         }
-        AppScreen::RevokePermission { permissions: perms, categories: cats, .. } => {
+        AppScreen::RevokePermission {
+            permissions: perms,
+            categories: cats,
+            selected,
+            ..
+        } => {
             if is_back {
                 stack.pop();
                 return Ok(DispatchResult::Continue);
             }
-            let filter = cats.get(sb_idx).cloned();
-            let filtered: Vec<&PermissionOption> = if let Some(ref c) = filter {
-                perms.iter().filter(|p| p.category == *c).collect()
-            } else {
-                perms.iter().collect()
-            };
-            if let Some(opt) = filtered.get(content_idx) {
-                let user_id = stack.iter().rev().find_map(|s| {
+            let user_id = stack
+                .iter()
+                .rev()
+                .find_map(|s| {
                     if let AppScreen::Permissions { user_id, .. } = s {
                         Some(user_id.clone())
                     } else {
                         None
                     }
-                }).unwrap_or_default();
-                stack.push(AppScreen::ConfirmRevoke {
-                    user_id,
-                    key: opt.key.clone(),
-                });
+                })
+                .unwrap_or_default();
+            if !selected.is_empty() {
+                for key in selected.iter() {
+                    let _ = api_client.revoke_user_permission(&user_id, key).await;
+                }
+                stack.pop();
+            } else {
+                let filter = cats.get(sb_idx).cloned();
+                let filtered: Vec<&PermissionOption> = if let Some(ref c) = filter {
+                    perms.iter().filter(|p| p.category == *c).collect()
+                } else {
+                    perms.iter().collect()
+                };
+                if let Some(opt) = filtered.get(content_idx) {
+                    stack.push(AppScreen::ConfirmRevoke {
+                        user_id,
+                        key: opt.key.clone(),
+                    });
+                }
             }
         }
         AppScreen::ConfirmRevoke { user_id, key } => {
