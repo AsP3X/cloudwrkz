@@ -8,10 +8,15 @@ use sqlx::{PgPool, Row};
 
 use crate::auth::extractors::AuthUser;
 use crate::error::AppError;
+use crate::id;
 use crate::models::ticket::{
-    TicketCreateRequest, TicketListItem, TicketListParams, TicketRow, TicketUpdateRequest,
+    TicketActivityItem, TicketCommentCreateRequest, TicketCommentItem, TicketCreateRequest,
+    TicketListItem, TicketListParams, TicketRow, TicketUpdateRequest,
 };
-use crate::routes::helpers::{check_permission, fetch_group_summary, fetch_user_summary, get_user_permission_keys};
+use crate::routes::helpers::{
+    check_permission, fetch_comment_author, fetch_group_summary, fetch_user_summary,
+    get_user_permission_keys,
+};
 use crate::routes::AppState;
 
 /// Map ticket type to prefix for ticket number. All tickets use the 3-letter prefix TSK.
@@ -45,6 +50,21 @@ async fn next_ticket_number(pool: &PgPool, ticket_type: &str) -> Result<String, 
     Ok(format!("{}-{:06}", prefix, next_seq))
 }
 
+/// Strip HTML tags for plain-text fallback (e.g. content_plain). Does not decode entities.
+fn strip_html_tags(html: &str) -> String {
+    let mut result = String::new();
+    let mut in_tag = false;
+    for c in html.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => result.push(c),
+            _ => {}
+        }
+    }
+    result.replace('\u{a0}', " ").trim().to_string()
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/tickets", get(list_tickets).post(create_ticket))
@@ -52,6 +72,11 @@ pub fn router() -> Router<AppState> {
             "/tickets/{id}",
             get(get_ticket).patch(update_ticket).delete(delete_ticket),
         )
+        .route(
+            "/tickets/{id}/comments",
+            get(list_ticket_comments).post(create_ticket_comment),
+        )
+        .route("/tickets/{id}/activities", get(list_ticket_activities))
 }
 
 async fn list_tickets(
@@ -444,4 +469,214 @@ async fn delete_ticket(
         StatusCode::OK,
         Json(serde_json::json!({ "success": true, "message": "Ticket deleted" })),
     ))
+}
+
+async fn list_ticket_comments(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let can_view_all = check_permission(&state.pool, &user.id, "tickets.view_all").await;
+
+    let ticket = sqlx::query(
+        "SELECT id, created_by_id, assigned_to_id FROM tickets WHERE id = $1
+         AND ($2::bool OR created_by_id = $3 OR assigned_to_id = $3)",
+    )
+    .bind(&id)
+    .bind(can_view_all)
+    .bind(&user.id)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    let _ticket = ticket.ok_or_else(|| AppError::not_found("Ticket not found"))?;
+
+    let can_see_internal =
+        check_permission(&state.pool, &user.id, "tickets.comments.view_internal").await;
+
+    let rows = if can_see_internal {
+        sqlx::query(
+            r#"SELECT id, content, content_html, content_plain, merged_from_ticket_number,
+                      created_at, updated_at, is_agent_only, user_id, author_name
+               FROM ticket_comments WHERE ticket_id = $1 ORDER BY created_at DESC"#,
+        )
+        .bind(&id)
+        .fetch_all(&state.pool)
+        .await?
+    } else {
+        sqlx::query(
+            r#"SELECT id, content, content_html, content_plain, merged_from_ticket_number,
+                      created_at, updated_at, is_agent_only, user_id, author_name
+               FROM ticket_comments WHERE ticket_id = $1 AND is_agent_only = false
+               ORDER BY created_at DESC"#,
+        )
+        .bind(&id)
+        .fetch_all(&state.pool)
+        .await?
+    };
+
+    let mut comments = Vec::with_capacity(rows.len());
+    for r in &rows {
+        let comment_id: String = r.get("id");
+        let user_id: Option<String> = r.get("user_id");
+        let author = match &user_id {
+            Some(uid) => fetch_comment_author(&state.pool, uid).await,
+            None => None,
+        };
+        comments.push(TicketCommentItem {
+            id: comment_id,
+            content: r.get("content"),
+            content_html: r.get("content_html"),
+            content_plain: r.get("content_plain"),
+            merged_from_ticket_number: r.get("merged_from_ticket_number"),
+            created_at: r.get("created_at"),
+            updated_at: r.get("updated_at"),
+            is_agent_only: r.get("is_agent_only"),
+            user_id,
+            author_name: r.get("author_name"),
+            user: author,
+        });
+    }
+
+    Ok(Json(serde_json::json!({ "comments": comments })))
+}
+
+async fn create_ticket_comment(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+    Json(body): Json<TicketCommentCreateRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
+    let content = body.content.trim();
+    if content.is_empty() {
+        return Err(AppError::bad_request("Comment cannot be empty"));
+    }
+
+    if body.is_agent_only {
+        let ok = check_permission(&state.pool, &user.id, "tickets.comments.agent_only").await;
+        if !ok {
+            return Err(AppError::forbidden(
+                "You don't have permission to create internal comments",
+            ));
+        }
+    }
+
+    let can_view_all = check_permission(&state.pool, &user.id, "tickets.view_all").await;
+
+    let ticket = sqlx::query(
+        "SELECT id, created_by_id, assigned_to_id FROM tickets WHERE id = $1
+         AND ($2::bool OR created_by_id = $3 OR assigned_to_id = $3)",
+    )
+    .bind(&id)
+    .bind(can_view_all)
+    .bind(&user.id)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    let _ticket = ticket.ok_or_else(|| AppError::not_found("Ticket not found"))?;
+
+    let can_comment = check_permission(&state.pool, &user.id, "tickets.comment").await
+        || check_permission(&state.pool, &user.id, "tickets.view").await
+        || check_permission(&state.pool, &user.id, "tickets.view_all").await
+        || check_permission(&state.pool, &user.id, "admin.tickets.manage").await;
+    if !can_comment {
+        return Err(AppError::forbidden(
+            "You don't have permission to comment on this ticket",
+        ));
+    }
+
+    let content_plain = strip_html_tags(content);
+    let content_plain = if content_plain.is_empty() {
+        content.to_string()
+    } else {
+        content_plain
+    };
+
+    let comment_id = id::new_cuid();
+    let now = chrono::Utc::now().naive_utc();
+
+    sqlx::query(
+        r#"INSERT INTO ticket_comments (id, ticket_id, user_id, content, content_html, content_plain, is_agent_only, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)"#,
+    )
+    .bind(&comment_id)
+    .bind(&id)
+    .bind(&user.id)
+    .bind(&content_plain)
+    .bind(content)
+    .bind(&content_plain)
+    .bind(body.is_agent_only)
+    .bind(now)
+    .execute(&state.pool)
+    .await?;
+
+    let activity_id = id::new_cuid();
+    sqlx::query(
+        r#"INSERT INTO ticket_activities (id, ticket_id, activity_type, changed_by_id, changed_by_name, metadata, created_at)
+           VALUES ($1, $2, 'COMMENT_ADDED'::"TicketActivityType", $3, $4, $5, $6)"#,
+    )
+    .bind(&activity_id)
+    .bind(&id)
+    .bind(&user.id)
+    .bind(&user.name)
+    .bind(serde_json::json!({ "commentId": comment_id, "isAgentOnly": body.is_agent_only }))
+    .bind(now)
+    .execute(&state.pool)
+    .await?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "id": comment_id, "success": true, "message": "Comment added successfully" })),
+    ))
+}
+
+async fn list_ticket_activities(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let can_view_all = check_permission(&state.pool, &user.id, "tickets.view_all").await;
+
+    let ticket = sqlx::query(
+        "SELECT id FROM tickets WHERE id = $1
+         AND ($2::bool OR created_by_id = $3 OR assigned_to_id = $3)",
+    )
+    .bind(&id)
+    .bind(can_view_all)
+    .bind(&user.id)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    let _ticket = ticket.ok_or_else(|| AppError::not_found("Ticket not found"))?;
+
+    let rows = sqlx::query(
+        r#"SELECT id, activity_type::text, merged_from_ticket_number, changed_by_id, changed_by_name,
+                  old_value, new_value, metadata, created_at
+           FROM ticket_activities WHERE ticket_id = $1 ORDER BY created_at DESC"#,
+    )
+    .bind(&id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let mut activities = Vec::with_capacity(rows.len());
+    for r in &rows {
+        let changed_by_id: Option<String> = r.get("changed_by_id");
+        let changed_by = match &changed_by_id {
+            Some(uid) => fetch_user_summary(&state.pool, uid).await,
+            None => None,
+        };
+        activities.push(TicketActivityItem {
+            id: r.get("id"),
+            activity_type: r.get("activity_type"),
+            merged_from_ticket_number: r.get("merged_from_ticket_number"),
+            changed_by_id,
+            changed_by_name: r.get("changed_by_name"),
+            old_value: r.get("old_value"),
+            new_value: r.get("new_value"),
+            metadata: r.get("metadata"),
+            created_at: r.get("created_at"),
+            changed_by,
+        });
+    }
+
+    Ok(Json(serde_json::json!({ "activities": activities })))
 }

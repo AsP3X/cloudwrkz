@@ -1,6 +1,6 @@
 use sqlx::{PgPool, Row};
 
-use crate::models::ticket::GroupSummary;
+use crate::models::ticket::{CommentAuthor, GroupSummary};
 use crate::models::user::UserSummary;
 
 pub async fn check_permission(pool: &PgPool, user_id: &str, permission_key: &str) -> bool {
@@ -96,5 +96,22 @@ pub async fn fetch_group_summary(pool: &PgPool, group_id: &str) -> Option<GroupS
             id: r.get("id"),
             name: r.get("name"),
             description: r.get("description"),
+        })
+}
+
+/// User summary with role for comment author (e.g. role badge in UI).
+pub async fn fetch_comment_author(pool: &PgPool, user_id: &str) -> Option<CommentAuthor> {
+    sqlx::query("SELECT id, name, email, status::text as status, role::text as role FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .map(|r| CommentAuthor {
+            id: r.get("id"),
+            name: r.get("name"),
+            email: r.get("email"),
+            status: r.get("status"),
+            role: r.get("role"),
         })
 }

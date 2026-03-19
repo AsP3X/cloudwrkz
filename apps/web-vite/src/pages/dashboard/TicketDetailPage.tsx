@@ -4,12 +4,12 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { api } from "@/api/client";
 import { ROUTES } from "@/lib/constants/routes";
 import { Button } from "@/components/ui/Button";
-import type { Ticket } from "@/lib/types";
-import type { UserSummary } from "@/lib/types";
+import type { Ticket, TicketActivity, TicketComment, UserSummary } from "@/lib/types";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { AccessIssueTicketDialog } from "@/components/features/tickets/AccessIssueTicketDialog";
 import { TicketDetailHeaderActions } from "@/components/features/tickets/TicketDetailHeaderActions";
 import { RichTextDisplay } from "@/components/features/tickets/RichTextDisplay";
+import { TicketCommentsAndActivity } from "@/components/features/tickets/TicketCommentsAndActivity/TicketCommentsAndActivity";
 import { TicketTimerSection } from "@/components/features/tickets/TicketTimerSection";
 import { getTicketTypeLabel, type TicketType } from "@/lib/utils/tickets";
 import type { TimeEntry } from "@/lib/types";
@@ -69,6 +69,8 @@ export default function TicketDetailPage() {
   const navigate = useNavigate();
   const { user, can } = useAuth();
   const [ticket, setTicket] = useState<Ticket | null>(null);
+  const [comments, setComments] = useState<TicketComment[]>([]);
+  const [activities, setActivities] = useState<TicketActivity[]>([]);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -115,6 +117,54 @@ export default function TicketDetailPage() {
       })
       .catch(() => {
         if (!cancelled) setTimeEntries([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, ticket]);
+
+  const fetchComments = () => {
+    if (!id) return;
+    api
+      .get<{ comments: TicketComment[] }>(`/tickets/${id}/comments`)
+      .then((data) => setComments(data.comments))
+      .catch(() => setComments([]));
+  };
+
+  const fetchActivities = () => {
+    if (!id) return;
+    api
+      .get<{ activities: TicketActivity[] }>(`/tickets/${id}/activities`)
+      .then((data) => setActivities(data.activities))
+      .catch(() => setActivities([]));
+  };
+
+  useEffect(() => {
+    if (!id || !ticket) return;
+    let cancelled = false;
+    api
+      .get<{ comments: TicketComment[] }>(`/tickets/${id}/comments`)
+      .then((data) => {
+        if (!cancelled) setComments(data.comments);
+      })
+      .catch(() => {
+        if (!cancelled) setComments([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, ticket]);
+
+  useEffect(() => {
+    if (!id || !ticket) return;
+    let cancelled = false;
+    api
+      .get<{ activities: TicketActivity[] }>(`/tickets/${id}/activities`)
+      .then((data) => {
+        if (!cancelled) setActivities(data.activities);
+      })
+      .catch(() => {
+        if (!cancelled) setActivities([]);
       });
     return () => {
       cancelled = true;
@@ -245,14 +295,23 @@ export default function TicketDetailPage() {
             <RichTextDisplay content={description} />
           </div>
 
-          {/* Comments and Activity placeholder */}
+          {/* Comments and Activity */}
           <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
-            <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">
-              Comments {ticket.comment_count > 0 ? `(${ticket.comment_count})` : ""}
-            </h2>
-            <p className="text-sm text-neutral-500 dark:text-neutral-400">
-              Comments and activity are shown here. Add and view comments from the ticket view.
-            </p>
+            <TicketCommentsAndActivity
+              ticketId={ticket.id}
+              comments={comments}
+              activities={activities}
+              userRole={user?.role ?? "USER"}
+              onCommentAdded={() => {
+                fetchComments();
+                fetchActivities();
+                api.get<{ ticket: Ticket }>(`/tickets/${id}`).then((data) => setTicket(data.ticket));
+              }}
+              onStatusChange={() => {
+                fetchActivities();
+                api.get<{ ticket: Ticket }>(`/tickets/${id}`).then((data) => setTicket(data.ticket));
+              }}
+            />
           </div>
         </div>
 

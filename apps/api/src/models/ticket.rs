@@ -90,3 +90,52 @@ pub struct TicketListParams {
     pub updated_to: Option<String>,
     pub archive: Option<String>,
 }
+
+/// User summary with role, for comment author display (e.g. role badge).
+#[derive(Debug, Serialize)]
+pub struct CommentAuthor {
+    pub id: String,
+    pub name: Option<String>,
+    pub email: String,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TicketCommentItem {
+    pub id: String,
+    pub content: String,
+    pub content_html: Option<String>,
+    pub content_plain: Option<String>,
+    pub merged_from_ticket_number: Option<String>,
+    pub created_at: chrono::NaiveDateTime,
+    pub updated_at: chrono::NaiveDateTime,
+    pub is_agent_only: bool,
+    pub user_id: Option<String>,
+    pub author_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user: Option<CommentAuthor>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TicketCommentCreateRequest {
+    pub content: String,
+    #[serde(default)]
+    pub is_agent_only: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TicketActivityItem {
+    pub id: String,
+    pub activity_type: String,
+    pub merged_from_ticket_number: Option<String>,
+    pub changed_by_id: Option<String>,
+    pub changed_by_name: Option<String>,
+    pub old_value: Option<String>,
+    pub new_value: Option<String>,
+    pub metadata: Option<serde_json::Value>,
+    pub created_at: chrono::NaiveDateTime,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub changed_by: Option<super::user::UserSummary>,
+}

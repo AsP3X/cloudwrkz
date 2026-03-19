@@ -29,6 +29,68 @@ export interface Ticket {
   comment_count: number;
 }
 
+/** Comment author from API (includes role for badge). */
+export interface CommentAuthor {
+  id: string;
+  name: string | null;
+  email: string;
+  status: string;
+  role?: string | null;
+}
+
+export interface TicketComment {
+  id: string;
+  content: string;
+  content_html?: string | null;
+  content_plain?: string | null;
+  merged_from_ticket_number?: string | null;
+  created_at: string;
+  updated_at: string;
+  is_agent_only: boolean;
+  user_id?: string | null;
+  author_name?: string | null;
+  user?: CommentAuthor | null;
+}
+
+export type TicketActivityType =
+  | "CREATED"
+  | "STATUS_CHANGED"
+  | "PRIORITY_CHANGED"
+  | "TYPE_CHANGED"
+  | "TITLE_CHANGED"
+  | "DESCRIPTION_CHANGED"
+  | "ASSIGNED_TO_AGENT"
+  | "UNASSIGNED_FROM_AGENT"
+  | "ASSIGNED_TO_GROUP"
+  | "UNASSIGNED_FROM_GROUP"
+  | "TAGS_CHANGED"
+  | "RESOLVED"
+  | "CLOSED"
+  | "REOPENED"
+  | "COMMENT_ADDED"
+  | "TIMER_CREATED"
+  | "TIMER_ASSIGNED"
+  | "TIMER_UNASSIGNED"
+  | "TIMER_STARTED"
+  | "TIMER_PAUSED"
+  | "TIMER_RESUMED"
+  | "TIMER_STOPPED"
+  | "MERGED_FROM_TICKET"
+  | "MERGED_INTO_TICKET";
+
+export interface TicketActivity {
+  id: string;
+  activity_type: string;
+  merged_from_ticket_number?: string | null;
+  changed_by_id?: string | null;
+  changed_by_name?: string | null;
+  old_value?: string | null;
+  new_value?: string | null;
+  metadata?: Record<string, unknown> | null;
+  created_at: string;
+  changed_by?: UserSummary | null;
+}
+
 export interface Todo {
   id: string;
   todo_number: string | null;

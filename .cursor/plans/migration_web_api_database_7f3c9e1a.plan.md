@@ -210,7 +210,7 @@ From current `apps/web/src/app/api`, exposed under `**/api/v1/`**:
   - `**Cargo.toml`**: Axum, SQLx, tokio, serde, argon2, tower (middleware), tracing.
   - `**src/main.rs`**: Load config from env, create `PgPool` (SQLx), CORS layer, router. Mount v1 at `/api/v1`; mount `/api/health`, `/api/ping` (and `/api/ready`). Graceful shutdown on SIGTERM.
   - `**src/config.rs`**: Parse and validate env vars; expose `ApiConfig`, `DatabaseConfig`, `CorsConfig`, `AuthConfig`.
-  - `**src/routes/**`: `mod.rs` (v1 router assembly), `auth.rs`, `me.rs`, `tickets.rs`, `todos.rs`, `links.rs`, `collections.rs`, `time_tracking.rs`, `search.rs`, `profile.rs`, `contact.rs`, `admin.rs`, `favicons.rs`, `health.rs` (health/ping/ready only).
+  - `**src/routes/`**: `mod.rs` (v1 router assembly), `auth.rs`, `me.rs`, `tickets.rs`, `todos.rs`, `links.rs`, `collections.rs`, `time_tracking.rs`, `search.rs`, `profile.rs`, `contact.rs`, `admin.rs`, `favicons.rs`, `health.rs` (health/ping/ready only).
   - `**src/db/**`: `pool.rs` (PgPool creation), `repositories/` or inline queries per domain (sessions, users, tickets, todos, links, etc.).
   - `**src/models/**`: Structs for DB rows and API request/response DTOs; serde for JSON.
   - `**src/auth/**`: `session.rs` (validate token, load user), `password.rs` (argon2 hash/verify), extractors (e.g. `AuthUser`).

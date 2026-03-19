@@ -27,6 +27,15 @@ export function formatUserName(
   return user.name || user.email.split("@")[0];
 }
 
+/** First character of display name (for avatar initial). */
+export function formatUserInitial(
+  user: UserLike | null | undefined,
+  storedName?: string | null
+): string {
+  const displayName = formatUserName(user, storedName);
+  return displayName[0]?.toUpperCase() ?? "?";
+}
+
 /**
  * Returns the URL to use for displaying an avatar stored in the DB.
  * Avatar is stored as path like /uploads/avatars/userId-timestamp.jpg.
