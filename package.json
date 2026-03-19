@@ -9,13 +9,17 @@
     "build": "pnpm --filter web build",
     "build:vite": "pnpm --filter web-vite build",
     "start": "pnpm --filter web start",
+    "start:vite": "pnpm --filter web-vite preview",
     "start:local": "pnpm --filter web start:local",
     "preview:vite": "pnpm --filter web-vite preview",
     "lint": "pnpm --filter web lint",
     "lint:vite": "pnpm --filter web-vite lint",
+    "cli": "pnpm --filter web cli",
     "db:generate": "pnpm --filter web db:generate",
     "db:push": "pnpm --filter web db:push",
     "db:migrate": "pnpm --filter web db:migrate",
+    "db:reset": "pnpm --filter web db:reset",
+    "db:seed-permissions": "pnpm --filter web db:seed-permissions",
     "db:studio": "pnpm --filter web db:studio"
   },
   "engines": {

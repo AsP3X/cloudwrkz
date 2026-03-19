@@ -13,8 +13,8 @@
     "dev:webpack": "next dev -H 0.0.0.0 --webpack",
     "prebuild": "prisma generate",
     "build": "next build",
-    "start": "node .next/standalone/server.js",
-    "start:local": "dotenv -e .env.local -- node .next/standalone/server.js",
+    "start": "node scripts/start-server.js",
+    "start:local": "dotenv -e .env.local -- node scripts/start-server.js",
     "lint": "eslint .",
     "db:generate": "dotenv -e .env.local -- prisma generate",
     "db:push": "dotenv -e .env.local -- prisma db push",
@@ -60,6 +60,7 @@
     "recharts": "^3.7.0",
     "sharp": "^0.34.5",
     "tailwind-merge": "^2.6.0",
+    "dotenv": "^16.4.5",
     "tsx": "^4.21.0",
     "zod": "^3.25.76"
   },

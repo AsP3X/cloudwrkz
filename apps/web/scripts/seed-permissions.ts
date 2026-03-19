@@ -5,7 +5,7 @@
  * Usage: npx tsx scripts/seed-permissions.ts
  */
 
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "../src/generated/prisma";
 import { PERMISSIONS } from "../src/lib/constants/permissions";
 
 const prisma = new PrismaClient();
