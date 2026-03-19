@@ -116,7 +116,18 @@ To rebuild and restart after code changes: `docker compose build api && docker c
 cd apps/api
 cp .env.example .env
 # Edit .env and set DATABASE_URL to your Postgres
-cargo run
+# Optional: API_REGION=local (or e.g. eu-west-1) and API_NODES_AVAILABLE=1 — see "Environment variable reference"
+cargo run -p cloudwrkz-api
+```
+
+On Windows PowerShell:
+
+```powershell
+Set-Location apps/api
+Copy-Item .env.example .env
+# Edit .env and set DATABASE_URL to your Postgres
+# Optional: set API_REGION / API_NODES_AVAILABLE — see docs/SETUP-GUIDE-LIVE-AND-TEST.md
+cargo run -p cloudwrkz-api
 ```
 
 The API runs on **http://localhost:8080** (or the port set in `API_PORT`).
@@ -157,7 +168,7 @@ pnpm dev
 
 The app will be at **http://localhost:5173**.
 
-### Step 2.5 — Database seeding (modules & permissions)
+### Step 2.5 — Database seeding and Rust CLI
 
 With the **Rust API**, seeding is done via SQL migrations. No separate Node/Prisma seed script is needed.
 
@@ -171,13 +182,26 @@ With the **Rust API**, seeding is done via SQL migrations. No separate Node/Pris
   cargo build --release -p cloudwrkz-cli
   export DATABASE_URL="postgresql://cloudwrkz:cloudwrkz_dev_password@localhost:5432/cloudwrkz"  # or use apps/api/.env
   ./target/release/cloudwrkz-cli              # Interactive menu (no args)
-  ./target/release/cloudwrkz-cli db seed    # Run seed SQL only (idempotent)
-  ./target/release/cloudwrkz-cli db migrate # Run all pending migrations
-  ./target/release/cloudwrkz-cli db status   # Check connection
-  ./target/release/cloudwrkz-cli db stats    # Table row counts
+  ./target/release/cloudwrkz-cli db seed      # Run seed SQL only (idempotent)
+  ./target/release/cloudwrkz-cli db migrate   # Run all pending migrations
+  ./target/release/cloudwrkz-cli db status    # Check connection
+  ./target/release/cloudwrkz-cli db stats     # Table row counts
   # Create first admin (when you have no admin yet; requires CLOUDWRKZ_BOOTSTRAP_SECRET):
   export CLOUDWRKZ_BOOTSTRAP_SECRET=local-dev
   ./target/release/cloudwrkz-cli admin create-admin admin@example.com "YourPassword" "Admin"
+  ```
+  On Windows PowerShell:
+  ```powershell
+  cargo build --release -p cloudwrkz-cli
+  $env:DATABASE_URL = "postgresql://cloudwrkz:cloudwrkz_dev_password@localhost:5432/cloudwrkz"  # or use apps/api/.env
+  .\target\release\cloudwrkz-cli.exe              # Interactive menu (no args)
+  .\target\release\cloudwrkz-cli.exe db seed      # Run seed SQL only (idempotent)
+  .\target\release\cloudwrkz-cli.exe db migrate   # Run all pending migrations
+  .\target\release\cloudwrkz-cli.exe db status    # Check connection
+  .\target\release\cloudwrkz-cli.exe db stats     # Table row counts
+  # Create first admin (when you have no admin yet; requires CLOUDWRKZ_BOOTSTRAP_SECRET):
+  $env:CLOUDWRKZ_BOOTSTRAP_SECRET = "local-dev"
+  .\target\release\cloudwrkz-cli.exe admin create-admin admin@example.com "YourPassword" "Admin"
   ```
   See `apps/cli/README.md` for details. Alternatively, restart the API (Docker or `cargo run`) to apply pending migrations on startup.
 
@@ -239,6 +263,8 @@ Set production env for the API service:
 - `COOKIE_SECURE=true`
 - `RUST_LOG=info`
 - `DATABASE_URL` pointing at your Postgres
+- (Optional) `API_REGION` — label for this API instance (e.g. `eu-west-1`); shown on `/health` and the public health page for future multi-region routing
+- (Optional) `API_NODES_AVAILABLE` — how many API nodes this deployment reports (default `1` until you run multiple endpoints behind a global router)
 
 ```bash
 docker compose --env-file .env.production build api
@@ -256,6 +282,7 @@ docker compose --env-file .env.production up -d api
    The binary is at **`target/release/cloudwrkz-api`** (workspace target is at repo root; if you ran from `apps/api`, use `../target/release/cloudwrkz-api`).
 
 2. Copy `target/release/cloudwrkz-api` and `apps/api/migrations/` to the server.
+   - If the server is Windows, the binary will be `target\release\cloudwrkz-api.exe`.
 
 3. Create a systemd unit (e.g. `/etc/systemd/system/cloudwrkz-api.service`):
 
@@ -274,6 +301,10 @@ docker compose --env-file .env.production up -d api
    Environment=CORS_ORIGINS=https://app.example.com
    Environment=COOKIE_SECURE=true
    Environment=RUST_LOG=info
+   # Optional: region label for /health (public status + future multi-region routing)
+   Environment=API_REGION=eu-west-1
+   # Optional: reported node count (1 = single API process)
+   Environment=API_NODES_AVAILABLE=1
    Restart=always
    RestartSec=5
 
@@ -356,6 +387,8 @@ server {
 
 - [ ] `DATABASE_URL` uses a strong password and (if remote) `?sslmode=require`
 - [ ] `CORS_ORIGINS` lists only your real web origin(s) (e.g. `https://app.example.com`)
+- [ ] (Optional) `API_REGION` set per instance if you rely on `/health` or the public health page for region-aware status
+- [ ] (Optional) `API_NODES_AVAILABLE` matches how many API backends your global router treats as available (usually `1` per process)
 - [ ] `COOKIE_SECURE=true` and `COOKIE_DOMAIN` set if using cookies
 - [ ] `VITE_API_URL` at build time points to the production API (e.g. `https://api.example.com/api/v1`)
 - [ ] HTTPS everywhere; no API or web over plain HTTP in production
@@ -370,7 +403,7 @@ server {
 
 | Check         | URL                          | Expected                              |
 |--------------|-------------------------------|---------------------------------------|
-| API health   | `GET /api/health`            | `{"status":"healthy","services":...}` |
+| API health   | `GET /api/health` or `GET /api/v1/health` | `200` + JSON: `status`, `api` (includes `nodes_available`, optional `region`, `version`, …), `services.database`, etc. |
 | API readiness| `GET /api/ready`             | `{"ready":true}`                      |
 | API ping     | `GET /api/ping`              | `{"ok":true}`                         |
 
@@ -477,8 +510,11 @@ curl -s http://localhost:8080/api/ping
 | `RUST_LOG`        | No       | `info`            | Log level (e.g. `info`, `cloudwrkz_api=debug`) |
 | `LOG_FORMAT`      | No       | (plain text)      | Set to `json` for one-JSON-object-per-line (for log aggregators) |
 | `LOG_VERBOSITY`   | No       | `prod`            | `debug` = log all available info (client_ip, user_agent, path+query, content_length); `prod` = only required fields (request_id, method, path, status, latency_ms). Overridden by `-v` when running the binary directly. |
+| `APP_ENV`         | No       | (from build)      | Optional deploy label surfaced as `api.environment` on `/health` (e.g. `staging`, `production`). Falls back from `RUST_ENV` or debug/release build. |
+| `API_REGION`      | No       | —                 | Region ID for this instance (`api.region` on `/health`, public health UI). Use one value per geographic / logical region. |
+| `API_NODES_AVAILABLE` | No  | `1`               | Reported number of API nodes for this deployment (`api.nodes_available` on `/health`). Keep `1` for a single process; raise when your global router exposes multiple healthy backends. |
 
-**Running the API binary:** You can control verbosity with `-v` (overrides env): `./cloudwrkz-api` = prod logging; `./cloudwrkz-api -v` or `./cloudwrkz-api -v debug` = debug/verbose; `./cloudwrkz-api -v prod` = prod. Use `./cloudwrkz-api --help` for options.
+**Running the API binary:** You can control verbosity with `-v` (overrides env): `./cloudwrkz-api` = prod logging; `./cloudwrkz-api -v` or `./cloudwrkz-api -v debug` = debug/verbose; `./cloudwrkz-api -v prod` = prod. **Deployment overrides (also in `apps/api/.env`):** `--region <ID>` or `--region=<ID>` sets the same value as `API_REGION`; `--api-nodes <N>` or `--api-nodes=<N>` overrides `API_NODES_AVAILABLE`. CLI wins over env when passed. Use `./cloudwrkz-api --help` for the full option list.
 
 **Monitoring:** The API logs at INFO by default: startup, listen address, and each HTTP request. Each request gets a `request_id` (from header `X-Request-ID` or generated). **LOG_VERBOSITY**: use `prod` (default) in production to log only required fields; use `debug` for full request/response details (client_ip, user_agent, path+query, response content_length). Use `RUST_LOG=debug` for more crate-level detail. Set `LOG_FORMAT=json` in production for NDJSON with `timestamp` (UTC RFC3339), `level`, `target`, `message`, and event fields flattened for log analyzers (Datadog, ELK, Splunk, CloudWatch).
 
@@ -487,9 +523,10 @@ curl -s http://localhost:8080/api/ping
 | Variable           | Required | Default        | Description                                                       |
 |--------------------|----------|----------------|-------------------------------------------------------------------|
 | `VITE_API_URL`     | Yes      | `/api/v1`      | API base URL (set at build)                                       |
+| `VITE_SEARCH_API_URL` | No    | `/next-api`    | Search/API bridge base URL used by web-vite search features       |
 | `VITE_APP_NAME`    | No       | `CloudWrkz`    | App name in UI                                                    |
 | `VITE_LOG_LEVEL`   | No       | `info` (dev), `warn` (prod) | Log level: `trace`, `debug`, `info`, `warn`, `error`, `silent` |
-| `VITE_LOG_FORMAT`  | No       | (plain text)   | Set to `json` for NDJSON (one JSON object per line) for log tools  |
+| `VITE_LOG_FORMAT`  | No       | `text`         | Set to `json` for NDJSON (one JSON object per line) for log tools  |
 
 ---
 

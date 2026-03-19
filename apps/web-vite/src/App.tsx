@@ -64,6 +64,7 @@ import {
 
 function AppBanners() {
   const [isOnline, setIsOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
+  const [isRetryingHealth, setIsRetryingHealth] = useState(false);
   const health = useDatabaseHealthContext();
 
   useEffect(() => {
@@ -77,18 +78,48 @@ function AppBanners() {
     };
   }, []);
 
-  const showDbWarning = health && health.status !== "healthy" && health.status !== "degraded" && health.status !== "loading";
+  const showDbWarning = Boolean(
+    health &&
+    isOnline &&
+    health.status !== "healthy" &&
+    health.status !== "degraded" &&
+    health.status !== "loading"
+  );
+
+  const retryHealthCheck = async () => {
+    if (!health || isRetryingHealth) return;
+    setIsRetryingHealth(true);
+    const minVisibleMs = 5000;
+    const minDelay = new Promise<void>((resolve) => {
+      window.setTimeout(resolve, minVisibleMs);
+    });
+    try {
+      await Promise.all([health.checkHealth(), minDelay]);
+    } finally {
+      setIsRetryingHealth(false);
+    }
+  };
+
+  const showAnyBanner = !isOnline || showDbWarning;
 
   return (
     <>
-      {!isOnline && (
-        <div className="fixed top-0 left-0 right-0 z-[110] w-full">
-          <OfflineWarning />
-        </div>
-      )}
-      {showDbWarning && (
-        <div className="fixed top-0 left-0 right-0 z-[109] w-full">
-          <DatabaseWarning isServerUnreachable={health?.isServerUnreachable} error={health?.error} />
+      {/* Below fixed/sticky navbars (Header + DashboardHeader use h-16) */}
+      {showAnyBanner && (
+        <div
+          className="fixed left-0 right-0 top-16 z-[105] flex w-full flex-col"
+          role="region"
+          aria-label="Site notices"
+        >
+          {!isOnline && <OfflineWarning />}
+          {showDbWarning && (
+            <DatabaseWarning
+              isServerUnreachable={health?.isServerUnreachable}
+              error={health?.error}
+              onRetry={retryHealthCheck}
+              isRetrying={isRetryingHealth}
+            />
+          )}
         </div>
       )}
       <Routes>

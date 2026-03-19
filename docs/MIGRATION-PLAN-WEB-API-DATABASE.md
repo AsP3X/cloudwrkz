@@ -101,7 +101,7 @@ This document outlines a comprehensive plan to split the current Next.js full-st
 - **Database**: **SQLx** (compile-time checked SQL, connection pooling, async) or **Diesel** (ORM, migrations). Recommendation: **SQLx** for flexibility and pooling; define migrations as SQL (can be derived from current Prisma schema).
 - **Auth**: Session tokens stored in `sessions` table (same as today); validate token on each request; support cookie (web) and `Authorization: Bearer <token>` (iOS). Use **bcrypt** (or **argon2**) for password hashing.
 - **Serialization**: **serde** (JSON). Optional: **OpenAPI** generation for docs and client generation.
-- **Config**: Environment variables: `DATABASE_URL`, `API_PORT`, `API_HOST`, optional `RUST_LOG`, CORS origins, cookie domain, etc.
+- **Config**: Environment variables: `DATABASE_URL`, `API_PORT`, `API_HOST`, optional `RUST_LOG`, CORS origins, cookie domain, optional `API_REGION` / `API_NODES_AVAILABLE` (and CLI `--region` / `--api-nodes`) for `/health` — see `docs/SETUP-GUIDE-LIVE-AND-TEST.md`.
 
 ### 4.3 API Surface to Port
 

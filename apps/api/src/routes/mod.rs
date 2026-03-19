@@ -21,7 +21,7 @@ use sqlx::PgPool;
 
 use crate::config::AppConfig;
 
-pub fn v1_router(pool: PgPool, config: AppConfig) -> Router {
+pub fn v1_router(pool: PgPool, config: AppConfig, api_started_at: std::time::Instant) -> Router {
     Router::new()
         .merge(health::v1_router())
         .merge(auth::router())
@@ -39,11 +39,16 @@ pub fn v1_router(pool: PgPool, config: AppConfig) -> Router {
         .merge(filter_preferences::router())
         .merge(favicons::router())
         .merge(location_history::router())
-        .with_state(AppState { pool, config })
+        .with_state(AppState {
+            pool,
+            config,
+            api_started_at,
+        })
 }
 
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
     pub config: AppConfig,
+    pub api_started_at: std::time::Instant,
 }

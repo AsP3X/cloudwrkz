@@ -1,8 +1,32 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 
 const DEV_LOG_PATH = "/__dev-log";
+
+function attachProxyErrorHandler(proxy: any, routePrefix: string, upstreamName: string) {
+  proxy.on("error", (err: Error & { code?: string }, req: any, res: any) => {
+    const ts = new Date().toISOString();
+    const reqUrl = req?.url || routePrefix;
+    const code = err?.code || "PROXY_ERROR";
+    console.warn(
+      `${ts}  WARN  [web-vite] ${routePrefix} proxy unavailable (${upstreamName}) ${reqUrl} ${code}: ${err?.message || "Unknown error"}`
+    );
+
+    if (res.headersSent) return;
+
+    res.statusCode = 503;
+    res.setHeader("Content-Type", "application/json");
+    res.end(
+      JSON.stringify({
+        error: {
+          code: "BACKEND_UNAVAILABLE",
+          message: `${upstreamName} is unavailable. Start the backend and try again.`,
+        },
+      })
+    );
+  });
+}
 
 /** Startup log + middleware so browser can send logs to the Vite terminal. */
 function cloudwrkzLogPlugin() {
@@ -50,28 +74,50 @@ function cloudwrkzLogPlugin() {
   };
 }
 
-export default defineConfig({
-  plugins: [react(), cloudwrkzLogPlugin()],
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
-  },
-  server: {
-    port: 5173,
-    host: "0.0.0.0",
-    proxy: {
-      "/api": {
-        target: "http://localhost:8080",
-        changeOrigin: true,
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+  let apiProxyTarget = "http://localhost:8080";
+  const configuredApiUrl = env.VITE_API_URL;
+
+  // If VITE_API_URL is absolute (e.g. http://localhost:8081/api/v1), use its origin for dev proxy.
+  if (configuredApiUrl && /^https?:\/\//i.test(configuredApiUrl)) {
+    try {
+      const parsed = new URL(configuredApiUrl);
+      apiProxyTarget = `${parsed.protocol}//${parsed.host}`;
+    } catch {
+      // Keep fallback target when URL parsing fails.
+    }
+  }
+
+  return {
+    plugins: [react(), cloudwrkzLogPlugin()],
+    resolve: {
+      alias: {
+        "@": path.resolve(__dirname, "./src"),
       },
-      // Proxy for legacy Next.js API (used for fuzzy search endpoints).
-      // The Vite app calls `/next-api/...`, which is rewritten to `/api/...` on the Next.js server.
-      "/next-api": {
-        target: "http://localhost:3000",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/next-api/, "/api"),
+    },
+    server: {
+      port: 5173,
+      host: "0.0.0.0",
+      proxy: {
+        "/api": {
+          target: apiProxyTarget,
+          changeOrigin: true,
+          configure: (proxy) => {
+            attachProxyErrorHandler(proxy, "/api", "API backend");
+          },
+        },
+        // Proxy for legacy Next.js API (used for fuzzy search endpoints).
+        // The Vite app calls `/next-api/...`, which is rewritten to `/api/...` on the Next.js server.
+        "/next-api": {
+          target: "http://localhost:3000",
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/next-api/, "/api"),
+          configure: (proxy) => {
+            attachProxyErrorHandler(proxy, "/next-api", "Search backend");
+          },
+        },
       },
     },
-  },
+  };
 });

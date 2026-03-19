@@ -18,8 +18,14 @@ export function useDatabaseHealth(options?: {
       const API_BASE = import.meta.env.DEV ? "/api/v1" : (import.meta.env.VITE_API_URL || "/api/v1");
       const res = await fetch(`${API_BASE}/health`, { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
       if (res.status === 502 || res.status === 503) {
+        const body = await res.json().catch(() => ({}));
+        const message =
+          body?.error?.message ||
+          (res.status === 502
+            ? "Backend is temporarily unavailable."
+            : "Backend is currently unreachable.");
         setIsServerUnreachable(true);
-        setError(res.status === 502 ? "Server unavailable (502)" : "Service unavailable (503)");
+        setError(message);
         setStatus("unhealthy");
         return;
       }
@@ -32,7 +38,7 @@ export function useDatabaseHealth(options?: {
       setIsServerUnreachable(false);
     } catch (err) {
       setIsServerUnreachable(true);
-      setError(err instanceof Error ? err.message : "Connection failed");
+      setError("Unable to reach backend service.");
       setStatus("unhealthy");
     }
   }, []);

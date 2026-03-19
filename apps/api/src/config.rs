@@ -1,5 +1,11 @@
 use std::env;
 
+#[derive(Debug, Clone, Default)]
+pub struct DeploymentCliOverrides {
+    pub region: Option<String>,
+    pub api_nodes_available: Option<u32>,
+}
+
 #[derive(Debug, Clone)]
 pub struct AppConfig {
     pub database_url: String,
@@ -10,6 +16,10 @@ pub struct AppConfig {
     pub cookie_secure: bool,
     pub session_max_age_secs: i64,
     pub max_body_size: usize,
+    /// Logical region for this API instance (global routing / status). `API_REGION` or `--region`.
+    pub api_region: Option<String>,
+    /// How many API nodes this deployment reports as available (single-process = 1 until multi-endpoint).
+    pub api_nodes_available: u32,
 }
 
 impl AppConfig {
@@ -40,6 +50,30 @@ impl AppConfig {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(10 * 1024 * 1024), // 10 MB
+            api_region: env::var("API_REGION")
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
+            api_nodes_available: env::var("API_NODES_AVAILABLE")
+                .ok()
+                .and_then(|s| s.parse::<u32>().ok())
+                .filter(|&n| n >= 1)
+                .unwrap_or(1),
+        }
+    }
+
+    /// Apply `--region` / `--api-nodes` from argv (CLI wins over env for provided flags).
+    pub fn apply_deployment_cli(&mut self, cli: DeploymentCliOverrides) {
+        if let Some(r) = cli.region {
+            let t = r.trim();
+            if t.is_empty() {
+                self.api_region = None;
+            } else {
+                self.api_region = Some(t.to_string());
+            }
+        }
+        if let Some(n) = cli.api_nodes_available {
+            self.api_nodes_available = n.max(1);
         }
     }
 
@@ -54,4 +88,50 @@ impl AppConfig {
     pub fn cookie_secure(&self) -> bool {
         self.cookie_secure
     }
+}
+
+/// Parse deployment flags from process args (after binary name). Skips `-v` / `--verbose` and their value.
+pub fn parse_deployment_cli_from_args() -> DeploymentCliOverrides {
+    let mut out = DeploymentCliOverrides::default();
+    let mut args = env::args().skip(1);
+    while let Some(arg) = args.next() {
+        if arg == "-h" || arg == "--help" {
+            continue;
+        }
+        if arg == "-v" || arg == "--verbose" {
+            let _ = args.next();
+            continue;
+        }
+        if arg == "--region" {
+            if let Some(v) = args.next() {
+                if !v.starts_with('-') {
+                    out.region = Some(v);
+                }
+            }
+            continue;
+        }
+        if let Some(rest) = arg.strip_prefix("--region=") {
+            if !rest.is_empty() {
+                out.region = Some(rest.to_string());
+            }
+            continue;
+        }
+        if arg == "--api-nodes" {
+            if let Some(v) = args.next() {
+                if !v.starts_with('-') {
+                    if let Ok(n) = v.parse::<u32>() {
+                        out.api_nodes_available = Some(n);
+                    }
+                }
+            }
+            continue;
+        }
+        if let Some(rest) = arg.strip_prefix("--api-nodes=") {
+            if let Ok(n) = rest.parse::<u32>() {
+                out.api_nodes_available = Some(n);
+            }
+            continue;
+        }
+    }
+    out
 }

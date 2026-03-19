@@ -18,7 +18,7 @@ use tower_http::trace::{TraceLayer, OnResponse};
 use tracing_subscriber::fmt::time::UtcTime;
 use tracing_subscriber::EnvFilter;
 
-use config::AppConfig;
+use config::{parse_deployment_cli_from_args, AppConfig};
 
 /// Controls how much is logged: `debug` = all available info, `prod` = only required fields.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -40,8 +40,11 @@ Usage: cloudwrkz-api [OPTIONS]
 Options:
   -v, --verbose [LEVEL]   Log verbosity: no value or "debug" = full (client_ip, user_agent, etc.); "prod" = minimal (default when -v not set)
   -h, --help              Print this help and exit
+      --region <ID>       Deployment region for /health (overrides API_REGION)
+      --api-nodes <N>     Reported API node count for /health (overrides API_NODES_AVAILABLE; default 1)
 
-Environment: LOG_VERBOSITY (debug|prod), LOG_FORMAT (json), RUST_LOG, DATABASE_URL, etc.
+Environment: LOG_VERBOSITY (debug|prod), LOG_FORMAT (json), RUST_LOG, DATABASE_URL,
+             API_REGION, API_NODES_AVAILABLE, etc.
 "#;
 
 /// Parse `-v` / `-v debug` / `-v prod` and `-h` from env::args(). CLI overrides LOG_VERBOSITY env.
@@ -215,11 +218,14 @@ async fn main() {
 
     init_logging();
 
-    let config = AppConfig::from_env();
+    let mut config = AppConfig::from_env();
+    config.apply_deployment_cli(parse_deployment_cli_from_args());
     tracing::info!(
         event = "startup",
         bind_addr = %config.bind_addr(),
         log_verbosity = ?log_verbosity(),
+        api_region = ?config.api_region,
+        api_nodes_available = config.api_nodes_available,
         "Starting CloudWrkz API"
     );
     if log_verbosity() == LogVerbosity::Debug {
@@ -258,11 +264,17 @@ async fn main() {
 
     let cors = build_cors(&config);
 
-    let v1 = routes::v1_router(pool.clone(), config.clone());
+    let api_started_at = std::time::Instant::now();
+    let v1 = routes::v1_router(pool.clone(), config.clone(), api_started_at);
 
     let app = Router::new()
         .nest("/api/v1", v1)
-        .merge(routes::health::router(pool.clone()))
+        .merge(routes::health::router(
+            pool.clone(),
+            api_started_at,
+            config.api_nodes_available,
+            config.api_region.clone(),
+        ))
         .layer(cors)
         .layer(
             TraceLayer::new_for_http()

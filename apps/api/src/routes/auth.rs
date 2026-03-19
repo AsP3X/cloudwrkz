@@ -296,7 +296,7 @@ async fn register(
     sqlx::query(
         r#"INSERT INTO users (id, email, name, password, role, status, email_verified,
                               timezone, theme, locale, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, 'USER', 'ACTIVE', true, 'UTC', 'system', 'en', NOW(), NOW())"#,
+           VALUES ($1, $2, $3, $4, 'USER', 'PENDING', false, 'UTC', 'system', 'en', NOW(), NOW())"#,
     )
     .bind(&user_id)
     .bind(&email)
