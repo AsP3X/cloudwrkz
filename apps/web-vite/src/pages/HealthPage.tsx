@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Area,
-  AreaChart,
   CartesianGrid,
+  ComposedChart,
+  Line,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -17,20 +18,49 @@ import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 import { api, ApiError } from "@/api/client";
 import type { HealthPayload } from "@/features/health/types";
+import { LatencyAnimatedTail } from "@/features/health/LatencyAnimatedTail";
 
 const POLL_MS = 4000;
-const LATENCY_HISTORY_MAX = 40;
+/** Rolling window: oldest dropped when full; X-axis uses slots 1…60 so the trace grows left → right. */
+const LATENCY_HISTORY_MAX = 60;
 
-const CHART_COLORS = {
-  stroke: "#6366f1",
-  fill: "url(#healthLatencyGradient)",
-} as const;
+const CHART_INTRO_MS = 950;
+
+function LatencyChartTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: ReadonlyArray<{ payload?: LatencyChartRow }>;
+}) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0]?.payload;
+  if (!row) return null;
+  return (
+    <div className="rounded-xl border border-neutral-200/90 bg-white/95 px-3.5 py-2.5 text-xs shadow-lg shadow-indigo-500/10 ring-1 ring-black/5 backdrop-blur-md dark:border-neutral-700/90 dark:bg-neutral-900/95 dark:ring-white/10">
+      <p className="font-mono text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">{row.at}</p>
+      <p className="mt-1.5 flex items-baseline gap-2">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+          Latency
+        </span>
+        <span className="font-mono text-base font-bold tabular-nums text-neutral-900 dark:text-white">
+          {row.ms}
+          <span className="ml-0.5 text-xs font-semibold text-neutral-500 dark:text-neutral-400">ms</span>
+        </span>
+      </p>
+      <p className="mt-1 text-[10px] text-neutral-400 dark:text-neutral-500">Sample #{row.seq}</p>
+    </div>
+  );
+}
 
 interface LatencyPoint {
   seq: number;
   ms: number;
   at: string;
 }
+
+/** Chart row: `slot` is 1-based index in the visible window (re-indexed after each FIFO shift). */
+type LatencyChartRow = LatencyPoint & { slot: number };
 
 function isRichHealth(d: unknown): d is HealthPayload {
   return (
@@ -80,7 +110,8 @@ export default function HealthPage() {
               }),
             };
             const merged = [...prev, row];
-            return merged.length > LATENCY_HISTORY_MAX ? merged.slice(-LATENCY_HISTORY_MAX) : merged;
+            if (merged.length <= LATENCY_HISTORY_MAX) return merged;
+            return merged.slice(-LATENCY_HISTORY_MAX);
           });
         }
       } catch (err) {
@@ -111,13 +142,40 @@ export default function HealthPage() {
   const nodesAvailable = health?.api.nodes_available ?? null;
   const region = health?.api.region?.trim() || null;
 
-  const chartData = useMemo(() => latencySeries, [latencySeries]);
+  const chartData = useMemo<LatencyChartRow[]>(
+    () => latencySeries.map((p, i) => ({ ...p, slot: i + 1 })),
+    [latencySeries],
+  );
 
   const latencyDomainMax = useMemo(() => {
     if (chartData.length === 0) return 50;
     const maxMs = Math.max(...chartData.map((d) => d.ms), 1);
     return Math.ceil(maxMs * 1.15) + 5;
   }, [chartData]);
+
+  const [chartYMax, setChartYMax] = useState(latencyDomainMax);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setChartYMax((prev) => {
+        const target = latencyDomainMax;
+        if (Math.abs(prev - target) < 0.01) return prev;
+        const next = prev + (target - prev) * 0.28;
+        return Math.abs(target - next) < 0.55 ? target : next;
+      });
+    }, 50);
+    return () => window.clearInterval(id);
+  }, [latencyDomainMax]);
+
+  /** Recharts re-animates the whole series on every data change if this stays true — only run the intro once. */
+  const chartIntroStartedRef = useRef(false);
+  const [latencyChartSettled, setLatencyChartSettled] = useState(false);
+  useEffect(() => {
+    if (chartData.length < 2) return;
+    if (chartIntroStartedRef.current) return;
+    chartIntroStartedRef.current = true;
+    const t = window.setTimeout(() => setLatencyChartSettled(true), CHART_INTRO_MS);
+    return () => window.clearTimeout(t);
+  }, [chartData.length]);
 
   return (
     <>
@@ -293,7 +351,8 @@ export default function HealthPage() {
                     </div>
                     {chartData.length > 0 && (
                       <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
-                        {chartData.length} samples · max {Math.max(...chartData.map((d) => d.ms)).toFixed(0)} ms
+                        {chartData.length}/{LATENCY_HISTORY_MAX} samples · max{" "}
+                        {Math.max(...chartData.map((d) => d.ms)).toFixed(0)} ms
                       </p>
                     )}
                   </div>
@@ -303,58 +362,99 @@ export default function HealthPage() {
                       Collecting samples… leave this page open for a few seconds.
                     </div>
                   ) : (
-                    <div className="h-64 w-full">
+                    <div className="relative h-72 w-full overflow-hidden rounded-xl bg-gradient-to-b from-indigo-50/40 via-transparent to-transparent dark:from-indigo-950/20">
                       <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                        <ComposedChart data={chartData} margin={{ top: 14, right: 14, left: 0, bottom: 6 }}>
                           <defs>
-                            <linearGradient id="healthLatencyGradient" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor="#6366f1" stopOpacity={0.35} />
-                              <stop offset="100%" stopColor="#6366f1" stopOpacity={0} />
+                            <linearGradient id="healthLatencyArea" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#818cf8" stopOpacity={0.42} />
+                              <stop offset="35%" stopColor="#6366f1" stopOpacity={0.2} />
+                              <stop offset="85%" stopColor="#4f46e5" stopOpacity={0.04} />
+                              <stop offset="100%" stopColor="#4338ca" stopOpacity={0} />
                             </linearGradient>
+                            <linearGradient id="healthLatencyLine" x1="0" y1="0" x2="1" y2="0">
+                              <stop offset="0%" stopColor="#c7d2fe" />
+                              <stop offset="55%" stopColor="#6366f1" />
+                              <stop offset="100%" stopColor="#4f46e5" />
+                            </linearGradient>
+                            <filter id="healthLatencyGlow" x="-40%" y="-40%" width="180%" height="180%">
+                              <feGaussianBlur stdDeviation="2" result="blur" />
+                              <feMerge>
+                                <feMergeNode in="blur" />
+                                <feMergeNode in="SourceGraphic" />
+                              </feMerge>
+                            </filter>
                           </defs>
-                          <CartesianGrid strokeDasharray="3 3" className="stroke-neutral-200 dark:stroke-neutral-700" />
+                          <CartesianGrid
+                            strokeDasharray="5 6"
+                            vertical={false}
+                            stroke="currentColor"
+                            className="text-neutral-200/90 dark:text-neutral-700/85"
+                          />
                           <XAxis
-                            dataKey="seq"
-                            tick={{ fontSize: 10, fill: "currentColor" }}
+                            type="number"
+                            dataKey="slot"
+                            domain={[1, LATENCY_HISTORY_MAX]}
+                            allowDecimals={false}
+                            ticks={[1, 15, 30, 45, LATENCY_HISTORY_MAX]}
+                            tick={{ fontSize: 10, fill: "currentColor", fontWeight: 500 }}
                             className="text-neutral-400"
                             tickLine={false}
                             axisLine={false}
-                            interval="preserveStartEnd"
+                            tickMargin={8}
                           />
                           <YAxis
-                            domain={[0, latencyDomainMax]}
-                            width={44}
+                            domain={[0, chartYMax]}
+                            width={48}
                             tick={{ fontSize: 10, fill: "currentColor" }}
                             className="text-neutral-400"
                             tickLine={false}
                             axisLine={false}
+                            tickMargin={6}
                             unit=" ms"
                           />
                           <Tooltip
-                            contentStyle={{
-                              borderRadius: "12px",
-                              border: "1px solid rgb(229 231 235)",
-                              background: "rgba(255,255,255,0.95)",
+                            content={LatencyChartTooltip}
+                            cursor={{
+                              stroke: "#a5b4fc",
+                              strokeWidth: 1,
+                              strokeDasharray: "4 4",
+                              opacity: 0.85,
                             }}
-                            labelFormatter={(_label, payload) => {
-                              const row = payload?.[0]?.payload as LatencyPoint | undefined;
-                              return row?.at ?? "";
-                            }}
-                            formatter={(value) => [`${value ?? "—"} ms`, "Latency"]}
                           />
                           <Area
                             type="monotone"
                             dataKey="ms"
                             name="Latency"
-                            stroke={CHART_COLORS.stroke}
-                            strokeWidth={2.5}
-                            fill={CHART_COLORS.fill}
-                            dot={{ r: 2, strokeWidth: 1, fill: "#4f46e5" }}
-                            activeDot={{ r: 5 }}
-                            isAnimationActive
-                            animationDuration={450}
+                            stroke="none"
+                            fill="url(#healthLatencyArea)"
+                            fillOpacity={1}
+                            baseValue={0}
+                            isAnimationActive={!latencyChartSettled}
+                            animationDuration={CHART_INTRO_MS}
+                            animationEasing="ease-out"
                           />
-                        </AreaChart>
+                          <Line
+                            type="monotone"
+                            dataKey="ms"
+                            name="Latency"
+                            stroke="url(#healthLatencyLine)"
+                            strokeWidth={2.5}
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            dot={false}
+                            activeDot={false}
+                            filter="url(#healthLatencyGlow)"
+                            connectNulls
+                            isAnimationActive={!latencyChartSettled}
+                            animationDuration={CHART_INTRO_MS}
+                            animationEasing="ease-out"
+                          />
+                          <LatencyAnimatedTail
+                            lastPoint={chartData[chartData.length - 1]}
+                            durationMs={420}
+                          />
+                        </ComposedChart>
                       </ResponsiveContainer>
                     </div>
                   )}
