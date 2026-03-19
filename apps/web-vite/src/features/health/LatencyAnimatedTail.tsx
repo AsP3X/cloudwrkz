@@ -3,19 +3,28 @@ import { useXAxisScale, useYAxisScale } from "recharts";
 
 const easeOutCubic = (t: number) => 1 - (1 - t) ** 3;
 
-export type LatencyTailPoint = { slot: number; ms: number };
+export type LatencyTailPoint = { slot: number; value: number };
 
 /**
- * End-cap for the latency line, rendered inside a Recharts cartesian chart.
- * Animates in pixel space when the latest sample’s slot or ms changes (matches line motion);
+ * End-cap for a latency line, rendered inside a Recharts cartesian chart.
+ * Animates in pixel space when the latest sample’s slot or value changes;
  * snaps when only scales change (e.g. Y-axis easing) to avoid jitter.
  */
 export function LatencyAnimatedTail({
   lastPoint,
   durationMs = 400,
+  pulseStroke = "#a5b4fc",
+  dotFill = "#4f46e5",
+  dotShadow = "drop-shadow(0 0 6px rgba(99,102,241,0.55))",
 }: {
   lastPoint: LatencyTailPoint | undefined;
   durationMs?: number;
+  /** Outer pulse ring stroke */
+  pulseStroke?: string;
+  /** Main dot fill */
+  dotFill?: string;
+  /** CSS filter on main dot */
+  dotShadow?: string;
 }) {
   const xScale = useXAxisScale(0);
   const yScale = useYAxisScale(0);
@@ -28,9 +37,12 @@ export function LatencyAnimatedTail({
   const tx =
     lastPoint != null && xScale != null ? xScale(lastPoint.slot) : undefined;
   const ty =
-    lastPoint != null && yScale != null ? yScale(lastPoint.ms) : undefined;
+    lastPoint != null && yScale != null ? yScale(lastPoint.value) : undefined;
 
-  const datumKey = lastPoint != null ? `${lastPoint.slot}:${lastPoint.ms}` : "";
+  const datumKey =
+    lastPoint != null && Number.isFinite(lastPoint.value)
+      ? `${lastPoint.slot}:${lastPoint.value}`
+      : "";
 
   useLayoutEffect(() => {
     if (tx == null || ty == null || !Number.isFinite(tx) || !Number.isFinite(ty)) {
@@ -88,7 +100,7 @@ export function LatencyAnimatedTail({
 
   return (
     <g className="recharts-layer" style={{ pointerEvents: "none" }}>
-      <circle cx={x} cy={y} r={6} fill="none" stroke="#a5b4fc" strokeWidth={1.25} opacity={0.55}>
+      <circle cx={x} cy={y} r={6} fill="none" stroke={pulseStroke} strokeWidth={1.25} opacity={0.55}>
         <animate attributeName="r" values="5;16;5" dur="2.4s" repeatCount="indefinite" />
         <animate attributeName="opacity" values="0.55;0;0.55" dur="2.4s" repeatCount="indefinite" />
       </circle>
@@ -96,10 +108,10 @@ export function LatencyAnimatedTail({
         cx={x}
         cy={y}
         r={5.5}
-        fill="#4f46e5"
+        fill={dotFill}
         strokeWidth={2}
         className={strokeRing}
-        style={{ filter: "drop-shadow(0 0 6px rgba(99,102,241,0.55))" }}
+        style={{ filter: dotShadow }}
       />
     </g>
   );

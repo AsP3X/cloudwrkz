@@ -26,7 +26,7 @@ const LATENCY_HISTORY_MAX = 60;
 
 const CHART_INTRO_MS = 950;
 
-function LatencyChartTooltip({
+function DbLatencyChartTooltip({
   active,
   payload,
 }: {
@@ -41,10 +41,10 @@ function LatencyChartTooltip({
       <p className="font-mono text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">{row.at}</p>
       <p className="mt-1.5 flex items-baseline gap-2">
         <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
-          Latency
+          Database
         </span>
         <span className="font-mono text-base font-bold tabular-nums text-neutral-900 dark:text-white">
-          {row.ms}
+          {row.dbMs != null ? row.dbMs : "—"}
           <span className="ml-0.5 text-xs font-semibold text-neutral-500 dark:text-neutral-400">ms</span>
         </span>
       </p>
@@ -53,14 +53,60 @@ function LatencyChartTooltip({
   );
 }
 
-interface LatencyPoint {
+function ApiLatencyChartTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: ReadonlyArray<{ payload?: LatencyChartRow }>;
+}) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0]?.payload;
+  if (!row) return null;
+  return (
+    <div className="rounded-xl border border-neutral-200/90 bg-white/95 px-3.5 py-2.5 text-xs shadow-lg shadow-emerald-500/10 ring-1 ring-black/5 backdrop-blur-md dark:border-neutral-700/90 dark:bg-neutral-900/95 dark:ring-white/10">
+      <p className="font-mono text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">{row.at}</p>
+      <p className="mt-1.5 flex items-baseline gap-2">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+          API (RTT)
+        </span>
+        <span className="font-mono text-base font-bold tabular-nums text-neutral-900 dark:text-white">
+          {row.apiMs}
+          <span className="ml-0.5 text-xs font-semibold text-neutral-500 dark:text-neutral-400">ms</span>
+        </span>
+      </p>
+      <p className="mt-1 text-[10px] text-neutral-400 dark:text-neutral-500">Sample #{row.seq}</p>
+    </div>
+  );
+}
+
+interface LatencySamplePoint {
   seq: number;
-  ms: number;
   at: string;
+  /** Server-reported DB check latency; null if omitted in payload. */
+  dbMs: number | null;
+  /** Client-measured round-trip for this page's GET /health. */
+  apiMs: number;
 }
 
 /** Chart row: `slot` is 1-based index in the visible window (re-indexed after each FIFO shift). */
-type LatencyChartRow = LatencyPoint & { slot: number };
+type LatencyChartRow = LatencySamplePoint & { slot: number };
+
+function dbChartPeakMs(rows: LatencyChartRow[]): number {
+  let max = 0;
+  for (const d of rows) {
+    if (d.dbMs != null && Number.isFinite(d.dbMs)) max = Math.max(max, d.dbMs);
+  }
+  return max;
+}
+
+function apiChartPeakMs(rows: LatencyChartRow[]): number {
+  let max = 0;
+  for (const d of rows) {
+    if (Number.isFinite(d.apiMs)) max = Math.max(max, d.apiMs);
+  }
+  return max;
+}
 
 function isRichHealth(d: unknown): d is HealthPayload {
   return (
@@ -76,7 +122,7 @@ function isRichHealth(d: unknown): d is HealthPayload {
 
 export default function HealthPage() {
   const [health, setHealth] = useState<HealthPayload | null>(null);
-  const [latencySeries, setLatencySeries] = useState<LatencyPoint[]>([]);
+  const [latencySeries, setLatencySeries] = useState<LatencySamplePoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,8 +132,10 @@ export default function HealthPage() {
   const fetchHealth = useCallback(
     async (isManual = false) => {
       if (isManual) setRefreshing(true);
+      const pollStarted = performance.now();
       try {
         const data = await api.get<unknown>("/health");
+        const apiMs = Math.round(performance.now() - pollStarted);
         if (!isRichHealth(data)) {
           setHealth(null);
           setError("Unexpected health response from API.");
@@ -96,24 +144,26 @@ export default function HealthPage() {
         setHealth(data);
         setError(null);
 
-        const ms = data.services.database.response_time_ms;
-        if (typeof ms === "number" && Number.isFinite(ms)) {
-          setLatencySeries((prev) => {
-            const nextSeq = prev.length > 0 ? prev[prev.length - 1].seq + 1 : 1;
-            const row: LatencyPoint = {
-              seq: nextSeq,
-              ms,
-              at: new Date().toLocaleTimeString(undefined, {
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-              }),
-            };
-            const merged = [...prev, row];
-            if (merged.length <= LATENCY_HISTORY_MAX) return merged;
-            return merged.slice(-LATENCY_HISTORY_MAX);
-          });
-        }
+        const dbRaw = data.services.database.response_time_ms;
+        const dbMs =
+          typeof dbRaw === "number" && Number.isFinite(dbRaw) ? dbRaw : null;
+
+        setLatencySeries((prev) => {
+          const nextSeq = prev.length > 0 ? prev[prev.length - 1].seq + 1 : 1;
+          const row: LatencySamplePoint = {
+            seq: nextSeq,
+            at: new Date().toLocaleTimeString(undefined, {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            }),
+            dbMs,
+            apiMs,
+          };
+          const merged = [...prev, row];
+          if (merged.length <= LATENCY_HISTORY_MAX) return merged;
+          return merged.slice(-LATENCY_HISTORY_MAX);
+        });
       } catch (err) {
         const msg =
           err instanceof ApiError
@@ -147,24 +197,48 @@ export default function HealthPage() {
     [latencySeries],
   );
 
-  const latencyDomainMax = useMemo(() => {
+  const lastChartRow = useMemo(
+    () => (chartData.length > 0 ? chartData[chartData.length - 1] : undefined),
+    [chartData],
+  );
+
+  const dbLatencyDomainMax = useMemo(() => {
     if (chartData.length === 0) return 50;
-    const maxMs = Math.max(...chartData.map((d) => d.ms), 1);
-    return Math.ceil(maxMs * 1.15) + 5;
+    const peak = dbChartPeakMs(chartData);
+    return Math.ceil(Math.max(peak, 1) * 1.15) + 5;
   }, [chartData]);
 
-  const [chartYMax, setChartYMax] = useState(latencyDomainMax);
+  const apiLatencyDomainMax = useMemo(() => {
+    if (chartData.length === 0) return 50;
+    const peak = apiChartPeakMs(chartData);
+    return Math.ceil(Math.max(peak, 1) * 1.15) + 5;
+  }, [chartData]);
+
+  const [dbChartYMax, setDbChartYMax] = useState(dbLatencyDomainMax);
   useEffect(() => {
     const id = window.setInterval(() => {
-      setChartYMax((prev) => {
-        const target = latencyDomainMax;
+      setDbChartYMax((prev) => {
+        const target = dbLatencyDomainMax;
         if (Math.abs(prev - target) < 0.01) return prev;
         const next = prev + (target - prev) * 0.28;
         return Math.abs(target - next) < 0.55 ? target : next;
       });
     }, 50);
     return () => window.clearInterval(id);
-  }, [latencyDomainMax]);
+  }, [dbLatencyDomainMax]);
+
+  const [apiChartYMax, setApiChartYMax] = useState(apiLatencyDomainMax);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setApiChartYMax((prev) => {
+        const target = apiLatencyDomainMax;
+        if (Math.abs(prev - target) < 0.01) return prev;
+        const next = prev + (target - prev) * 0.28;
+        return Math.abs(target - next) < 0.55 ? target : next;
+      });
+    }, 50);
+    return () => window.clearInterval(id);
+  }, [apiLatencyDomainMax]);
 
   /** Recharts re-animates the whole series on every data change if this stays true — only run the intro once. */
   const chartIntroStartedRef = useRef(false);
@@ -339,126 +413,251 @@ export default function HealthPage() {
                   </div>
                 </div>
 
-                {/* Latency chart */}
-                <div className="overflow-hidden rounded-2xl border border-neutral-200/80 bg-white/90 p-4 shadow-soft-lg backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/80 sm:p-6">
-                  <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-                    <div>
-                      <h2 className="text-lg font-bold text-neutral-900 dark:text-white">Database check latency</h2>
-                      <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                        Rolling history from this page (GET <span className="font-mono">/health</span> round-trip + DB{" "}
-                        <span className="font-mono">SELECT 1</span> on the server)
-                      </p>
-                    </div>
-                    {chartData.length > 0 && (
-                      <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
-                        {chartData.length}/{LATENCY_HISTORY_MAX} samples · max{" "}
-                        {Math.max(...chartData.map((d) => d.ms)).toFixed(0)} ms
-                      </p>
-                    )}
-                  </div>
-
-                  {chartData.length < 2 ? (
-                    <div className="flex h-56 items-center justify-center rounded-xl border border-dashed border-neutral-200 bg-neutral-50/50 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-950/30 dark:text-neutral-400">
+                {/* Latency charts — database and API measured separately */}
+                {chartData.length < 2 ? (
+                  <div className="overflow-hidden rounded-2xl border border-neutral-200/80 bg-white/90 p-6 shadow-soft-lg backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/80">
+                    <h2 className="text-lg font-bold text-neutral-900 dark:text-white">Request latency</h2>
+                    <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                      Two charts (database vs API round-trip) appear after a few polls.
+                    </p>
+                    <div className="mt-6 flex h-48 items-center justify-center rounded-xl border border-dashed border-neutral-200 bg-neutral-50/50 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-950/30 dark:text-neutral-400">
                       Collecting samples… leave this page open for a few seconds.
                     </div>
-                  ) : (
-                    <div className="relative h-72 w-full overflow-hidden rounded-xl bg-gradient-to-b from-indigo-50/40 via-transparent to-transparent dark:from-indigo-950/20">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <ComposedChart data={chartData} margin={{ top: 14, right: 14, left: 0, bottom: 6 }}>
-                          <defs>
-                            <linearGradient id="healthLatencyArea" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor="#818cf8" stopOpacity={0.42} />
-                              <stop offset="35%" stopColor="#6366f1" stopOpacity={0.2} />
-                              <stop offset="85%" stopColor="#4f46e5" stopOpacity={0.04} />
-                              <stop offset="100%" stopColor="#4338ca" stopOpacity={0} />
-                            </linearGradient>
-                            <linearGradient id="healthLatencyLine" x1="0" y1="0" x2="1" y2="0">
-                              <stop offset="0%" stopColor="#c7d2fe" />
-                              <stop offset="55%" stopColor="#6366f1" />
-                              <stop offset="100%" stopColor="#4f46e5" />
-                            </linearGradient>
-                            <filter id="healthLatencyGlow" x="-40%" y="-40%" width="180%" height="180%">
-                              <feGaussianBlur stdDeviation="2" result="blur" />
-                              <feMerge>
-                                <feMergeNode in="blur" />
-                                <feMergeNode in="SourceGraphic" />
-                              </feMerge>
-                            </filter>
-                          </defs>
-                          <CartesianGrid
-                            strokeDasharray="5 6"
-                            vertical={false}
-                            stroke="currentColor"
-                            className="text-neutral-200/90 dark:text-neutral-700/85"
-                          />
-                          <XAxis
-                            type="number"
-                            dataKey="slot"
-                            domain={[1, LATENCY_HISTORY_MAX]}
-                            allowDecimals={false}
-                            ticks={[1, 15, 30, 45, LATENCY_HISTORY_MAX]}
-                            tick={{ fontSize: 10, fill: "currentColor", fontWeight: 500 }}
-                            className="text-neutral-400"
-                            tickLine={false}
-                            axisLine={false}
-                            tickMargin={8}
-                          />
-                          <YAxis
-                            domain={[0, chartYMax]}
-                            width={48}
-                            tick={{ fontSize: 10, fill: "currentColor" }}
-                            className="text-neutral-400"
-                            tickLine={false}
-                            axisLine={false}
-                            tickMargin={6}
-                            unit=" ms"
-                          />
-                          <Tooltip
-                            content={LatencyChartTooltip}
-                            cursor={{
-                              stroke: "#a5b4fc",
-                              strokeWidth: 1,
-                              strokeDasharray: "4 4",
-                              opacity: 0.85,
-                            }}
-                          />
-                          <Area
-                            type="monotone"
-                            dataKey="ms"
-                            name="Latency"
-                            stroke="none"
-                            fill="url(#healthLatencyArea)"
-                            fillOpacity={1}
-                            baseValue={0}
-                            isAnimationActive={!latencyChartSettled}
-                            animationDuration={CHART_INTRO_MS}
-                            animationEasing="ease-out"
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="ms"
-                            name="Latency"
-                            stroke="url(#healthLatencyLine)"
-                            strokeWidth={2.5}
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            dot={false}
-                            activeDot={false}
-                            filter="url(#healthLatencyGlow)"
-                            connectNulls
-                            isAnimationActive={!latencyChartSettled}
-                            animationDuration={CHART_INTRO_MS}
-                            animationEasing="ease-out"
-                          />
-                          <LatencyAnimatedTail
-                            lastPoint={chartData[chartData.length - 1]}
-                            durationMs={420}
-                          />
-                        </ComposedChart>
-                      </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="overflow-hidden rounded-2xl border border-neutral-200/80 bg-white/90 p-4 shadow-soft-lg backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/80 sm:p-6">
+                      <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                        <div>
+                          <h2 className="text-lg font-bold text-neutral-900 dark:text-white">Database check latency</h2>
+                          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                            Server <span className="font-mono">SELECT 1</span> time from the health payload (up to{" "}
+                            {LATENCY_HISTORY_MAX} samples, left → right).
+                          </p>
+                        </div>
+                        {chartData.length > 0 && (
+                          <p className="text-xs font-medium text-indigo-600 dark:text-indigo-400">
+                            {chartData.length}/{LATENCY_HISTORY_MAX} · peak {dbChartPeakMs(chartData).toFixed(0)} ms
+                          </p>
+                        )}
+                      </div>
+                      <div className="relative h-72 w-full overflow-hidden rounded-xl bg-gradient-to-b from-indigo-50/40 via-transparent to-transparent dark:from-indigo-950/20">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <ComposedChart data={chartData} margin={{ top: 14, right: 14, left: 0, bottom: 6 }}>
+                            <defs>
+                              <linearGradient id="healthDbLatencyArea" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#818cf8" stopOpacity={0.42} />
+                                <stop offset="35%" stopColor="#6366f1" stopOpacity={0.2} />
+                                <stop offset="85%" stopColor="#4f46e5" stopOpacity={0.04} />
+                                <stop offset="100%" stopColor="#4338ca" stopOpacity={0} />
+                              </linearGradient>
+                              <linearGradient id="healthDbLatencyLine" x1="0" y1="0" x2="1" y2="0">
+                                <stop offset="0%" stopColor="#c7d2fe" />
+                                <stop offset="55%" stopColor="#6366f1" />
+                                <stop offset="100%" stopColor="#4f46e5" />
+                              </linearGradient>
+                              <filter id="healthDbLatencyGlow" x="-40%" y="-40%" width="180%" height="180%">
+                                <feGaussianBlur stdDeviation="2" result="blur" />
+                                <feMerge>
+                                  <feMergeNode in="blur" />
+                                  <feMergeNode in="SourceGraphic" />
+                                </feMerge>
+                              </filter>
+                            </defs>
+                            <CartesianGrid
+                              strokeDasharray="5 6"
+                              vertical={false}
+                              stroke="currentColor"
+                              className="text-neutral-200/90 dark:text-neutral-700/85"
+                            />
+                            <XAxis
+                              type="number"
+                              dataKey="slot"
+                              domain={[1, LATENCY_HISTORY_MAX]}
+                              allowDecimals={false}
+                              ticks={[1, 15, 30, 45, LATENCY_HISTORY_MAX]}
+                              tick={{ fontSize: 10, fill: "currentColor", fontWeight: 500 }}
+                              className="text-neutral-400"
+                              tickLine={false}
+                              axisLine={false}
+                              tickMargin={8}
+                            />
+                            <YAxis
+                              domain={[0, dbChartYMax]}
+                              width={48}
+                              tick={{ fontSize: 10, fill: "currentColor" }}
+                              className="text-neutral-400"
+                              tickLine={false}
+                              axisLine={false}
+                              tickMargin={6}
+                              unit=" ms"
+                            />
+                            <Tooltip
+                              content={DbLatencyChartTooltip}
+                              cursor={{
+                                stroke: "#a5b4fc",
+                                strokeWidth: 1,
+                                strokeDasharray: "4 4",
+                                opacity: 0.85,
+                              }}
+                            />
+                            <Area
+                              type="monotone"
+                              dataKey="dbMs"
+                              stroke="none"
+                              fill="url(#healthDbLatencyArea)"
+                              fillOpacity={1}
+                              baseValue={0}
+                              connectNulls={false}
+                              isAnimationActive={!latencyChartSettled}
+                              animationDuration={CHART_INTRO_MS}
+                              animationEasing="ease-out"
+                            />
+                            <Line
+                              type="monotone"
+                              dataKey="dbMs"
+                              stroke="url(#healthDbLatencyLine)"
+                              strokeWidth={2.5}
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              dot={false}
+                              activeDot={false}
+                              filter="url(#healthDbLatencyGlow)"
+                              connectNulls={false}
+                              isAnimationActive={!latencyChartSettled}
+                              animationDuration={CHART_INTRO_MS}
+                              animationEasing="ease-out"
+                            />
+                            {lastChartRow?.dbMs != null ? (
+                              <LatencyAnimatedTail
+                                lastPoint={{ slot: lastChartRow.slot, value: lastChartRow.dbMs }}
+                                durationMs={420}
+                                pulseStroke="#a5b4fc"
+                                dotFill="#4f46e5"
+                                dotShadow="drop-shadow(0 0 6px rgba(99,102,241,0.55))"
+                              />
+                            ) : null}
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      </div>
                     </div>
-                  )}
-                </div>
+
+                    <div className="overflow-hidden rounded-2xl border border-neutral-200/80 bg-white/90 p-4 shadow-soft-lg backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/80 sm:p-6">
+                      <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                        <div>
+                          <h2 className="text-lg font-bold text-neutral-900 dark:text-white">API round-trip latency</h2>
+                          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                            Time from this browser for each <span className="font-mono">GET /health</span> (network +
+                            JSON). Same poll index as the database chart above.
+                          </p>
+                        </div>
+                        {chartData.length > 0 && (
+                          <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                            {chartData.length}/{LATENCY_HISTORY_MAX} · peak {apiChartPeakMs(chartData).toFixed(0)} ms
+                          </p>
+                        )}
+                      </div>
+                      <div className="relative h-72 w-full overflow-hidden rounded-xl bg-gradient-to-b from-emerald-50/35 via-transparent to-transparent dark:from-emerald-950/20">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <ComposedChart data={chartData} margin={{ top: 14, right: 14, left: 0, bottom: 6 }}>
+                            <defs>
+                              <linearGradient id="healthApiLatencyArea" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#6ee7b7" stopOpacity={0.38} />
+                                <stop offset="40%" stopColor="#34d399" stopOpacity={0.14} />
+                                <stop offset="100%" stopColor="#059669" stopOpacity={0} />
+                              </linearGradient>
+                              <linearGradient id="healthApiLatencyLine" x1="0" y1="0" x2="1" y2="0">
+                                <stop offset="0%" stopColor="#a7f3d0" />
+                                <stop offset="50%" stopColor="#34d399" />
+                                <stop offset="100%" stopColor="#059669" />
+                              </linearGradient>
+                              <filter id="healthApiLatencyGlow" x="-40%" y="-40%" width="180%" height="180%">
+                                <feGaussianBlur stdDeviation="2" result="blur" />
+                                <feMerge>
+                                  <feMergeNode in="blur" />
+                                  <feMergeNode in="SourceGraphic" />
+                                </feMerge>
+                              </filter>
+                            </defs>
+                            <CartesianGrid
+                              strokeDasharray="5 6"
+                              vertical={false}
+                              stroke="currentColor"
+                              className="text-neutral-200/90 dark:text-neutral-700/85"
+                            />
+                            <XAxis
+                              type="number"
+                              dataKey="slot"
+                              domain={[1, LATENCY_HISTORY_MAX]}
+                              allowDecimals={false}
+                              ticks={[1, 15, 30, 45, LATENCY_HISTORY_MAX]}
+                              tick={{ fontSize: 10, fill: "currentColor", fontWeight: 500 }}
+                              className="text-neutral-400"
+                              tickLine={false}
+                              axisLine={false}
+                              tickMargin={8}
+                            />
+                            <YAxis
+                              domain={[0, apiChartYMax]}
+                              width={48}
+                              tick={{ fontSize: 10, fill: "currentColor" }}
+                              className="text-neutral-400"
+                              tickLine={false}
+                              axisLine={false}
+                              tickMargin={6}
+                              unit=" ms"
+                            />
+                            <Tooltip
+                              content={ApiLatencyChartTooltip}
+                              cursor={{
+                                stroke: "#6ee7b7",
+                                strokeWidth: 1,
+                                strokeDasharray: "4 4",
+                                opacity: 0.85,
+                              }}
+                            />
+                            <Area
+                              type="monotone"
+                              dataKey="apiMs"
+                              stroke="none"
+                              fill="url(#healthApiLatencyArea)"
+                              fillOpacity={1}
+                              baseValue={0}
+                              connectNulls={false}
+                              isAnimationActive={!latencyChartSettled}
+                              animationDuration={CHART_INTRO_MS}
+                              animationEasing="ease-out"
+                            />
+                            <Line
+                              type="monotone"
+                              dataKey="apiMs"
+                              stroke="url(#healthApiLatencyLine)"
+                              strokeWidth={2.5}
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              dot={false}
+                              activeDot={false}
+                              filter="url(#healthApiLatencyGlow)"
+                              connectNulls={false}
+                              isAnimationActive={!latencyChartSettled}
+                              animationDuration={CHART_INTRO_MS}
+                              animationEasing="ease-out"
+                            />
+                            {lastChartRow != null ? (
+                              <LatencyAnimatedTail
+                                lastPoint={{ slot: lastChartRow.slot, value: lastChartRow.apiMs }}
+                                durationMs={420}
+                                pulseStroke="#6ee7b7"
+                                dotFill="#059669"
+                                dotShadow="drop-shadow(0 0 6px rgba(5,150,105,0.45))"
+                              />
+                            ) : null}
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <p className="text-center text-xs text-neutral-500 dark:text-neutral-500">
                   Machine-level metrics (memory, disks, CPU) stay on the JSON API for operators; this page stays minimal
