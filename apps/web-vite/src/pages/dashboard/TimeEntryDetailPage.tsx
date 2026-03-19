@@ -73,7 +73,7 @@ export default function TimeEntryDetailPage() {
   };
 
   const handlePause = async () => {
-    if (!entry || !canPause(entry)) return;
+    if (!entry || !canPause(entry.status)) return;
     setProcessing(true);
     setError(null);
     try {
@@ -87,7 +87,7 @@ export default function TimeEntryDetailPage() {
   };
 
   const handleResume = async () => {
-    if (!entry || !canResume(entry)) return;
+    if (!entry || !canResume(entry.status)) return;
     setProcessing(true);
     setError(null);
     try {
@@ -101,7 +101,7 @@ export default function TimeEntryDetailPage() {
   };
 
   const handleStop = async () => {
-    if (!entry || !canStop(entry)) return;
+    if (!entry || !canStop(entry.status)) return;
     setProcessing(true);
     setError(null);
     try {
@@ -141,7 +141,7 @@ export default function TimeEntryDetailPage() {
         customPrimary={
           <AccessIssueTicketDialog
             primaryLabel="Create Ticket"
-            hiddenFields={{ context: "time_entry_detail", entityId: id }}
+            hiddenFields={{ context: "time_entry_detail", entityId: id ?? "" }}
             dialogDescription="If you believe you should have access to the Time Tracking module, please describe why."
           />
         }
@@ -216,17 +216,17 @@ export default function TimeEntryDetailPage() {
           >
             {getStatusLabel(entry.status)}
           </span>
-          {canPause(entry) && (
+          {canPause(entry.status) && (
             <Button variant="outline" size="sm" onClick={handlePause} disabled={processing}>
               Pause
             </Button>
           )}
-          {canResume(entry) && (
+          {canResume(entry.status) && (
             <Button variant="outline" size="sm" onClick={handleResume} disabled={processing}>
               Resume
             </Button>
           )}
-          {canStop(entry) && (
+          {canStop(entry.status) && (
             <Button variant="outline" size="sm" onClick={handleStop} disabled={processing}>
               Stop
             </Button>

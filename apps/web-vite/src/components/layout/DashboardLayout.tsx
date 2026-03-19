@@ -94,16 +94,20 @@ export const DashboardLayout = () => {
 
   return (
     <SidebarProvider>
-      <DashboardLayoutContent />
-      <main className={cn("min-h-screen bg-neutral-50 dark:bg-neutral-950", "lg:pl-64", "relative overflow-hidden")}>
-        <div className="pointer-events-none fixed inset-0 z-0" aria-hidden="true">
-          <div className="absolute -top-40 -right-40 h-80 w-80 rounded-full bg-primary-200/30 dark:bg-primary-900/20 blur-3xl" />
-          <div className="absolute top-1/2 -left-40 h-60 w-60 rounded-full bg-secondary-200/30 dark:bg-secondary-900/20 blur-3xl" />
+      <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-secondary-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950">
+        {/* Background decoration - matches Next.js app */}
+        <div className="fixed inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-20 left-10 w-96 h-96 bg-primary-200 dark:bg-primary-900 rounded-full mix-blend-multiply filter blur-3xl opacity-10 dark:opacity-5" />
+          <div className="absolute bottom-20 right-10 w-96 h-96 bg-secondary-200 dark:bg-secondary-900 rounded-full mix-blend-multiply filter blur-3xl opacity-10 dark:opacity-5" />
+          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-primary-100 dark:bg-primary-950 rounded-full mix-blend-multiply filter blur-3xl opacity-5 dark:opacity-2" />
         </div>
-        <div className="relative z-10 p-4 sm:p-6 lg:p-8">
-          <Outlet />
-        </div>
-      </main>
+        <DashboardLayoutContent />
+        <main className={cn("min-h-screen relative z-10", "lg:pl-64")}>
+          <div className="p-4 sm:p-6 lg:p-8">
+            <Outlet />
+          </div>
+        </main>
+      </div>
     </SidebarProvider>
   );
 };

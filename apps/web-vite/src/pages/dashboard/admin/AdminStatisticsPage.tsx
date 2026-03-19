@@ -13,7 +13,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { api } from "@/api/client";
+import { api, ApiError } from "@/api/client";
 import { useAuth } from "@/components/providers/AuthProvider";
 
 interface DashboardStats {
@@ -78,17 +78,25 @@ export default function AdminStatisticsPage() {
   const { user } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
+  const [analyticsUnavailable, setAnalyticsUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
+      setAnalyticsUnavailable(false);
       try {
         const [statsRes, analyticsRes] = await Promise.all([
           api.get<DashboardStats>("/admin/dashboard-stats"),
-          api.get<Analytics>("/admin/statistics/analytics"),
+          api.get<Analytics>("/admin/statistics/analytics").catch((err) => {
+            if (err instanceof ApiError && err.status === 404) {
+              setAnalyticsUnavailable(true);
+              return null;
+            }
+            throw err;
+          }),
         ]);
         setStats(statsRes);
-        setAnalytics(analyticsRes);
+        setAnalytics(analyticsRes ?? null);
       } catch {
         setStats(null);
         setAnalytics(null);
@@ -184,6 +192,14 @@ export default function AdminStatisticsPage() {
         </p>
       </div>
 
+      {analyticsUnavailable && (
+        <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+          Time-series analytics are unavailable. Ensure the API server (Rust backend) is running and exposes{" "}
+          <code className="text-xs bg-amber-100 dark:bg-amber-900/50 px-1 rounded">/admin/statistics/analytics</code>.
+          Summary stats above are still from the dashboard API.
+        </div>
+      )}
+
       {/* KPI cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
         <div className={`${cardBase} p-4`}>
@@ -255,35 +271,41 @@ export default function AdminStatisticsPage() {
           Tickets created (last 30 days)
         </h2>
         <div className="h-72">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={ticketsChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="ticketsGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={CHART_COLORS.area[0]} stopOpacity={0.3} />
-                  <stop offset="95%" stopColor={CHART_COLORS.area[0]} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-neutral-200 dark:stroke-neutral-700" />
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 11, fill: "currentColor" }}
-                tickFormatter={(v) => v.slice(5)}
-              />
-              <YAxis tick={{ fontSize: 11, fill: "currentColor" }} allowDecimals={false} />
-              <Tooltip
-                contentStyle={{ backgroundColor: "var(--tw-bg-opacity)", borderRadius: "0.5rem" }}
-                labelFormatter={(v) => v}
-                formatter={(value: number) => [value, "Tickets"]}
-              />
-              <Area
-                type="monotone"
-                dataKey="count"
-                stroke={CHART_COLORS.area[0]}
-                strokeWidth={2}
-                fill="url(#ticketsGradient)"
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+          {ticketsChartData.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={ticketsChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="ticketsGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={CHART_COLORS.area[0]} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={CHART_COLORS.area[0]} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-neutral-200 dark:stroke-neutral-700" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 11, fill: "currentColor" }}
+                  tickFormatter={(v) => v.slice(5)}
+                />
+                <YAxis tick={{ fontSize: 11, fill: "currentColor" }} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "var(--tw-bg-opacity)", borderRadius: "0.5rem" }}
+                  labelFormatter={(v) => v}
+                  formatter={(value: unknown) => [Number(value ?? 0), "Tickets"]}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="count"
+                  stroke={CHART_COLORS.area[0]}
+                  strokeWidth={2}
+                  fill="url(#ticketsGradient)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex items-center justify-center h-full text-neutral-500">
+              {analyticsUnavailable ? "Analytics API unavailable" : "No ticket data"}
+            </div>
+          )}
         </div>
       </div>
 
@@ -306,13 +328,13 @@ export default function AdminStatisticsPage() {
                     paddingAngle={2}
                     dataKey="value"
                     nameKey="name"
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
                   >
                     {ticketStatusPieData.map((_, i) => (
                       <Cell key={i} fill={CHART_COLORS.status[i % CHART_COLORS.status.length]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value: number) => [value, "Tickets"]} />
+                  <Tooltip formatter={(value: unknown) => [Number(value ?? 0), "Tickets"]} />
                 </PieChart>
               </ResponsiveContainer>
             ) : (
@@ -329,23 +351,29 @@ export default function AdminStatisticsPage() {
             Tickets by priority
           </h2>
           <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={ticketPriorityBarData}
-                layout="vertical"
-                margin={{ top: 8, right: 24, left: 60, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" className="stroke-neutral-200 dark:stroke-neutral-700" />
-                <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
-                <YAxis type="category" dataKey="priority" tick={{ fontSize: 11 }} width={50} />
-                <Tooltip formatter={(value: number) => [value, "Tickets"]} />
-                <Bar dataKey="count" name="Tickets" radius={[0, 4, 4, 0]}>
-                  {ticketPriorityBarData.map((_, i) => (
-                    <Cell key={i} fill={CHART_COLORS.priority[i]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            {ticketPriorityBarData.some((d) => d.count > 0) ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={ticketPriorityBarData}
+                  layout="vertical"
+                  margin={{ top: 8, right: 24, left: 60, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-neutral-200 dark:stroke-neutral-700" />
+                  <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <YAxis type="category" dataKey="priority" tick={{ fontSize: 11 }} width={50} />
+                  <Tooltip formatter={(value: unknown) => [Number(value ?? 0), "Tickets"]} />
+                  <Bar dataKey="count" name="Tickets" radius={[0, 4, 4, 0]}>
+                    {ticketPriorityBarData.map((_, i) => (
+                      <Cell key={i} fill={CHART_COLORS.priority[i]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full text-neutral-500">
+                {analyticsUnavailable ? "Analytics API unavailable" : "No priority data"}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -366,13 +394,13 @@ export default function AdminStatisticsPage() {
                   tickFormatter={(v) => v.slice(5)}
                 />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}h`} />
-                <Tooltip formatter={(value: number) => [value, "Hours"]} />
+                <Tooltip formatter={(value: unknown) => [Number(value ?? 0), "Hours"]} />
                 <Bar dataKey="hours" name="Hours" fill={CHART_COLORS.area[1]} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
             <div className="flex items-center justify-center h-full text-neutral-500">
-              No time tracking data
+              {analyticsUnavailable ? "Analytics API unavailable" : "No time tracking data"}
             </div>
           )}
         </div>
@@ -384,19 +412,25 @@ export default function AdminStatisticsPage() {
           New user signups (last 30 days)
         </h2>
         <div className="h-72">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={usersChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-neutral-200 dark:stroke-neutral-700" />
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 11 }}
-                tickFormatter={(v) => v.slice(5)}
-              />
-              <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-              <Tooltip formatter={(value: number) => [value, "Signups"]} />
-              <Bar dataKey="count" name="Signups" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          {usersChartData.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={usersChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-neutral-200 dark:stroke-neutral-700" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 11 }}
+                  tickFormatter={(v) => v.slice(5)}
+                />
+                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                <Tooltip formatter={(value: unknown) => [Number(value ?? 0), "Signups"]} />
+                <Bar dataKey="count" name="Signups" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex items-center justify-center h-full text-neutral-500">
+              {analyticsUnavailable ? "Analytics API unavailable" : "No signup data"}
+            </div>
+          )}
         </div>
       </div>
     </div>

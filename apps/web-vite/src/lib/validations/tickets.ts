@@ -14,3 +14,15 @@ export const createTicketSchema = z.object({
 });
 
 export type CreateTicketInput = z.infer<typeof createTicketSchema>;
+
+export const updateTicketSchema = z.object({
+  title: z.string().min(3, "Title must be at least 3 characters").max(200).trim(),
+  description: z.string().max(50000).optional().or(z.literal("")),
+  type: z.enum(["BUG", "FEATURE", "QUESTION", "SUPPORT", "TASK"]),
+  priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]),
+  status: z.enum(["OPEN", "IN_PROGRESS", "PENDING", "RESOLVED", "CLOSED", "CANCELLED"]),
+  assignedToId: z.string().optional().or(z.literal("")),
+  assignedToGroupId: z.string().optional().or(z.literal("")),
+});
+
+export type UpdateTicketInput = z.infer<typeof updateTicketSchema>;

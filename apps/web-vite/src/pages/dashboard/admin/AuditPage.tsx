@@ -12,7 +12,7 @@ export default function AuditPage() {
   const [data, setData] = useState<AuditEntriesResponse | null>(null);
   const [actions, setActions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [actionsLoading, setActionsLoading] = useState(true);
+  const [, setActionsLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [actionFilter, setActionFilter] = useState<string>("");
   const [userSearch, setUserSearch] = useState("");

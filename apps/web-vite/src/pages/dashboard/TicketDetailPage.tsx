@@ -10,7 +10,9 @@ import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { AccessIssueTicketDialog } from "@/components/features/tickets/AccessIssueTicketDialog";
 import { TicketDetailHeaderActions } from "@/components/features/tickets/TicketDetailHeaderActions";
 import { RichTextDisplay } from "@/components/features/tickets/RichTextDisplay";
+import { TicketTimerSection } from "@/components/features/tickets/TicketTimerSection";
 import { getTicketTypeLabel, type TicketType } from "@/lib/utils/tickets";
+import type { TimeEntry } from "@/lib/types";
 
 function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -67,10 +69,12 @@ export default function TicketDetailPage() {
   const navigate = useNavigate();
   const { user, can } = useAuth();
   const [ticket, setTicket] = useState<Ticket | null>(null);
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
   const canViewTickets = can("modules.tickets.view");
+  const canViewTimeTracking = can("modules.time_tracking.view") ?? true;
   const isAgent = user?.role === "AGENT" || user?.role === "ADMIN" || user?.role === "MODERATOR";
   const canDeleteTicket =
     can("tickets.delete_all") || (ticket?.created_by?.id === user?.id);
@@ -100,6 +104,22 @@ export default function TicketDetailPage() {
       cancelled = true;
     };
   }, [id]);
+
+  useEffect(() => {
+    if (!id || !ticket) return;
+    let cancelled = false;
+    api
+      .get<{ timeEntries?: TimeEntry[] }>(`/time-tracking?ticket_id=${id}`)
+      .then((data) => {
+        if (!cancelled) setTimeEntries(data.timeEntries ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setTimeEntries([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, ticket]);
 
   useEffect(() => {
     if (!user) {
@@ -355,6 +375,29 @@ export default function TicketDetailPage() {
               </div>
             </div>
           </div>
+
+          {canViewTimeTracking && isAgent && (
+            <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
+              <TicketTimerSection
+                ticketId={ticket.id}
+                ticketNumber={ticket.ticket_number}
+                ticketTitle={ticket.title}
+                initialTimeEntries={timeEntries
+                  .filter((e) => e.status === "RUNNING" || e.status === "PAUSED")
+                  .map((e) => ({
+                    id: e.id,
+                    name: e.name,
+                    description: e.description,
+                    status: e.status,
+                    started_at: e.started_at,
+                    total_duration: e.total_duration,
+                    last_resumed_at: e.last_resumed_at,
+                  }))}
+                userTimezone={user?.timezone ?? "UTC"}
+                canCreate={true}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>

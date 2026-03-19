@@ -525,7 +525,7 @@ export default function DbConsolePage() {
                   variant="outline"
                   onClick={() => {
                     setIsEditOpen(false);
-                    setEditRowIndex(null);
+                    setEditOriginalRow(null);
                     setEditError(null);
                   }}
                 >
