@@ -8,6 +8,7 @@
 //!   cloudwrkz-cli db status       Check database connection
 //!   cloudwrkz-cli db stats        Show table counts
 //!   cloudwrkz-cli admin create-admin <email> <password> [name]  Create first admin (DB only, no API)
+//!   cloudwrkz-cli diagnostics-token generate   Store hashed token in DB; print plaintext once (for GET …/health/detailed)
 
 mod api;
 mod tui;
@@ -16,7 +17,10 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use argon2::password_hash::{rand_core::OsRng, PasswordHasher, SaltString};
+use argon2::password_hash::{
+    rand_core::{OsRng, RngCore},
+    PasswordHasher, SaltString,
+};
 use argon2::Argon2;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
@@ -124,6 +128,21 @@ enum Commands {
         #[command(subcommand)]
         subcommand: AdminCommand,
     },
+    /// Generate diagnostics API token (stored hashed in DB; same as `cloudwrkz-api diagnostics-token generate`)
+    DiagnosticsToken {
+        #[command(subcommand)]
+        subcommand: DiagnosticsTokenCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum DiagnosticsTokenCommand {
+    /// Create or rotate the token for GET /api/v1/health/detailed (Bearer auth)
+    Generate {
+        /// Directory containing migrations (default: apps/api/migrations from cwd)
+        #[arg(long, env = "MIGRATIONS_DIR")]
+        migrations_dir: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -168,32 +187,55 @@ fn migrations_dir(given: Option<PathBuf>) -> PathBuf {
     })
 }
 
-/// Load .env from current dir, then from apps/api/.env if DATABASE_URL still unset.
+/// Load env files in order:
+/// 1. `.env` in the current directory (dotenvy does not override already-set shell vars).
+/// 2. Blank `CLOUDWRKZ_*` values are removed so a later file can fill them (`from_path` never overrides).
+/// 3. `apps/api/.env` — shared with `cloudwrkz-api` (`DATABASE_URL`, `API_PORT`, optional `CLOUDWRKZ_TOKEN`).
+/// 4. `apps/cli/.env` — **overrides** (recommended place for `CLOUDWRKZ_TOKEN` so it always wins).
 fn load_dotenv() {
     dotenvy::dotenv().ok();
-    if std::env::var("DATABASE_URL").is_err() {
-        // Try cwd/apps/api/.env (when run from repo root)
-        let from_cwd = std::env::current_dir()
-            .ok()
-            .map(|cwd| cwd.join("apps/api/.env"));
-        if let Some(ref p) = from_cwd {
-            if p.exists() {
-                let _ = dotenvy::from_path(p);
-                return;
+    unset_env_if_blank("CLOUDWRKZ_TOKEN");
+    unset_env_if_blank("CLOUDWRKZ_API_URL");
+    if let Some(path) = find_workspace_file("apps/api/.env") {
+        let _ = dotenvy::from_path(&path);
+    }
+    if let Some(path) = find_workspace_file("apps/cli/.env") {
+        let _ = dotenvy::from_path_override(path);
+    }
+}
+
+fn unset_env_if_blank(key: &str) {
+    match std::env::var(key) {
+        Ok(v) if v.trim().is_empty() => {
+            // SAFETY: `remove_var` is unsafe in Rust 2024; we only call from `main` before other
+            // threads start, so no concurrent `getenv` in the same process.
+            unsafe {
+                std::env::remove_var(key);
             }
         }
-        // Fallback: from executable dir (e.g. target/release) go up to repo root
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(release) = exe.parent() {
-                // target/release or target/debug -> parent = target, parent = repo root
-                if let Some(root) = release.parent().and_then(|p| p.parent()) {
-                    let api_dotenv = root.join("apps/api/.env");
-                    if api_dotenv.exists() {
-                        let _ = dotenvy::from_path(api_dotenv);
-                    }
-                }
+        _ => {}
+    }
+}
+
+/// Walks up from cwd, then from the executable directory, to find `relative_path` under a workspace root.
+fn find_workspace_file(relative_path: &str) -> Option<PathBuf> {
+    if let Ok(cwd) = std::env::current_dir() {
+        let mut dir = Some(cwd.as_path());
+        while let Some(d) = dir {
+            let candidate = d.join(relative_path);
+            if candidate.is_file() {
+                return Some(candidate);
             }
+            dir = d.parent();
         }
+    }
+    let mut d = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    loop {
+        let candidate = d.join(relative_path);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+        d = d.parent()?.to_path_buf();
     }
 }
 
@@ -241,8 +283,61 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 }
             }
         }
+        Commands::DiagnosticsToken { subcommand } => {
+            let database_url = std::env::var("DATABASE_URL").map_err(|_| {
+                "DATABASE_URL must be set (e.g. in .env or apps/api/.env)".to_string()
+            })?;
+            match subcommand {
+                DiagnosticsTokenCommand::Generate { migrations_dir: dir } => {
+                    let dir = migrations_dir(dir);
+                    run_diagnostics_token_generate(&database_url, &dir).await?;
+                }
+            }
+        }
     }
 
+    Ok(())
+}
+
+const DIAGNOSTICS_TOKEN_SETTINGS_KEY: &str = "diagnostics_health_token_hash";
+
+async fn run_diagnostics_token_generate(
+    database_url: &str,
+    migrations_dir: &PathBuf,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    run_migrate(database_url, migrations_dir).await?;
+
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect(database_url)
+        .await?;
+
+    let mut raw = [0u8; 32];
+    OsRng.fill_bytes(&mut raw);
+    let suffix: String = raw.iter().map(|b| format!("{:02x}", b)).collect();
+    let token = format!("cwzd_{suffix}");
+
+    let hash = hash_password(&token).map_err(|e| format!("hash token: {e}"))?;
+    let value = serde_json::json!(hash);
+    sqlx::query(
+        r#"INSERT INTO system_settings (key, value, updated_at) VALUES ($1, $2, NOW())
+           ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()"#,
+    )
+    .bind(DIAGNOSTICS_TOKEN_SETTINGS_KEY)
+    .bind(value)
+    .execute(&pool)
+    .await?;
+
+    println!("{}", token);
+    eprintln!(
+        "{}",
+        "Use: curl -H \"Authorization: Bearer <token>\" http://localhost:8080/api/v1/health/detailed"
+            .cyan()
+    );
+    eprintln!(
+        "{}",
+        "Plaintext is printed only once; also available via Admin → System Settings.".dimmed()
+    );
     Ok(())
 }
 
@@ -273,14 +368,36 @@ async fn run_login(
             let who = res.user.name.as_deref().unwrap_or(res.user.email.as_str());
             println!("{} Logged in as {}", "✓".green(), who);
             println!();
-            println!("Set this for management menus (users, groups, modules, sessions):");
-            println!("  {}", "export CLOUDWRKZ_TOKEN=\"<token>\"".cyan());
+            println!(
+                "{}",
+                "The token below is your API session. Put it in CLOUDWRKZ_TOKEN so the CLI (interactive menus) and scripts can call the API."
+                    .bright_black()
+            );
             println!();
-            println!("Token (copy for CLOUDWRKZ_TOKEN):");
+            println!("{}", "Where to set it:".cyan().bold());
+            println!(
+                "  {}  {}",
+                "PowerShell (this window):".bright_black(),
+                r#"$env:CLOUDWRKZ_TOKEN = "<paste token below>""#.cyan()
+            );
+            println!(
+                "  {}     {}",
+                "bash / zsh:".bright_black(),
+                r#"export CLOUDWRKZ_TOKEN="<paste token below>""#.cyan()
+            );
+            println!(
+                "  {} {}",
+                "Optional:".bright_black(),
+                "Recommended: apps/cli/.env with CLOUDWRKZ_TOKEN=... (override-loaded). Also works: repo root .env, or apps/api/.env."
+                    .bright_black()
+            );
+            println!();
+            println!("{}", "Token:".cyan().bold());
             println!("{}", res.token);
         }
         Err(e) => {
-            eprintln!("{} Login failed: {}", "✗".red(), e);
+            eprintln!("{} Login failed.", "✗".red());
+            eprintln!("{}", api::user_message(&e, &base_url));
             std::process::exit(1);
         }
     }

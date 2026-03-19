@@ -8,7 +8,7 @@ use ratatui::{
         execute,
         terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     },
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
@@ -257,6 +257,8 @@ fn run_tui_loop(
 }
 
 const SEARCH_BAR_HEIGHT: u16 = 5;
+/// Hint strip under both panels (must not overlap List blocks — those use full `area` including borders).
+const HELP_ROW_HEIGHT: u16 = 1;
 
 fn ui(
     f: &mut Frame,
@@ -314,10 +316,17 @@ fn ui(
         area
     };
 
+    let main_vertical = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(3), Constraint::Length(HELP_ROW_HEIGHT)])
+        .split(main_area);
+    let body = main_vertical[0];
+    let help_row = main_vertical[1];
+
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(SIDEBAR_WIDTH), Constraint::Min(24)])
-        .split(main_area);
+        .split(body);
 
     let sidebar_focused = state.focus == PanelFocus::Sidebar;
     let sidebar_list: Vec<ListItem> = sidebar_items
@@ -402,11 +411,5 @@ fn ui(
         Span::raw("quit"),
     ]))
     .style(Style::default().fg(Color::DarkGray));
-    let help_area = Rect {
-        x: chunks[1].x,
-        y: chunks[1].bottom().saturating_sub(1),
-        width: chunks[1].width,
-        height: 1,
-    };
-    f.render_widget(help, help_area);
+    f.render_widget(help, help_row);
 }

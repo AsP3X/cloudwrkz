@@ -3,13 +3,27 @@
 use serde::Deserialize;
 
 fn default_api_url() -> String {
-    std::env::var("CLOUDWRKZ_API_URL").unwrap_or_else(|_| "http://localhost:8080/api/v1".to_string())
+    if let Ok(url) = std::env::var("CLOUDWRKZ_API_URL") {
+        let t = url.trim();
+        if !t.is_empty() {
+            return t.trim_end_matches('/').to_string();
+        }
+    }
+    // Same source as cloudwrkz-api: API_PORT in apps/api/.env (loaded by CLI before this runs).
+    let port = std::env::var("API_PORT")
+        .ok()
+        .and_then(|p| p.trim().parse::<u16>().ok())
+        .unwrap_or(8080);
+    format!("http://127.0.0.1:{port}/api/v1")
 }
 
 /// Build API base URL and optional token from env.
 pub fn api_config() -> (String, Option<String>) {
     let base = default_api_url();
-    let token = std::env::var("CLOUDWRKZ_TOKEN").ok();
+    let token = std::env::var("CLOUDWRKZ_TOKEN")
+        .ok()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty());
     (base, token)
 }
 
@@ -208,6 +222,34 @@ impl std::error::Error for ApiError {}
 impl From<reqwest::Error> for ApiError {
     fn from(e: reqwest::Error) -> Self {
         ApiError::Reqwest(e)
+    }
+}
+
+/// Human-friendly message for CLI output (connection hints, current base URL).
+pub fn user_message(err: &ApiError, api_base: &str) -> String {
+    match err {
+        ApiError::Http(code, body) => {
+            format!("HTTP {}: {}", code, body)
+        }
+        ApiError::Reqwest(e) => {
+            let mut out = e.to_string();
+            // Prefer `status().is_none()` over `is_connect()`: on some platforms (e.g. Windows)
+            // refused connections aren't always classified as connect errors.
+            if e.status().is_none() {
+                out.push_str(&format!(
+                    "\n\nNo HTTP response from the server (network or connection error).\n\
+                     Configured API base: {api_base}\n\n\
+                     • Start the API from the repo root: cargo run -p cloudwrkz-api\n\
+                     • Or set CLOUDWRKZ_API_URL (must include /api/v1).\n\
+                     • If CLOUDWRKZ_API_URL is unset, the CLI uses API_PORT from apps/api/.env (default 8080).\n\
+                     • If the API is running, confirm the port matches API_PORT / CLOUDWRKZ_API_URL."
+                ));
+                if e.is_timeout() {
+                    out.push_str("\n  (This failure was reported as a timeout.)");
+                }
+            }
+            out
+        }
     }
 }
 

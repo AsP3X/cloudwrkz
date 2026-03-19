@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     routing::{get, patch, post},
     Json, Router,
 };
@@ -9,6 +9,8 @@ use sqlx::Row;
 
 use crate::audit::{self, WriteAuditParams};
 use crate::auth::extractors::AuthUser;
+use crate::auth::password;
+use crate::diagnostics_token;
 use crate::error::AppError;
 use crate::models::audit_log::AuditLogRow;
 use crate::models::notification::NotificationRow;
@@ -68,6 +70,10 @@ pub fn router() -> Router<AppState> {
         .route("/admin/settings", get(admin_settings))
         .route("/admin/settings/links-page-size", axum::routing::patch(update_links_page_size))
         .route("/admin/settings/qr-login-rate-limit", axum::routing::patch(update_qr_login_rate_limit))
+        .route(
+            "/admin/settings/diagnostics-health-token",
+            post(rotate_diagnostics_health_token),
+        )
         .route("/notifications", get(list_notifications))
         .route("/notifications/{id}/read", post(mark_notification_read))
 }
@@ -763,6 +769,15 @@ async fn admin_settings(
     .unwrap_or(20);
     let qr_requests_per_minute = qr_requests_per_minute.clamp(1, 120);
 
+    let env_diag = state.config.diagnostics_health_token.is_some();
+    let db_diag = diagnostics_token::has_database_token(&state.pool).await;
+    let diag_source = match (env_diag, db_diag) {
+        (true, true) => "both",
+        (true, false) => "environment",
+        (false, true) => "database",
+        (false, false) => "none",
+    };
+
     Ok(Json(serde_json::json!({
         "systemInfo": {
             "totalUsers": total_users,
@@ -788,6 +803,10 @@ async fn admin_settings(
         },
         "linksDefaultPageSize": links_default_page_size,
         "qrLoginRequestsPerMinute": qr_requests_per_minute,
+        "diagnosticsHealthToken": {
+            "configured": env_diag || db_diag,
+            "source": diag_source,
+        },
     })))
 }
 
@@ -837,6 +856,43 @@ async fn update_qr_login_rate_limit(
     .execute(&state.pool)
     .await?;
     Ok(Json(serde_json::json!({ "success": true })))
+}
+
+async fn rotate_diagnostics_health_token(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_admin_settings(&state.pool, &user.id).await?;
+
+    let raw = diagnostics_token::generate_raw_token();
+    let hash = password::hash_password(&raw).map_err(|e| {
+        AppError::internal(format!("Could not hash diagnostics token: {e}"))
+    })?;
+    diagnostics_token::set_stored_hash(&state.pool, &hash)
+        .await
+        .map_err(|e| AppError::internal(format!("Could not store diagnostics token: {e}")))?;
+
+    audit::write_audit_log(
+        &state.pool,
+        WriteAuditParams {
+            user_id: Some(user.id),
+            action: "admin.settings.diagnostics_health_token.rotate".into(),
+            resource_type: Some("system_settings".into()),
+            resource_id: Some("diagnostics_health_token_hash".into()),
+            context: None,
+            ip_address: audit::client_ip_from_headers(&headers),
+            user_agent: headers
+                .get(axum::http::header::USER_AGENT)
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string()),
+        },
+    );
+
+    Ok(Json(serde_json::json!({
+        "token": raw,
+        "message": "Store this token securely. It is shown only once. Use Authorization: Bearer <token> with GET /api/v1/health/detailed. A token set via DIAGNOSTICS_HEALTH_TOKEN is unchanged."
+    })))
 }
 
 #[derive(Deserialize)]

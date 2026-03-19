@@ -1,6 +1,6 @@
 use axum::{
     extract::State,
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::get,
     Json, Router,
@@ -9,6 +9,10 @@ use serde::Serialize;
 use sqlx::PgPool;
 use std::time::Instant;
 use sysinfo::{Disks, System};
+
+use crate::auth::extractors::extract_token_from_headers;
+use crate::diagnostics_token;
+use crate::error::AppError;
 
 const API_NAME: &str = "cloudwrkz-api";
 const API_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -19,9 +23,11 @@ pub fn router(
     api_started_at: Instant,
     api_nodes_available: u32,
     api_region: Option<String>,
+    diagnostics_health_token: Option<String>,
 ) -> Router {
     Router::new()
         .route("/api/health", get(health_check_legacy))
+        .route("/api/health/detailed", get(health_detailed_legacy))
         .route("/api/ping", get(ping))
         .route("/api/ready", get(readiness))
         .with_state(HealthRouterState {
@@ -29,6 +35,7 @@ pub fn router(
             api_started_at,
             api_nodes_available,
             api_region,
+            diagnostics_health_token,
         })
 }
 
@@ -38,28 +45,28 @@ struct HealthRouterState {
     api_started_at: Instant,
     api_nodes_available: u32,
     api_region: Option<String>,
+    diagnostics_health_token: Option<String>,
 }
 
 /// Health routes available under the v1 prefix for web client convenience.
 pub fn v1_router() -> Router<super::AppState> {
     Router::new()
         .route("/health", get(health_check_v1))
+        .route("/health/detailed", get(health_detailed_v1))
         .route("/ping", get(ping))
 }
 
+/// Public status payload — matches what the service status dashboard displays (no host, process, or timings).
 #[derive(Serialize)]
 pub struct HealthResponse {
     pub status: String,
     pub timestamp: String,
-    pub api: ApiMeta,
-    pub services: HealthServices,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub host: Option<HostSnapshot>,
+    pub api: PublicApiMeta,
+    pub services: PublicServices,
 }
 
 #[derive(Serialize)]
-pub struct ApiMeta {
-    pub name: String,
+pub struct PublicApiMeta {
     pub version: String,
     pub environment: String,
     pub uptime_seconds: u64,
@@ -67,14 +74,11 @@ pub struct ApiMeta {
     pub nodes_available: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub region: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub hostname: Option<String>,
 }
 
 #[derive(Serialize)]
-pub struct HealthServices {
+pub struct PublicServices {
     pub database: DatabaseHealth,
-    pub process: ProcessHealth,
 }
 
 #[derive(Serialize)]
@@ -87,6 +91,66 @@ pub struct DatabaseHealth {
     pub pool_connections_idle: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+}
+
+/// Full diagnostics payload for trusted callers (requires bearer diagnostics token).
+#[derive(Serialize)]
+pub struct DetailedHealthResponse {
+    pub status: String,
+    pub timestamp: String,
+    pub api: DetailedApiMeta,
+    pub services: DetailedHealthServices,
+    pub timings: HealthTimings,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host: Option<HostSnapshot>,
+    pub build: BuildInfo,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rust_toolchain: Option<&'static str>,
+}
+
+#[derive(Serialize)]
+pub struct BuildInfo {
+    pub profile: &'static str,
+    pub target_triple: String,
+}
+
+#[derive(Serialize)]
+pub struct DetailedApiMeta {
+    pub name: String,
+    pub version: String,
+    pub environment: String,
+    pub uptime_seconds: u64,
+    pub nodes_available: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub region: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hostname: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct DetailedHealthServices {
+    pub database: DetailedDatabaseHealth,
+    pub process: ProcessHealth,
+}
+
+#[derive(Serialize)]
+pub struct DetailedDatabaseHealth {
+    pub status: String,
+    pub connected: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_time_ms: Option<u64>,
+    pub pool_size: u32,
+    pub pool_connections_idle: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub postgres_version: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct HealthTimings {
+    pub handler_wall_ms: u64,
+    pub metrics_tail_ms: u64,
 }
 
 #[derive(Serialize)]
@@ -140,6 +204,14 @@ fn resolve_hostname() -> Option<String> {
         .ok()
         .and_then(|h| h.into_string().ok())
         .filter(|s| !s.is_empty())
+}
+
+fn build_target_triple() -> String {
+    format!(
+        "{}-{}",
+        std::env::consts::ARCH,
+        std::env::consts::OS
+    )
 }
 
 fn collect_host_blocking() -> Option<HostSnapshot> {
@@ -206,8 +278,7 @@ async fn collect_host_snapshot() -> Option<HostSnapshot> {
 fn collect_process_cpu_blocking() -> Option<f32> {
     let mut sys = System::new();
     sys.refresh_cpu_all();
-    let v = sys.global_cpu_usage();
-    Some(v)
+    Some(sys.global_cpu_usage())
 }
 
 async fn collect_process_cpu() -> Option<f32> {
@@ -222,14 +293,11 @@ async fn build_health_json(
     nodes_available: u32,
     region: Option<String>,
 ) -> HealthResponse {
-    let host_task = tokio::spawn(async move { collect_host_snapshot().await });
-    let cpu_task = tokio::spawn(async move { collect_process_cpu().await });
-
-    let start = std::time::Instant::now();
+    let db_start = std::time::Instant::now();
     let db_result = sqlx::query_scalar::<_, i32>("SELECT 1")
         .fetch_one(pool)
         .await;
-    let db_elapsed_ms = start.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
+    let db_elapsed_ms = db_start.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
 
     let pool_size = pool.size();
     let pool_connections_idle = pool.num_idle();
@@ -245,22 +313,17 @@ async fn build_health_json(
         "unhealthy".to_string()
     };
 
-    let host = host_task.await.ok().flatten();
-    let cpu_usage_percent = cpu_task.await.ok().flatten();
-
     HealthResponse {
         status: overall,
         timestamp: chrono::Utc::now().to_rfc3339(),
-        api: ApiMeta {
-            name: API_NAME.to_string(),
+        api: PublicApiMeta {
             version: API_VERSION.to_string(),
             environment: resolve_environment(),
             uptime_seconds: api_started_at.elapsed().as_secs(),
             nodes_available: nodes_available.max(1),
             region,
-            hostname: resolve_hostname(),
         },
-        services: HealthServices {
+        services: PublicServices {
             database: DatabaseHealth {
                 status: db_status,
                 connected,
@@ -273,6 +336,82 @@ async fn build_health_json(
                 pool_connections_idle,
                 error,
             },
+        },
+    }
+}
+
+async fn build_detailed_health_json(
+    pool: &PgPool,
+    api_started_at: Instant,
+    nodes_available: u32,
+    region: Option<String>,
+) -> DetailedHealthResponse {
+    let wall_start = std::time::Instant::now();
+    let host_task = tokio::spawn(async move { collect_host_snapshot().await });
+    let cpu_task = tokio::spawn(async move { collect_process_cpu().await });
+
+    let db_start = std::time::Instant::now();
+    let db_result = sqlx::query_scalar::<_, i32>("SELECT 1")
+        .fetch_one(pool)
+        .await;
+    let db_elapsed_ms = db_start.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
+
+    let postgres_version = if db_result.is_ok() {
+        sqlx::query_scalar::<_, String>("SELECT version()")
+            .fetch_one(pool)
+            .await
+            .ok()
+    } else {
+        None
+    };
+
+    let pool_size = pool.size();
+    let pool_connections_idle = pool.num_idle();
+
+    let (db_status, connected, error) = match db_result {
+        Ok(_) => ("healthy".to_string(), true, None),
+        Err(e) => ("unhealthy".to_string(), false, Some(format!("{e}"))),
+    };
+
+    let overall = if connected {
+        "healthy".to_string()
+    } else {
+        "unhealthy".to_string()
+    };
+
+    let after_db = std::time::Instant::now();
+    let host = host_task.await.ok().flatten();
+    let cpu_usage_percent = cpu_task.await.ok().flatten();
+    let metrics_tail_ms = after_db.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
+
+    let handler_wall_ms = wall_start.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
+
+    DetailedHealthResponse {
+        status: overall,
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        api: DetailedApiMeta {
+            name: API_NAME.to_string(),
+            version: API_VERSION.to_string(),
+            environment: resolve_environment(),
+            uptime_seconds: api_started_at.elapsed().as_secs(),
+            nodes_available: nodes_available.max(1),
+            region,
+            hostname: resolve_hostname(),
+        },
+        services: DetailedHealthServices {
+            database: DetailedDatabaseHealth {
+                status: db_status,
+                connected,
+                response_time_ms: if connected {
+                    Some(db_elapsed_ms)
+                } else {
+                    None
+                },
+                pool_size,
+                pool_connections_idle,
+                error,
+                postgres_version,
+            },
             process: ProcessHealth {
                 os: std::env::consts::OS.to_string(),
                 arch: std::env::consts::ARCH.to_string(),
@@ -280,7 +419,20 @@ async fn build_health_json(
                 cpu_usage_percent,
             },
         },
+        timings: HealthTimings {
+            handler_wall_ms,
+            metrics_tail_ms,
+        },
         host,
+        build: BuildInfo {
+            profile: if cfg!(debug_assertions) {
+                "debug"
+            } else {
+                "release"
+            },
+            target_triple: build_target_triple(),
+        },
+        rust_toolchain: option_env!("CARGO_PKG_RUST_VERSION"),
     }
 }
 
@@ -291,6 +443,21 @@ async fn respond_health(
     region: Option<String>,
 ) -> (StatusCode, Json<HealthResponse>) {
     let body = build_health_json(pool, api_started_at, nodes_available, region).await;
+    let status_code = if body.services.database.connected {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    (status_code, Json(body))
+}
+
+async fn respond_health_detailed(
+    pool: &PgPool,
+    api_started_at: Instant,
+    nodes_available: u32,
+    region: Option<String>,
+) -> (StatusCode, Json<DetailedHealthResponse>) {
+    let body = build_detailed_health_json(pool, api_started_at, nodes_available, region).await;
     let status_code = if body.services.database.connected {
         StatusCode::OK
     } else {
@@ -319,8 +486,63 @@ async fn health_check_v1(State(state): State<super::AppState>) -> impl IntoRespo
     .await
 }
 
+async fn health_detailed_legacy(
+    State(state): State<HealthRouterState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, AppError> {
+    let token = extract_token_from_headers(&headers).ok_or_else(|| {
+        AppError::unauthorized("Authorization Bearer token required for detailed health")
+    })?;
+    let ok = diagnostics_token::validate_presented_token(
+        &state.pool,
+        state.diagnostics_health_token.as_deref(),
+        &token,
+    )
+    .await;
+    if !ok {
+        return Err(AppError::unauthorized("Invalid diagnostics token"));
+    }
+    Ok(respond_health_detailed(
+        &state.pool,
+        state.api_started_at,
+        state.api_nodes_available,
+        state.api_region.clone(),
+    )
+    .await)
+}
+
+async fn health_detailed_v1(
+    State(state): State<super::AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, AppError> {
+    let token = extract_token_from_headers(&headers).ok_or_else(|| {
+        AppError::unauthorized("Authorization Bearer token required for detailed health")
+    })?;
+    let ok = diagnostics_token::validate_presented_token(
+        &state.pool,
+        state.config.diagnostics_health_token.as_deref(),
+        &token,
+    )
+    .await;
+    if !ok {
+        return Err(AppError::unauthorized("Invalid diagnostics token"));
+    }
+    Ok(respond_health_detailed(
+        &state.pool,
+        state.api_started_at,
+        state.config.api_nodes_available,
+        state.config.api_region.clone(),
+    )
+    .await)
+}
+
 async fn ping() -> Json<serde_json::Value> {
-    Json(serde_json::json!({ "ok": true }))
+    let start = std::time::Instant::now();
+    let server_processing_ms = start.elapsed().as_secs_f64() * 1000.0;
+    Json(serde_json::json!({
+        "ok": true,
+        "server_processing_ms": server_processing_ms,
+    }))
 }
 
 async fn readiness(State(state): State<HealthRouterState>) -> impl IntoResponse {

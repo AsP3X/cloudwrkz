@@ -33,7 +33,8 @@ Run with **no arguments** to start the interactive management console (same idea
 
 Main menu: **User Management**, **Group Management**, **Module Management**, **Session Management**, **Database**, Help, Quit.
 
-- **Users, Groups, Modules, Sessions** use the HTTP API. You must be logged in: set `CLOUDWRKZ_TOKEN` (see [Login](#login) below). Optionally set `CLOUDWRKZ_API_URL` (default: `http://localhost:8080/api/v1`).
+- **Users, Groups, Modules, Sessions** use the HTTP API. You must be logged in: set `CLOUDWRKZ_TOKEN` (see [Login](#login) below). Optionally set `CLOUDWRKZ_API_URL` (defaults use `API_PORT` from `apps/api/.env`).
+- **Env files:** The CLI loads `./.env`, then `apps/api/.env`, then **`apps/cli/.env`** (last wins for overlaps). Put `CLOUDWRKZ_TOKEN` in `apps/cli/.env` for a dedicated local file; see `apps/cli/.env.example`.
 - **Database** runs local DB tasks (status, migrate, seed, stats) and only needs `DATABASE_URL`.
 
 ### Create first admin (bootstrap)
@@ -62,8 +63,9 @@ To use the management menus (users, groups, modules, sessions), get a session to
 cloudwrkz-cli login
 # Or: CLOUDWRKZ_LOGIN_EMAIL=admin@example.com CLOUDWRKZ_LOGIN_PASSWORD=xxx cloudwrkz-cli login
 
-# Then export the token it prints:
-export CLOUDWRKZ_TOKEN="<token>"
+# Then persist the token (pick one):
+# - Recommended: copy apps/cli/.env.example to apps/cli/.env and set CLOUDWRKZ_TOKEN=...
+# - Or export in the shell: export CLOUDWRKZ_TOKEN="<token>"
 ```
 
 After that, run `cloudwrkz-cli` again and use the User / Group / Module / Session menus.

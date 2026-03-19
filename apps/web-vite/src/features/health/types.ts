@@ -1,22 +1,9 @@
-/** Mirrors `apps/api/src/routes/health.rs` health JSON (v1 + legacy). */
+/** Public `GET …/health` and `GET /api/health` JSON — dashboard fields only (no host, process, or timings). */
 
-export interface HealthLoadAverage {
-  one: number;
-  five: number;
-  fifteen: number;
-}
-
-export interface HealthDiskAggregate {
-  total_bytes: number;
-  available_bytes: number;
-}
-
-export interface HealthHost {
-  memory_total_bytes: number;
-  memory_used_bytes: number;
-  memory_available_bytes?: number;
-  load_average?: HealthLoadAverage;
-  disks?: HealthDiskAggregate;
+/** `GET …/ping` — no database access; `server_processing_ms` is time inside the API process only. */
+export interface PingPayload {
+  ok: boolean;
+  server_processing_ms?: number;
 }
 
 export interface HealthDatabase {
@@ -28,15 +15,7 @@ export interface HealthDatabase {
   error?: string;
 }
 
-export interface HealthProcess {
-  os: string;
-  arch: string;
-  pid: number;
-  cpu_usage_percent?: number;
-}
-
 export interface HealthApiMeta {
-  name: string;
   version: string;
   environment: string;
   uptime_seconds: number;
@@ -44,12 +23,10 @@ export interface HealthApiMeta {
   nodes_available?: number;
   /** Deployment region (API_REGION or --region). */
   region?: string;
-  hostname?: string;
 }
 
 export interface HealthServices {
   database: HealthDatabase;
-  process: HealthProcess;
 }
 
 export interface HealthPayload {
@@ -57,5 +34,4 @@ export interface HealthPayload {
   timestamp: string;
   api: HealthApiMeta;
   services: HealthServices;
-  host?: HealthHost;
 }

@@ -36,6 +36,10 @@ type AdminSettingsData = {
   };
   linksDefaultPageSize: number;
   qrLoginRequestsPerMinute: number;
+  diagnosticsHealthToken?: {
+    configured: boolean;
+    source: "none" | "environment" | "database" | "both";
+  };
 };
 
 const CARD_CLASS =
@@ -61,6 +65,12 @@ export default function AdminSettingsPage() {
   const [qrMessage, setQrMessage] = useState<{
     type: "success" | "error";
     text: string;
+  } | null>(null);
+  const [diagRotating, setDiagRotating] = useState(false);
+  const [diagMessage, setDiagMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+    token?: string;
   } | null>(null);
 
   const fetchSettings = useCallback(async () => {
@@ -120,6 +130,39 @@ export default function AdminSettingsPage() {
       });
     } finally {
       setQrSaving(false);
+    }
+  };
+
+  const handleRotateDiagnosticsToken = async () => {
+    if (
+      !confirm(
+        "Generate a new diagnostics API token? The previous database-stored token will stop working. (A token from DIAGNOSTICS_HEALTH_TOKEN in server env is not changed.)"
+      )
+    ) {
+      return;
+    }
+    setDiagRotating(true);
+    setDiagMessage(null);
+    try {
+      const res = await api.post<{ token?: string; message?: string }>(
+        "/admin/settings/diagnostics-health-token",
+        {}
+      );
+      setDiagMessage({
+        type: "success",
+        text:
+          res.message ??
+          "Token created. Copy it now—it is only shown once.",
+        token: res.token,
+      });
+      fetchSettings();
+    } catch (err) {
+      setDiagMessage({
+        type: "error",
+        text: err instanceof Error ? err.message : "Failed to generate token.",
+      });
+    } finally {
+      setDiagRotating(false);
     }
   };
 
@@ -374,6 +417,82 @@ export default function AdminSettingsPage() {
             </p>
           </div>
         </div>
+      </div>
+
+      {/* Diagnostics API (detailed health) */}
+      <div className={CARD_CLASS}>
+        <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">
+          Diagnostics API token
+        </h2>
+        <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
+          Full server diagnostics are available at{" "}
+          <code className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-xs dark:bg-neutral-800">
+            GET /api/v1/health/detailed
+          </code>{" "}
+          and{" "}
+          <code className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-xs dark:bg-neutral-800">
+            GET /api/health/detailed
+          </code>{" "}
+          with header{" "}
+          <code className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-xs dark:bg-neutral-800">
+            Authorization: Bearer &lt;token&gt;
+          </code>
+          . The public{" "}
+          <code className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-xs dark:bg-neutral-800">
+            /health
+          </code>{" "}
+          endpoint stays minimal.
+        </p>
+        <p className="text-sm text-neutral-700 dark:text-neutral-300 mb-3">
+          Status:{" "}
+          <span className="font-medium">
+            {data.diagnosticsHealthToken?.configured
+              ? `configured (${data.diagnosticsHealthToken?.source ?? "unknown"})`
+              : "not configured — generate a token or set DIAGNOSTICS_HEALTH_TOKEN on the API server"}
+          </span>
+        </p>
+        <Button
+          variant="primary"
+          onClick={handleRotateDiagnosticsToken}
+          loading={diagRotating}
+        >
+          Generate / rotate database token
+        </Button>
+        {diagMessage && (
+          <div className="mt-4 space-y-2">
+            <p
+              className={`text-sm ${
+                diagMessage.type === "success"
+                  ? "text-success-600 dark:text-success-400"
+                  : "text-error-600 dark:text-error-400"
+              }`}
+            >
+              {diagMessage.text}
+            </p>
+            {diagMessage.token ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50/90 p-3 dark:border-amber-900/50 dark:bg-amber-950/30">
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-900 dark:text-amber-200">
+                  Copy now (shown once)
+                </p>
+                <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all font-mono text-xs text-neutral-900 dark:text-neutral-100">
+                  {diagMessage.token}
+                </pre>
+              </div>
+            ) : null}
+          </div>
+        )}
+        <p className="mt-4 text-xs text-neutral-500 dark:text-neutral-500">
+          CLI (same effect):{" "}
+          <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono dark:bg-neutral-800">
+            cloudwrkz-api diagnostics-token generate
+          </code>{" "}
+          or{" "}
+          <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono dark:bg-neutral-800">
+            cloudwrkz-cli diagnostics-token generate
+          </code>
+          {" "}
+          (requires <code className="font-mono">DATABASE_URL</code>).
+        </p>
       </div>
 
       {/* QR code login rate limit */}

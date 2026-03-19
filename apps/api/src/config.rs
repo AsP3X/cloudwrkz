@@ -20,6 +20,8 @@ pub struct AppConfig {
     pub api_region: Option<String>,
     /// How many API nodes this deployment reports as available (single-process = 1 until multi-endpoint).
     pub api_nodes_available: u32,
+    /// Optional plaintext override for `GET …/health/detailed` (use rotation via admin/CLI + DB hash in production).
+    pub diagnostics_health_token: Option<String>,
 }
 
 impl AppConfig {
@@ -59,6 +61,10 @@ impl AppConfig {
                 .and_then(|s| s.parse::<u32>().ok())
                 .filter(|&n| n >= 1)
                 .unwrap_or(1),
+            diagnostics_health_token: env::var("DIAGNOSTICS_HEALTH_TOKEN")
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
         }
     }
 

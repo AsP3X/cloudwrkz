@@ -208,7 +208,7 @@ With the **Rust API**, seeding is done via SQL migrations. No separate Node/Pris
 ### Step 2.6 — Quick sanity check (test env)
 
 - **API health:** open http://localhost:8080/api/health — expect JSON with `"status": "healthy"` when DB is up.
-- **API ping:** http://localhost:8080/api/ping — expect `{"ok": true}`.
+- **API ping:** http://localhost:8080/api/ping — expect `{"ok": true, "server_processing_ms": …}` (handler time only, no DB).
 - **Web:** open http://localhost:5173 — you should see the app; register or log in (hits the Rust API).
 
 ---
@@ -403,9 +403,10 @@ server {
 
 | Check         | URL                          | Expected                              |
 |--------------|-------------------------------|---------------------------------------|
-| API health   | `GET /api/health` or `GET /api/v1/health` | `200` + JSON: `status`, `api` (includes `nodes_available`, optional `region`, `version`, …), `services.database`, etc. |
+| API health   | `GET /api/health` or `GET /api/v1/health` | `200` + JSON: `status`, `timestamp`, `api` (`version`, `environment`, `uptime_seconds`, `nodes_available`, optional `region`), `services.database` (`connected`, `response_time_ms` from `SELECT 1`, pool stats). Omits host/process/timings — public status only. |
+| API health (detailed) | `GET /api/health/detailed` or `GET /api/v1/health/detailed` | `401` without `Authorization: Bearer <token>`. `200` + full diagnostics (host memory/disks, process/CPU, DB `version()`, timings, hostname, build info). Token: generate in **Admin → System Settings** or `cloudwrkz-api diagnostics-token generate` / `cloudwrkz-cli diagnostics-token generate`, or set `DIAGNOSTICS_HEALTH_TOKEN`. |
 | API readiness| `GET /api/ready`             | `{"ready":true}`                      |
-| API ping     | `GET /api/ping`              | `{"ok":true}`                         |
+| API ping     | `GET /api/ping` or `GET /api/v1/ping` | `{"ok":true,"server_processing_ms":…}` — time inside the API handler only (no DB); use for liveness. Separate from `/health`. |
 
 ### 4.2 — Auth flow (curl examples)
 
@@ -513,8 +514,9 @@ curl -s http://localhost:8080/api/ping
 | `APP_ENV`         | No       | (from build)      | Optional deploy label surfaced as `api.environment` on `/health` (e.g. `staging`, `production`). Falls back from `RUST_ENV` or debug/release build. |
 | `API_REGION`      | No       | —                 | Region ID for this instance (`api.region` on `/health`, public health UI). Use one value per geographic / logical region. |
 | `API_NODES_AVAILABLE` | No  | `1`               | Reported number of API nodes for this deployment (`api.nodes_available` on `/health`). Keep `1` for a single process; raise when your global router exposes multiple healthy backends. |
+| `DIAGNOSTICS_HEALTH_TOKEN` | No | —            | Optional plaintext Bearer token accepted for `GET …/health/detailed` (in addition to the hashed token in `system_settings`). Prefer generating via Admin Settings or `cloudwrkz-api diagnostics-token generate`. |
 
-**Running the API binary:** You can control verbosity with `-v` (overrides env): `./cloudwrkz-api` = prod logging; `./cloudwrkz-api -v` or `./cloudwrkz-api -v debug` = debug/verbose; `./cloudwrkz-api -v prod` = prod. **Deployment overrides (also in `apps/api/.env`):** `--region <ID>` or `--region=<ID>` sets the same value as `API_REGION`; `--api-nodes <N>` or `--api-nodes=<N>` overrides `API_NODES_AVAILABLE`. CLI wins over env when passed. Use `./cloudwrkz-api --help` for the full option list.
+**Running the API binary:** You can control verbosity with `-v` (overrides env): `./cloudwrkz-api` = prod logging; `./cloudwrkz-api -v` or `./cloudwrkz-api -v debug` = debug/verbose; `./cloudwrkz-api -v prod` = prod. **Deployment overrides (also in `apps/api/.env`):** `--region <ID>` or `--region=<ID>` sets the same value as `API_REGION`; `--api-nodes <N>` or `--api-nodes=<N>` overrides `API_NODES_AVAILABLE`. CLI wins over env when passed. **Diagnostics token (no HTTP server):** `cloudwrkz-api diagnostics-token generate` connects with `DATABASE_URL`, runs migrations, stores an argon2 hash in `system_settings`, and prints the plaintext token once (same as Admin → System Settings). Use `./cloudwrkz-api --help` for the full option list.
 
 **Monitoring:** The API logs at INFO by default: startup, listen address, and each HTTP request. Each request gets a `request_id` (from header `X-Request-ID` or generated). **LOG_VERBOSITY**: use `prod` (default) in production to log only required fields; use `debug` for full request/response details (client_ip, user_agent, path+query, response content_length). Use `RUST_LOG=debug` for more crate-level detail. Set `LOG_FORMAT=json` in production for NDJSON with `timestamp` (UTC RFC3339), `level`, `target`, `message`, and event fields flattened for log analyzers (Datadog, ELK, Splunk, CloudWatch).
 

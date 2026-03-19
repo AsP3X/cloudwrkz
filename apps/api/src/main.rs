@@ -2,6 +2,7 @@ mod audit;
 mod auth;
 mod config;
 mod db;
+mod diagnostics_token;
 mod error;
 mod id;
 mod models;
@@ -36,6 +37,7 @@ fn log_verbosity() -> LogVerbosity {
 const HELP: &str = r#"CloudWrkz API server.
 
 Usage: cloudwrkz-api [OPTIONS]
+       cloudwrkz-api diagnostics-token generate
 
 Options:
   -v, --verbose [LEVEL]   Log verbosity: no value or "debug" = full (client_ip, user_agent, etc.); "prod" = minimal (default when -v not set)
@@ -43,8 +45,12 @@ Options:
       --region <ID>       Deployment region for /health (overrides API_REGION)
       --api-nodes <N>     Reported API node count for /health (overrides API_NODES_AVAILABLE; default 1)
 
+Commands:
+  diagnostics-token generate   Generate a diagnostics API token (stores hash in DB), print token once.
+                               Requires DATABASE_URL; runs migrations. Use with GET /api/v1/health/detailed.
+
 Environment: LOG_VERBOSITY (debug|prod), LOG_FORMAT (json), RUST_LOG, DATABASE_URL,
-             API_REGION, API_NODES_AVAILABLE, etc.
+             API_REGION, API_NODES_AVAILABLE, DIAGNOSTICS_HEALTH_TOKEN (optional plaintext override for detailed health), etc.
 "#;
 
 /// Parse `-v` / `-v debug` / `-v prod` and `-h` from env::args(). CLI overrides LOG_VERBOSITY env.
@@ -206,6 +212,19 @@ async fn main() {
         }
     }
 
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() >= 3 && args[1] == "diagnostics-token" && args[2] == "generate" {
+        let db_url = match std::env::var("DATABASE_URL") {
+            Ok(u) => u,
+            Err(_) => {
+                eprintln!("DATABASE_URL must be set for diagnostics-token generate");
+                std::process::exit(1);
+            }
+        };
+        diagnostics_token::cli_generate(&db_url).await;
+        return;
+    }
+
     // Set before init_logging so request/response logging uses it. CLI -v / -v debug overrides env.
     LOG_VERBOSITY.get_or_init(|| {
         parse_verbosity_from_args().unwrap_or_else(|| {
@@ -274,6 +293,7 @@ async fn main() {
             api_started_at,
             config.api_nodes_available,
             config.api_region.clone(),
+            config.diagnostics_health_token.clone(),
         ))
         .layer(cors)
         .layer(

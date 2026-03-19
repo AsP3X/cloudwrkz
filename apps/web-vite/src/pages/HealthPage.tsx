@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/Button";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 import { api, ApiError } from "@/api/client";
-import type { HealthPayload } from "@/features/health/types";
+import type { HealthPayload, PingPayload } from "@/features/health/types";
 import { LatencyAnimatedTail } from "@/features/health/LatencyAnimatedTail";
 
 const POLL_MS = 4000;
@@ -68,14 +68,16 @@ function ApiLatencyChartTooltip({
       <p className="font-mono text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">{row.at}</p>
       <p className="mt-1.5 flex items-baseline gap-2">
         <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-          Your connection
+          API ping
         </span>
         <span className="font-mono text-base font-bold tabular-nums text-neutral-900 dark:text-white">
-          {row.apiMs}
+          {row.apiMs != null ? row.apiMs : "—"}
           <span className="ml-0.5 text-xs font-semibold text-neutral-500 dark:text-neutral-400">ms</span>
         </span>
       </p>
-      <p className="mt-1 text-[10px] text-neutral-400 dark:text-neutral-500">Check #{row.seq}</p>
+      <p className="mt-1 text-[10px] text-neutral-500 dark:text-neutral-500">
+        Time inside API only (no database). Check #{row.seq}
+      </p>
     </div>
   );
 }
@@ -85,8 +87,8 @@ interface LatencySamplePoint {
   at: string;
   /** Server-reported DB check latency; null if omitted in payload. */
   dbMs: number | null;
-  /** Client-measured round-trip for this page's GET /health. */
-  apiMs: number;
+  /** `GET …/ping` → `server_processing_ms` from API (handler only, not merged with /health). */
+  apiMs: number | null;
 }
 
 /** Chart row: `slot` is 1-based index in the visible window (re-indexed after each FIFO shift). */
@@ -103,9 +105,17 @@ function dbChartPeakMs(rows: LatencyChartRow[]): number {
 function apiChartPeakMs(rows: LatencyChartRow[]): number {
   let max = 0;
   for (const d of rows) {
-    if (Number.isFinite(d.apiMs)) max = Math.max(max, d.apiMs);
+    if (d.apiMs != null && Number.isFinite(d.apiMs)) max = Math.max(max, d.apiMs);
   }
   return max;
+}
+
+function formatApiPeakLabel(rows: LatencyChartRow[]): string {
+  const peak = apiChartPeakMs(rows);
+  if (!Number.isFinite(peak) || peak <= 0) return "0";
+  if (peak < 1) return peak.toFixed(3);
+  if (peak < 10) return peak.toFixed(2);
+  return String(Math.round(peak));
 }
 
 function formatUptime(seconds: number): string {
@@ -120,14 +130,16 @@ function formatUptime(seconds: number): string {
 }
 
 function isRichHealth(d: unknown): d is HealthPayload {
+  if (!d || typeof d !== "object" || d === null) return false;
+  const s = (d as HealthPayload).services;
   return (
-    !!d &&
-    typeof d === "object" &&
-    d !== null &&
     "api" in d &&
     "services" in d &&
     typeof (d as HealthPayload).api === "object" &&
-    typeof (d as HealthPayload).services === "object"
+    s != null &&
+    typeof s === "object" &&
+    "database" in s &&
+    typeof s.database === "object"
   );
 }
 
@@ -143,10 +155,24 @@ export default function HealthPage() {
   const fetchHealth = useCallback(
     async (isManual = false) => {
       if (isManual) setRefreshing(true);
-      const pollStarted = performance.now();
+
       try {
+        let apiMs: number | null = null;
+        const pingStarted = performance.now();
+        try {
+          const pingBody = await api.get<PingPayload>("/ping");
+          const sp = pingBody.server_processing_ms;
+          if (typeof sp === "number" && Number.isFinite(sp)) {
+            apiMs = Math.round(sp * 1000) / 1000;
+          } else {
+            apiMs = Math.round(performance.now() - pingStarted);
+          }
+        } catch {
+          apiMs = null;
+        }
+
         const data = await api.get<unknown>("/health");
-        const apiMs = Math.round(performance.now() - pollStarted);
+
         if (!isRichHealth(data)) {
           setHealth(null);
           setError("The service returned data we couldn’t display. Please try again in a moment.");
@@ -220,9 +246,10 @@ export default function HealthPage() {
   }, [chartData]);
 
   const apiLatencyDomainMax = useMemo(() => {
-    if (chartData.length === 0) return 50;
+    if (chartData.length === 0) return 1;
     const peak = apiChartPeakMs(chartData);
-    return Math.ceil(Math.max(peak, 1) * 1.15) + 5;
+    const base = peak > 0 ? peak : 0.01;
+    return Math.min(50, Math.max(base * 1.28, 0.05));
   }, [chartData]);
 
   const [dbChartYMax, setDbChartYMax] = useState(dbLatencyDomainMax);
@@ -560,15 +587,26 @@ export default function HealthPage() {
                     <div className="overflow-hidden rounded-2xl border border-neutral-200/80 bg-white/90 p-4 shadow-soft-lg backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/80 sm:p-6">
                       <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                         <div>
-                          <h2 className="text-lg font-bold text-neutral-900 dark:text-white">Your connection speed</h2>
+                          <h2 className="text-lg font-bold text-neutral-900 dark:text-white">API ping</h2>
                           <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                            How long it takes this status page to load each automatic check from your device—your
-                            network and distance to our service both matter. Same time stamps as the chart on the left.
+                            Each point uses{" "}
+                            <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-[10px] dark:bg-neutral-800">
+                              server_processing_ms
+                            </code>{" "}
+                            from{" "}
+                            <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-[10px] dark:bg-neutral-800">
+                              GET /ping
+                            </code>
+                            —time inside the API only, fetched <span className="font-medium">before</span>{" "}
+                            <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-[10px] dark:bg-neutral-800">
+                              /health
+                            </code>{" "}
+                            so it never mixes with the database check (left chart).
                           </p>
                         </div>
                         {chartData.length > 0 && (
                           <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                            {chartData.length} of {LATENCY_HISTORY_MAX} · high {apiChartPeakMs(chartData).toFixed(0)} ms
+                            {chartData.length} of {LATENCY_HISTORY_MAX} · high {formatApiPeakLabel(chartData)} ms
                           </p>
                         )}
                       </div>
@@ -658,7 +696,7 @@ export default function HealthPage() {
                               animationDuration={CHART_INTRO_MS}
                               animationEasing="ease-out"
                             />
-                            {lastChartRow != null ? (
+                            {lastChartRow != null && lastChartRow.apiMs != null ? (
                               <LatencyAnimatedTail
                                 lastPoint={{ slot: lastChartRow.slot, value: lastChartRow.apiMs }}
                                 durationMs={420}
@@ -682,15 +720,18 @@ export default function HealthPage() {
                   <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50/60 p-4 text-center dark:border-neutral-700 dark:bg-neutral-950/40 lg:text-left">
                     <p className="text-xs text-neutral-600 dark:text-neutral-400">
                       <span className="font-semibold text-neutral-700 dark:text-neutral-300">Technical reference:</span>{" "}
-                      machine-readable status is exposed at{" "}
+                      machine-readable status: full check with DB at{" "}
                       <code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px] dark:bg-neutral-900">
                         {apiBase}/health
                       </code>{" "}
-                      and{" "}
-                      <code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px] dark:bg-neutral-900">
+                      (and <code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px] dark:bg-neutral-900">
                         /api/health
-                      </code>{" "}
-                      for monitoring integrations.
+                      </code>
+                      ); process-only ping at{" "}
+                      <code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px] dark:bg-neutral-900">
+                        {apiBase}/ping
+                      </code>
+                      .
                     </p>
                   </div>
                 </div>
