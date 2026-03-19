@@ -242,11 +242,14 @@ fn run_tui_loop(
                         }
                     }
                     KeyCode::Enter => {
-                        if clen > 0 {
-                            return Ok(TuiExit::Select(state.sidebar_index, state.content_index));
-                        }
-                        if slen > 0 {
-                            return Ok(TuiExit::Select(state.sidebar_index, 0));
+                        // Sidebar is for navigation only (right panel updates live); confirm actions on the content list.
+                        if state.focus == PanelFocus::Content {
+                            if clen > 0 {
+                                return Ok(TuiExit::Select(state.sidebar_index, state.content_index));
+                            }
+                            if slen > 0 {
+                                return Ok(TuiExit::Select(state.sidebar_index, 0));
+                            }
                         }
                     }
                     _ => {}
@@ -402,7 +405,7 @@ fn ui(
         Span::styled(" Space ", Style::default().fg(Color::DarkGray)),
         Span::raw("toggle select  "),
         Span::styled(" Enter ", Style::default().fg(Color::DarkGray)),
-        Span::raw("select  "),
+        Span::raw("select (right panel)  "),
         Span::styled(" Backspace ", Style::default().fg(Color::DarkGray)),
         Span::raw("back  "),
         Span::styled(" Ctrl+F ", Style::default().fg(Color::DarkGray)),

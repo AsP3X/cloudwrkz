@@ -556,6 +556,301 @@ enum AppScreen {
     PermissionTable { _user_id: String, email: String, permissions: Vec<PermissionOption> },
 }
 
+/// Main menu: right-panel action list for each sidebar row (must stay in sync with `AppScreen::Main`).
+fn main_section_submenu(section: usize, has_token: bool) -> Vec<String> {
+    match section {
+        0 if !has_token => vec!["(Login required — set CLOUDWRKZ_TOKEN)".to_string()],
+        0 => vec![
+            "Manage user".to_string(),
+            "List users".to_string(),
+            "Show user".to_string(),
+        ],
+        1 if !has_token => vec!["(Login required)".to_string()],
+        1 => vec!["List groups".to_string()],
+        2 if !has_token => vec!["(Login required)".to_string()],
+        2 => vec!["List modules".to_string()],
+        3 if !has_token => vec!["(Login required)".to_string()],
+        3 => vec!["List sessions".to_string()],
+        4 => vec![
+            "Status".to_string(),
+            "Migrate".to_string(),
+            "Seed".to_string(),
+            "Stats".to_string(),
+        ],
+        5 => vec!["View help (press Enter)".to_string()],
+        6 => vec!["Exit CLI".to_string()],
+        _ => vec![],
+    }
+}
+
+fn main_section_parent_label(section: usize) -> &'static str {
+    match section {
+        0 => "Users",
+        1 => "Groups",
+        2 => "Modules",
+        3 => "Sessions",
+        4 => "Database",
+        5 => "Help",
+        6 => "Quit",
+        _ => "Menu",
+    }
+}
+
+/// Left sidebar on sub-screens: parent section title + the same submenu entries as on the main menu.
+fn sidebar_parent_plus_submenu(section: usize, has_token: bool) -> Vec<String> {
+    let mut v = vec![main_section_parent_label(section).to_string()];
+    v.extend(main_section_submenu(section, has_token));
+    v
+}
+
+fn user_list_rows(users: &[serde_json::Value]) -> Vec<String> {
+    users
+        .iter()
+        .map(|u| {
+            let email = u.get("email").and_then(|v| v.as_str()).unwrap_or("-");
+            let name = u.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let role = u.get("role").and_then(|v| v.as_str()).unwrap_or("-");
+            let status = u.get("status").and_then(|v| v.as_str()).unwrap_or("-");
+            let n = if name.is_empty() { "" } else { name };
+            format!("{} {} [{}] {}", email, n, role, status)
+        })
+        .collect()
+}
+
+/// Right-panel list for the current screen and sidebar selection (keeps sidebar + content in sync in the TUI).
+fn panel_content(screen: &AppScreen, sidebar_idx: usize, has_token: bool) -> Vec<String> {
+    match screen {
+        AppScreen::Main => main_section_submenu(sidebar_idx, has_token),
+        AppScreen::UserList { users, .. } => {
+            if sidebar_idx == 0 {
+                main_section_submenu(0, true)
+            } else {
+                let mut rows = user_list_rows(users);
+                rows.push(BACK_LABEL.to_string());
+                rows
+            }
+        }
+        AppScreen::UserDetail { .. } => match sidebar_idx {
+            0 => main_section_submenu(0, true),
+            2 => vec![
+                "List users — use ← Back, then pick a user from the list.".to_string(),
+                BACK_LABEL.to_string(),
+            ],
+            3 => vec![
+                "Show user — use ← Back, then pick a user for JSON details.".to_string(),
+                BACK_LABEL.to_string(),
+            ],
+            _ => vec![
+                "View full details".to_string(),
+                "Change display name".to_string(),
+                "Set status".to_string(),
+                "Set role".to_string(),
+                "Manage permissions".to_string(),
+                "Delete user (soft)".to_string(),
+                BACK_LABEL.to_string(),
+            ],
+        },
+        AppScreen::StatusChoice { .. } => {
+            if sidebar_idx == 0 {
+                main_section_submenu(0, true)
+            } else {
+                vec![
+                    "ACTIVE".to_string(),
+                    "PENDING".to_string(),
+                    "SUSPENDED".to_string(),
+                    "BANNED".to_string(),
+                    BACK_LABEL.to_string(),
+                ]
+            }
+        }
+        AppScreen::RoleChoice { .. } => {
+            if sidebar_idx == 0 {
+                main_section_submenu(0, true)
+            } else {
+                vec![
+                    "USER".to_string(),
+                    "ADMIN".to_string(),
+                    "MODERATOR".to_string(),
+                    "AGENT".to_string(),
+                    BACK_LABEL.to_string(),
+                ]
+            }
+        }
+        AppScreen::Permissions { .. } => {
+            if sidebar_idx == 0 {
+                main_section_submenu(0, true)
+            } else {
+                vec![
+                    "View permissions".to_string(),
+                    "Grant permission".to_string(),
+                    "Revoke permission".to_string(),
+                    BACK_LABEL.to_string(),
+                ]
+            }
+        }
+        AppScreen::GrantPermission {
+            permissions: perms,
+            categories: cats,
+            selected,
+            ..
+        } => {
+            let filter = if sidebar_idx == 0 {
+                None
+            } else {
+                cats.get(sidebar_idx.saturating_sub(1)).cloned()
+            };
+            let filtered: Vec<&PermissionOption> = if let Some(ref c) = filter {
+                perms.iter().filter(|p| p.category == *c).collect()
+            } else {
+                perms.iter().collect()
+            };
+            let mut content: Vec<String> = filtered
+                .iter()
+                .map(|p| {
+                    let mark = if selected.contains(&p.key) { "☑ " } else { "  " };
+                    format!("{}{} — {} ({})", mark, p.key, p.name, p.category)
+                })
+                .collect();
+            content.push(BACK_LABEL.to_string());
+            content
+        }
+        AppScreen::RevokeCategory { categories: cats, .. } => {
+            let mut content = cats.clone();
+            content.push(BACK_LABEL.to_string());
+            content
+        }
+        AppScreen::RevokePermission {
+            permissions: perms,
+            categories: cats,
+            selected,
+            ..
+        } => {
+            let filter = cats.get(sidebar_idx).cloned();
+            let filtered: Vec<&PermissionOption> = if let Some(ref c) = filter {
+                perms.iter().filter(|p| p.category == *c).collect()
+            } else {
+                perms.iter().collect()
+            };
+            let mut content: Vec<String> = filtered
+                .iter()
+                .map(|p| {
+                    let mark = if selected.contains(&p.key) { "☑ " } else { "  " };
+                    format!("{}{} — {} ({})", mark, p.key, p.name, p.category)
+                })
+                .collect();
+            content.push(BACK_LABEL.to_string());
+            content
+        }
+        AppScreen::ConfirmDelete { .. } => {
+            if sidebar_idx == 0 {
+                main_section_submenu(0, true)
+            } else {
+                vec!["Yes, soft-delete this user".to_string(), "No, cancel".to_string()]
+            }
+        }
+        AppScreen::ConfirmRevoke { key, .. } => {
+            if sidebar_idx == 0 {
+                main_section_submenu(0, true)
+            } else {
+                vec![format!("Yes, revoke '{}'", key), "No, cancel".to_string()]
+            }
+        }
+        AppScreen::GroupsList(groups) => {
+            if sidebar_idx == 0 {
+                main_section_submenu(1, has_token)
+            } else {
+                let mut rows: Vec<String> = groups
+                    .iter()
+                    .map(|g| {
+                        let name = g.get("name").and_then(|v| v.as_str()).unwrap_or("-");
+                        let desc = g.get("description").and_then(|v| v.as_str()).unwrap_or("");
+                        format!("{}  {}", name, desc)
+                    })
+                    .collect();
+                rows.push(BACK_LABEL.to_string());
+                rows
+            }
+        }
+        AppScreen::ModulesList(modules) => {
+            if sidebar_idx == 0 {
+                main_section_submenu(2, has_token)
+            } else {
+                let mut rows: Vec<String> = modules
+                    .iter()
+                    .map(|m| {
+                        let key = m.get("key").and_then(|v| v.as_str()).unwrap_or("-");
+                        let enabled = m.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+                        format!("{}  {}", key, if enabled { "enabled" } else { "disabled" })
+                    })
+                    .collect();
+                rows.push(BACK_LABEL.to_string());
+                rows
+            }
+        }
+        AppScreen::SessionsList(sessions) => {
+            if sidebar_idx == 0 {
+                main_section_submenu(3, has_token)
+            } else {
+                let mut rows: Vec<String> = sessions
+                    .iter()
+                    .map(|s| {
+                        let id = s.get("id").and_then(|v| v.as_str()).unwrap_or("-");
+                        let email = s.get("userEmail").and_then(|v| v.as_str()).unwrap_or("-");
+                        let exp = s.get("expiresAt").and_then(|v| v.as_str()).unwrap_or("-");
+                        let id_short = if id.len() > 14 {
+                            format!("{}…", &id[..14])
+                        } else {
+                            id.to_string()
+                        };
+                        format!("{}  {}  {}", id_short, email, exp)
+                    })
+                    .collect();
+                rows.push(BACK_LABEL.to_string());
+                rows
+            }
+        }
+        AppScreen::DbOutput(text) => {
+            if sidebar_idx == 0 {
+                main_section_submenu(4, has_token)
+            } else {
+                let mut lines: Vec<String> = text.lines().map(|s| s.to_string()).take(200).collect();
+                lines.push(BACK_LABEL.to_string());
+                lines
+            }
+        }
+        AppScreen::Help(text) => {
+            if sidebar_idx == 0 {
+                main_section_submenu(5, has_token)
+            } else {
+                let mut lines: Vec<String> = text.lines().map(|s| s.to_string()).take(200).collect();
+                lines.push(BACK_LABEL.to_string());
+                lines
+            }
+        }
+        AppScreen::UserDetailsJson(text) => {
+            if sidebar_idx == 0 {
+                main_section_submenu(0, true)
+            } else {
+                let mut lines: Vec<String> = text.lines().map(|s| s.to_string()).take(200).collect();
+                lines.push(BACK_LABEL.to_string());
+                lines
+            }
+        }
+        AppScreen::PermissionTable { permissions, .. } => {
+            if sidebar_idx == 0 {
+                main_section_submenu(0, true)
+            } else {
+                let mut rows: Vec<String> = permissions
+                    .iter()
+                    .map(|p| format!("{}  {}  ({})", p.key, p.name, p.category))
+                    .collect();
+                rows.push(BACK_LABEL.to_string());
+                rows
+            }
+        }
+    }
+}
+
 fn build_ui(
     screen: &AppScreen,
     has_token: bool,
@@ -572,36 +867,12 @@ fn build_ui(
                 "❓ Help".to_string(),
                 "🚪 Quit".to_string(),
             ];
-            let content: Vec<String> = match sidebar_index {
-                0 if !has_token => vec!["(Login required — set CLOUDWRKZ_TOKEN)".to_string()],
-                0 => vec!["Manage user".to_string(), "List users".to_string(), "Show user".to_string()],
-                1 if !has_token => vec!["(Login required)".to_string()],
-                1 => vec!["List groups".to_string()],
-                2 if !has_token => vec!["(Login required)".to_string()],
-                2 => vec!["List modules".to_string()],
-                3 if !has_token => vec!["(Login required)".to_string()],
-                3 => vec!["List sessions".to_string()],
-                4 => vec!["Status".to_string(), "Migrate".to_string(), "Seed".to_string(), "Stats".to_string()],
-                5 => vec!["View help (press Enter)".to_string()],
-                6 => vec!["Exit CLI".to_string()],
-                _ => vec![],
-            };
+            let content = panel_content(screen, sidebar_index, has_token);
             (" CloudWrkz ".to_string(), sidebar, " Actions ".to_string(), content, None)
         }
-        AppScreen::UserList { users, total, .. } => {
-            let sidebar = vec!["Users".to_string(), "Manage user".to_string()];
-            let mut content: Vec<String> = users
-                .iter()
-                .map(|u| {
-                    let email = u.get("email").and_then(|v| v.as_str()).unwrap_or("-");
-                    let name = u.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                    let role = u.get("role").and_then(|v| v.as_str()).unwrap_or("-");
-                    let status = u.get("status").and_then(|v| v.as_str()).unwrap_or("-");
-                    let n = if name.is_empty() { "" } else { name };
-                    format!("{} {} [{}] {}", email, n, role, status)
-                })
-                .collect();
-            content.push("← Back".to_string());
+        AppScreen::UserList { total, .. } => {
+            let sidebar = sidebar_parent_plus_submenu(0, true);
+            let content = panel_content(screen, sidebar_index, has_token);
             let title_right = format!(" Select user ({} total) ", total);
             (" Users ".to_string(), sidebar, title_right, content, None)
         }
@@ -613,40 +884,20 @@ fn build_ui(
                 format!("Status: {}", status),
                 format!("Email: {}", email),
             ];
-            let sidebar = vec![
-                "Menu".to_string(),
-            ];
-            let content = vec![
-                "View full details".to_string(),
-                "Change display name".to_string(),
-                "Set status".to_string(),
-                "Set role".to_string(),
-                "Manage permissions".to_string(),
-                "Delete user (soft)".to_string(),
-                "← Back".to_string(),
-            ];
+            let sidebar = sidebar_parent_plus_submenu(0, true);
+            let content = panel_content(screen, sidebar_index, has_token);
             (" User ".to_string(), sidebar, " Sub menu options ".to_string(), content, Some((header, "User".to_string())))
         }
         AppScreen::StatusChoice { email, .. } => {
-            let sidebar = vec!["Users".to_string(), "Set status".to_string(), email.clone()];
-            let content = vec![
-                "ACTIVE".to_string(),
-                "PENDING".to_string(),
-                "SUSPENDED".to_string(),
-                "BANNED".to_string(),
-                "← Back".to_string(),
-            ];
+            let mut sidebar = sidebar_parent_plus_submenu(0, true);
+            sidebar.push(format!("Set status — {}", email));
+            let content = panel_content(screen, sidebar_index, has_token);
             (" Status ".to_string(), sidebar, " Choose status ".to_string(), content, None)
         }
         AppScreen::RoleChoice { email, .. } => {
-            let sidebar = vec!["Users".to_string(), "Set role".to_string(), email.clone()];
-            let content = vec![
-                "USER".to_string(),
-                "ADMIN".to_string(),
-                "MODERATOR".to_string(),
-                "AGENT".to_string(),
-                "← Back".to_string(),
-            ];
+            let mut sidebar = sidebar_parent_plus_submenu(0, true);
+            sidebar.push(format!("Set role — {}", email));
+            let content = panel_content(screen, sidebar_index, has_token);
             (" Role ".to_string(), sidebar, " Choose role ".to_string(), content, None)
         }
         AppScreen::Permissions { email, status, .. } => {
@@ -655,16 +906,11 @@ fn build_ui(
                 format!("Status: {}", status),
                 format!("Email: {}", email),
             ];
-            let sidebar = vec!["Menu".to_string()];
-            let content = vec![
-                "View permissions".to_string(),
-                "Grant permission".to_string(),
-                "Revoke permission".to_string(),
-                "← Back".to_string(),
-            ];
+            let sidebar = sidebar_parent_plus_submenu(0, true);
+            let content = panel_content(screen, sidebar_index, has_token);
             (" Permissions ".to_string(), sidebar, " Sub menu options ".to_string(), content, Some((header, "Permissions".to_string())))
         }
-        AppScreen::GrantPermission { permissions: perms, categories: cats, email, status, selected } => {
+        AppScreen::GrantPermission { permissions: _, categories: cats, email, status, selected: _ } => {
             let header = vec![
                 format!("Root → User [{}] → Grant permission", email),
                 format!("Status: {}", status),
@@ -673,21 +919,7 @@ fn build_ui(
             ];
             let mut sidebar = vec!["All".to_string()];
             sidebar.extend(cats.clone());
-            // When sidebar_index is 0, "All" is selected → show all permissions; otherwise filter by category.
-            let filter = if sidebar_index == 0 { None } else { cats.get(sidebar_index.saturating_sub(1)).cloned() };
-            let filtered: Vec<&PermissionOption> = if let Some(ref c) = filter {
-                perms.iter().filter(|p| p.category == *c).collect()
-            } else {
-                perms.iter().collect()
-            };
-            let mut content: Vec<String> = filtered
-                .iter()
-                .map(|p| {
-                    let mark = if selected.contains(&p.key) { "☑ " } else { "  " };
-                    format!("{}{} — {} ({})", mark, p.key, p.name, p.category)
-                })
-                .collect();
-            content.push("← Back".to_string());
+            let content = panel_content(screen, sidebar_index, has_token);
             (" Grant ".to_string(), sidebar, " Permissions ".to_string(), content, Some((header, "Grant permission".to_string())))
         }
         AppScreen::RevokeCategory { categories: cats, email, status } => {
@@ -697,11 +929,10 @@ fn build_ui(
                 format!("Email: {}", email),
             ];
             let sidebar = cats.clone();
-            let mut content = cats.clone();
-            content.push("← Back".to_string());
+            let content = panel_content(screen, sidebar_index, has_token);
             (" Revoke ".to_string(), sidebar, " Categories ".to_string(), content, Some((header, "Revoke permission".to_string())))
         }
-        AppScreen::RevokePermission { permissions: perms, categories: cats, email, status, selected } => {
+        AppScreen::RevokePermission { permissions: _, categories: cats, email, status, selected: _ } => {
             let header = vec![
                 format!("Root → User [{}] → Revoke permission", email),
                 format!("Status: {}", status),
@@ -709,108 +940,55 @@ fn build_ui(
                 "Space: toggle selection  Enter: revoke selected".to_string(),
             ];
             let sidebar = cats.clone();
-            let filter = cats.get(sidebar_index).cloned();
-            let filtered: Vec<&PermissionOption> = if let Some(ref c) = filter {
-                perms.iter().filter(|p| p.category == *c).collect()
-            } else {
-                perms.iter().collect()
-            };
-            let mut content: Vec<String> = filtered
-                .iter()
-                .map(|p| {
-                    let mark = if selected.contains(&p.key) { "☑ " } else { "  " };
-                    format!("{}{} — {} ({})", mark, p.key, p.name, p.category)
-                })
-                .collect();
-            content.push("← Back".to_string());
+            let content = panel_content(screen, sidebar_index, has_token);
             (" Revoke ".to_string(), sidebar, " Select to revoke ".to_string(), content, Some((header, "Revoke permission".to_string())))
         }
         AppScreen::ConfirmDelete { email, .. } => {
-            let sidebar = vec![
-                "Users".to_string(),
-                "Delete user".to_string(),
-                email.clone(),
-            ];
-            let content = vec![
-                "Yes, soft-delete this user".to_string(),
-                "No, cancel".to_string(),
-            ];
+            let mut sidebar = sidebar_parent_plus_submenu(0, true);
+            sidebar.push(format!("Delete — {}", email));
+            let content = panel_content(screen, sidebar_index, has_token);
             (" Confirm ".to_string(), sidebar, " Delete user? ".to_string(), content, None)
         }
         AppScreen::ConfirmRevoke { key, .. } => {
-            let sidebar = vec!["Users".to_string(), "Revoke permission".to_string()];
-            let content = vec![
-                format!("Yes, revoke '{}'", key),
-                "No, cancel".to_string(),
-            ];
+            let mut sidebar = sidebar_parent_plus_submenu(0, true);
+            sidebar.push(format!("Revoke — {}", key));
+            let content = panel_content(screen, sidebar_index, has_token);
             (" Confirm ".to_string(), sidebar, " Revoke? ".to_string(), content, None)
         }
-        AppScreen::GroupsList(groups) => {
-            let sidebar = vec!["Groups".to_string(), "List".to_string()];
-            let mut content: Vec<String> = groups
-                .iter()
-                .map(|g| {
-                    let name = g.get("name").and_then(|v| v.as_str()).unwrap_or("-");
-                    let desc = g.get("description").and_then(|v| v.as_str()).unwrap_or("");
-                    format!("{}  {}", name, desc)
-                })
-                .collect();
-            content.push("← Back".to_string());
+        AppScreen::GroupsList(_) => {
+            let sidebar = sidebar_parent_plus_submenu(1, has_token);
+            let content = panel_content(screen, sidebar_index, has_token);
             (" Groups ".to_string(), sidebar, " List ".to_string(), content, None)
         }
-        AppScreen::ModulesList(modules) => {
-            let sidebar = vec!["Modules".to_string(), "List".to_string()];
-            let mut content: Vec<String> = modules
-                .iter()
-                .map(|m| {
-                    let key = m.get("key").and_then(|v| v.as_str()).unwrap_or("-");
-                    let enabled = m.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
-                    format!("{}  {}", key, if enabled { "enabled" } else { "disabled" })
-                })
-                .collect();
-            content.push("← Back".to_string());
+        AppScreen::ModulesList(_) => {
+            let sidebar = sidebar_parent_plus_submenu(2, has_token);
+            let content = panel_content(screen, sidebar_index, has_token);
             (" Modules ".to_string(), sidebar, " List ".to_string(), content, None)
         }
-        AppScreen::SessionsList(sessions) => {
-            let sidebar = vec!["Sessions".to_string(), "List".to_string()];
-            let mut content: Vec<String> = sessions
-                .iter()
-                .map(|s| {
-                    let id = s.get("id").and_then(|v| v.as_str()).unwrap_or("-");
-                    let email = s.get("userEmail").and_then(|v| v.as_str()).unwrap_or("-");
-                    let exp = s.get("expiresAt").and_then(|v| v.as_str()).unwrap_or("-");
-                    let id_short = if id.len() > 14 { format!("{}…", &id[..14]) } else { id.to_string() };
-                    format!("{}  {}  {}", id_short, email, exp)
-                })
-                .collect();
-            content.push("← Back".to_string());
+        AppScreen::SessionsList(_) => {
+            let sidebar = sidebar_parent_plus_submenu(3, has_token);
+            let content = panel_content(screen, sidebar_index, has_token);
             (" Sessions ".to_string(), sidebar, " List ".to_string(), content, None)
         }
-        AppScreen::DbOutput(text) => {
-            let sidebar = vec!["Database".to_string(), "Output".to_string()];
-            let mut content: Vec<String> = text.lines().map(|s| s.to_string()).take(200).collect();
-            content.push("← Back".to_string());
+        AppScreen::DbOutput(_) => {
+            let sidebar = sidebar_parent_plus_submenu(4, has_token);
+            let content = panel_content(screen, sidebar_index, has_token);
             (" Output ".to_string(), sidebar, " Result ".to_string(), content, None)
         }
-        AppScreen::Help(text) => {
-            let sidebar = vec!["Help".to_string()];
-            let mut content: Vec<String> = text.lines().map(|s| s.to_string()).take(200).collect();
-            content.push("← Back".to_string());
+        AppScreen::Help(_) => {
+            let sidebar = sidebar_parent_plus_submenu(5, has_token);
+            let content = panel_content(screen, sidebar_index, has_token);
             (" Help ".to_string(), sidebar, " Documentation ".to_string(), content, None)
         }
-        AppScreen::UserDetailsJson(text) => {
-            let sidebar = vec!["Users".to_string(), "Details".to_string()];
-            let mut content: Vec<String> = text.lines().map(|s| s.to_string()).take(200).collect();
-            content.push("← Back".to_string());
+        AppScreen::UserDetailsJson(_) => {
+            let sidebar = sidebar_parent_plus_submenu(0, true);
+            let content = panel_content(screen, sidebar_index, has_token);
             (" User details ".to_string(), sidebar, " JSON ".to_string(), content, None)
         }
         AppScreen::PermissionTable { email, permissions, .. } => {
-            let sidebar = vec!["Users".to_string(), "Permissions".to_string(), email.clone()];
-            let mut content: Vec<String> = permissions
-                .iter()
-                .map(|p| format!("{}  {}  ({})", p.key, p.name, p.category))
-                .collect();
-            content.push("← Back".to_string());
+            let mut sidebar = sidebar_parent_plus_submenu(0, true);
+            sidebar.push(format!("Permissions — {}", email));
+            let content = panel_content(screen, sidebar_index, has_token);
             (" Direct permissions ".to_string(), sidebar, format!(" {} ", permissions.len()), content, None)
         }
     }
@@ -864,88 +1042,29 @@ async fn run_interactive() -> Result<(), Box<dyn std::error::Error + Send + Sync
     loop {
         let screen = stack.last().expect("screen stack empty").clone();
         let sidebar_index = tui_state.sidebar_index;
-        let (title_left, sidebar_items, title_right, content_items, header) =
+        let (title_left, sidebar_items, title_right, _, header) =
             build_ui(&screen, has_token, sidebar_index);
+
+        let base_content = panel_content(&screen, sidebar_index, has_token);
 
         let (display_sidebar, display_content) = if let Some(ref q) = search_filter {
             let (fs, si) = filter_by_search(&sidebar_items, q);
-            let (fc, ci) = filter_by_search(&content_items, q);
+            let (fc, ci) = filter_by_search(&base_content, q);
             sidebar_orig_indices = si;
             content_orig_indices = ci;
             (fs, fc)
         } else {
             sidebar_orig_indices = (0..sidebar_items.len()).collect();
-            content_orig_indices = (0..content_items.len()).collect();
-            (sidebar_items.clone(), content_items.clone())
+            content_orig_indices = (0..base_content.len()).collect();
+            (sidebar_items.clone(), base_content.clone())
         };
 
-        // When the right panel depends on sidebar selection (Grant/Revoke permission), provide a callback
-        // so the permissions list updates live when the user changes category with arrow keys.
+        // While search filters the panel, keep content static; otherwise sidebar arrows refresh the right column.
         let mut content_callback: Option<Box<dyn FnMut(usize) -> Vec<String>>> = None;
-        match &screen {
-            AppScreen::GrantPermission { permissions, categories, selected, .. } => {
-                let perms = permissions.clone();
-                let cats = categories.clone();
-                let sel = selected.clone();
-                content_callback = Some(Box::new(move |sidebar_index: usize| {
-                    let filter = if sidebar_index == 0 {
-                        None
-                    } else {
-                        cats.get(sidebar_index.saturating_sub(1)).cloned()
-                    };
-                    let filtered: Vec<String> = if let Some(ref c) = filter {
-                        perms
-                            .iter()
-                            .filter(|p| p.category == *c)
-                            .map(|p| {
-                                let mark = if sel.contains(&p.key) { "☑ " } else { "  " };
-                                format!("{}{} — {} ({})", mark, p.key, p.name, p.category)
-                            })
-                            .collect()
-                    } else {
-                        perms
-                            .iter()
-                            .map(|p| {
-                                let mark = if sel.contains(&p.key) { "☑ " } else { "  " };
-                                format!("{}{} — {} ({})", mark, p.key, p.name, p.category)
-                            })
-                            .collect()
-                    };
-                    let mut out = filtered;
-                    out.push(BACK_LABEL.to_string());
-                    out
-                }));
-            }
-            AppScreen::RevokePermission { permissions, categories, selected, .. } => {
-                let perms = permissions.clone();
-                let cats = categories.clone();
-                let sel = selected.clone();
-                content_callback = Some(Box::new(move |sidebar_index: usize| {
-                    let filter = cats.get(sidebar_index).cloned();
-                    let filtered: Vec<String> = if let Some(ref c) = filter {
-                        perms
-                            .iter()
-                            .filter(|p| p.category == *c)
-                            .map(|p| {
-                                let mark = if sel.contains(&p.key) { "☑ " } else { "  " };
-                                format!("{}{} — {} ({})", mark, p.key, p.name, p.category)
-                            })
-                            .collect()
-                    } else {
-                        perms
-                            .iter()
-                            .map(|p| {
-                                let mark = if sel.contains(&p.key) { "☑ " } else { "  " };
-                                format!("{}{} — {} ({})", mark, p.key, p.name, p.category)
-                            })
-                            .collect()
-                    };
-                    let mut out = filtered;
-                    out.push(BACK_LABEL.to_string());
-                    out
-                }));
-            }
-            _ => {}
+        if search_filter.is_none() {
+            let s = screen.clone();
+            let tok = has_token;
+            content_callback = Some(Box::new(move |idx| panel_content(&s, idx, tok)));
         }
 
         let exit = tui::run_tui(
@@ -1058,7 +1177,6 @@ async fn run_interactive() -> Result<(), Box<dyn std::error::Error + Send + Sync
                     real_sb,
                     real_content,
                     &sidebar_items,
-                    &content_items,
                     has_token,
                     &api_client,
                     &database_url,
@@ -1088,13 +1206,12 @@ async fn dispatch_tui_action(
     sb_idx: usize,
     content_idx: usize,
     _sidebar_items: &[String],
-    content_items: &[String],
     has_token: bool,
     api_client: &api::ApiClient,
     database_url: &str,
 ) -> Result<DispatchResult, Box<dyn std::error::Error + Send + Sync>> {
-    let is_back = content_idx < content_items.len()
-        && content_items[content_idx].trim() == "← Back";
+    let live = panel_content(screen, sb_idx, has_token);
+    let is_back = content_idx < live.len() && live.get(content_idx).is_some_and(|s| s.trim() == BACK_LABEL);
 
     match screen {
         AppScreen::Main => {
@@ -1109,6 +1226,7 @@ async fn dispatch_tui_action(
                     match content_idx {
                         0 => {
                             let res = api_client.list_users().await?;
+                            tui_state.sidebar_index = 1;
                             stack.push(AppScreen::UserList {
                                 users: res.users,
                                 for_manage: true,
@@ -1117,6 +1235,7 @@ async fn dispatch_tui_action(
                         }
                         1 | 2 => {
                             let res = api_client.list_users().await?;
+                            tui_state.sidebar_index = 1 + content_idx;
                             stack.push(AppScreen::UserList {
                                 users: res.users,
                                 for_manage: false,
@@ -1128,30 +1247,72 @@ async fn dispatch_tui_action(
                 }
                 1 if has_token => {
                     let res = api_client.list_groups().await?;
+                    tui_state.sidebar_index = 1;
                     stack.push(AppScreen::GroupsList(res.groups));
                 }
                 2 if has_token => {
                     let res = api_client.list_modules().await?;
+                    tui_state.sidebar_index = 1;
                     stack.push(AppScreen::ModulesList(res.modules));
                 }
                 3 if has_token => {
                     let res = api_client.list_sessions().await?;
+                    tui_state.sidebar_index = 1;
                     stack.push(AppScreen::SessionsList(res.sessions));
                 }
                 4 => {
                     let dir = migrations_dir(None);
                     let out = run_db_action_capture(database_url, content_idx, &dir).await?;
+                    tui_state.sidebar_index = 1 + content_idx;
                     stack.push(AppScreen::DbOutput(out));
                 }
                 5 => {
                     let text = help_text();
+                    tui_state.sidebar_index = 1;
                     stack.push(AppScreen::Help(text));
                 }
                 6 => return Ok(DispatchResult::Quit),
                 _ => {}
             }
         }
-        AppScreen::UserList { users, for_manage, .. } => {
+        AppScreen::UserList { users, .. } => {
+            if sb_idx == 0 {
+                match content_idx {
+                    0 => {
+                        if let Some(AppScreen::UserList { for_manage, .. }) = stack.last_mut() {
+                            *for_manage = true;
+                        }
+                        tui_state.sidebar_index = 1;
+                        return Ok(DispatchResult::Continue);
+                    }
+                    1 => {
+                        if let Some(AppScreen::UserList { for_manage, .. }) = stack.last_mut() {
+                            *for_manage = false;
+                        }
+                        tui_state.sidebar_index = 2;
+                        return Ok(DispatchResult::Continue);
+                    }
+                    2 => {
+                        if let Some(AppScreen::UserList { for_manage, .. }) = stack.last_mut() {
+                            *for_manage = false;
+                        }
+                        tui_state.sidebar_index = 3;
+                        return Ok(DispatchResult::Continue);
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(AppScreen::UserList { for_manage, .. }) = stack.last_mut() {
+                match sb_idx {
+                    1 => *for_manage = true,
+                    2 | 3 => *for_manage = false,
+                    _ => {}
+                }
+            }
+            let for_manage = match stack.last() {
+                Some(AppScreen::UserList { for_manage, .. }) => *for_manage,
+                _ => false,
+            };
             if is_back {
                 stack.pop();
                 return Ok(DispatchResult::Continue);
@@ -1162,7 +1323,8 @@ async fn dispatch_tui_action(
                 let name = u.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
                 let role = u.get("role").and_then(|v| v.as_str()).unwrap_or("-").to_string();
                 let status = u.get("status").and_then(|v| v.as_str()).unwrap_or("-").to_string();
-                if *for_manage {
+                if for_manage {
+                    tui_state.sidebar_index = 1;
                     stack.push(AppScreen::UserDetail {
                         user_id: id,
                         email,
@@ -1173,11 +1335,40 @@ async fn dispatch_tui_action(
                 } else {
                     let v = api_client.get_user(&id).await?;
                     let pretty = serde_json::to_string_pretty(v.get("user").unwrap_or(&serde_json::Value::Null))?;
+                    tui_state.sidebar_index = 3;
                     stack.push(AppScreen::UserDetailsJson(pretty));
                 }
             }
         }
         AppScreen::UserDetail { user_id, email, status, .. } => {
+            if sb_idx == 0 {
+                match content_idx {
+                    0 => return Ok(DispatchResult::Continue),
+                    1 => {
+                        stack.pop();
+                        if let Some(AppScreen::UserList { for_manage, .. }) = stack.last_mut() {
+                            *for_manage = false;
+                        }
+                        tui_state.sidebar_index = 2;
+                        return Ok(DispatchResult::Continue);
+                    }
+                    2 => {
+                        stack.pop();
+                        if let Some(AppScreen::UserList { for_manage, .. }) = stack.last_mut() {
+                            *for_manage = false;
+                        }
+                        tui_state.sidebar_index = 3;
+                        return Ok(DispatchResult::Continue);
+                    }
+                    _ => {}
+                }
+            }
+            if sb_idx == 2 || sb_idx == 3 {
+                if is_back {
+                    stack.pop();
+                }
+                return Ok(DispatchResult::Continue);
+            }
             if is_back {
                 stack.pop();
                 return Ok(DispatchResult::Continue);
@@ -1189,6 +1380,7 @@ async fn dispatch_tui_action(
                 0 => {
                     let v = api_client.get_user(&user_id).await?;
                     let pretty = serde_json::to_string_pretty(v.get("user").unwrap_or(&serde_json::Value::Null))?;
+                    tui_state.sidebar_index = 1;
                     stack.push(AppScreen::UserDetailsJson(pretty));
                 }
                 1 => {
@@ -1198,10 +1390,22 @@ async fn dispatch_tui_action(
                         let _ = api_client.update_user(&user_id, val.as_deref(), None, None).await;
                     }
                 }
-                2 => stack.push(AppScreen::StatusChoice { user_id, email }),
-                3 => stack.push(AppScreen::RoleChoice { user_id, email }),
-                4 => stack.push(AppScreen::Permissions { user_id, email, status }),
-                5 => stack.push(AppScreen::ConfirmDelete { user_id, email }),
+                2 => {
+                    tui_state.sidebar_index = 1;
+                    stack.push(AppScreen::StatusChoice { user_id, email });
+                }
+                3 => {
+                    tui_state.sidebar_index = 1;
+                    stack.push(AppScreen::RoleChoice { user_id, email });
+                }
+                4 => {
+                    tui_state.sidebar_index = 1;
+                    stack.push(AppScreen::Permissions { user_id, email, status });
+                }
+                5 => {
+                    tui_state.sidebar_index = 1;
+                    stack.push(AppScreen::ConfirmDelete { user_id, email });
+                }
                 6 => {
                     stack.pop();
                 }
@@ -1240,6 +1444,7 @@ async fn dispatch_tui_action(
                     let res = api_client.list_user_permissions(user_id).await?;
                     let perms: Vec<PermissionOption> =
                         res.permissions.iter().map(permission_option_from_json).collect();
+                    tui_state.sidebar_index = 1;
                     stack.push(AppScreen::PermissionTable {
                         _user_id: user_id.clone(),
                         email: email.clone(),
@@ -1290,12 +1495,15 @@ async fn dispatch_tui_action(
                     opts.sort_by(|a, b| a.category.cmp(&b.category).then_with(|| a.key.cmp(&b.key)));
                     let categories = categories_from_permissions(&opts);
                     if categories.len() > 1 {
+                        tui_state.sidebar_index = 0;
                         stack.push(AppScreen::RevokeCategory {
                             categories,
                             email: email.clone(),
                             status: status.clone(),
                         });
                     } else {
+                        tui_state.sidebar_index = 0;
+                        tui_state.content_index = 0;
                         stack.push(AppScreen::RevokePermission {
                             permissions: opts,
                             categories,
@@ -1372,6 +1580,8 @@ async fn dispatch_tui_action(
                 res.permissions.iter().map(permission_option_from_json).collect();
             opts.sort_by(|a, b| a.category.cmp(&b.category).then_with(|| a.key.cmp(&b.key)));
             stack.pop();
+            tui_state.sidebar_index = 0;
+            tui_state.content_index = 0;
             stack.push(AppScreen::RevokePermission {
                 permissions: opts,
                 categories: cats.clone(),
@@ -1414,6 +1624,7 @@ async fn dispatch_tui_action(
                     perms.iter().collect()
                 };
                 if let Some(opt) = filtered.get(content_idx) {
+                    tui_state.sidebar_index = 1;
                     stack.push(AppScreen::ConfirmRevoke {
                         user_id,
                         key: opt.key.clone(),
