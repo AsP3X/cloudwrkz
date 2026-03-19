@@ -1,0 +1,426 @@
+//! Queue sign-in when PostgreSQL is briefly unreachable; retry for up to [`LOGIN_RETRY_MAX`].
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use axum::http::StatusCode;
+use chrono::Utc;
+use serde::Serialize;
+use sqlx::{PgPool, Row};
+use tracing::{info, warn};
+
+use crate::audit::{self, WriteAuditParams};
+use crate::auth::password::verify_password;
+use crate::auth::session::generate_token;
+use crate::db::is_transient_sqlx;
+use crate::error::AppError;
+use crate::models::user::{LoginRequest, LoginResponse, LoginUserInfo};
+
+/// Wall-clock time the API will keep retrying a queued login.
+pub const LOGIN_RETRY_MAX: Duration = Duration::from_secs(30);
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LoginJobStatusKind {
+    Pending,
+    Completed,
+    Failed,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LoginJobStatusResponse {
+    pub status: LoginJobStatusKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user: Option<LoginUserInfo>,
+    /// For clients that need special handling (e.g. redirect to banned page).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_hint: Option<String>,
+}
+
+#[derive(Clone, Default)]
+pub struct LoginJobs(Arc<Mutex<HashMap<String, LoginJobRecord>>>);
+
+struct LoginJobRecord {
+    status: LoginJobState,
+    created_at: Instant,
+}
+
+enum LoginJobState {
+    Pending,
+    Done(LoginJobStatusKind, LoginJobOutcome),
+}
+
+struct LoginJobOutcome {
+    message: Option<String>,
+    token: Option<String>,
+    user: Option<LoginUserInfo>,
+    client_hint: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct PendingLoginPayload {
+    pub body: LoginRequest,
+    pub email_normalized: String,
+    pub ip: Option<String>,
+    pub user_agent: Option<String>,
+}
+
+pub enum LoginAttemptError {
+    Transient,
+    Final(AppError),
+}
+
+fn map_sqlx_login(err: sqlx::Error) -> LoginAttemptError {
+    if is_transient_sqlx(&err) {
+        return LoginAttemptError::Transient;
+    }
+    warn!(event = "auth.login.db_error", "non-transient sqlx error: {:?}", err);
+    LoginAttemptError::Final(AppError::internal("A database error occurred"))
+}
+
+fn failure_hint(err: &AppError) -> Option<String> {
+    if err.code == "FORBIDDEN" {
+        if err.message.to_lowercase().contains("banned") {
+            return Some("BANNED".into());
+        }
+        if err.message.to_lowercase().contains("suspended") {
+            return Some("SUSPENDED".into());
+        }
+    }
+    None
+}
+
+/// Full sign-in attempt (same semantics as the synchronous `/auth/login` handler).
+pub async fn attempt_login(
+    pool: &PgPool,
+    body: &LoginRequest,
+    email_normalized: &str,
+    ip: Option<String>,
+    user_agent: Option<String>,
+) -> Result<LoginResponse, LoginAttemptError> {
+    let email = email_normalized.to_string();
+
+    let user = sqlx::query(
+        r#"SELECT id, email, name, password, role::text as role, status::text as status,
+                  email_verified
+           FROM users WHERE email = $1 OR original_email = $1 LIMIT 1"#,
+    )
+    .bind(&email)
+    .fetch_optional(pool)
+    .await
+    .map_err(map_sqlx_login)?
+    .ok_or_else(|| {
+        warn!(event = "auth.login.fail", email = %email, "user not found");
+        audit::write_audit_log(
+            pool,
+            WriteAuditParams {
+                user_id: None,
+                action: "auth.login.attempt".into(),
+                resource_type: None,
+                resource_id: None,
+                context: Some(serde_json::json!({ "outcome": "user_not_found" })),
+                ip_address: ip.clone(),
+                user_agent: user_agent.clone(),
+            },
+        );
+        LoginAttemptError::Final(AppError::unauthorized("Invalid email or password"))
+    })?;
+
+    let user_id: String = user.get("id");
+    let user_email: String = user.get("email");
+    let user_name: Option<String> = user.get("name");
+    let user_password: String = user.get("password");
+    let status: String = user.get("status");
+
+    if status == "DELETED" {
+        audit::write_audit_log(
+            pool,
+            WriteAuditParams {
+                user_id: Some(user_id.clone()),
+                action: "auth.login.attempt".into(),
+                resource_type: None,
+                resource_id: None,
+                context: Some(serde_json::json!({ "outcome": "deleted_account" })),
+                ip_address: ip.clone(),
+                user_agent: user_agent.clone(),
+            },
+        );
+        return Err(LoginAttemptError::Final(AppError::unauthorized(
+            "This account has been deleted. Please contact an administrator.",
+        )));
+    }
+
+    let password = body.password.clone();
+    let hash = user_password.clone();
+    let valid = tokio::task::spawn_blocking(move || verify_password(&password, &hash))
+        .await
+        .map_err(|_| LoginAttemptError::Final(AppError::internal("Password verification failed")))?
+        .map_err(|_| LoginAttemptError::Final(AppError::internal("Password verification failed")))?;
+
+    if !valid {
+        audit::write_audit_log(
+            pool,
+            WriteAuditParams {
+                user_id: Some(user_id.clone()),
+                action: "auth.login.attempt".into(),
+                resource_type: None,
+                resource_id: None,
+                context: Some(serde_json::json!({ "outcome": "invalid_password" })),
+                ip_address: ip.clone(),
+                user_agent: user_agent.clone(),
+            },
+        );
+        return Err(LoginAttemptError::Final(AppError::unauthorized(
+            "Invalid email or password",
+        )));
+    }
+
+    if status == "BANNED" {
+        audit::write_audit_log(
+            pool,
+            WriteAuditParams {
+                user_id: Some(user_id.clone()),
+                action: "auth.login.attempt".into(),
+                resource_type: None,
+                resource_id: None,
+                context: Some(serde_json::json!({ "outcome": "banned" })),
+                ip_address: ip.clone(),
+                user_agent: user_agent.clone(),
+            },
+        );
+        return Err(LoginAttemptError::Final(AppError {
+            status: StatusCode::FORBIDDEN,
+            code: "FORBIDDEN".into(),
+            message: "This account has been banned.".into(),
+            fields: None,
+        }));
+    }
+    if status == "SUSPENDED" {
+        audit::write_audit_log(
+            pool,
+            WriteAuditParams {
+                user_id: Some(user_id.clone()),
+                action: "auth.login.attempt".into(),
+                resource_type: None,
+                resource_id: None,
+                context: Some(serde_json::json!({ "outcome": "suspended" })),
+                ip_address: ip.clone(),
+                user_agent: user_agent.clone(),
+            },
+        );
+        return Err(LoginAttemptError::Final(AppError {
+            status: StatusCode::FORBIDDEN,
+            code: "FORBIDDEN".into(),
+            message: "Your account has been suspended. Please contact support.".into(),
+            fields: None,
+        }));
+    }
+
+    sqlx::query("UPDATE users SET last_login_at = NOW(), updated_at = NOW() WHERE id = $1")
+        .bind(&user_id)
+        .execute(pool)
+        .await
+        .map_err(map_sqlx_login)?;
+
+    let token = generate_token();
+    let is_app =
+        body.device_type.is_some() || body.device_os.is_some() || body.device_name.is_some();
+    let session_secs: i64 = if is_app {
+        7 * 24 * 60 * 60
+    } else if body.remember_me {
+        30 * 24 * 60 * 60
+    } else {
+        24 * 60 * 60
+    };
+    let expires_at = Utc::now().naive_utc() + chrono::Duration::seconds(session_secs);
+    let session_id = crate::id::new_cuid();
+
+    sqlx::query(
+        r#"INSERT INTO sessions (id, token, user_id, expires_at, created_at, updated_at,
+                                  device_name, device_type, device_os, device_browser, user_agent)
+           VALUES ($1, $2, $3, $4, NOW(), NOW(), $5, $6, $7, $8, $9)"#,
+    )
+    .bind(&session_id)
+    .bind(&token)
+    .bind(&user_id)
+    .bind(expires_at)
+    .bind(&body.device_name)
+    .bind(&body.device_type)
+    .bind(&body.device_os)
+    .bind(&body.device_browser)
+    .bind(&body.user_agent)
+    .execute(pool)
+    .await
+    .map_err(map_sqlx_login)?;
+
+    audit::write_audit_log(
+        pool,
+        WriteAuditParams {
+            user_id: Some(user_id),
+            action: "auth.login".into(),
+            resource_type: None,
+            resource_id: None,
+            context: None,
+            ip_address: ip,
+            user_agent,
+        },
+    );
+
+    Ok(LoginResponse {
+        token,
+        user: LoginUserInfo {
+            name: user_name,
+            email: user_email,
+        },
+    })
+}
+
+impl LoginJobs {
+    pub fn insert_pending(&self, job_id: &str) {
+        let mut map = self.0.lock().expect("login jobs mutex poisoned");
+        prune_stale_login_jobs_locked(&mut map);
+        map.insert(
+            job_id.to_string(),
+            LoginJobRecord {
+                status: LoginJobState::Pending,
+                created_at: Instant::now(),
+            },
+        );
+    }
+
+    pub fn set_completed(&self, job_id: &str, response: LoginResponse) {
+        let mut map = self.0.lock().expect("login jobs mutex poisoned");
+        if let Some(rec) = map.get_mut(job_id) {
+            rec.status = LoginJobState::Done(
+                LoginJobStatusKind::Completed,
+                LoginJobOutcome {
+                    message: None,
+                    token: Some(response.token),
+                    user: Some(response.user),
+                    client_hint: None,
+                },
+            );
+        }
+    }
+
+    pub fn set_failed(&self, job_id: &str, message: String, client_hint: Option<String>) {
+        let mut map = self.0.lock().expect("login jobs mutex poisoned");
+        if let Some(rec) = map.get_mut(job_id) {
+            rec.status = LoginJobState::Done(
+                LoginJobStatusKind::Failed,
+                LoginJobOutcome {
+                    message: Some(message),
+                    token: None,
+                    user: None,
+                    client_hint,
+                },
+            );
+        }
+    }
+
+    pub fn get_status(&self, job_id: &str) -> Option<LoginJobStatusResponse> {
+        let mut map = self.0.lock().expect("login jobs mutex poisoned");
+        prune_stale_login_jobs_locked(&mut map);
+        let rec = map.get(job_id)?;
+        match &rec.status {
+            LoginJobState::Pending => Some(LoginJobStatusResponse {
+                status: LoginJobStatusKind::Pending,
+                message: None,
+                token: None,
+                user: None,
+                client_hint: None,
+            }),
+            LoginJobState::Done(kind, out) => Some(LoginJobStatusResponse {
+                status: kind.clone(),
+                message: out.message.clone(),
+                token: out.token.clone(),
+                user: out.user.clone(),
+                client_hint: out.client_hint.clone(),
+            }),
+        }
+    }
+}
+
+fn prune_stale_login_jobs_locked(map: &mut HashMap<String, LoginJobRecord>) {
+    let cutoff = Instant::now() - Duration::from_secs(15 * 60);
+    map.retain(|_, rec| {
+        if let LoginJobState::Done(_, _) = rec.status {
+            rec.created_at > cutoff
+        } else {
+            true
+        }
+    });
+}
+
+pub fn spawn_login_retry(
+    pool: PgPool,
+    jobs: LoginJobs,
+    job_id: String,
+    payload: PendingLoginPayload,
+) {
+    tokio::spawn(async move {
+        login_retry_loop(pool, jobs, job_id, payload).await;
+    });
+}
+
+async fn login_retry_loop(
+    pool: PgPool,
+    jobs: LoginJobs,
+    job_id: String,
+    payload: PendingLoginPayload,
+) {
+    let deadline = tokio::time::Instant::now() + LOGIN_RETRY_MAX;
+    let email = payload.email_normalized.clone();
+
+    loop {
+        if tokio::time::Instant::now() >= deadline {
+            warn!(
+                event = "auth.login.queue_timeout",
+                job_id = %job_id,
+                email = %email,
+                "login job timed out waiting for database"
+            );
+            jobs.set_failed(
+                &job_id,
+                "The database did not become available in time. Please try signing in again."
+                    .into(),
+                None,
+            );
+            break;
+        }
+
+        match attempt_login(
+            &pool,
+            &payload.body,
+            &payload.email_normalized,
+            payload.ip.clone(),
+            payload.user_agent.clone(),
+        )
+        .await
+        {
+            Ok(response) => {
+                info!(
+                    event = "auth.login.queue_success",
+                    job_id = %job_id,
+                    email = %response.user.email,
+                    "queued login completed"
+                );
+                jobs.set_completed(&job_id, response);
+                break;
+            }
+            Err(LoginAttemptError::Transient) => {
+                tokio::time::sleep(Duration::from_millis(400)).await;
+            }
+            Err(LoginAttemptError::Final(e)) => {
+                let hint = failure_hint(&e);
+                jobs.set_failed(&job_id, e.message, hint);
+                break;
+            }
+        }
+    }
+}

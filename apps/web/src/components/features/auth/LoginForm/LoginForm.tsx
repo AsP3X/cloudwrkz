@@ -10,7 +10,6 @@ import Link from "next/link";
 import { ROUTES } from "@/lib/constants/routes";
 import { loginSchema, type LoginInput } from "@/lib/validations/auth";
 import { loginUser } from "@/server/actions/auth";
-import { useDatabaseHealth } from "@/lib/hooks/useDatabaseHealth";
 import { getDeviceMetadata } from "@/lib/utils/device";
 import { QrLoginPanel } from "@/components/features/auth/QrLoginPanel";
 
@@ -20,15 +19,7 @@ type LoginFormProps = {
 };
 
 export const LoginForm = ({ initialError, disabled: initialDisabled = false }: LoginFormProps) => {
-  // Monitor database health in real-time
-  const { status, isServerUnreachable } = useDatabaseHealth({
-    pollInterval: 30000,
-    initialStatus: initialDisabled ? "unhealthy" : "healthy",
-  });
-  
-  // Form is disabled if database/server is unavailable
-  const isDatabaseUnavailable = status === "unhealthy" || status === "loading";
-  const disabled = initialDisabled || isDatabaseUnavailable || isServerUnreachable;
+  const disabled = initialDisabled;
   const router = useRouter();
 
   const getInitialErrorMessage = (code?: string): string | null => {

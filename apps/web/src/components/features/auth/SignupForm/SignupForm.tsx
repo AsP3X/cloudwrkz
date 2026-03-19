@@ -10,22 +10,13 @@ import Link from "next/link";
 import { ROUTES } from "@/lib/constants/routes";
 import { registerSchema, type RegisterInput } from "@/lib/validations/auth";
 import { registerUser } from "@/server/actions/auth";
-import { useDatabaseHealth } from "@/lib/hooks/useDatabaseHealth";
 
 type SignupFormProps = {
   disabled?: boolean;
 };
 
 export const SignupForm = ({ disabled: initialDisabled = false }: SignupFormProps) => {
-  // Monitor database health in real-time
-  const { status, isServerUnreachable } = useDatabaseHealth({
-    pollInterval: 30000,
-    initialStatus: initialDisabled ? "unhealthy" : "healthy",
-  });
-  
-  // Form is disabled if database/server is unavailable
-  const isDatabaseUnavailable = status === "unhealthy" || status === "loading";
-  const disabled = initialDisabled || isDatabaseUnavailable || isServerUnreachable;
+  const disabled = initialDisabled;
   const router = useRouter();
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);

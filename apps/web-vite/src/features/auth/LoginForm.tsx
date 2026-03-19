@@ -35,6 +35,7 @@ export function LoginForm({ initialError, disabled = false }: LoginFormProps) {
   const [serverError, setServerError] = React.useState<string | null>(() =>
     getInitialErrorMessage(initialError)
   );
+  const [queuedSuccessInfo, setQueuedSuccessInfo] = React.useState<string | null>(null);
 
   const {
     register,
@@ -49,10 +50,18 @@ export function LoginForm({ initialError, disabled = false }: LoginFormProps) {
 
   const onSubmit = async (data: LoginInput) => {
     setServerError(null);
+    setQueuedSuccessInfo(null);
 
     const result = await login(data.email, data.password, data.rememberMe);
 
     if (result.success) {
+      if ("wasQueued" in result && result.wasQueued) {
+        setQueuedSuccessInfo(
+          "Your sign-in was queued by the API while the database was unavailable, and has completed successfully.",
+        );
+        window.setTimeout(() => navigate(ROUTES.DASHBOARD), 2200);
+        return;
+      }
       navigate(ROUTES.DASHBOARD);
     } else {
       if (result.error === "BANNED") {
@@ -71,6 +80,31 @@ export function LoginForm({ initialError, disabled = false }: LoginFormProps) {
       noValidate
       {...(disabled && { "aria-disabled": true })}
     >
+      {queuedSuccessInfo && (
+        <div
+          className="rounded-lg bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-200 dark:border-amber-800 p-4"
+          role="status"
+        >
+          <div className="flex items-start gap-3">
+            <svg
+              className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0 animate-pulse"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              aria-hidden
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <p className="text-sm font-medium text-amber-900 dark:text-amber-100">{queuedSuccessInfo}</p>
+          </div>
+        </div>
+      )}
+
       {serverError && (
         <div className="rounded-lg bg-error-50 dark:bg-error-950 border-2 border-error-200 dark:border-error-800 p-4">
           <div className="flex items-start gap-3">
@@ -147,7 +181,7 @@ export function LoginForm({ initialError, disabled = false }: LoginFormProps) {
         loading={isSubmitting}
         disabled={isSubmitting || disabled}
       >
-        {isSubmitting ? "Signing in..." : "Sign In"}
+        {isSubmitting ? "Signing in…" : "Sign In"}
       </Button>
 
       <p className="text-center text-sm text-neutral-600 dark:text-neutral-400">

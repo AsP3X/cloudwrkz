@@ -50,7 +50,7 @@ export default async function RegisterPage() {
             {/* Signup Card */}
             <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8">
               <FormBlurWrapper initialDatabaseAvailable={databaseAvailable} formType="register">
-                <SignupForm disabled={!databaseAvailable} />
+                <SignupForm />
               </FormBlurWrapper>
             </div>
 

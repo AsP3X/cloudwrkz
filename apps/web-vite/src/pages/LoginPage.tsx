@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { LoginForm } from "@/features/auth/LoginForm";
+import { RegistrationQueuedPanel } from "@/features/auth/RegistrationQueuedPanel";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 import { useSearchParams } from "react-router-dom";
@@ -37,6 +38,7 @@ export default function LoginPage() {
             </div>
 
             <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8">
+              <RegistrationQueuedPanel />
               <LoginForm initialError={error} />
             </div>
 

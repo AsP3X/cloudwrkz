@@ -19,6 +19,8 @@ pub mod todos;
 use axum::Router;
 use sqlx::PgPool;
 
+use crate::auth::login_queue::LoginJobs;
+use crate::auth::register_queue::RegisterJobs;
 use crate::config::AppConfig;
 
 pub fn v1_router(pool: PgPool, config: AppConfig, api_started_at: std::time::Instant) -> Router {
@@ -43,6 +45,8 @@ pub fn v1_router(pool: PgPool, config: AppConfig, api_started_at: std::time::Ins
             pool,
             config,
             api_started_at,
+            register_jobs: RegisterJobs::default(),
+            login_jobs: LoginJobs::default(),
         })
 }
 
@@ -51,4 +55,6 @@ pub struct AppState {
     pub pool: PgPool,
     pub config: AppConfig,
     pub api_started_at: std::time::Instant,
+    pub register_jobs: RegisterJobs,
+    pub login_jobs: LoginJobs,
 }

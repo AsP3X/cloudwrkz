@@ -1,7 +1,8 @@
 use axum::{
-    extract::State,
+    extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    routing::post,
+    response::IntoResponse,
+    routing::{get, post},
     Json, Router,
 };
 use chrono::Utc;
@@ -10,8 +11,14 @@ use tracing::{info, warn};
 
 use crate::audit::{self, WriteAuditParams};
 use crate::auth::extractors::AuthUser;
+use crate::auth::login_queue::{
+    attempt_login, spawn_login_retry, LoginAttemptError, LoginJobStatusResponse, PendingLoginPayload,
+};
 use crate::auth::password::{hash_password, verify_password};
-use crate::auth::session::generate_token;
+use crate::auth::register_queue::{
+    attempt_register_user, new_job_id, spawn_register_retry, PendingRegisterPayload,
+    RegisterAttemptError, RegisterJobStatusResponse,
+};
 use crate::error::AppError;
 use crate::models::user::*;
 use crate::routes::AppState;
@@ -19,7 +26,9 @@ use crate::routes::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/auth/login", post(login))
+        .route("/auth/login/status/{job_id}", get(login_job_status))
         .route("/auth/register", post(register))
+        .route("/auth/register/status/{job_id}", get(register_job_status))
         .route("/auth/logout", post(logout))
         .route("/auth/change-password", post(change_password))
         .route("/auth/extend-session", post(extend_session))
@@ -42,7 +51,7 @@ async fn login(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(body): Json<LoginRequest>,
-) -> Result<Json<LoginResponse>, AppError> {
+) -> Result<axum::response::Response, AppError> {
     let (ip, user_agent) = audit_ip_and_agent(&headers, &body.user_agent);
     let email = body.email.to_lowercase().trim().to_string();
     info!(event = "auth.login", path = "/auth/login", email = %email, "auth request");
@@ -63,174 +72,51 @@ async fn login(
         return Err(AppError::unauthorized("Invalid email or password"));
     }
 
-    let user = sqlx::query(
-        r#"SELECT id, email, name, password, role::text as role, status::text as status,
-                  email_verified
-           FROM users WHERE email = $1 OR original_email = $1 LIMIT 1"#,
-    )
-    .bind(&email)
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or_else(|| {
-        warn!(event = "auth.login.fail", path = "/auth/login", email = %email, "user not found or invalid password");
-        audit::write_audit_log(
-            &state.pool,
-            WriteAuditParams {
-                user_id: None,
-                action: "auth.login.attempt".into(),
-                resource_type: None,
-                resource_id: None,
-                context: Some(serde_json::json!({ "outcome": "user_not_found" })),
-                ip_address: ip.clone(),
-                user_agent: user_agent.clone(),
-            },
-        );
-        AppError::unauthorized("Invalid email or password")
-    })?;
-
-    let user_id: String = user.get("id");
-    let user_email: String = user.get("email");
-    let user_name: Option<String> = user.get("name");
-    let user_password: String = user.get("password");
-    let status: String = user.get("status");
-
-    if status == "DELETED" {
-        audit::write_audit_log(
-            &state.pool,
-            WriteAuditParams {
-                user_id: Some(user_id.clone()),
-                action: "auth.login.attempt".into(),
-                resource_type: None,
-                resource_id: None,
-                context: Some(serde_json::json!({ "outcome": "deleted_account" })),
-                ip_address: ip.clone(),
-                user_agent: user_agent.clone(),
-            },
-        );
-        return Err(AppError::unauthorized(
-            "This account has been deleted. Please contact an administrator.",
-        ));
+    match attempt_login(&state.pool, &body, &email, ip.clone(), user_agent.clone()).await {
+        Ok(response) => Ok((StatusCode::OK, Json(response)).into_response()),
+        Err(LoginAttemptError::Transient) => {
+            let job_id = new_job_id();
+            state.login_jobs.insert_pending(&job_id);
+            spawn_login_retry(
+                state.pool.clone(),
+                state.login_jobs.clone(),
+                job_id.clone(),
+                PendingLoginPayload {
+                    body: body.clone(),
+                    email_normalized: email.clone(),
+                    ip,
+                    user_agent,
+                },
+            );
+            info!(
+                event = "auth.login.queued",
+                path = "/auth/login",
+                email = %email,
+                job_id = %job_id,
+                "login queued: database temporarily unavailable"
+            );
+            let queued = LoginQueuedResponse {
+                message: "Database is temporarily unavailable. Your sign-in has been queued by the API and will complete automatically within about 30 seconds. Poll GET /auth/login/status/{job_id} until status is completed."
+                    .into(),
+                queued: true,
+                job_id,
+                retry_deadline_secs: 30,
+            };
+            Ok((StatusCode::ACCEPTED, Json(queued)).into_response())
+        }
+        Err(LoginAttemptError::Final(e)) => Err(e),
     }
+}
 
-    let password = body.password.clone();
-    let hash = user_password.clone();
-    let valid = tokio::task::spawn_blocking(move || verify_password(&password, &hash))
-        .await
-        .map_err(|_| AppError::internal("Password verification failed"))?
-        .map_err(|_| AppError::internal("Password verification failed"))?;
-
-    if !valid {
-        audit::write_audit_log(
-            &state.pool,
-            WriteAuditParams {
-                user_id: Some(user_id.clone()),
-                action: "auth.login.attempt".into(),
-                resource_type: None,
-                resource_id: None,
-                context: Some(serde_json::json!({ "outcome": "invalid_password" })),
-                ip_address: ip.clone(),
-                user_agent: user_agent.clone(),
-            },
-        );
-        return Err(AppError::unauthorized("Invalid email or password"));
-    }
-
-    if status == "BANNED" {
-        audit::write_audit_log(
-            &state.pool,
-            WriteAuditParams {
-                user_id: Some(user_id.clone()),
-                action: "auth.login.attempt".into(),
-                resource_type: None,
-                resource_id: None,
-                context: Some(serde_json::json!({ "outcome": "banned" })),
-                ip_address: ip.clone(),
-                user_agent: user_agent.clone(),
-            },
-        );
-        return Err(AppError {
-            status: StatusCode::FORBIDDEN,
-            code: "FORBIDDEN".into(),
-            message: "This account has been banned.".into(),
-            fields: None,
-        });
-    }
-    if status == "SUSPENDED" {
-        audit::write_audit_log(
-            &state.pool,
-            WriteAuditParams {
-                user_id: Some(user_id.clone()),
-                action: "auth.login.attempt".into(),
-                resource_type: None,
-                resource_id: None,
-                context: Some(serde_json::json!({ "outcome": "suspended" })),
-                ip_address: ip.clone(),
-                user_agent: user_agent.clone(),
-            },
-        );
-        return Err(AppError {
-            status: StatusCode::FORBIDDEN,
-            code: "FORBIDDEN".into(),
-            message: "Your account has been suspended. Please contact support.".into(),
-            fields: None,
-        });
-    }
-
-    sqlx::query("UPDATE users SET last_login_at = NOW(), updated_at = NOW() WHERE id = $1")
-        .bind(&user_id)
-        .execute(&state.pool)
-        .await?;
-
-    let token = generate_token();
-    let is_app =
-        body.device_type.is_some() || body.device_os.is_some() || body.device_name.is_some();
-    let session_secs: i64 = if is_app {
-        7 * 24 * 60 * 60
-    } else if body.remember_me {
-        30 * 24 * 60 * 60
-    } else {
-        24 * 60 * 60
-    };
-    let expires_at = Utc::now().naive_utc() + chrono::Duration::seconds(session_secs);
-    let session_id = crate::id::new_cuid();
-
-    sqlx::query(
-        r#"INSERT INTO sessions (id, token, user_id, expires_at, created_at, updated_at,
-                                  device_name, device_type, device_os, device_browser, user_agent)
-           VALUES ($1, $2, $3, $4, NOW(), NOW(), $5, $6, $7, $8, $9)"#,
-    )
-    .bind(&session_id)
-    .bind(&token)
-    .bind(&user_id)
-    .bind(expires_at)
-    .bind(&body.device_name)
-    .bind(&body.device_type)
-    .bind(&body.device_os)
-    .bind(&body.device_browser)
-    .bind(&body.user_agent)
-    .execute(&state.pool)
-    .await?;
-
-    audit::write_audit_log(
-        &state.pool,
-        WriteAuditParams {
-            user_id: Some(user_id),
-            action: "auth.login".into(),
-            resource_type: None,
-            resource_id: None,
-            context: None,
-            ip_address: ip,
-            user_agent,
-        },
-    );
-
-    Ok(Json(LoginResponse {
-        token,
-        user: LoginUserInfo {
-            name: user_name,
-            email: user_email,
-        },
-    }))
+async fn login_job_status(
+    State(state): State<AppState>,
+    Path(job_id): Path<String>,
+) -> Result<Json<LoginJobStatusResponse>, AppError> {
+    state
+        .login_jobs
+        .get_status(&job_id)
+        .map(Json)
+        .ok_or_else(|| AppError::not_found("Unknown or expired login job"))
 }
 
 async fn register(
@@ -266,18 +152,7 @@ async fn register(
         }
     }
 
-    let existing: Option<String> =
-        sqlx::query_scalar("SELECT id FROM users WHERE email = $1")
-            .bind(&email)
-            .fetch_optional(&state.pool)
-            .await?;
-
-    if existing.is_some() {
-        warn!(event = "auth.register.conflict", path = "/auth/register", email = %email, "conflict: email already exists");
-        return Err(AppError::conflict(
-            "An account with this email already exists",
-        ));
-    }
+    let (ip, user_agent) = audit_ip_and_agent(&headers, &None::<String>);
 
     let password = body.password.clone();
     let hashed = tokio::task::spawn_blocking(move || hash_password(&password))
@@ -291,47 +166,84 @@ async fn register(
             AppError::internal("Failed to hash password")
         })?;
 
-    let user_id = crate::id::new_cuid();
-
-    sqlx::query(
-        r#"INSERT INTO users (id, email, name, password, role, status, email_verified,
-                              timezone, theme, locale, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, 'USER', 'PENDING', false, 'UTC', 'system', 'en', NOW(), NOW())"#,
-    )
-    .bind(&user_id)
-    .bind(&email)
-    .bind(&name)
-    .bind(&hashed)
-    .execute(&state.pool)
-    .await
-    .map_err(|e| {
-        warn!(event = "auth.register.error", path = "/auth/register", email = %email, "db insert failed: {:?}", e);
-        e
-    })?;
-
-    let (ip, user_agent) = audit_ip_and_agent(&headers, &None::<String>);
-    audit::write_audit_log(
+    match attempt_register_user(
         &state.pool,
-        WriteAuditParams {
-            user_id: Some(user_id.clone()),
-            action: "auth.register".into(),
-            resource_type: Some("user".into()),
-            resource_id: Some(user_id.clone()),
-            context: None,
-            ip_address: ip,
-            user_agent,
-        },
-    );
+        &email,
+        &name,
+        &hashed,
+        ip.clone(),
+        user_agent.clone(),
+    )
+    .await
+    {
+        Ok((user_id, em)) => {
+            info!(event = "auth.register.success", path = "/auth/register", email = %em, user_id = %user_id, "register success");
+            Ok((
+                StatusCode::CREATED,
+                Json(RegisterResponse {
+                    message: "Account created successfully.".into(),
+                    user_id: Some(user_id),
+                    email: Some(em),
+                    queued: None,
+                    job_id: None,
+                    retry_deadline_secs: None,
+                }),
+            ))
+        }
+        Err(RegisterAttemptError::Transient) => {
+            let job_id = new_job_id();
+            state.register_jobs.insert_pending(&job_id);
+            spawn_register_retry(
+                state.pool.clone(),
+                state.register_jobs.clone(),
+                job_id.clone(),
+                PendingRegisterPayload {
+                    email: email.clone(),
+                    name: name.clone(),
+                    password_hash: hashed,
+                    ip,
+                    user_agent,
+                },
+            );
+            info!(
+                event = "auth.register.queued",
+                path = "/auth/register",
+                email = %email,
+                job_id = %job_id,
+                "register queued: database temporarily unavailable"
+            );
+            Ok((
+                StatusCode::ACCEPTED,
+                Json(RegisterResponse {
+                    message: "Database is temporarily unavailable. Your registration has been queued by the API and will complete automatically within about 30 seconds.".into(),
+                    user_id: None,
+                    email: None,
+                    queued: Some(true),
+                    job_id: Some(job_id),
+                    retry_deadline_secs: Some(30),
+                }),
+            ))
+        }
+        Err(RegisterAttemptError::Conflict(msg)) => {
+            warn!(event = "auth.register.conflict", path = "/auth/register", email = %email, "conflict: {}", msg);
+            Err(AppError::conflict(msg))
+        }
+        Err(RegisterAttemptError::Fatal(msg)) => {
+            warn!(event = "auth.register.error", path = "/auth/register", email = %email, "{}", msg);
+            Err(AppError::internal("Registration failed. Please try again later."))
+        }
+    }
+}
 
-    info!(event = "auth.register.success", path = "/auth/register", email = %email, user_id = %user_id, "register success");
-    Ok((
-        StatusCode::CREATED,
-        Json(RegisterResponse {
-            message: "Account created successfully.".into(),
-            user_id: Some(user_id),
-            email: Some(email),
-        }),
-    ))
+async fn register_job_status(
+    State(state): State<AppState>,
+    Path(job_id): Path<String>,
+) -> Result<Json<RegisterJobStatusResponse>, AppError> {
+    state
+        .register_jobs
+        .get_status(&job_id)
+        .map(Json)
+        .ok_or_else(|| AppError::not_found("Unknown or expired registration job"))
 }
 
 async fn logout(

@@ -50,7 +50,9 @@ Commands:
                                Requires DATABASE_URL; runs migrations. Use with GET /api/v1/health/detailed.
 
 Environment: LOG_VERBOSITY (debug|prod), LOG_FORMAT (json), RUST_LOG, DATABASE_URL,
-             API_REGION, API_NODES_AVAILABLE, DIAGNOSTICS_HEALTH_TOKEN (optional plaintext override for detailed health), etc.
+             API_REGION, API_NODES_AVAILABLE, DIAGNOSTICS_HEALTH_TOKEN (optional plaintext override for detailed health),
+             DATABASE_CONNECT_FAST_FAIL, DATABASE_CONNECT_MAX_WAIT_SECS, DATABASE_POOL_ACQUIRE_TIMEOUT_SECS,
+             DATABASE_POOL_MAX_CONNECTIONS, DATABASE_MIGRATE_RETRY_MAX_SECS, etc.
 "#;
 
 /// Parse `-v` / `-v debug` / `-v prod` and `-h` from env::args(). CLI overrides LOG_VERBOSITY env.
@@ -256,30 +258,8 @@ async fn main() {
         );
     }
 
-    let pool = db::create_pool(&config.database_url)
-        .await
-        .expect("Failed to create database pool");
-
-    if let Err(e) = sqlx::migrate!("./migrations").run(&pool).await {
-        let hint = match &e {
-            sqlx::migrate::MigrateError::VersionMissing(v) => format!(
-                "Database has migration version {} recorded but it is missing from this build. \
-                 Rebuild from repo root: cargo build -p cloudwrkz-api. \
-                 If the DB was migrated out of order, fix or reset the _sqlx_migrations table.",
-                v
-            ),
-            sqlx::migrate::MigrateError::VersionMismatch(_) => {
-                "A migration was modified after being applied. Migrations must be immutable.".into()
-            }
-            _ => String::new(),
-        };
-        let msg = if hint.is_empty() {
-            format!("Failed to run migrations: {}", e)
-        } else {
-            format!("Failed to run migrations: {} — {}", e, hint)
-        };
-        panic!("{}", msg);
-    }
+    let pool = db::connect_pool_with_retry(&config.database_url).await;
+    db::run_migrations_with_transient_retries(&pool).await;
 
     let cors = build_cors(&config);
 

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { ROUTES } from "@/lib/constants/routes";
 import { registerSchema, type RegisterInput } from "@/lib/validations/auth";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { RegistrationQueuedPanel } from "@/features/auth/RegistrationQueuedPanel";
 
 type SignupFormProps = {
   disabled?: boolean;
@@ -17,6 +18,7 @@ export function SignupForm({ disabled = false }: SignupFormProps) {
   const { register: registerUser } = useAuth();
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
+  const [queuedJobTrigger, setQueuedJobTrigger] = React.useState<string | null>(null);
 
   const {
     register,
@@ -34,6 +36,11 @@ export function SignupForm({ disabled = false }: SignupFormProps) {
     setSuccessMessage(null);
 
     const result = await registerUser(data);
+
+    if (result.success && "queued" in result && result.queued && result.jobId) {
+      setQueuedJobTrigger(result.jobId);
+      return;
+    }
 
     if (result.success) {
       setSuccessMessage(
@@ -57,6 +64,8 @@ export function SignupForm({ disabled = false }: SignupFormProps) {
       noValidate
       {...(disabled && { "aria-disabled": true })}
     >
+      <RegistrationQueuedPanel triggerJobId={queuedJobTrigger} />
+
       {successMessage && (
         <div className="rounded-lg bg-success-50 dark:bg-success-950 border-2 border-success-200 dark:border-success-800 p-4">
           <div className="flex items-start gap-3">

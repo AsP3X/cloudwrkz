@@ -33,7 +33,7 @@ pub struct UserRow {
     pub updated_at: chrono::NaiveDateTime,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct LoginRequest {
     pub email: String,
     pub password: String,
@@ -52,10 +52,19 @@ pub struct LoginResponse {
     pub user: LoginUserInfo,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct LoginUserInfo {
     pub name: Option<String>,
     pub email: String,
+}
+
+/// Returned with HTTP 202 when sign-in is queued while the database is unreachable.
+#[derive(Debug, Serialize)]
+pub struct LoginQueuedResponse {
+    pub message: String,
+    pub queued: bool,
+    pub job_id: String,
+    pub retry_deadline_secs: u32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -74,6 +83,13 @@ pub struct RegisterResponse {
     pub user_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
+    /// When `true`, the API accepted the registration and is retrying writes for up to ~30s.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub queued: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub job_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_deadline_secs: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
