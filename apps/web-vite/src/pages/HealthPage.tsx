@@ -41,14 +41,14 @@ function DbLatencyChartTooltip({
       <p className="font-mono text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">{row.at}</p>
       <p className="mt-1.5 flex items-baseline gap-2">
         <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
-          Database
+          Data storage
         </span>
         <span className="font-mono text-base font-bold tabular-nums text-neutral-900 dark:text-white">
           {row.dbMs != null ? row.dbMs : "—"}
           <span className="ml-0.5 text-xs font-semibold text-neutral-500 dark:text-neutral-400">ms</span>
         </span>
       </p>
-      <p className="mt-1 text-[10px] text-neutral-400 dark:text-neutral-500">Sample #{row.seq}</p>
+      <p className="mt-1 text-[10px] text-neutral-400 dark:text-neutral-500">Check #{row.seq}</p>
     </div>
   );
 }
@@ -68,14 +68,14 @@ function ApiLatencyChartTooltip({
       <p className="font-mono text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">{row.at}</p>
       <p className="mt-1.5 flex items-baseline gap-2">
         <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-          API (RTT)
+          Your connection
         </span>
         <span className="font-mono text-base font-bold tabular-nums text-neutral-900 dark:text-white">
           {row.apiMs}
           <span className="ml-0.5 text-xs font-semibold text-neutral-500 dark:text-neutral-400">ms</span>
         </span>
       </p>
-      <p className="mt-1 text-[10px] text-neutral-400 dark:text-neutral-500">Sample #{row.seq}</p>
+      <p className="mt-1 text-[10px] text-neutral-400 dark:text-neutral-500">Check #{row.seq}</p>
     </div>
   );
 }
@@ -108,6 +108,17 @@ function apiChartPeakMs(rows: LatencyChartRow[]): number {
   return max;
 }
 
+function formatUptime(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  if (s < 60) return `${s}s`;
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
 function isRichHealth(d: unknown): d is HealthPayload {
   return (
     !!d &&
@@ -138,7 +149,7 @@ export default function HealthPage() {
         const apiMs = Math.round(performance.now() - pollStarted);
         if (!isRichHealth(data)) {
           setHealth(null);
-          setError("Unexpected health response from API.");
+          setError("The service returned data we couldn’t display. Please try again in a moment.");
           return;
         }
         setHealth(data);
@@ -170,7 +181,7 @@ export default function HealthPage() {
             ? err.message
             : err instanceof Error
               ? err.message
-              : "Failed to fetch health status";
+              : "Please check your internet connection and try again.";
         setError(msg);
         setHealth(null);
       } finally {
@@ -261,27 +272,30 @@ export default function HealthPage() {
           <div className="absolute bottom-32 right-1/4 h-80 w-80 rounded-full bg-violet-400/15 blur-3xl dark:bg-violet-600/10" />
         </div>
 
-        <div className="relative z-10 container mx-auto px-4 py-10 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-4xl">
-            <div className="mb-8 text-center">
-              <Link
-                to={ROUTES.HOME}
-                className="mb-3 inline-block text-xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent dark:from-indigo-400 dark:to-violet-400"
-              >
-                {APP_CONFIG.name}
-              </Link>
-              <h1 className="text-3xl font-bold tracking-tight text-neutral-900 dark:text-white sm:text-4xl">
-                Service health
-              </h1>
-              <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
-                Public status: how many API nodes this deployment reports, region, and database reachability.
-              </p>
-              <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+        <div className="relative z-10 w-full px-4 py-10 sm:px-6 lg:px-8 xl:px-10 2xl:px-14">
+          <div className="mx-auto w-full max-w-[1920px]">
+            <div className="mb-8 flex flex-col gap-6 text-center lg:mb-10 lg:flex-row lg:items-end lg:justify-between lg:text-left">
+              <div className="min-w-0 lg:max-w-3xl">
+                <Link
+                  to={ROUTES.HOME}
+                  className="mb-3 inline-block text-xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent dark:from-indigo-400 dark:to-violet-400"
+                >
+                  {APP_CONFIG.name}
+                </Link>
+                <h1 className="text-3xl font-bold tracking-tight text-neutral-900 dark:text-white sm:text-4xl">
+                  Service status
+                </h1>
+                <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+                  See whether our systems are up, how your data store is doing, and how quickly this page responds from
+                  your network. This view is public—no sign-in required.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-3 lg:shrink-0 lg:justify-end">
                 <Button type="button" variant="primary" disabled={refreshing} onClick={() => void fetchHealth(true)}>
                   {refreshing ? "Updating…" : "Refresh"}
                 </Button>
                 <span className="text-xs text-neutral-500 dark:text-neutral-500">
-                  Live samples every {POLL_MS / 1000}s
+                  Refreshes automatically every {POLL_MS / 1000} seconds
                 </span>
               </div>
             </div>
@@ -290,7 +304,7 @@ export default function HealthPage() {
               <div className="h-64 animate-pulse rounded-2xl bg-neutral-200/70 dark:bg-neutral-800/60" />
             ) : error ? (
               <div className="rounded-2xl border border-error-200 bg-error-50/90 p-8 text-center dark:border-error-900/50 dark:bg-error-950/30">
-                <p className="font-semibold text-error-800 dark:text-error-200">Unable to load status</p>
+                <p className="font-semibold text-error-800 dark:text-error-200">We couldn’t load this page</p>
                 <p className="mt-2 text-sm text-error-700 dark:text-error-300">{error}</p>
                 <Button type="button" className="mt-5" variant="primary" onClick={() => void fetchHealth(true)}>
                   Retry
@@ -318,88 +332,76 @@ export default function HealthPage() {
                     </div>
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
-                        Overall
+                        Current status
                       </p>
-                      <p className="text-xl font-bold capitalize text-neutral-900 dark:text-white">
-                        {health.status}
+                      <p className="text-xl font-bold text-neutral-900 dark:text-white">
+                        {health.status === "healthy"
+                          ? "All systems operational"
+                          : health.status === "unhealthy"
+                            ? "Service disruption"
+                            : health.status.replace(/-/g, " ")}
                       </p>
                       {health.timestamp && (
                         <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-                          Server: {new Date(health.timestamp).toLocaleString()}
+                          Last checked {new Date(health.timestamp).toLocaleString()}
                         </p>
                       )}
                     </div>
                   </div>
                   <p className="text-xs text-neutral-600 dark:text-neutral-400 sm:max-w-xs sm:text-right">
-                    v{health.api.version} · {health.api.environment}
+                    Release {health.api.version} · {health.api.environment}
                   </p>
                 </div>
 
                 {/* Metrics row */}
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   <div className="rounded-2xl border border-neutral-200/80 bg-white/80 p-6 shadow-soft-md backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/70">
                     <p className="text-xs font-bold uppercase tracking-widest text-indigo-600 dark:text-indigo-400">
-                      API nodes
+                      Capacity
                     </p>
                     <p className="mt-3 text-4xl font-bold tabular-nums text-neutral-900 dark:text-white">
                       {nodesAvailable ?? "—"}
                     </p>
                     <p className="mt-2 text-sm font-medium text-neutral-800 dark:text-neutral-200">
-                      Region:{" "}
-                      <span className="font-mono text-indigo-600 dark:text-indigo-400">
-                        {region ?? "Not configured"}
+                      Active locations reported:{" "}
+                      <span className="font-medium text-indigo-600 dark:text-indigo-400">
+                        {region ?? "Not assigned"}
                       </span>
                     </p>
                     <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
-                      Single-process deployments report{" "}
-                      <code className="rounded bg-neutral-100 px-1 font-mono text-xs dark:bg-neutral-800">1</code>{" "}
-                      until you run a multi-endpoint / global node pool. Set{" "}
-                      <code className="rounded bg-neutral-100 px-1 font-mono text-xs dark:bg-neutral-800">API_REGION</code>{" "}
-                      or start with{" "}
-                      <code className="rounded bg-neutral-100 px-1 font-mono text-xs dark:bg-neutral-800">
-                        --region &lt;id&gt;
-                      </code>
-                      . Optional{" "}
-                      <code className="rounded bg-neutral-100 px-1 font-mono text-xs dark:bg-neutral-800">
-                        API_NODES_AVAILABLE
-                      </code>{" "}
-                      /{" "}
-                      <code className="rounded bg-neutral-100 px-1 font-mono text-xs dark:bg-neutral-800">
-                        --api-nodes N
-                      </code>{" "}
-                      for staged rollouts.
+                      A higher number usually means more copies of the service ready to handle traffic. How this is set
+                      up depends on your organization’s hosting plan.
                     </p>
                   </div>
 
                   <div className="rounded-2xl border border-neutral-200/80 bg-white/80 p-6 shadow-soft-md backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/70">
                     <p className="text-xs font-bold uppercase tracking-widest text-violet-600 dark:text-violet-400">
-                      Database
+                      Data storage
                     </p>
                     <div className="mt-3 flex flex-wrap items-baseline gap-2">
                       <span
-                        className={`text-2xl font-bold capitalize ${
+                        className={`text-2xl font-bold ${
                           health.services.database.connected
                             ? "text-emerald-600 dark:text-emerald-400"
                             : "text-error-600 dark:text-error-400"
                         }`}
                       >
-                        {health.services.database.connected ? "Reachable" : "Unavailable"}
+                        {health.services.database.connected ? "Connected" : "Not connected"}
                       </span>
                     </div>
                     <p className="mt-3 text-sm text-neutral-600 dark:text-neutral-300">
-                      Pool:{" "}
                       <span className="font-mono font-semibold tabular-nums">
                         {health.services.database.pool_connections_idle}
                       </span>{" "}
-                      idle /{" "}
+                      spare connections right now, out of{" "}
                       <span className="font-mono font-semibold tabular-nums">
                         {health.services.database.pool_size}
                       </span>{" "}
-                      total connections
+                      reserved for data access
                     </p>
                     {health.services.database.response_time_ms != null && (
                       <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
-                        Last check latency:{" "}
+                        Latest response time:{" "}
                         <span className="font-mono font-semibold tabular-nums text-indigo-600 dark:text-indigo-400">
                           {health.services.database.response_time_ms} ms
                         </span>
@@ -411,37 +413,50 @@ export default function HealthPage() {
                       </p>
                     )}
                   </div>
+
+                  <div className="rounded-2xl border border-neutral-200/80 bg-white/80 p-6 shadow-soft-md backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/70 sm:col-span-2 xl:col-span-1">
+                    <p className="text-xs font-bold uppercase tracking-widest text-sky-600 dark:text-sky-400">
+                      Uptime
+                    </p>
+                    <p className="mt-3 text-4xl font-bold tabular-nums text-neutral-900 dark:text-white">
+                      {formatUptime(health.api.uptime_seconds)}
+                    </p>
+                    <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+                      How long this version of the service has been running without a restart. Longer usually means a
+                      stable period of operation.
+                    </p>
+                  </div>
                 </div>
 
                 {/* Latency charts — database and API measured separately */}
                 {chartData.length < 2 ? (
                   <div className="overflow-hidden rounded-2xl border border-neutral-200/80 bg-white/90 p-6 shadow-soft-lg backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/80">
-                    <h2 className="text-lg font-bold text-neutral-900 dark:text-white">Request latency</h2>
+                    <h2 className="text-lg font-bold text-neutral-900 dark:text-white">Response time trends</h2>
                     <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-                      Two charts (database vs API round-trip) appear after a few polls.
+                      Charts for data storage and your connection will appear after a couple of automatic checks.
                     </p>
-                    <div className="mt-6 flex h-48 items-center justify-center rounded-xl border border-dashed border-neutral-200 bg-neutral-50/50 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-950/30 dark:text-neutral-400">
-                      Collecting samples… leave this page open for a few seconds.
+                    <div className="mt-6 flex h-48 items-center justify-center rounded-xl border border-dashed border-neutral-200 bg-neutral-50/50 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-950/30 dark:text-neutral-400 px-4 text-center">
+                      Gathering readings… keep this tab open for a few seconds.
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-6">
+                  <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
                     <div className="overflow-hidden rounded-2xl border border-neutral-200/80 bg-white/90 p-4 shadow-soft-lg backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/80 sm:p-6">
                       <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                         <div>
-                          <h2 className="text-lg font-bold text-neutral-900 dark:text-white">Database check latency</h2>
+                          <h2 className="text-lg font-bold text-neutral-900 dark:text-white">Data storage response time</h2>
                           <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                            Server <span className="font-mono">SELECT 1</span> time from the health payload (up to{" "}
-                            {LATENCY_HISTORY_MAX} samples, left → right).
+                            How quickly our systems can reach your data on each check (recent {LATENCY_HISTORY_MAX}{" "}
+                            readings, newest on the right).
                           </p>
                         </div>
                         {chartData.length > 0 && (
                           <p className="text-xs font-medium text-indigo-600 dark:text-indigo-400">
-                            {chartData.length}/{LATENCY_HISTORY_MAX} · peak {dbChartPeakMs(chartData).toFixed(0)} ms
+                            {chartData.length} of {LATENCY_HISTORY_MAX} · high {dbChartPeakMs(chartData).toFixed(0)} ms
                           </p>
                         )}
                       </div>
-                      <div className="relative h-72 w-full overflow-hidden rounded-xl bg-gradient-to-b from-indigo-50/40 via-transparent to-transparent dark:from-indigo-950/20">
+                      <div className="relative mt-1 h-72 w-full overflow-hidden rounded-xl bg-gradient-to-b from-indigo-50/40 via-transparent to-transparent dark:from-indigo-950/20 xl:h-80">
                         <ResponsiveContainer width="100%" height="100%">
                           <ComposedChart data={chartData} margin={{ top: 14, right: 14, left: 0, bottom: 6 }}>
                             <defs>
@@ -545,19 +560,19 @@ export default function HealthPage() {
                     <div className="overflow-hidden rounded-2xl border border-neutral-200/80 bg-white/90 p-4 shadow-soft-lg backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/80 sm:p-6">
                       <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                         <div>
-                          <h2 className="text-lg font-bold text-neutral-900 dark:text-white">API round-trip latency</h2>
+                          <h2 className="text-lg font-bold text-neutral-900 dark:text-white">Your connection speed</h2>
                           <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                            Time from this browser for each <span className="font-mono">GET /health</span> (network +
-                            JSON). Same poll index as the database chart above.
+                            How long it takes this status page to load each automatic check from your device—your
+                            network and distance to our service both matter. Same time stamps as the chart on the left.
                           </p>
                         </div>
                         {chartData.length > 0 && (
                           <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                            {chartData.length}/{LATENCY_HISTORY_MAX} · peak {apiChartPeakMs(chartData).toFixed(0)} ms
+                            {chartData.length} of {LATENCY_HISTORY_MAX} · high {apiChartPeakMs(chartData).toFixed(0)} ms
                           </p>
                         )}
                       </div>
-                      <div className="relative h-72 w-full overflow-hidden rounded-xl bg-gradient-to-b from-emerald-50/35 via-transparent to-transparent dark:from-emerald-950/20">
+                      <div className="relative mt-1 h-72 w-full overflow-hidden rounded-xl bg-gradient-to-b from-emerald-50/35 via-transparent to-transparent dark:from-emerald-950/20 xl:h-80">
                         <ResponsiveContainer width="100%" height="100%">
                           <ComposedChart data={chartData} margin={{ top: 14, right: 14, left: 0, bottom: 6 }}>
                             <defs>
@@ -659,25 +674,30 @@ export default function HealthPage() {
                   </div>
                 )}
 
-                <p className="text-center text-xs text-neutral-500 dark:text-neutral-500">
-                  Machine-level metrics (memory, disks, CPU) stay on the JSON API for operators; this page stays minimal
-                  on purpose.
-                </p>
+                <div className="grid gap-4 lg:grid-cols-2 lg:gap-6 lg:items-start">
+                  <p className="text-center text-xs text-neutral-500 dark:text-neutral-500 lg:text-left">
+                    This page shows essentials only. Deeper diagnostics (for example server memory or disk use) are
+                    available to your IT or support team through their usual tools.
+                  </p>
+                  <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50/60 p-4 text-center dark:border-neutral-700 dark:bg-neutral-950/40 lg:text-left">
+                    <p className="text-xs text-neutral-600 dark:text-neutral-400">
+                      <span className="font-semibold text-neutral-700 dark:text-neutral-300">Technical reference:</span>{" "}
+                      machine-readable status is exposed at{" "}
+                      <code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px] dark:bg-neutral-900">
+                        {apiBase}/health
+                      </code>{" "}
+                      and{" "}
+                      <code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px] dark:bg-neutral-900">
+                        /api/health
+                      </code>{" "}
+                      for monitoring integrations.
+                    </p>
+                  </div>
+                </div>
               </div>
             ) : null}
 
-            <div className="mt-10 rounded-xl border border-dashed border-neutral-200 bg-neutral-50/60 p-4 text-center dark:border-neutral-700 dark:bg-neutral-950/40">
-              <p className="text-xs text-neutral-600 dark:text-neutral-400">
-                Operators: full JSON at{" "}
-                <code className="rounded bg-white px-1.5 py-0.5 font-mono dark:bg-neutral-900">
-                  GET {apiBase}/health
-                </code>{" "}
-                and{" "}
-                <code className="rounded bg-white px-1.5 py-0.5 font-mono dark:bg-neutral-900">GET /api/health</code>
-              </p>
-            </div>
-
-            <div className="mt-8 text-center">
+            <div className="mt-8 text-center lg:text-left">
               <Link
                 to={ROUTES.HOME}
                 className="inline-flex items-center text-indigo-600 transition-colors hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
@@ -685,7 +705,7 @@ export default function HealthPage() {
                 <svg className="mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
-                Back to Home
+                Back to home
               </Link>
             </div>
           </div>
