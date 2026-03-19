@@ -7,7 +7,7 @@ import { MODULE_KEYS } from "@/lib/constants/modules";
 import { revalidatePath } from "next/cache";
 import { generateRandomTimerName, calculateElapsedTime, generateTimerNumber, parseTimerNumber } from "@/lib/utils/time-tracking";
 import { timeTrackingEvents } from "@/lib/utils/event-emitter";
-import { type TimeEntryStatus } from "@prisma/client";
+import { type TimeEntryStatus } from "@/generated/prisma";
 import { logTicketActivity } from "../utils/ticket-activity-logger";
 import { auditLog } from "@/server/utils/audit-log";
 

@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Button } from "@/components/ui/Button";
-import { type TimeEntryStatus } from "@prisma/client";
+import { type TimeEntryStatus } from "@/generated/prisma";
 
 interface TimeEntryBulkActionsToolbarProps {
   selectedCount: number;

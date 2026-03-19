@@ -23,7 +23,7 @@ import {
 import { formatDateTimeInTimezone } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
 import { pauseTimeEntry, resumeTimeEntry, stopTimeEntry, deleteTimeEntry, bulkUpdateTimeEntries, bulkDeleteTimeEntries, bulkArchiveTimeEntries } from "@/server/actions/time-tracking";
-import { type TimeEntryStatus } from "@prisma/client";
+import { type TimeEntryStatus } from "@/generated/prisma";
 import { EditTimeEntryDialog } from "../EditTimeEntryDialog";
 import { OverviewContextMenu, type OverviewContextMenuItem } from "@/components/ui/OverviewContextMenu";
 import { getServerActionErrorMessage } from "@/lib/utils/server-action-utils";

@@ -7,7 +7,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { updateUserPermissions, addDynamicTicketPermissionToUser } from "@/server/actions/admin/users";
 import { getPermissions, getPermissionCategories, getUserPermissions, getUserDynamicTicketPermissions } from "@/server/actions/permissions";
 import { getTickets } from "@/server/actions/tickets";
-import type { Permission } from "@prisma/client";
+import type { Permission } from "@/generated/prisma";
 import { TICKET_PERMISSION_ACTIONS, type TicketPermissionAction, generateTicketPermissionKey, isDynamicTicketPermission } from "@/lib/utils/permissions";
 import { getTicketTypePrefix } from "@/lib/utils/tickets";
 

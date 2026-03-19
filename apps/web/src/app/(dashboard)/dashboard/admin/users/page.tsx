@@ -7,7 +7,7 @@ import { UserManagementPage } from "@/components/features/admin/UserManagement/U
 export default async function AdminUsersPage({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | string[] | undefined };
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const user = await getCurrentUser();
   
@@ -24,10 +24,11 @@ export default async function AdminUsersPage({
     "admin.users.delete"
   );
 
-  const status = searchParams.status as "ACTIVE" | "PENDING" | "SUSPENDED" | "DELETED" | undefined;
-  const role = searchParams.role as "USER" | "AGENT" | "ADMIN" | "MODERATOR" | undefined;
-  const search = searchParams.search as string | undefined;
-  const page = searchParams.page ? parseInt(searchParams.page as string) : 1;
+  const params = await searchParams;
+  const status = params.status as "ACTIVE" | "PENDING" | "SUSPENDED" | "DELETED" | undefined;
+  const role = params.role as "USER" | "AGENT" | "ADMIN" | "MODERATOR" | undefined;
+  const search = params.search as string | undefined;
+  const page = params.page ? parseInt(params.page as string) : 1;
 
   const result = await getAllUsersAdmin({
     status,

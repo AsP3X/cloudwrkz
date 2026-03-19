@@ -7,7 +7,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { DurationDisplay } from "../DurationDisplay";
 import { getStatusColor, getStatusLabel, formatTimerNumber } from "@/lib/utils/time-tracking";
 import { pauseTimeEntry, resumeTimeEntry, stopTimeEntry } from "@/server/actions/time-tracking";
-import { type TimeEntryStatus } from "@prisma/client";
+import { type TimeEntryStatus } from "@/generated/prisma";
 import { cn } from "@/lib/utils/cn";
 import { useTimerWidgetPreference } from "@/lib/hooks/useTimerWidgetPreference";
 

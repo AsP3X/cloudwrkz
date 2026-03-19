@@ -1,4 +1,4 @@
-import { type TimeEntryStatus } from "@prisma/client";
+import { type TimeEntryStatus } from "@/generated/prisma";
 
 /**
  * Format duration in seconds to HH:MM:SS or MM:SS format

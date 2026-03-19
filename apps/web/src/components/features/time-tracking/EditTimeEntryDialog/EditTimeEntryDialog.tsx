@@ -5,7 +5,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { TimeEntryEditForm } from "../TimeEntryEditForm";
 import { updateTimeEntry } from "@/server/actions/time-tracking";
 import { useRouter } from "next/navigation";
-import { type TimeEntryStatus } from "@prisma/client";
+import { type TimeEntryStatus } from "@/generated/prisma";
 
 type TimeEntry = {
   id: string;

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { calculateElapsedTime, formatDuration } from "@/lib/utils/time-tracking";
-import { type TimeEntryStatus } from "@prisma/client";
+import { type TimeEntryStatus } from "@/generated/prisma";
 
 interface UseTimerDurationProps {
   status: TimeEntryStatus;

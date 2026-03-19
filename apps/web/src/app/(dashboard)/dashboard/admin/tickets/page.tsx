@@ -12,7 +12,7 @@ import { ROUTES } from "@/lib/constants/routes";
 export default async function AdminTicketsPage({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | string[] | undefined };
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const user = await getCurrentUser();
   
@@ -26,13 +26,14 @@ export default async function AdminTicketsPage({
     isModuleEnabled(MODULE_KEYS.TICKETS),
   ]);
 
-  const status = searchParams.status as string | undefined;
-  const priority = searchParams.priority as string | undefined;
-  const type = searchParams.type as string | undefined;
-  const assignedToId = searchParams.assignedToId as string | undefined;
-  const createdById = searchParams.createdById as string | undefined;
-  const search = searchParams.search as string | undefined;
-  const page = searchParams.page ? parseInt(searchParams.page as string) : 1;
+  const params = await searchParams;
+  const status = params.status as string | undefined;
+  const priority = params.priority as string | undefined;
+  const type = params.type as string | undefined;
+  const assignedToId = params.assignedToId as string | undefined;
+  const createdById = params.createdById as string | undefined;
+  const search = params.search as string | undefined;
+  const page = params.page ? parseInt(params.page as string) : 1;
 
   const result = await getAllTicketsAdmin({
     status,

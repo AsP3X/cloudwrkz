@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { getActiveTimeEntries } from "@/server/actions/time-tracking";
-import { type TimeEntryStatus } from "@prisma/client";
+import { type TimeEntryStatus } from "@/generated/prisma";
 
 type TimeEntry = {
   id: string;

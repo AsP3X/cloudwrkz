@@ -13,7 +13,7 @@ const DEFAULT_PAGE_SIZE = 50;
 export default async function AdminAuditPage({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | string[] | undefined };
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const user = await getCurrentUser();
 
@@ -24,17 +24,18 @@ export default async function AdminAuditPage({
   await requireRole("ADMIN");
   await requirePermissionOrRedirect("audit.view");
 
-  const page = searchParams.page ? parseInt(searchParams.page as string, 10) : 1;
-  const rawLimit = searchParams.limit as string | undefined;
+  const params = await searchParams;
+  const page = params.page ? parseInt(params.page as string, 10) : 1;
+  const rawLimit = params.limit as string | undefined;
   const limit = rawLimit && PAGE_SIZES.includes(Number(rawLimit) as (typeof PAGE_SIZES)[number])
     ? Number(rawLimit)
     : DEFAULT_PAGE_SIZE;
-  const action = (searchParams.action as string) || undefined;
-  const userSearch = (searchParams.search as string) || undefined;
-  const resourceType = (searchParams.resourceType as string) || undefined;
-  const from = (searchParams.from as string) || undefined;
-  const to = (searchParams.to as string) || undefined;
-  const sortOrder = (searchParams.sortOrder as string) === "asc" ? "asc" : "desc";
+  const action = (params.action as string) || undefined;
+  const userSearch = (params.search as string) || undefined;
+  const resourceType = (params.resourceType as string) || undefined;
+  const from = (params.from as string) || undefined;
+  const to = (params.to as string) || undefined;
+  const sortOrder = (params.sortOrder as string) === "asc" ? "asc" : "desc";
 
   const [result, actionOptions, canExport] = await Promise.all([
     getAuditLogEntries({

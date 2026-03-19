@@ -3,7 +3,7 @@ import { getCurrentUserFromBearerToken } from "@/lib/utils/auth-server";
 import { prisma } from "@/lib/db/prisma";
 import { isModuleEnabled } from "@/server/actions/modules";
 import { MODULE_KEYS } from "@/lib/constants/modules";
-import { type TimeEntryStatus } from "@prisma/client";
+import { type TimeEntryStatus } from "@/generated/prisma";
 
 const timeEntrySelect = {
   id: true,

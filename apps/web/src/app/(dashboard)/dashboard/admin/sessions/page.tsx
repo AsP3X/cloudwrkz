@@ -6,7 +6,7 @@ import { SessionManagementPage } from "@/components/features/admin/SessionManage
 export default async function AdminSessionsPage({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | string[] | undefined };
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const user = await getCurrentUser();
   
@@ -17,8 +17,9 @@ export default async function AdminSessionsPage({
   await requireRole("ADMIN");
   await requirePermissionOrRedirect("admin.sessions.view");
 
-  const search = searchParams.search as string | undefined;
-  const page = searchParams.page ? parseInt(searchParams.page as string) : 1;
+  const params = await searchParams;
+  const search = params.search as string | undefined;
+  const page = params.page ? parseInt(params.page as string) : 1;
 
   const result = await getAllSessionsAdmin({
     search,

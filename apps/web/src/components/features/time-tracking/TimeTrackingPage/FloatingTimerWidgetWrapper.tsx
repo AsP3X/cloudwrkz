@@ -1,7 +1,7 @@
 "use client";
 
 import { FloatingTimerWidget } from "../FloatingTimerWidget";
-import { type TimeEntryStatus } from "@prisma/client";
+import { type TimeEntryStatus } from "@/generated/prisma";
 
 type TimeEntry = {
   id: string;

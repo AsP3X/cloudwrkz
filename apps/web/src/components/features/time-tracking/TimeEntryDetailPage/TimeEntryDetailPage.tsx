@@ -10,7 +10,7 @@ import { getStatusColor, getStatusLabel, formatDuration, canPause, canResume, ca
 import { formatDateTimeInTimezone } from "@/lib/utils/date";
 import { getTimezoneLabel } from "@/lib/constants/timezones";
 import { pauseTimeEntry, resumeTimeEntry, stopTimeEntry, completeTimeEntry, deleteTimeEntry, updateTimeEntry } from "@/server/actions/time-tracking";
-import { type TimeEntryStatus } from "@prisma/client";
+import { type TimeEntryStatus } from "@/generated/prisma";
 import { TimeEntryEditForm } from "../TimeEntryEditForm";
 import { TimeEntryBreaks } from "../TimeEntryBreaks";
 import { TimeEntryDeleteDialog } from "../TimeEntryDeleteDialog";

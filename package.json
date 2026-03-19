@@ -5,9 +5,14 @@
   "description": "Cloudwrkz monorepo: web app and iOS app",
   "scripts": {
     "dev": "pnpm --filter web dev",
+    "dev:vite": "pnpm --filter web-vite dev",
     "build": "pnpm --filter web build",
+    "build:vite": "pnpm --filter web-vite build",
     "start": "pnpm --filter web start",
+    "start:local": "pnpm --filter web start:local",
+    "preview:vite": "pnpm --filter web-vite preview",
     "lint": "pnpm --filter web lint",
+    "lint:vite": "pnpm --filter web-vite lint",
     "db:generate": "pnpm --filter web db:generate",
     "db:push": "pnpm --filter web db:push",
     "db:migrate": "pnpm --filter web db:migrate",
@@ -19,7 +24,23 @@
   },
   "pnpm": {
     "overrides": {
-      "glob": ">=10.5.0"
+      "glob": ">=10.5.0",
+      "@tiptap/extension-blockquote": "3.20.4",
+      "@tiptap/extension-code": "3.20.4",
+      "@tiptap/extension-code-block": "3.20.4",
+      "@tiptap/extension-color": "3.20.4",
+      "@tiptap/extension-highlight": "3.20.4",
+      "@tiptap/extension-image": "3.20.4",
+      "@tiptap/extension-link": "3.20.4",
+      "@tiptap/extension-mention": "3.20.4",
+      "@tiptap/extension-placeholder": "3.20.4",
+      "@tiptap/extension-text-align": "3.20.4",
+      "@tiptap/extension-text-style": "3.20.4",
+      "@tiptap/react": "3.20.4",
+      "@tiptap/starter-kit": "3.20.4",
+      "@tiptap/core": "3.20.4",
+      "@tiptap/pm": "3.20.4",
+      "@tiptap/suggestion": "3.20.4"
     },
     "onlyBuiltDependencies": [
       "@prisma/client",

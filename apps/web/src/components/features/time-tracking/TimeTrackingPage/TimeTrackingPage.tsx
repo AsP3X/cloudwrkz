@@ -13,7 +13,7 @@ import { TimeEntryViewProvider, useTimeEntryView } from "../TimeEntryViewContext
 import { getActiveTimeEntries } from "@/server/actions/time-tracking";
 import { useTimeTrackingEvents } from "@/lib/hooks/useTimeTrackingEvents";
 import { normalizeActiveEntry } from "@/lib/hooks/useActiveTimers";
-import { type TimeEntryStatus } from "@prisma/client";
+import { type TimeEntryStatus } from "@/generated/prisma";
 import { calculateElapsedTime } from "@/lib/utils/time-tracking";
 import { formatDateTimeInTimezone } from "@/lib/utils/date";
 import { ROUTES } from "@/lib/constants/routes";

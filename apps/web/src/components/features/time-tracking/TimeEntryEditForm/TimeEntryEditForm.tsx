@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/Textarea";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { updateTimeEntrySchema, type UpdateTimeEntryInput } from "@/lib/validations/time-tracking";
-import { type TimeEntryStatus } from "@prisma/client";
+import { type TimeEntryStatus } from "@/generated/prisma";
 import { TimeEntryBreaks } from "../TimeEntryBreaks";
 import { COMMON_TIMEZONES } from "@/lib/constants/timezones";
 import { LocationAutocompleteInput } from "@/components/ui/LocationAutocompleteInput";
