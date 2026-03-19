@@ -28,6 +28,7 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
   
   // Track if we're syncing from context to prevent feedback loop
   const isSyncingFromContext = React.useRef(false);
+  const isSyncingTimerFromContext = React.useRef(false);
   
   // Initialize theme with safe default to avoid hydration mismatch
   // Will be updated after mount from localStorage
@@ -54,11 +55,12 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
       pushNotifications: initialValues?.pushNotifications ?? false,
       marketingEmails: initialValues?.marketingEmails ?? false,
       timezone: initialValues?.timezone ?? "UTC",
-      timerWidgetMobileMode: initialValues?.timerWidgetMobileMode ?? getTimerWidgetPreference(),
+      // Use stable default "dialog" to avoid hydration mismatch (getTimerWidgetPreference reads localStorage)
+      timerWidgetMobileMode: initialValues?.timerWidgetMobileMode ?? "dialog",
     },
   });
 
-  // Mark as mounted and load theme from localStorage after initial render
+  // Mark as mounted and load theme + timer widget preference from localStorage after initial render
   React.useEffect(() => {
     setMounted(true);
     // Load theme from localStorage after mount to prevent hydration mismatch
@@ -72,6 +74,8 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
     } catch {
       // Ignore localStorage errors
     }
+    // Sync timer widget preference from localStorage (client-only, avoids hydration mismatch)
+    setValue("timerWidgetMobileMode", getTimerWidgetPreference());
   }, [setValue]);
 
   // Reset form when initialValues change (e.g., after successful save and page revalidation)
@@ -119,11 +123,17 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
   }, [theme, setValue, mounted, getValues]);
 
   // Sync form value with timer widget preference when it changes externally
+  // Only update when form value differs to avoid triggering the watch effect unnecessarily
   React.useEffect(() => {
-    if (mounted) {
-      setValue("timerWidgetMobileMode", timerWidgetPreference);
-    }
-  }, [timerWidgetPreference, setValue, mounted]);
+    if (!mounted) return;
+    const current = getValues("timerWidgetMobileMode");
+    if (current === timerWidgetPreference) return;
+    isSyncingTimerFromContext.current = true;
+    setValue("timerWidgetMobileMode", timerWidgetPreference, { shouldDirty: false });
+    requestAnimationFrame(() => {
+      isSyncingTimerFromContext.current = false;
+    });
+  }, [timerWidgetPreference, setValue, mounted, getValues]);
 
   // Watch theme changes and apply immediately
   // Skip if we're syncing from context to prevent feedback loop
@@ -135,10 +145,14 @@ export const PreferencesForm = ({ initialValues }: PreferencesFormProps) => {
     }
   }, [watchedTheme, theme, setTheme, mounted]);
 
-  // Watch timer widget preference changes and apply immediately
+  // Watch timer widget preference changes and apply immediately (skip when syncing from context)
   const watchedTimerWidgetMode = watch("timerWidgetMobileMode");
   React.useEffect(() => {
-    if (watchedTimerWidgetMode && watchedTimerWidgetMode !== timerWidgetPreference) {
+    if (
+      watchedTimerWidgetMode &&
+      watchedTimerWidgetMode !== timerWidgetPreference &&
+      !isSyncingTimerFromContext.current
+    ) {
       setTimerWidgetPreference(watchedTimerWidgetMode as "dialog" | "floating");
     }
   }, [watchedTimerWidgetMode, timerWidgetPreference, setTimerWidgetPreference]);

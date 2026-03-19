@@ -18,14 +18,23 @@ export const CollapsibleSection = ({
   defaultExpanded = true,
 }: CollapsibleSectionProps) => {
   const [isExpanded, setIsExpanded] = React.useState(defaultExpanded);
+  const sectionId = React.useMemo(
+    () => title.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""),
+    [title]
+  );
 
   return (
     <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
-      {/* Header with toggle */}
+      {/* Header with toggle - relative z-10 so the button stays above content and is always clickable */}
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full mb-6 text-left focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900 rounded-lg -m-2 p-2 transition-colors hover:bg-neutral-50 dark:hover:bg-neutral-800"
+        aria-expanded={isExpanded}
+        aria-controls={`collapsible-content-${sectionId}`}
+        id={`collapsible-trigger-${sectionId}`}
+        data-collapsible-trigger
+        data-section-title={title}
+        className="relative z-10 w-full mb-6 text-left focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900 rounded-lg -m-2 p-2 transition-colors hover:bg-neutral-50 dark:hover:bg-neutral-800"
       >
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 flex-1">
@@ -55,10 +64,13 @@ export const CollapsibleSection = ({
         </div>
       </button>
 
-      {/* Content */}
+      {/* Content - pointer-events-none when collapsed so it never captures clicks */}
       <div
+        id={`collapsible-content-${sectionId}`}
         className={`grid transition-all duration-300 ease-in-out ${
-          isExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+          isExpanded
+            ? "grid-rows-[1fr] opacity-100"
+            : "grid-rows-[0fr] opacity-0 pointer-events-none"
         }`}
       >
         <div className="overflow-hidden">{children}</div>
