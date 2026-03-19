@@ -122,71 +122,6 @@ function AppBanners() {
           )}
         </div>
       )}
-      <Routes>
-              {/* Public routes */}
-              <Route path={ROUTES.HOME} element={<HomePage />} />
-              <Route path={ROUTES.LOGIN} element={<LoginPage />} />
-              <Route path={ROUTES.REGISTER} element={<RegisterPage />} />
-              <Route path={ROUTES.ABOUT} element={<AboutPage />} />
-              <Route path={ROUTES.CONTACT} element={<ContactPage />} />
-              <Route path={ROUTES.TERMS} element={<TermsPage />} />
-              <Route path={ROUTES.PRIVACY} element={<PrivacyPage />} />
-              <Route path={ROUTES.HEALTH} element={<HealthPage />} />
-              <Route path={ROUTES.BANNED} element={<BannedPage />} />
-              <Route path={ROUTES.QR_LOGIN} element={<QrLoginPage />} />
-
-              {/* Dashboard routes - wrapped in DashboardLayout */}
-              <Route path={ROUTES.DASHBOARD} element={<DashboardLayout />}>
-                <Route index element={<DashboardHomePage />} />
-                <Route path="tickets" element={<TicketsPage />} />
-                <Route path="tickets/new" element={<TicketNewPage />} />
-                <Route path="tickets/:id" element={<TicketDetailPage />} />
-                <Route path="tickets/:id/edit" element={<TicketEditPage />} />
-                <Route path="todos" element={<TodosPage />} />
-                <Route path="todos/new" element={<TodoNewPage />} />
-                <Route path="todos/:id" element={<TaskDetailPage />} />
-                <Route path="todos/:id/edit" element={<TodoEditPage />} />
-                <Route path="todos/archive" element={<TodosArchivePage />} />
-                <Route path="links" element={<LinksPage />} />
-                <Route path="links/archive" element={<LinksArchivePage />} />
-                <Route path="links/:id" element={<LinkDetailPage />} />
-                <Route path="links/:id/edit" element={<LinkEditPage />} />
-                <Route path="links/collections/:id" element={<CollectionDetailPage />} />
-                <Route path="time-tracking" element={<TimeTrackingPage />} />
-                <Route path="time-tracking/:id" element={<TimeEntryDetailPage />} />
-                <Route path="profile" element={<ProfilePage />} />
-                <Route path="settings" element={<SettingsPage />} />
-                <Route path="search" element={<SearchPage />} />
-                <Route path="notifications" element={<NotificationsPage />} />
-                <Route path="statistics" element={<StatisticsPage />} />
-                <Route path="archive" element={<ArchivePage />} />
-
-                {/* Admin routes */}
-                <Route path="users/:id" element={<UserViewPage />} />
-                <Route path="admin">
-                  <Route path="users" element={<UsersPage />} />
-                  <Route path="users/:id" element={<UserDetailPage />} />
-                  <Route path="groups" element={<GroupsPage />} />
-                  <Route path="groups/:id" element={<GroupDetailPage />} />
-                  <Route path="modules" element={<ModulesPage />} />
-                  <Route path="settings" element={<AdminSettingsPage />} />
-                  <Route path="sessions" element={<SessionsPage />} />
-                  <Route path="tickets" element={<AdminTicketsPage />} />
-                  <Route path="statistics" element={<AdminStatisticsPage />} />
-                  <Route path="audit" element={<AuditPage />} />
-                  <Route path="db" element={<DbConsolePage />} />
-                  <Route path="permissions">
-                    <Route path="users" element={<UserPermissionsListPage />} />
-                    <Route path="users/:id" element={<UserPermissionDetailPage />} />
-                    <Route path="groups" element={<GroupPermissionsListPage />} />
-                    <Route path="groups/:id" element={<GroupPermissionDetailPage />} />
-                  </Route>
-                </Route>
-              </Route>
-
-              {/* 404 */}
-              <Route path="*" element={<NotFoundPage />} />
-      </Routes>
     </>
   );
 }
@@ -199,6 +134,71 @@ export default function App() {
           <AuthProvider>
             <DatabaseHealthProvider>
               <AppBanners />
+              <Routes>
+                {/* Public routes */}
+                <Route path={ROUTES.HOME} element={<HomePage />} />
+                <Route path={ROUTES.LOGIN} element={<LoginPage />} />
+                <Route path={ROUTES.REGISTER} element={<RegisterPage />} />
+                <Route path={ROUTES.ABOUT} element={<AboutPage />} />
+                <Route path={ROUTES.CONTACT} element={<ContactPage />} />
+                <Route path={ROUTES.TERMS} element={<TermsPage />} />
+                <Route path={ROUTES.PRIVACY} element={<PrivacyPage />} />
+                <Route path={ROUTES.HEALTH} element={<HealthPage />} />
+                <Route path={ROUTES.BANNED} element={<BannedPage />} />
+                <Route path={ROUTES.QR_LOGIN} element={<QrLoginPage />} />
+
+                {/* Dashboard routes - wrapped in DashboardLayout */}
+                <Route path={ROUTES.DASHBOARD} element={<DashboardLayout />}>
+                  <Route index element={<DashboardHomePage />} />
+                  <Route path="tickets" element={<TicketsPage />} />
+                  <Route path="tickets/new" element={<TicketNewPage />} />
+                  <Route path="tickets/:id" element={<TicketDetailPage />} />
+                  <Route path="tickets/:id/edit" element={<TicketEditPage />} />
+                  <Route path="todos" element={<TodosPage />} />
+                  <Route path="todos/new" element={<TodoNewPage />} />
+                  <Route path="todos/:id" element={<TaskDetailPage />} />
+                  <Route path="todos/:id/edit" element={<TodoEditPage />} />
+                  <Route path="todos/archive" element={<TodosArchivePage />} />
+                  <Route path="links" element={<LinksPage />} />
+                  <Route path="links/archive" element={<LinksArchivePage />} />
+                  <Route path="links/:id" element={<LinkDetailPage />} />
+                  <Route path="links/:id/edit" element={<LinkEditPage />} />
+                  <Route path="links/collections/:id" element={<CollectionDetailPage />} />
+                  <Route path="time-tracking" element={<TimeTrackingPage />} />
+                  <Route path="time-tracking/:id" element={<TimeEntryDetailPage />} />
+                  <Route path="profile" element={<ProfilePage />} />
+                  <Route path="settings" element={<SettingsPage />} />
+                  <Route path="search" element={<SearchPage />} />
+                  <Route path="notifications" element={<NotificationsPage />} />
+                  <Route path="statistics" element={<StatisticsPage />} />
+                  <Route path="archive" element={<ArchivePage />} />
+
+                  {/* Admin routes */}
+                  <Route path="users/:id" element={<UserViewPage />} />
+                  <Route path="admin">
+                    <Route path="users" element={<UsersPage />} />
+                    <Route path="users/:id" element={<UserDetailPage />} />
+                    <Route path="groups" element={<GroupsPage />} />
+                    <Route path="groups/:id" element={<GroupDetailPage />} />
+                    <Route path="modules" element={<ModulesPage />} />
+                    <Route path="settings" element={<AdminSettingsPage />} />
+                    <Route path="sessions" element={<SessionsPage />} />
+                    <Route path="tickets" element={<AdminTicketsPage />} />
+                    <Route path="statistics" element={<AdminStatisticsPage />} />
+                    <Route path="audit" element={<AuditPage />} />
+                    <Route path="db" element={<DbConsolePage />} />
+                    <Route path="permissions">
+                      <Route path="users" element={<UserPermissionsListPage />} />
+                      <Route path="users/:id" element={<UserPermissionDetailPage />} />
+                      <Route path="groups" element={<GroupPermissionsListPage />} />
+                      <Route path="groups/:id" element={<GroupPermissionDetailPage />} />
+                    </Route>
+                  </Route>
+                </Route>
+
+                {/* 404 */}
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
             </DatabaseHealthProvider>
           </AuthProvider>
         </BrowserRouter>

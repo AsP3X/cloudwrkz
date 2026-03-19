@@ -1,4 +1,9 @@
-//! Queue sign-in when PostgreSQL is briefly unreachable; retry for up to [`LOGIN_RETRY_MAX`].
+//! Async sign-in jobs for `POST /auth/login` (always returns 202 before touching the DB).
+//!
+//! The HTTP handler only enqueues; [`login_retry_loop`] runs [`attempt_login`] until success,
+//! a final auth error (wrong password, banned, …), or the deadline. [`LoginAttemptError::Transient`]
+//! (PostgreSQL/sqlx connection issues) is retried for up to [`LOGIN_RETRY_MAX`], so sign-in still
+//! completes when the database was briefly unavailable at submit time.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -95,7 +100,7 @@ fn failure_hint(err: &AppError) -> Option<String> {
     None
 }
 
-/// Full sign-in attempt (same semantics as the synchronous `/auth/login` handler).
+/// Full sign-in attempt (used by the background login job after `POST /auth/login` returns 202).
 pub async fn attempt_login(
     pool: &PgPool,
     body: &LoginRequest,
@@ -282,7 +287,7 @@ pub async fn attempt_login(
 
 impl LoginJobs {
     pub fn insert_pending(&self, job_id: &str) {
-        let mut map = self.0.lock().expect("login jobs mutex poisoned");
+        let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
         prune_stale_login_jobs_locked(&mut map);
         map.insert(
             job_id.to_string(),
@@ -294,7 +299,7 @@ impl LoginJobs {
     }
 
     pub fn set_completed(&self, job_id: &str, response: LoginResponse) {
-        let mut map = self.0.lock().expect("login jobs mutex poisoned");
+        let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(rec) = map.get_mut(job_id) {
             rec.status = LoginJobState::Done(
                 LoginJobStatusKind::Completed,
@@ -309,7 +314,7 @@ impl LoginJobs {
     }
 
     pub fn set_failed(&self, job_id: &str, message: String, client_hint: Option<String>) {
-        let mut map = self.0.lock().expect("login jobs mutex poisoned");
+        let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(rec) = map.get_mut(job_id) {
             rec.status = LoginJobState::Done(
                 LoginJobStatusKind::Failed,
@@ -324,7 +329,7 @@ impl LoginJobs {
     }
 
     pub fn get_status(&self, job_id: &str) -> Option<LoginJobStatusResponse> {
-        let mut map = self.0.lock().expect("login jobs mutex poisoned");
+        let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
         prune_stale_login_jobs_locked(&mut map);
         let rec = map.get(job_id)?;
         match &rec.status {
@@ -347,7 +352,10 @@ impl LoginJobs {
 }
 
 fn prune_stale_login_jobs_locked(map: &mut HashMap<String, LoginJobRecord>) {
-    let cutoff = Instant::now() - Duration::from_secs(15 * 60);
+    let cutoff = match Instant::now().checked_sub(Duration::from_secs(15 * 60)) {
+        Some(c) => c,
+        None => return,
+    };
     map.retain(|_, rec| {
         if let LoginJobState::Done(_, _) = rec.status {
             rec.created_at > cutoff

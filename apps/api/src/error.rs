@@ -72,15 +72,6 @@ impl AppError {
         }
     }
 
-    pub fn conflict(msg: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::CONFLICT,
-            code: "CONFLICT".into(),
-            message: msg.into(),
-            fields: None,
-        }
-    }
-
     pub fn too_many_requests(msg: impl Into<String>) -> Self {
         Self {
             status: StatusCode::TOO_MANY_REQUESTS,

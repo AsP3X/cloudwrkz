@@ -1,4 +1,6 @@
 //! Classify sqlx errors that are worth retrying when the database is briefly unavailable.
+//! Used by [`crate::auth::login_queue`] and [`crate::auth::register_queue`] background jobs
+//! (in addition to always-async POST /auth/login and /auth/register).
 
 pub fn is_transient_sqlx(err: &sqlx::Error) -> bool {
     match err {

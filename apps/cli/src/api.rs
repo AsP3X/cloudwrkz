@@ -56,7 +56,7 @@ impl ApiClient {
         self.token.is_some()
     }
 
-    /// POST /auth/login
+    /// POST /auth/login (API returns 202; polls until completed or failed)
     pub async fn login(&self, email: &str, password: &str) -> Result<LoginResponse, ApiError> {
         let body = serde_json::json!({ "email": email, "password": password });
         let res = self
@@ -65,13 +65,70 @@ impl ApiClient {
             .json(&body)
             .send()
             .await?;
-        if !res.status().is_success() {
-            let status = res.status();
+        let status = res.status();
+        if status.as_u16() == 202 {
+            let accepted: LoginAcceptedResponse = res.json().await?;
+            return self
+                .poll_login_until_done(&accepted.job_id, accepted.retry_deadline_secs.unwrap_or(30))
+                .await;
+        }
+        if !status.is_success() {
             let text = res.text().await.unwrap_or_default();
             return Err(ApiError::Http(status.as_u16(), text));
         }
         let out: LoginResponse = res.json().await?;
         Ok(out)
+    }
+
+    async fn poll_login_until_done(&self, job_id: &str, retry_secs: u32) -> Result<LoginResponse, ApiError> {
+        use std::time::{Duration, Instant};
+        let max_wait = Duration::from_secs(u64::from(retry_secs.saturating_add(10)));
+        let start = Instant::now();
+        loop {
+            if start.elapsed() > max_wait {
+                return Err(ApiError::Http(
+                    408,
+                    "Sign-in timed out waiting for the server to finish processing.".into(),
+                ));
+            }
+            let res = self
+                .client
+                .get(self.url(&format!("auth/login/status/{job_id}")))
+                .send()
+                .await?;
+            if res.status() == reqwest::StatusCode::NOT_FOUND {
+                return Err(ApiError::Http(404, "Login job expired or unknown.".into()));
+            }
+            if !res.status().is_success() {
+                let code = res.status().as_u16();
+                let text = res.text().await.unwrap_or_default();
+                return Err(ApiError::Http(code, text));
+            }
+            let st: LoginJobStatusBody = res.json().await?;
+            match st.status.as_str() {
+                "completed" => {
+                    let token = st
+                        .token
+                        .ok_or_else(|| ApiError::Http(500, "Login completed but token missing".into()))?;
+                    let user = st
+                        .user
+                        .ok_or_else(|| ApiError::Http(500, "Login completed but user missing".into()))?;
+                    return Ok(LoginResponse { token, user });
+                }
+                "failed" => {
+                    let msg = st.message.unwrap_or_else(|| "Sign-in failed".into());
+                    let code = if st.client_hint.as_deref() == Some("BANNED") {
+                        403
+                    } else {
+                        401
+                    };
+                    return Err(ApiError::Http(code, msg));
+                }
+                _ => {
+                    tokio::time::sleep(Duration::from_millis(800)).await;
+                }
+            }
+        }
     }
 
     /// GET /admin/users
@@ -251,6 +308,21 @@ pub fn user_message(err: &ApiError, api_base: &str) -> String {
             out
         }
     }
+}
+
+#[derive(Deserialize)]
+struct LoginAcceptedResponse {
+    job_id: String,
+    retry_deadline_secs: Option<u32>,
+}
+
+#[derive(Deserialize)]
+struct LoginJobStatusBody {
+    status: String,
+    token: Option<String>,
+    user: Option<LoginUserInfo>,
+    message: Option<String>,
+    client_hint: Option<String>,
 }
 
 #[derive(Deserialize)]

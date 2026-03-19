@@ -1,8 +1,7 @@
 import { log } from "@/lib/logger";
+import { credentialsForApiFetch, getApiBaseUrl } from "@/lib/apiBaseUrl";
 
-// In dev, always use the Vite proxy (relative URL) so CORS is not required when the app runs on a different port (e.g. 5174)
-const API_BASE_URL =
-  import.meta.env.DEV ? "/api/v1" : (import.meta.env.VITE_API_URL || "/api/v1");
+const API_BASE_URL = getApiBaseUrl();
 
 // Search endpoints currently live on the legacy Next.js app under `/api`.
 // This separate base URL allows us to reuse the full fuzzy search implementation there.
@@ -57,7 +56,7 @@ async function requestWithBase<T>(
     response = await fetch(url, {
       ...options,
       headers,
-      credentials: "include",
+      credentials: credentialsForApiFetch(url),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -165,7 +164,7 @@ export const api = {
       method: "POST",
       headers,
       body: formData,
-      credentials: "include",
+      credentials: credentialsForApiFetch(url),
     })
     .catch((err) => {
       const message = err instanceof Error ? err.message : String(err);

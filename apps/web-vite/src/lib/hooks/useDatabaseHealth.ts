@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { credentialsForApiFetch, getApiBaseUrl } from "@/lib/apiBaseUrl";
 
 export type DatabaseHealthStatus = "healthy" | "degraded" | "unhealthy" | "loading";
 
@@ -15,30 +16,56 @@ export function useDatabaseHealth(options?: {
 
   const checkHealth = useCallback(async () => {
     try {
-      const API_BASE = import.meta.env.DEV ? "/api/v1" : (import.meta.env.VITE_API_URL || "/api/v1");
-      const res = await fetch(`${API_BASE}/health`, { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
+      const API_BASE = getApiBaseUrl();
+      const healthUrl = `${API_BASE}/health`;
+      const res = await fetch(healthUrl, {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+        credentials: credentialsForApiFetch(healthUrl),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      const db = data?.services?.database ?? data?.database;
+      if (db && typeof db === "object" && "connected" in db) {
+        const connected = db.connected === true;
+        const dbStatus = typeof db.status === "string" ? db.status : "";
+        const newStatus: DatabaseHealthStatus = connected
+          ? dbStatus === "degraded"
+            ? "degraded"
+            : "healthy"
+          : "unhealthy";
+        setStatus(newStatus);
+        setError(typeof db.error === "string" ? db.error : null);
+        // API responded with structured health — HTTP 503 here means DB check failed, not "API down".
+        setIsServerUnreachable(false);
+        return;
+      }
+
       if (res.status === 502 || res.status === 503) {
-        const body = await res.json().catch(() => ({}));
         const message =
-          body?.error?.message ||
+          data?.error?.message ||
           (res.status === 502
-            ? "Backend is temporarily unavailable."
-            : "Backend is currently unreachable.");
+            ? "Gateway could not reach the API (or the API returned an error)."
+            : "Service unavailable — the API may be starting or overloaded.");
         setIsServerUnreachable(true);
         setError(message);
         setStatus("unhealthy");
         return;
       }
-      const data = await res.json().catch(() => ({}));
-      const db = data?.services?.database ?? data?.database;
-      const connected = db?.connected ?? (res.ok && !!data);
-      const newStatus = connected ? (db?.status || "healthy") : "unhealthy";
+
+      const connected = Boolean(db?.connected ?? (res.ok && !!data));
+      const raw = typeof db?.status === "string" ? db.status : "";
+      const newStatus: DatabaseHealthStatus = connected
+        ? raw === "degraded"
+          ? "degraded"
+          : "healthy"
+        : "unhealthy";
       setStatus(newStatus);
-      setError(db?.error ?? null);
+      setError(typeof db?.error === "string" ? db.error : null);
       setIsServerUnreachable(false);
     } catch (err) {
       setIsServerUnreachable(true);
-      setError("Unable to reach backend service.");
+      setError("Unable to reach the API (network error or connection refused).");
       setStatus("unhealthy");
     }
   }, []);

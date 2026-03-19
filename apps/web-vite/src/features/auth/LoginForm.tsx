@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { ROUTES } from "@/lib/constants/routes";
 import { loginSchema, type LoginInput } from "@/lib/validations/auth";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { LoginQueuedBanner } from "@/features/auth/LoginQueuedBanner";
 
 type LoginFormProps = {
   initialError?: string;
@@ -15,7 +16,7 @@ type LoginFormProps = {
 
 export function LoginForm({ initialError, disabled = false }: LoginFormProps) {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, loginQueuedUi } = useAuth();
 
   const getInitialErrorMessage = (code?: string): string | null => {
     switch (code) {
@@ -33,7 +34,7 @@ export function LoginForm({ initialError, disabled = false }: LoginFormProps) {
   };
 
   const [serverError, setServerError] = React.useState<string | null>(() =>
-    getInitialErrorMessage(initialError)
+    getInitialErrorMessage(initialError),
   );
   const [queuedSuccessInfo, setQueuedSuccessInfo] = React.useState<string | null>(null);
 
@@ -55,14 +56,10 @@ export function LoginForm({ initialError, disabled = false }: LoginFormProps) {
     const result = await login(data.email, data.password, data.rememberMe);
 
     if (result.success) {
-      if ("wasQueued" in result && result.wasQueued) {
-        setQueuedSuccessInfo(
-          "Your sign-in was queued by the API while the database was unavailable, and has completed successfully.",
-        );
-        window.setTimeout(() => navigate(ROUTES.DASHBOARD), 2200);
-        return;
-      }
-      navigate(ROUTES.DASHBOARD);
+      setQueuedSuccessInfo(
+        "Your sign-in job finished and your session is active—we’re opening the dashboard.",
+      );
+      window.setTimeout(() => navigate(ROUTES.DASHBOARD), 2200);
     } else {
       if (result.error === "BANNED") {
         navigate(ROUTES.BANNED);
@@ -82,25 +79,34 @@ export function LoginForm({ initialError, disabled = false }: LoginFormProps) {
     >
       {queuedSuccessInfo && (
         <div
-          className="rounded-lg bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-200 dark:border-amber-800 p-4"
+          className="rounded-lg border border-success-300 dark:border-success-700 bg-success-50 dark:bg-success-950/60 px-3 py-2 shadow-sm"
           role="status"
         >
-          <div className="flex items-start gap-3">
-            <svg
-              className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0 animate-pulse"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              aria-hidden
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-            <p className="text-sm font-medium text-amber-900 dark:text-amber-100">{queuedSuccessInfo}</p>
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-success-200/80 dark:bg-success-900/50">
+              <svg
+                className="w-4 h-4 text-success-700 dark:text-success-300"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                aria-hidden
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-success-900 dark:text-success-100">
+                Sign-in complete
+              </p>
+              <p className="mt-0.5 text-xs font-medium text-success-800 dark:text-success-200 leading-snug">
+                {queuedSuccessInfo}
+              </p>
+            </div>
           </div>
         </div>
       )}
@@ -133,7 +139,7 @@ export function LoginForm({ initialError, disabled = false }: LoginFormProps) {
         error={errors.email?.message}
         required
         autoComplete="email"
-        disabled={disabled}
+        disabled={disabled || Boolean(loginQueuedUi)}
         {...register("email")}
       />
 
@@ -145,7 +151,7 @@ export function LoginForm({ initialError, disabled = false }: LoginFormProps) {
           error={errors.password?.message}
           required
           autoComplete="current-password"
-          disabled={disabled}
+          disabled={disabled || Boolean(loginQueuedUi)}
           {...register("password")}
         />
         <div className="mt-2 flex items-center justify-between">
@@ -154,7 +160,7 @@ export function LoginForm({ initialError, disabled = false }: LoginFormProps) {
               id="rememberMe"
               type="checkbox"
               className="w-4 h-4 text-primary-600 dark:text-primary-500 border-neutral-300 dark:border-neutral-700 rounded focus:ring-primary-500 focus:ring-2 bg-white dark:bg-neutral-900"
-              disabled={disabled}
+              disabled={disabled || Boolean(loginQueuedUi)}
               {...register("rememberMe")}
             />
             <label
@@ -173,16 +179,20 @@ export function LoginForm({ initialError, disabled = false }: LoginFormProps) {
         </div>
       </div>
 
-      <Button
-        type="submit"
-        variant="primary"
-        size="lg"
-        className="w-full"
-        loading={isSubmitting}
-        disabled={isSubmitting || disabled}
-      >
-        {isSubmitting ? "Signing in…" : "Sign In"}
-      </Button>
+      {loginQueuedUi ? (
+        <LoginQueuedBanner state={loginQueuedUi} className="mb-0 w-full min-h-[3rem]" />
+      ) : (
+        <Button
+          type="submit"
+          variant="primary"
+          size="lg"
+          className="w-full"
+          loading={isSubmitting}
+          disabled={isSubmitting || disabled}
+        >
+          Sign In
+        </Button>
+      )}
 
       <p className="text-center text-sm text-neutral-600 dark:text-neutral-400">
         Don&apos;t have an account?{" "}

@@ -51,8 +51,8 @@ Commands:
 
 Environment: LOG_VERBOSITY (debug|prod), LOG_FORMAT (json), RUST_LOG, DATABASE_URL,
              API_REGION, API_NODES_AVAILABLE, DIAGNOSTICS_HEALTH_TOKEN (optional plaintext override for detailed health),
-             DATABASE_CONNECT_FAST_FAIL, DATABASE_CONNECT_MAX_WAIT_SECS, DATABASE_POOL_ACQUIRE_TIMEOUT_SECS,
-             DATABASE_POOL_MAX_CONNECTIONS, DATABASE_MIGRATE_RETRY_MAX_SECS, etc.
+             DATABASE_POOL_ACQUIRE_TIMEOUT_SECS, DATABASE_POOL_MAX_CONNECTIONS,
+             DATABASE_MIGRATE_RETRY_MAX_SECS, etc.
 "#;
 
 /// Parse `-v` / `-v debug` / `-v prod` and `-h` from env::args(). CLI overrides LOG_VERBOSITY env.
@@ -258,8 +258,18 @@ async fn main() {
         );
     }
 
-    let pool = db::connect_pool_with_retry(&config.database_url).await;
-    db::run_migrations_with_transient_retries(&pool).await;
+    let pool = db::create_pool_lazy(&config.database_url)
+        .expect("Invalid DATABASE_URL (cannot parse connection string)");
+
+    // Migrations run in the background so the HTTP listener starts immediately.
+    // Auth endpoints return 202 and retry DB access internally; health endpoints
+    // gracefully report DB status — so the server is usable before migrations finish.
+    {
+        let pool = pool.clone();
+        tokio::spawn(async move {
+            db::run_migrations_with_transient_retries(&pool).await;
+        });
+    }
 
     let cors = build_cors(&config);
 

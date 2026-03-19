@@ -418,7 +418,7 @@ curl -X POST http://localhost:8080/api/v1/auth/register \
   -d '{"name":"Test User","email":"test@example.com","password":"password123","confirm_password":"password123"}'
 ```
 
-Expected: `201 Created` with `{"message":"Account created successfully.","user_id":"...","email":"..."}`
+Expected: `202 Accepted` with `{"message":"...","queued":true,"job_id":"...","retry_deadline_secs":30}`. The job runs in the background and retries transient DB errors for ~30s, so registration can still succeed if Postgres was briefly down when you posted. Poll `GET /api/v1/auth/register/status/{job_id}` until `status` is `completed` (then sign in) or `failed`.
 
 **Login:**
 
@@ -428,7 +428,7 @@ curl -X POST http://localhost:8080/api/v1/auth/login \
   -d '{"email":"test@example.com","password":"password123"}'
 ```
 
-Expected: `200 OK` with `{"token":"...","user":{"name":"Test User","email":"test@example.com"}}`
+Expected: `202 Accepted` with `{"queued":true,"job_id":"...","retry_deadline_secs":30,...}`. Sign-in always runs asynchronously; transient DB errors retry for ~30s (same behavior as when the DB was only briefly unavailable). Poll `GET /api/v1/auth/login/status/{job_id}` until `status` is `completed` (response includes `token` and `user`) or `failed`.
 
 **Me (authenticated):**
 
@@ -473,6 +473,8 @@ curl -s http://localhost:8080/api/ping
 
 ### Web app can't reach the API
 
+- **Vite dev: ECONNRESET / socket hang up on `/api/v1/...`** — The Node proxy to the Rust API can drop connections (especially on Windows or when Postgres restarts). The API may still be fine. In `apps/web-vite/.env` set `VITE_API_URL=http://127.0.0.1:8080/api/v1` so the browser calls the API directly (empty `CORS_ORIGINS` on the API allows any origin in typical dev). Restart `pnpm dev`.
+- **"Failed to fetch" with absolute `VITE_API_URL` and Network URL (e.g. `http://172.25.x.x:5173`)** — Was caused by `credentials: include` + `Access-Control-Allow-Origin: *` (browser blocks). The app now uses `omit` for cross-origin API calls (Bearer auth). If issues persist, add your page origin to `CORS_ORIGINS` on the API or use the localhost Vite URL.
 - **CORS errors** — Add the exact origin of the web app (e.g. `http://localhost:5173` or `https://app.example.com`) to `CORS_ORIGINS` (comma-separated, no trailing slash).
 - **401 on /me or after login** — Ensure the request includes `Authorization: Bearer <token>` and the token is from `/api/v1/auth/login`.
 - **Wrong API URL** — Rebuild the web app with the correct `VITE_API_URL`; for production this must be set at **build** time (not runtime).

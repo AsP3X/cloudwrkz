@@ -1,5 +1,8 @@
-//! When PostgreSQL is briefly unreachable, registration can be accepted and retried
-//! for up to [`REGISTER_RETRY_MAX`] inside a background task.
+//! Async registration jobs for `POST /auth/register` (always returns 202 before INSERT).
+//!
+//! The handler only enqueues a hashed password payload; [`register_retry_loop`] runs
+//! [`attempt_register_user`] until success, conflict, fatal error, or the deadline. Transient
+//! database errors retry for up to [`REGISTER_RETRY_MAX`], same as when the DB was only briefly down.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -65,7 +68,7 @@ pub enum RegisterAttemptError {
 
 impl RegisterJobs {
     pub fn insert_pending(&self, job_id: &str) {
-        let mut map = self.0.lock().expect("register jobs mutex poisoned");
+        let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
         prune_stale_jobs_locked(&mut map);
         map.insert(
             job_id.to_string(),
@@ -84,14 +87,14 @@ impl RegisterJobs {
         user_id: Option<String>,
         email: Option<String>,
     ) {
-        let mut map = self.0.lock().expect("register jobs mutex poisoned");
+        let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(rec) = map.get_mut(job_id) {
             rec.status = JobStatus::Done(kind, message, user_id, email);
         }
     }
 
     pub fn get_status(&self, job_id: &str) -> Option<RegisterJobStatusResponse> {
-        let mut map = self.0.lock().expect("register jobs mutex poisoned");
+        let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
         prune_stale_jobs_locked(&mut map);
         let rec = map.get(job_id)?;
         match &rec.status {
@@ -113,7 +116,10 @@ impl RegisterJobs {
 
 /// Remove terminal jobs older than 15 minutes to bound memory.
 fn prune_stale_jobs_locked(map: &mut HashMap<String, JobRecord>) {
-    let cutoff = Instant::now() - Duration::from_secs(15 * 60);
+    let cutoff = match Instant::now().checked_sub(Duration::from_secs(15 * 60)) {
+        Some(c) => c,
+        None => return,
+    };
     map.retain(|_, rec| {
         if let JobStatus::Done(_, _, _, _) = rec.status {
             rec.created_at > cutoff

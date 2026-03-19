@@ -38,7 +38,7 @@ export default function LoginPage() {
             </div>
 
             <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8">
-              <RegistrationQueuedPanel />
+              <RegistrationQueuedPanel mode="resume" />
               <LoginForm initialError={error} />
             </div>
 

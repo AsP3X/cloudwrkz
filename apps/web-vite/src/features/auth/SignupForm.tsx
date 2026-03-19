@@ -1,7 +1,7 @@
-import React from "react";
+import React, { useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { ROUTES } from "@/lib/constants/routes";
@@ -14,11 +14,17 @@ type SignupFormProps = {
 };
 
 export function SignupForm({ disabled = false }: SignupFormProps) {
-  const navigate = useNavigate();
   const { register: registerUser } = useAuth();
   const [serverError, setServerError] = React.useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
   const [queuedJobTrigger, setQueuedJobTrigger] = React.useState<string | null>(null);
+  const [registrationSuccess, setRegistrationSuccess] = React.useState(false);
+
+  const handlePanelTerminal = useCallback((outcome: "completed" | "failed" | "expired") => {
+    if (outcome === "completed") {
+      setRegistrationSuccess(true);
+    }
+    setQueuedJobTrigger(null);
+  }, []);
 
   const {
     register,
@@ -33,7 +39,6 @@ export function SignupForm({ disabled = false }: SignupFormProps) {
 
   const onSubmit = async (data: RegisterInput) => {
     setServerError(null);
-    setSuccessMessage(null);
 
     const result = await registerUser(data);
 
@@ -42,19 +47,48 @@ export function SignupForm({ disabled = false }: SignupFormProps) {
       return;
     }
 
-    if (result.success) {
-      setSuccessMessage(
-        "Account created successfully! Please check your email to verify your account."
-      );
-      setTimeout(() => {
-        navigate(ROUTES.LOGIN);
-      }, 3000);
-    } else {
-      if (result.error) {
-        setServerError(result.error);
-      }
+    if (!result.success && result.error) {
+      setServerError(result.error);
+    } else if (result.success) {
+      setServerError("Unexpected response from server.");
     }
   };
+
+  const fieldsLocked = Boolean(queuedJobTrigger) || registrationSuccess;
+
+  if (registrationSuccess) {
+    return (
+      <div className="space-y-6">
+        <div className="rounded-lg border-2 border-success-300 dark:border-success-700 bg-success-50 dark:bg-success-950 p-6 text-center">
+          <div className="flex justify-center mb-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success-200/80 dark:bg-success-900/50">
+              <svg
+                className="h-6 w-6 text-success-700 dark:text-success-300"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                aria-hidden
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+          </div>
+          <h3 className="text-lg font-semibold text-success-900 dark:text-success-100">
+            Account created
+          </h3>
+          <p className="mt-1 text-sm text-success-800 dark:text-success-200">
+            Your registration is complete. You can now sign in with your credentials.
+          </p>
+          <Link
+            to={ROUTES.LOGIN}
+            className="mt-4 inline-block rounded-lg bg-primary-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+          >
+            Sign in
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <form
@@ -64,36 +98,6 @@ export function SignupForm({ disabled = false }: SignupFormProps) {
       noValidate
       {...(disabled && { "aria-disabled": true })}
     >
-      <RegistrationQueuedPanel triggerJobId={queuedJobTrigger} />
-
-      {successMessage && (
-        <div className="rounded-lg bg-success-50 dark:bg-success-950 border-2 border-success-200 dark:border-success-800 p-4">
-          <div className="flex items-start gap-3">
-            <svg
-              className="w-5 h-5 text-success-600 dark:text-success-400 mt-0.5 flex-shrink-0"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-            <div className="flex-1">
-              <p className="text-sm font-medium text-success-800 dark:text-success-200">
-                {successMessage}
-              </p>
-              <p className="mt-1 text-sm text-success-700 dark:text-success-300">
-                Redirecting to login page...
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
       {serverError && (
         <div className="rounded-lg bg-error-50 dark:bg-error-950 border-2 border-error-200 dark:border-error-800 p-4">
           <div className="flex items-start gap-3">
@@ -121,7 +125,7 @@ export function SignupForm({ disabled = false }: SignupFormProps) {
         placeholder="John Doe"
         error={errors.name?.message}
         required
-        disabled={disabled}
+        disabled={disabled || fieldsLocked}
         {...register("name")}
       />
 
@@ -132,7 +136,7 @@ export function SignupForm({ disabled = false }: SignupFormProps) {
         error={errors.email?.message}
         helperText="We'll never share your email with anyone else."
         required
-        disabled={disabled}
+        disabled={disabled || fieldsLocked}
         {...register("email")}
       />
 
@@ -143,7 +147,7 @@ export function SignupForm({ disabled = false }: SignupFormProps) {
         error={errors.password?.message}
         helperText="Must be at least 8 characters with uppercase, lowercase, and number"
         required
-        disabled={disabled}
+        disabled={disabled || fieldsLocked}
         {...register("password")}
       />
 
@@ -153,7 +157,7 @@ export function SignupForm({ disabled = false }: SignupFormProps) {
         placeholder="••••••••"
         error={errors.confirmPassword?.message}
         required
-        disabled={disabled}
+        disabled={disabled || fieldsLocked}
         {...register("confirmPassword")}
       />
 
@@ -163,7 +167,7 @@ export function SignupForm({ disabled = false }: SignupFormProps) {
             id="agreeToTerms"
             type="checkbox"
             className="w-4 h-4 text-primary-600 dark:text-primary-500 border-neutral-300 dark:border-neutral-700 rounded focus:ring-primary-500 focus:ring-2 bg-white dark:bg-neutral-900"
-            disabled={disabled}
+            disabled={disabled || fieldsLocked}
             {...register("agreeToTerms")}
           />
         </div>
@@ -192,16 +196,24 @@ export function SignupForm({ disabled = false }: SignupFormProps) {
         </div>
       </div>
 
-      <Button
-        type="submit"
-        variant="primary"
-        size="lg"
-        className="w-full"
-        loading={isSubmitting}
-        disabled={isSubmitting || disabled}
-      >
-        {isSubmitting ? "Creating Account..." : "Create Account"}
-      </Button>
+      {queuedJobTrigger ? (
+        <RegistrationQueuedPanel
+          triggerJobId={queuedJobTrigger}
+          onTerminalStatus={handlePanelTerminal}
+          className="mb-0 w-full min-h-[3rem]"
+        />
+      ) : (
+        <Button
+          type="submit"
+          variant="primary"
+          size="lg"
+          className="w-full"
+          loading={isSubmitting}
+          disabled={isSubmitting || disabled}
+        >
+          Create Account
+        </Button>
+      )}
 
       <p className="text-center text-sm text-neutral-600 dark:text-neutral-400">
         Already have an account?{" "}

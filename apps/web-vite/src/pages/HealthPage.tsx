@@ -16,6 +16,7 @@ import { SkipToContent } from "@/components/ui/SkipToContent";
 import { Button } from "@/components/ui/Button";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
+import { getApiBaseUrl } from "@/lib/apiBaseUrl";
 import { api, ApiError } from "@/api/client";
 import type { HealthPayload, PingPayload } from "@/features/health/types";
 import { LatencyAnimatedTail } from "@/features/health/LatencyAnimatedTail";
@@ -150,7 +151,7 @@ export default function HealthPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const apiBase = import.meta.env.DEV ? "/api/v1" : (import.meta.env.VITE_API_URL || "/api/v1");
+  const apiBase = getApiBaseUrl();
 
   const fetchHealth = useCallback(
     async (isManual = false) => {

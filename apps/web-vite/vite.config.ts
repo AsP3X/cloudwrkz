@@ -17,11 +17,19 @@ function attachProxyErrorHandler(proxy: any, routePrefix: string, upstreamName: 
 
     res.statusCode = 503;
     res.setHeader("Content-Type", "application/json");
+    const isReset =
+      err?.code === "ECONNRESET" ||
+      err?.code === "ECONNREFUSED" ||
+      err?.code === "ETIMEDOUT" ||
+      err?.message?.toLowerCase().includes("socket hang up");
+    const hint = isReset
+      ? " If the API process is running, set VITE_API_URL=http://127.0.0.1:8080/api/v1 in apps/web-vite/.env to bypass the dev proxy (avoids Node proxy ECONNRESET)."
+      : "";
     res.end(
       JSON.stringify({
         error: {
           code: "BACKEND_UNAVAILABLE",
-          message: `${upstreamName} is unavailable. Start the backend and try again.`,
+          message: `${upstreamName} is unavailable. Start the backend and try again.${hint}`,
         },
       })
     );
@@ -76,14 +84,18 @@ function cloudwrkzLogPlugin() {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  let apiProxyTarget = "http://localhost:8080";
+  // Prefer 127.0.0.1 over "localhost" to avoid IPv6/IPv4 mismatch (ECONNRESET) on Windows.
+  let apiProxyTarget = "http://127.0.0.1:8080";
   const configuredApiUrl = env.VITE_API_URL;
 
   // If VITE_API_URL is absolute (e.g. http://localhost:8081/api/v1), use its origin for dev proxy.
   if (configuredApiUrl && /^https?:\/\//i.test(configuredApiUrl)) {
     try {
       const parsed = new URL(configuredApiUrl);
-      apiProxyTarget = `${parsed.protocol}//${parsed.host}`;
+      if (parsed.hostname === "localhost") {
+        parsed.hostname = "127.0.0.1";
+      }
+      apiProxyTarget = parsed.origin;
     } catch {
       // Keep fallback target when URL parsing fails.
     }
@@ -103,6 +115,8 @@ export default defineConfig(({ mode }) => {
         "/api": {
           target: apiProxyTarget,
           changeOrigin: true,
+          timeout: 120_000,
+          proxyTimeout: 120_000,
           configure: (proxy) => {
             attachProxyErrorHandler(proxy, "/api", "API backend");
           },

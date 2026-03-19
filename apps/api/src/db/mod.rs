@@ -6,12 +6,6 @@ mod transient;
 
 pub(crate) use transient::is_transient_sqlx;
 
-fn env_bool(key: &str, default: bool) -> bool {
-    std::env::var(key)
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(default)
-}
-
 fn env_u64(key: &str, default: u64) -> u64 {
     std::env::var(key)
         .ok()
@@ -38,49 +32,11 @@ pub async fn create_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
     pool_options().connect(database_url).await
 }
 
-/// Block until PostgreSQL accepts a pool, retrying with exponential backoff.
-///
-/// - By default retries forever so the process survives DB outages at startup.
-/// - `DATABASE_CONNECT_FAST_FAIL=true` — panic after the first failed connect (CI / strict deploys).
-/// - `DATABASE_CONNECT_MAX_WAIT_SECS=N` — give up after N seconds (then panic with a clear message).
-pub async fn connect_pool_with_retry(database_url: &str) -> PgPool {
-    let fast_fail = env_bool("DATABASE_CONNECT_FAST_FAIL", false);
-    let max_wait = std::env::var("DATABASE_CONNECT_MAX_WAIT_SECS")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok());
-
-    let mut backoff = Duration::from_secs(1);
-    const MAX_BACKOFF: Duration = Duration::from_secs(30);
-    let started = std::time::Instant::now();
-
-    loop {
-        match create_pool(database_url).await {
-            Ok(pool) => {
-                tracing::info!(event = "db.pool_connected", "PostgreSQL pool ready");
-                return pool;
-            }
-            Err(e) => {
-                if fast_fail {
-                    panic!("Failed to create database pool (DATABASE_CONNECT_FAST_FAIL): {e}");
-                }
-                if let Some(limit) = max_wait {
-                    if started.elapsed() >= Duration::from_secs(limit) {
-                        panic!(
-                            "Database unavailable after {limit}s (DATABASE_CONNECT_MAX_WAIT_SECS): {e}"
-                        );
-                    }
-                }
-                tracing::warn!(
-                    event = "db.connect_retry",
-                    error = %e,
-                    retry_in_secs = backoff.as_secs(),
-                    "PostgreSQL unreachable; retrying (HTTP listener starts after connect + migrations)"
-                );
-                tokio::time::sleep(backoff).await;
-                backoff = (backoff * 2).min(MAX_BACKOFF);
-            }
-        }
-    }
+/// Create a pool without establishing any connections upfront.
+/// Connections are established lazily on first query, which lets the HTTP
+/// listener start immediately even when PostgreSQL is unreachable.
+pub fn create_pool_lazy(database_url: &str) -> Result<PgPool, sqlx::Error> {
+    pool_options().connect_lazy(database_url)
 }
 
 fn migration_fatal_message(e: &MigrateError) -> String {

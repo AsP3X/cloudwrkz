@@ -11,13 +11,10 @@ use tracing::{info, warn};
 
 use crate::audit::{self, WriteAuditParams};
 use crate::auth::extractors::AuthUser;
-use crate::auth::login_queue::{
-    attempt_login, spawn_login_retry, LoginAttemptError, LoginJobStatusResponse, PendingLoginPayload,
-};
+use crate::auth::login_queue::{spawn_login_retry, LoginJobStatusResponse, PendingLoginPayload};
 use crate::auth::password::{hash_password, verify_password};
 use crate::auth::register_queue::{
-    attempt_register_user, new_job_id, spawn_register_retry, PendingRegisterPayload,
-    RegisterAttemptError, RegisterJobStatusResponse,
+    new_job_id, spawn_register_retry, PendingRegisterPayload, RegisterJobStatusResponse,
 };
 use crate::error::AppError;
 use crate::models::user::*;
@@ -72,40 +69,34 @@ async fn login(
         return Err(AppError::unauthorized("Invalid email or password"));
     }
 
-    match attempt_login(&state.pool, &body, &email, ip.clone(), user_agent.clone()).await {
-        Ok(response) => Ok((StatusCode::OK, Json(response)).into_response()),
-        Err(LoginAttemptError::Transient) => {
-            let job_id = new_job_id();
-            state.login_jobs.insert_pending(&job_id);
-            spawn_login_retry(
-                state.pool.clone(),
-                state.login_jobs.clone(),
-                job_id.clone(),
-                PendingLoginPayload {
-                    body: body.clone(),
-                    email_normalized: email.clone(),
-                    ip,
-                    user_agent,
-                },
-            );
-            info!(
-                event = "auth.login.queued",
-                path = "/auth/login",
-                email = %email,
-                job_id = %job_id,
-                "login queued: database temporarily unavailable"
-            );
-            let queued = LoginQueuedResponse {
-                message: "Database is temporarily unavailable. Your sign-in has been queued by the API and will complete automatically within about 30 seconds. Poll GET /auth/login/status/{job_id} until status is completed."
-                    .into(),
-                queued: true,
-                job_id,
-                retry_deadline_secs: 30,
-            };
-            Ok((StatusCode::ACCEPTED, Json(queued)).into_response())
-        }
-        Err(LoginAttemptError::Final(e)) => Err(e),
-    }
+    let job_id = new_job_id();
+    state.login_jobs.insert_pending(&job_id);
+    spawn_login_retry(
+        state.pool.clone(),
+        state.login_jobs.clone(),
+        job_id.clone(),
+        PendingLoginPayload {
+            body: body.clone(),
+            email_normalized: email.clone(),
+            ip,
+            user_agent,
+        },
+    );
+    info!(
+        event = "auth.login.queued",
+        path = "/auth/login",
+        email = %email,
+        job_id = %job_id,
+        "login job accepted (async processing)"
+    );
+    let queued = LoginQueuedResponse {
+        message: "Sign-in is processing in the background (including automatic retries if the database was briefly unavailable). Poll GET /auth/login/status/{job_id} until status is completed."
+            .into(),
+        queued: true,
+        job_id,
+        retry_deadline_secs: 30,
+    };
+    Ok((StatusCode::ACCEPTED, Json(queued)).into_response())
 }
 
 async fn login_job_status(
@@ -166,73 +157,39 @@ async fn register(
             AppError::internal("Failed to hash password")
         })?;
 
-    match attempt_register_user(
-        &state.pool,
-        &email,
-        &name,
-        &hashed,
-        ip.clone(),
-        user_agent.clone(),
-    )
-    .await
-    {
-        Ok((user_id, em)) => {
-            info!(event = "auth.register.success", path = "/auth/register", email = %em, user_id = %user_id, "register success");
-            Ok((
-                StatusCode::CREATED,
-                Json(RegisterResponse {
-                    message: "Account created successfully.".into(),
-                    user_id: Some(user_id),
-                    email: Some(em),
-                    queued: None,
-                    job_id: None,
-                    retry_deadline_secs: None,
-                }),
-            ))
-        }
-        Err(RegisterAttemptError::Transient) => {
-            let job_id = new_job_id();
-            state.register_jobs.insert_pending(&job_id);
-            spawn_register_retry(
-                state.pool.clone(),
-                state.register_jobs.clone(),
-                job_id.clone(),
-                PendingRegisterPayload {
-                    email: email.clone(),
-                    name: name.clone(),
-                    password_hash: hashed,
-                    ip,
-                    user_agent,
-                },
-            );
-            info!(
-                event = "auth.register.queued",
-                path = "/auth/register",
-                email = %email,
-                job_id = %job_id,
-                "register queued: database temporarily unavailable"
-            );
-            Ok((
-                StatusCode::ACCEPTED,
-                Json(RegisterResponse {
-                    message: "Database is temporarily unavailable. Your registration has been queued by the API and will complete automatically within about 30 seconds.".into(),
-                    user_id: None,
-                    email: None,
-                    queued: Some(true),
-                    job_id: Some(job_id),
-                    retry_deadline_secs: Some(30),
-                }),
-            ))
-        }
-        Err(RegisterAttemptError::Conflict(msg)) => {
-            warn!(event = "auth.register.conflict", path = "/auth/register", email = %email, "conflict: {}", msg);
-            Err(AppError::conflict(msg))
-        }
-        Err(RegisterAttemptError::Fatal(msg)) => {
-            warn!(event = "auth.register.error", path = "/auth/register", email = %email, "{}", msg);
-            Err(AppError::internal("Registration failed. Please try again later."))
-        }
-    }
+    let job_id = new_job_id();
+    state.register_jobs.insert_pending(&job_id);
+    spawn_register_retry(
+        state.pool.clone(),
+        state.register_jobs.clone(),
+        job_id.clone(),
+        PendingRegisterPayload {
+            email: email.clone(),
+            name: name.clone(),
+            password_hash: hashed,
+            ip,
+            user_agent,
+        },
+    );
+    info!(
+        event = "auth.register.queued",
+        path = "/auth/register",
+        email = %email,
+        job_id = %job_id,
+        "registration job accepted (async processing)"
+    );
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(RegisterResponse {
+            message: "Registration is processing in the background (including automatic retries if the database was briefly unavailable). Poll GET /auth/register/status/{job_id} until status is completed."
+                .into(),
+            user_id: None,
+            email: None,
+            queued: Some(true),
+            job_id: Some(job_id),
+            retry_deadline_secs: Some(30),
+        }),
+    ))
 }
 
 async fn register_job_status(
