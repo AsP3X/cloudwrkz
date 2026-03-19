@@ -62,7 +62,7 @@ pub fn write_audit_log(pool: &PgPool, params: WriteAuditParams) {
         .await;
 
         if let Err(e) = res {
-            warn!(action = %action, user_id = ?user_id, "audit log write failed: {}", e);
+            warn!(event = "audit.write_failed", action = %action, user_id = ?user_id, "audit log write failed: {}", e);
         }
     });
 }

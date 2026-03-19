@@ -45,9 +45,9 @@ async fn login(
 ) -> Result<Json<LoginResponse>, AppError> {
     let (ip, user_agent) = audit_ip_and_agent(&headers, &body.user_agent);
     let email = body.email.to_lowercase().trim().to_string();
-    info!(path = "/auth/login", email = %email, "auth request");
+    info!(event = "auth.login", path = "/auth/login", email = %email, "auth request");
     if email.is_empty() || body.password.is_empty() {
-        warn!(path = "/auth/login", "invalid email or password (empty)");
+        warn!(event = "auth.login.fail", path = "/auth/login", "invalid email or password (empty)");
         audit::write_audit_log(
             &state.pool,
             WriteAuditParams {
@@ -72,7 +72,7 @@ async fn login(
     .fetch_optional(&state.pool)
     .await?
     .ok_or_else(|| {
-        warn!(path = "/auth/login", email = %email, "user not found or invalid password");
+        warn!(event = "auth.login.fail", path = "/auth/login", email = %email, "user not found or invalid password");
         audit::write_audit_log(
             &state.pool,
             WriteAuditParams {
@@ -240,25 +240,25 @@ async fn register(
 ) -> Result<(StatusCode, Json<RegisterResponse>), AppError> {
     let email = body.email.to_lowercase().trim().to_string();
     let name = body.name.trim().to_string();
-    info!(path = "/auth/register", email = %email, name_len = name.len(), "auth request");
+    info!(event = "auth.register", path = "/auth/register", email = %email, name_len = name.len(), "auth request");
 
     if name.len() < 2 {
-        warn!(path = "/auth/register", email = %email, "validation: name too short");
+        warn!(event = "auth.register.validation", path = "/auth/register", email = %email, "validation: name too short");
         return Err(AppError::bad_request("Name must be at least 2 characters"));
     }
     if email.is_empty() || !email.contains('@') {
-        warn!(path = "/auth/register", email = %email, "validation: invalid email");
+        warn!(event = "auth.register.validation", path = "/auth/register", email = %email, "validation: invalid email");
         return Err(AppError::bad_request("Invalid email address"));
     }
     if body.password.len() < 8 {
-        warn!(path = "/auth/register", email = %email, "validation: password too short");
+        warn!(event = "auth.register.validation", path = "/auth/register", email = %email, "validation: password too short");
         return Err(AppError::bad_request(
             "Password must be at least 8 characters",
         ));
     }
     if let Some(ref confirm) = body.confirm_password {
         if *confirm != body.password {
-            warn!(path = "/auth/register", email = %email, "validation: passwords do not match");
+            warn!(event = "auth.register.validation", path = "/auth/register", email = %email, "validation: passwords do not match");
             return Err(AppError::validation(
                 "Validation failed",
                 serde_json::json!({ "password": ["Passwords do not match"] }),
@@ -273,7 +273,7 @@ async fn register(
             .await?;
 
     if existing.is_some() {
-        warn!(path = "/auth/register", email = %email, "conflict: email already exists");
+        warn!(event = "auth.register.conflict", path = "/auth/register", email = %email, "conflict: email already exists");
         return Err(AppError::conflict(
             "An account with this email already exists",
         ));
@@ -283,11 +283,11 @@ async fn register(
     let hashed = tokio::task::spawn_blocking(move || hash_password(&password))
         .await
         .map_err(|e| {
-            warn!(path = "/auth/register", email = %email, "hash task join error: {:?}", e);
+            warn!(event = "auth.register.error", path = "/auth/register", email = %email, "hash task join error: {:?}", e);
             AppError::internal("Failed to hash password")
         })?
         .map_err(|_| {
-            warn!(path = "/auth/register", email = %email, "password hash failed");
+            warn!(event = "auth.register.error", path = "/auth/register", email = %email, "password hash failed");
             AppError::internal("Failed to hash password")
         })?;
 
@@ -305,7 +305,7 @@ async fn register(
     .execute(&state.pool)
     .await
     .map_err(|e| {
-        warn!(path = "/auth/register", email = %email, "db insert failed: {:?}", e);
+        warn!(event = "auth.register.error", path = "/auth/register", email = %email, "db insert failed: {:?}", e);
         e
     })?;
 
@@ -323,7 +323,7 @@ async fn register(
         },
     );
 
-    info!(path = "/auth/register", email = %email, user_id = %user_id, "register success");
+    info!(event = "auth.register.success", path = "/auth/register", email = %email, user_id = %user_id, "register success");
     Ok((
         StatusCode::CREATED,
         Json(RegisterResponse {

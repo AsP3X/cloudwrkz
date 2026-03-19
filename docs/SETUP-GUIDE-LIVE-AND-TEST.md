@@ -247,14 +247,15 @@ docker compose --env-file .env.production up -d api
 
 **Option B: Binary + systemd**
 
-1. Build the API on the host or in CI:
+1. Build the API on the host or in CI (from the **repository root**):
 
    ```bash
-   cd apps/api
-   cargo build --release
+   cargo build --release -p cloudwrkz-api
    ```
 
-2. Copy `target/release/cloudwrkz-api` and the `migrations/` folder to the server.
+   The binary is at **`target/release/cloudwrkz-api`** (workspace target is at repo root; if you ran from `apps/api`, use `../target/release/cloudwrkz-api`).
+
+2. Copy `target/release/cloudwrkz-api` and `apps/api/migrations/` to the server.
 
 3. Create a systemd unit (e.g. `/etc/systemd/system/cloudwrkz-api.service`):
 
@@ -475,15 +476,20 @@ curl -s http://localhost:8080/api/ping
 | `MAX_BODY_SIZE`   | No       | `10485760` (10MB) | Max request body in bytes                      |
 | `RUST_LOG`        | No       | `info`            | Log level (e.g. `info`, `cloudwrkz_api=debug`) |
 | `LOG_FORMAT`      | No       | (plain text)      | Set to `json` for one-JSON-object-per-line (for log aggregators) |
+| `LOG_VERBOSITY`   | No       | `prod`            | `debug` = log all available info (client_ip, user_agent, path+query, content_length); `prod` = only required fields (request_id, method, path, status, latency_ms). Overridden by `-v` when running the binary directly. |
 
-**Monitoring:** The API logs at INFO by default: startup, listen address, and each HTTP request (method, path, status, latency). Use `RUST_LOG=debug` for more detail. Set `LOG_FORMAT=json` in production so tools (Datadog, CloudWatch, etc.) can parse logs; each line is a single JSON object with `timestamp`, `level`, `target`, and `message`/fields.
+**Running the API binary:** You can control verbosity with `-v` (overrides env): `./cloudwrkz-api` = prod logging; `./cloudwrkz-api -v` or `./cloudwrkz-api -v debug` = debug/verbose; `./cloudwrkz-api -v prod` = prod. Use `./cloudwrkz-api --help` for options.
+
+**Monitoring:** The API logs at INFO by default: startup, listen address, and each HTTP request. Each request gets a `request_id` (from header `X-Request-ID` or generated). **LOG_VERBOSITY**: use `prod` (default) in production to log only required fields; use `debug` for full request/response details (client_ip, user_agent, path+query, response content_length). Use `RUST_LOG=debug` for more crate-level detail. Set `LOG_FORMAT=json` in production for NDJSON with `timestamp` (UTC RFC3339), `level`, `target`, `message`, and event fields flattened for log analyzers (Datadog, ELK, Splunk, CloudWatch).
 
 ### Web (`apps/web-vite/.env`)
 
-| Variable        | Required | Default        | Description                    |
-|-----------------|----------|----------------|--------------------------------|
-| `VITE_API_URL`  | Yes      | `/api/v1`      | API base URL (set at build)    |
-| `VITE_APP_NAME` | No       | `CloudWrkz`    | App name in UI                 |
+| Variable           | Required | Default        | Description                                                       |
+|--------------------|----------|----------------|-------------------------------------------------------------------|
+| `VITE_API_URL`     | Yes      | `/api/v1`      | API base URL (set at build)                                       |
+| `VITE_APP_NAME`    | No       | `CloudWrkz`    | App name in UI                                                    |
+| `VITE_LOG_LEVEL`   | No       | `info` (dev), `warn` (prod) | Log level: `trace`, `debug`, `info`, `warn`, `error`, `silent` |
+| `VITE_LOG_FORMAT`  | No       | (plain text)   | Set to `json` for NDJSON (one JSON object per line) for log tools  |
 
 ---
 

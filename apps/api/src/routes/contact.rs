@@ -54,6 +54,7 @@ async fn contact_form(
     }
 
     tracing::info!(
+        event = "contact.submit",
         name = body.name,
         email = body.email,
         subject = body.subject,

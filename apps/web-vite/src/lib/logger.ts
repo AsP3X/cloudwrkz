@@ -1,6 +1,7 @@
 /**
  * Client logger aligned with the Rust API (tracing-style levels).
- * Level controlled by VITE_LOG_LEVEL (default: info in dev, warn in prod).
+ * Level: VITE_LOG_LEVEL (default: info in dev, warn in prod).
+ * Format: VITE_LOG_FORMAT=json for NDJSON suitable for log analysis (Datadog, ELK, Splunk).
  * In dev, error and warn are also sent to the Vite dev server so they appear in the terminal.
  */
 
@@ -16,10 +17,17 @@ const LEVEL_ORDER: Record<Level, number> = {
   silent: 5,
 };
 
+/** Service name for log analysis tools (e.g. filter by service). */
+const SERVICE_NAME = "web-vite";
+
 function getMinLevel(): Level {
   const env = import.meta.env.VITE_LOG_LEVEL as string | undefined;
   if (env && LEVELS.includes(env as Level)) return env as Level;
   return import.meta.env.DEV ? "info" : "warn";
+}
+
+function useJsonFormat(): boolean {
+  return (import.meta.env.VITE_LOG_FORMAT as string) === "json";
 }
 
 const minOrder = LEVEL_ORDER[getMinLevel()];
@@ -28,9 +36,38 @@ function shouldLog(level: Level): boolean {
   return LEVEL_ORDER[level] >= minOrder && level !== "silent";
 }
 
+/** Build one NDJSON object for log analyzers (timestamp, level, message, service, context). */
+function formatJson(level: Level, message: string, data?: unknown): string {
+  const entry: Record<string, unknown> = {
+    timestamp: new Date().toISOString(),
+    level: level.toUpperCase(),
+    message,
+    service: SERVICE_NAME,
+  };
+  if (data !== undefined) {
+    try {
+      entry.context =
+        typeof data === "object" && data !== null && !Array.isArray(data)
+          ? data
+          : { value: data };
+    } catch {
+      entry.context = { value: String(data) };
+    }
+  }
+  try {
+    return JSON.stringify(entry);
+  } catch {
+    return JSON.stringify({
+      ...entry,
+      context: { error: "serialization error" },
+    });
+  }
+}
+
 function formatPayload(level: Level, message: string, data?: unknown): string {
+  if (useJsonFormat()) return formatJson(level, message, data);
   const ts = new Date().toISOString();
-  const prefix = `${ts} ${level.toUpperCase().padEnd(5)} [web-vite]`;
+  const prefix = `${ts} ${level.toUpperCase().padEnd(5)} [${SERVICE_NAME}]`;
   if (data === undefined) return `${prefix} ${message}`;
   try {
     return `${prefix} ${message} ${typeof data === "object" ? JSON.stringify(data) : String(data)}`;
