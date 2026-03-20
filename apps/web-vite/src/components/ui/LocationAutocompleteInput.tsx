@@ -1,7 +1,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { Input, type InputProps } from "@/components/ui/Input";
-import { searchApi } from "@/api/client";
+import { api } from "@/api/client";
 
 interface LocationSuggestion {
   place_id: number | string;
@@ -13,6 +13,10 @@ interface DecoratedLocationSuggestion {
   item: LocationSuggestion;
   source: "history" | "map";
   label: string;
+}
+
+interface LocationHistoryResponse {
+  locations: string[];
 }
 
 function buildSuggestionLabel(suggestion: LocationSuggestion): string {
@@ -64,6 +68,8 @@ export function LocationAutocompleteInput({
   const [isOpen, setIsOpen] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
   const [highlightedIndex, setHighlightedIndex] = React.useState<number | null>(null);
+  const [suppressSuggestions, setSuppressSuggestions] = React.useState(false);
+  const [selectedValue, setSelectedValue] = React.useState<string | null>(null);
   const [dropdownPosition, setDropdownPosition] = React.useState<{
     top: number;
     left: number;
@@ -74,10 +80,14 @@ export function LocationAutocompleteInput({
 
   React.useEffect(() => {
     setQuery(value ?? "");
-  }, [value]);
+    if ((value ?? "") !== (selectedValue ?? "")) {
+      setSuppressSuggestions(false);
+      setSelectedValue(null);
+    }
+  }, [value, selectedValue]);
 
   React.useEffect(() => {
-    if (!query || query.trim().length < 3 || disabled) {
+    if (suppressSuggestions || !query || query.trim().length < 3 || disabled) {
       setSuggestions([]);
       setIsOpen(false);
       return;
@@ -103,8 +113,8 @@ export function LocationAutocompleteInput({
             headers: { Accept: "application/json" },
             signal: controller.signal,
           }),
-          searchApi.get<LocationSuggestion[]>(
-            `/api/location-history?q=${encodeURIComponent(trimmedQuery)}`,
+          api.get<LocationHistoryResponse>(
+            `/location-history?q=${encodeURIComponent(trimmedQuery)}`,
             { signal: controller.signal },
           ),
         ]);
@@ -124,10 +134,14 @@ export function LocationAutocompleteInput({
 
         if (historyRes.status === "fulfilled") {
           combined = combined.concat(
-            historyRes.value.map((item) => ({
-              item,
+            historyRes.value.locations.map((address) => ({
+              item: {
+                place_id: `history-${address}`,
+                display_name: address,
+                address: {},
+              },
               source: "history",
-              label: buildSuggestionLabel(item),
+              label: address,
             }))
           );
         }
@@ -158,26 +172,26 @@ export function LocationAutocompleteInput({
       window.clearTimeout(handle);
       controller.abort();
     };
-  }, [query, disabled]);
+  }, [query, disabled, suppressSuggestions]);
 
   const handleSelect = (suggestion: DecoratedLocationSuggestion) => {
-    const typed = query.trim();
     const label = suggestion.label;
-    const typedLower = typed.toLowerCase();
-    const labelLower = label.toLowerCase();
-
-    const newValue =
-      !typed || (labelLower.startsWith(typedLower) && label.length > typed.length) ? label : typed;
-
-    setQuery(newValue);
+    setQuery(label);
+    setSelectedValue(label);
+    setSuppressSuggestions(true);
     setIsOpen(false);
     setSuggestions([]);
     setHighlightedIndex(null);
-    onChange?.(newValue);
+    onChange?.(label);
+    void api.post("/location-history", { address: label });
   };
 
   const handleInputChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
     const newValue = e.target.value;
+    if (selectedValue !== null && newValue !== selectedValue) {
+      setSuppressSuggestions(false);
+      setSelectedValue(null);
+    }
     setQuery(newValue);
     onChange?.(newValue);
   };
@@ -299,8 +313,11 @@ export function LocationAutocompleteInput({
                     ? "bg-primary-50 dark:bg-primary-900/40"
                     : "hover:bg-neutral-50 dark:hover:bg-neutral-800",
                 ].join(" ")}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => handleSelect(suggestion)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleSelect(suggestion);
+                }}
                 onMouseEnter={() => setHighlightedIndex(index)}
               >
                 <div className="flex items-start gap-2">

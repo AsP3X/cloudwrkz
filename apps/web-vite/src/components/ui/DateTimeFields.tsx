@@ -177,7 +177,6 @@ export function DateTimeFields({
           required={required}
           inputMode="numeric"
           placeholder="TT"
-          pattern="\\d{2}"
           onKeyDown={handleDayKeyDown}
           className="w-7 bg-transparent text-center text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none"
         />
@@ -194,7 +193,6 @@ export function DateTimeFields({
           required={required}
           inputMode="numeric"
           placeholder="MM"
-          pattern="\\d{2}"
           onKeyDown={handleMonthKeyDown}
           className="w-7 bg-transparent text-center text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none"
         />
@@ -211,7 +209,6 @@ export function DateTimeFields({
           required={required}
           inputMode="numeric"
           placeholder="JJJJ"
-          pattern="\\d{4}"
           onKeyDown={handleYearKeyDown}
           className="w-10 bg-transparent text-center text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none"
         />
@@ -231,7 +228,6 @@ export function DateTimeFields({
           required={required}
           inputMode="numeric"
           placeholder="HH"
-          pattern="\\d{2}"
           onKeyDown={handleHourKeyDown}
           className="w-7 bg-transparent text-center text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none"
         />
@@ -248,7 +244,6 @@ export function DateTimeFields({
           required={required}
           inputMode="numeric"
           placeholder="MM"
-          pattern="\\d{2}"
           onKeyDown={handleMinuteKeyDown}
           className="w-7 bg-transparent text-center text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none"
         />
