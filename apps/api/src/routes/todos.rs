@@ -8,7 +8,11 @@ use sqlx::Row;
 
 use crate::auth::extractors::AuthUser;
 use crate::error::AppError;
-use crate::models::todo::*;
+use crate::models::todo::{
+    CreateTodoRequest, TodoDependsOnSummary, TodoDependencyItem, TodoListItem, TodoListParams,
+    TodoParentSummary, TodoRow, TodoTicketSummary, UpdateTodoRequest,
+};
+use crate::routes::helpers::{check_permission, fetch_user_summary};
 use crate::routes::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -46,6 +50,9 @@ fn row_to_item(r: &sqlx::postgres::PgRow) -> TodoListItem {
         updated_at: r.get("updated_at"),
         assigned_to: None,
         subtodos: vec![],
+        parent_todo: None,
+        ticket: None,
+        dependencies: vec![],
     }
 }
 
@@ -73,6 +80,9 @@ fn todo_row_to_item(r: &TodoRow) -> TodoListItem {
         updated_at: r.updated_at,
         assigned_to: None,
         subtodos: vec![],
+        parent_todo: None,
+        ticket: None,
+        dependencies: vec![],
     }
 }
 
@@ -89,7 +99,24 @@ async fn list_todos(
     let archive = params.archive.as_deref().unwrap_or("unarchived");
     let priority = params.priority.clone();
     let is_root_only = params.kind.as_deref() == Some("root");
+    let ticket_id = params.ticket_id.clone();
     let _ = &params.sort;
+
+    if let Some(ref tid) = ticket_id {
+        let can_view_all = check_permission(&state.pool, &user.id, "tickets.view_all").await;
+        let ticket = sqlx::query(
+            "SELECT id, created_by_id, assigned_to_id FROM tickets WHERE id = $1
+             AND ($2::bool OR created_by_id = $3 OR assigned_to_id = $3)",
+        )
+        .bind(tid)
+        .bind(can_view_all)
+        .bind(&user.id)
+        .fetch_optional(&state.pool)
+        .await?;
+        if ticket.is_none() {
+            return Ok(Json(serde_json::json!({ "todos": [] })));
+        }
+    }
 
     let statuses: Vec<String> = params
         .status
@@ -99,45 +126,68 @@ async fn list_todos(
 
     let mut sql = format!(
         "{TODO_SELECT} FROM todos
-         WHERE assigned_to_id = $1
+         WHERE ($1::text IS NULL OR assigned_to_id = $1)
            AND ($2::text IS NULL OR priority::text = $2)
            AND (($3 = 'archived' AND archived_at IS NOT NULL) OR ($3 != 'archived' AND archived_at IS NULL))"
     );
-
+    let mut bind_count = 4u32;
+    if ticket_id.is_some() {
+        sql.push_str(&format!(" AND ticket_id = ${}", bind_count));
+        bind_count += 1;
+    }
     if !statuses.is_empty() {
         let placeholders: Vec<String> = statuses
             .iter()
             .enumerate()
-            .map(|(i, _)| format!("${}", i + 4))
+            .map(|i| format!("${}", bind_count + i.0 as u32))
             .collect();
         sql.push_str(&format!(
             " AND status::text IN ({})",
             placeholders.join(", ")
         ));
     }
-
     if is_root_only {
-        sql.push_str(" AND parent_todo_id IS NULL");
+        sql.push_str(&format!(" AND parent_todo_id IS NULL"));
     }
-
-    sql.push_str(" ORDER BY created_at DESC");
+    sql.push_str(" ORDER BY \"order\" ASC, created_at ASC");
 
     if let Some(limit) = params.limit {
         sql.push_str(&format!(" LIMIT {}", limit.max(0)));
     }
 
+    let assigned_filter = if ticket_id.is_some() {
+        let can_view_all = check_permission(&state.pool, &user.id, "tickets.view_all").await;
+        if can_view_all {
+            None
+        } else {
+            Some(user.id.clone())
+        }
+    } else {
+        Some(user.id.clone())
+    };
+
     let mut query = sqlx::query(&sql)
-        .bind(&user.id)
+        .bind(&assigned_filter)
         .bind(&priority)
         .bind(archive);
-
+    if let Some(ref tid) = ticket_id {
+        query = query.bind(tid);
+    }
     for s in &statuses {
         query = query.bind(s);
     }
 
     let rows = query.fetch_all(&state.pool).await?;
 
-    let todos: Vec<TodoListItem> = rows.iter().map(row_to_item).collect();
+    let mut todos = Vec::with_capacity(rows.len());
+    for r in &rows {
+        let mut item = row_to_item(r);
+        let assigned_to_id: Option<String> = r.get("assigned_to_id");
+        if let Some(ref uid) = assigned_to_id {
+            item.assigned_to = fetch_user_summary(&state.pool, uid).await;
+        }
+        todos.push(item);
+    }
     Ok(Json(serde_json::json!({ "todos": todos })))
 }
 
@@ -146,13 +196,54 @@ async fn get_todo(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let sql = format!("{TODO_SELECT} FROM todos WHERE id = $1 AND assigned_to_id = $2");
-    let row: Option<TodoRow> = sqlx::query_as(&sql)
+    let can_view_all = check_permission(&state.pool, &user.id, "tickets.view_all").await;
+    let row: Option<TodoRow> = sqlx::query_as(&format!("{TODO_SELECT} FROM todos WHERE id = $1"))
         .bind(&id)
-        .bind(&user.id)
         .fetch_optional(&state.pool)
         .await?;
-    let row = row.ok_or_else(|| AppError::not_found("Todo not found"))?;
+    let mut row = row.ok_or_else(|| AppError::not_found("Todo not found"))?;
+
+    // Backfill todo_number for legacy todos that lack one
+    if row.todo_number.is_none() {
+        let last: Option<String> = sqlx::query_scalar(
+            "SELECT todo_number FROM todos WHERE todo_number LIKE '#TDO-%' ORDER BY todo_number DESC LIMIT 1",
+        )
+        .fetch_optional(&state.pool)
+        .await?;
+        let next_seq = last
+            .as_deref()
+            .and_then(|n| n.strip_prefix("#TDO-"))
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(0)
+            .saturating_add(1);
+        let num = format!("#TDO-{:06}", next_seq);
+        sqlx::query("UPDATE todos SET todo_number = $1 WHERE id = $2")
+            .bind(&num)
+            .bind(&row.id)
+            .execute(&state.pool)
+            .await?;
+        row.todo_number = Some(num);
+    }
+
+    let owner = row.assigned_to_id.as_deref();
+    let mut can_access = can_view_all || owner == Some(&user.id);
+    if !can_access {
+        if let Some(ref tid) = row.ticket_id {
+            let t = sqlx::query("SELECT created_by_id, assigned_to_id FROM tickets WHERE id = $1")
+                .bind(tid)
+                .fetch_optional(&state.pool)
+                .await?;
+            if let Some(tr) = t {
+                let created: Option<String> = tr.get("created_by_id");
+                let assigned: Option<String> = tr.get("assigned_to_id");
+                can_access =
+                    created.as_deref() == Some(&user.id) || assigned.as_deref() == Some(&user.id);
+            }
+        }
+    }
+    if !can_access {
+        return Err(AppError::forbidden("Not allowed to view this todo"));
+    }
 
     let subtodo_sql = format!(
         "{TODO_SELECT} FROM todos WHERE parent_todo_id = $1 ORDER BY \"order\" ASC, created_at ASC"
@@ -163,9 +254,81 @@ async fn get_todo(
         .await?;
 
     let mut todo = todo_row_to_item(&row);
-    todo.subtodos = subtodo_rows.iter().map(todo_row_to_item).collect();
+    todo.assigned_to = match &row.assigned_to_id {
+        Some(uid) => fetch_user_summary(&state.pool, uid).await,
+        None => None,
+    };
+    let mut subtodos = Vec::with_capacity(subtodo_rows.len());
+    for sr in &subtodo_rows {
+        let mut st = todo_row_to_item(sr);
+        st.assigned_to = match &sr.assigned_to_id {
+            Some(uid) => fetch_user_summary(&state.pool, uid).await,
+            None => None,
+        };
+        subtodos.push(st);
+    }
+    todo.subtodos = subtodos;
+
+    if let Some(ref pid) = todo.parent_todo_id {
+        if let Some(parent_row) = sqlx::query_as::<_, (String, String)>(
+            "SELECT id, title FROM todos WHERE id = $1",
+        )
+        .bind(pid)
+        .fetch_optional(&state.pool)
+        .await?
+        {
+            todo.parent_todo = Some(TodoParentSummary {
+                id: parent_row.0,
+                title: parent_row.1,
+            });
+        }
+    }
+    if let Some(ref tid) = todo.ticket_id {
+        if let Some(ticket_row) = sqlx::query_as::<_, (String, String, String)>(
+            "SELECT id, ticket_number, title FROM tickets WHERE id = $1",
+        )
+        .bind(tid)
+        .fetch_optional(&state.pool)
+        .await?
+        {
+            todo.ticket = Some(TodoTicketSummary {
+                id: ticket_row.0,
+                ticket_number: ticket_row.1,
+                title: ticket_row.2,
+            });
+        }
+    }
+    let dep_rows: Vec<(String, String, String)> = sqlx::query_as(
+        r#"SELECT t.id, t.title, t.status
+           FROM todo_dependencies d
+           JOIN todos t ON t.id = d.depends_on_todo_id
+           WHERE d.todo_id = $1"#,
+    )
+    .bind(&id)
+    .fetch_all(&state.pool)
+    .await?;
+    todo.dependencies = dep_rows
+        .into_iter()
+        .map(|(id, title, status)| TodoDependencyItem {
+            depends_on_todo: TodoDependsOnSummary { id, title, status },
+        })
+        .collect();
 
     Ok(Json(serde_json::json!({ "todo": todo })))
+}
+
+fn strip_html_plain(html: &str) -> String {
+    let mut out = String::new();
+    let mut in_tag = false;
+    for c in html.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => out.push(c),
+            _ => {}
+        }
+    }
+    out.replace('\u{a0}', " ").trim().to_string()
 }
 
 async fn create_todo(
@@ -177,24 +340,78 @@ async fn create_todo(
         return Err(AppError::bad_request("Title is required"));
     }
 
+    // When creating a subtask, ensure the user can view the parent task.
+    if let Some(ref parent_id) = body.parent_todo_id {
+        let can_view_all = check_permission(&state.pool, &user.id, "tickets.view_all").await;
+        let parent_row: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT assigned_to_id, ticket_id FROM todos WHERE id = $1",
+        )
+        .bind(parent_id)
+        .fetch_optional(&state.pool)
+        .await?;
+        let (owner, ticket_id) = parent_row.ok_or_else(|| AppError::not_found("Parent task not found"))?;
+        let mut can_access = can_view_all || owner.as_deref() == Some(&user.id);
+        if !can_access {
+            if let Some(ref tid) = ticket_id {
+                let t = sqlx::query("SELECT created_by_id, assigned_to_id FROM tickets WHERE id = $1")
+                    .bind(tid)
+                    .fetch_optional(&state.pool)
+                    .await?;
+                if let Some(tr) = t {
+                    let created: Option<String> = tr.get("created_by_id");
+                    let assigned: Option<String> = tr.get("assigned_to_id");
+                    can_access =
+                        created.as_deref() == Some(&user.id) || assigned.as_deref() == Some(&user.id);
+                }
+            }
+        }
+        if !can_access {
+            return Err(AppError::forbidden("Not allowed to add subtasks to this task"));
+        }
+    }
+
     let id = crate::id::new_cuid();
     let status = body.status.as_deref().unwrap_or("NOT_STARTED");
     let priority = body.priority.as_deref().unwrap_or("MEDIUM");
     let assigned_to = body.assigned_to_id.as_deref().unwrap_or(&user.id);
 
+    let description_plain = body
+        .description_html
+        .as_deref()
+        .or(body.description.as_deref())
+        .map(strip_html_plain)
+        .filter(|s| !s.is_empty());
+
+    let todo_number: Option<String> = sqlx::query_scalar(
+        "SELECT todo_number FROM todos WHERE todo_number LIKE '#TDO-%' ORDER BY todo_number DESC LIMIT 1",
+    )
+    .fetch_optional(&state.pool)
+    .await?;
+    let next_seq = todo_number
+        .as_deref()
+        .and_then(|n| n.strip_prefix("#TDO-"))
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(0)
+        .saturating_add(1);
+    let todo_number = format!("#TDO-{:06}", next_seq);
+
     let start_ts = body.start_date.as_deref().and_then(|s| s.parse::<chrono::NaiveDateTime>().ok());
     let due_ts = body.due_date.as_deref().and_then(|s| s.parse::<chrono::NaiveDateTime>().ok());
+    let desc_legacy = description_plain.as_deref().or(body.description.as_deref());
+
     sqlx::query(
-        r#"INSERT INTO todos (id, title, description, description_html,
+        r#"INSERT INTO todos (id, todo_number, title, description, description_html, description_plain,
                               status, priority, assigned_to_id, parent_todo_id,
                               ticket_id, estimated_hours, start_date, due_date, "order", created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5::"TodoStatus", $6::"TodoPriority",
-                   $7, $8, $9, $10, $11, $12, 0, NOW(), NOW())"#,
+           VALUES ($1, $2, $3, $4, $5, $6, $7::"TodoStatus", $8::"TodoPriority",
+                   $9, $10, $11, $12, $13, $14, 0, NOW(), NOW())"#,
     )
     .bind(&id)
+    .bind(&todo_number)
     .bind(body.title.trim())
-    .bind(&body.description)
+    .bind(desc_legacy)
     .bind(&body.description_html)
+    .bind(&description_plain)
     .bind(status)
     .bind(priority)
     .bind(assigned_to)
@@ -317,8 +534,13 @@ async fn update_todo(
         .execute(&state.pool)
         .await?;
     }
-    if let Some(ref archived) = body.archived_at {
-        if archived.is_null() {
+    if body.archived_at.is_some() {
+        let set_null = body
+            .archived_at
+            .as_ref()
+            .map(serde_json::Value::is_null)
+            .unwrap_or(false);
+        if set_null {
             sqlx::query("UPDATE todos SET archived_at = NULL, updated_at = NOW() WHERE id = $1")
                 .bind(&id)
                 .execute(&state.pool)

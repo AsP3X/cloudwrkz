@@ -18,13 +18,20 @@ export function parseDuration(input: string): number {
   return 0;
 }
 
+function parseAsUTC(dateStr: string): number {
+  if (/[Zz]$/.test(dateStr) || /[+-]\d{2}:\d{2}$/.test(dateStr)) {
+    return new Date(dateStr).getTime();
+  }
+  return new Date(dateStr + "Z").getTime();
+}
+
 export function calculateTotalBreakDuration(
   breaks: Array<{ started_at: string; ended_at: string | null; duration: number }>
 ): number {
   const now = Date.now();
   return breaks.reduce((total, b) => {
     if (!b.ended_at) {
-      return total + Math.floor((now - new Date(b.started_at).getTime()) / 1000);
+      return total + Math.floor((now - parseAsUTC(b.started_at)) / 1000);
     }
     return total + (b.duration ?? 0);
   }, 0);
@@ -41,12 +48,12 @@ export function calculateElapsedTime(entry: {
 
   if (entry.status === "RUNNING" && entry.last_resumed_at) {
     const runningTime = Math.floor(
-      (Date.now() - new Date(entry.last_resumed_at).getTime()) / 1000
+      (Date.now() - parseAsUTC(entry.last_resumed_at)) / 1000
     );
     baseDuration = entry.total_duration + runningTime;
   } else if (entry.status === "RUNNING" && !entry.last_resumed_at) {
     const runningTime = Math.floor(
-      (Date.now() - new Date(entry.started_at).getTime()) / 1000
+      (Date.now() - parseAsUTC(entry.started_at)) / 1000
     );
     baseDuration = entry.total_duration + runningTime;
   }

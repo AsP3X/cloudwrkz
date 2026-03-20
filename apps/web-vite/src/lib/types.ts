@@ -91,6 +91,27 @@ export interface TicketActivity {
   changed_by?: UserSummary | null;
 }
 
+export interface TodoParentSummary {
+  id: string;
+  title: string;
+}
+
+export interface TodoTicketSummary {
+  id: string;
+  ticket_number: string;
+  title: string;
+}
+
+export interface TodoDependsOnSummary {
+  id: string;
+  title: string;
+  status: string;
+}
+
+export interface TodoDependencyItem {
+  depends_on_todo: TodoDependsOnSummary;
+}
+
 export interface Todo {
   id: string;
   todo_number: string | null;
@@ -114,6 +135,9 @@ export interface Todo {
   updated_at: string;
   assigned_to?: UserSummary | null;
   subtodos: Todo[];
+  parent_todo?: TodoParentSummary | null;
+  ticket?: TodoTicketSummary | null;
+  dependencies?: TodoDependencyItem[];
 }
 
 export interface Link {
@@ -130,6 +154,13 @@ export interface Link {
   rating: number | null;
   metadata: Record<string, unknown> | null;
   metadata_extracted_at: string | null;
+  collections?: Array<{
+    collection: {
+      id: string;
+      name: string;
+      color: string | null;
+    };
+  }>;
   user_id: string;
   archived_at: string | null;
   created_at: string;

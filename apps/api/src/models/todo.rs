@@ -25,6 +25,31 @@ pub struct TodoRow {
 }
 
 #[derive(Debug, Serialize)]
+pub struct TodoParentSummary {
+    pub id: String,
+    pub title: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TodoTicketSummary {
+    pub id: String,
+    pub ticket_number: String,
+    pub title: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TodoDependsOnSummary {
+    pub id: String,
+    pub title: String,
+    pub status: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TodoDependencyItem {
+    pub depends_on_todo: TodoDependsOnSummary,
+}
+
+#[derive(Debug, Serialize)]
 pub struct TodoListItem {
     pub id: String,
     pub todo_number: Option<String>,
@@ -50,6 +75,12 @@ pub struct TodoListItem {
     pub assigned_to: Option<super::user::UserSummary>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub subtodos: Vec<TodoListItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_todo: Option<TodoParentSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ticket: Option<TodoTicketSummary>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub dependencies: Vec<TodoDependencyItem>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -92,4 +123,6 @@ pub struct TodoListParams {
     pub archive: Option<String>,
     pub kind: Option<String>,
     pub limit: Option<i64>,
+    /// When set, return only todos linked to this ticket (user must have ticket access).
+    pub ticket_id: Option<String>,
 }

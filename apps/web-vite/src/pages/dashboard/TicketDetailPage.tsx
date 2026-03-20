@@ -4,13 +4,14 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { api } from "@/api/client";
 import { ROUTES } from "@/lib/constants/routes";
 import { Button } from "@/components/ui/Button";
-import type { Ticket, TicketActivity, TicketComment, UserSummary } from "@/lib/types";
+import type { Ticket, TicketActivity, TicketComment, Todo, UserSummary } from "@/lib/types";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { AccessIssueTicketDialog } from "@/components/features/tickets/AccessIssueTicketDialog";
 import { TicketDetailHeaderActions } from "@/components/features/tickets/TicketDetailHeaderActions";
 import { RichTextDisplay } from "@/components/features/tickets/RichTextDisplay";
 import { TicketCommentsAndActivity } from "@/components/features/tickets/TicketCommentsAndActivity/TicketCommentsAndActivity";
 import { TicketTimerSection } from "@/components/features/tickets/TicketTimerSection";
+import { TasksSection } from "@/components/features/tasks/TasksSection/TasksSection";
 import { getTicketTypeLabel, type TicketType } from "@/lib/utils/tickets";
 import type { TimeEntry } from "@/lib/types";
 
@@ -71,6 +72,7 @@ export default function TicketDetailPage() {
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [comments, setComments] = useState<TicketComment[]>([]);
   const [activities, setActivities] = useState<TicketActivity[]>([]);
+  const [ticketTodos, setTicketTodos] = useState<Todo[]>([]);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -139,6 +141,14 @@ export default function TicketDetailPage() {
       .catch(() => setActivities([]));
   };
 
+  const fetchTicketTodos = () => {
+    if (!id) return;
+    api
+      .get<{ todos: Todo[] }>(`/todos?ticket_id=${encodeURIComponent(id)}`)
+      .then((data) => setTicketTodos(data.todos))
+      .catch(() => setTicketTodos([]));
+  };
+
   useEffect(() => {
     if (!id || !ticket) return;
     let cancelled = false;
@@ -165,6 +175,22 @@ export default function TicketDetailPage() {
       })
       .catch(() => {
         if (!cancelled) setActivities([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, ticket]);
+
+  useEffect(() => {
+    if (!id || !ticket) return;
+    let cancelled = false;
+    api
+      .get<{ todos: Todo[] }>(`/todos?ticket_id=${encodeURIComponent(id)}`)
+      .then((data) => {
+        if (!cancelled) setTicketTodos(data.todos);
+      })
+      .catch(() => {
+        if (!cancelled) setTicketTodos([]);
       });
     return () => {
       cancelled = true;
@@ -294,6 +320,14 @@ export default function TicketDetailPage() {
             </h2>
             <RichTextDisplay content={description} />
           </div>
+
+          {/* Tasks for this ticket */}
+          <TasksSection
+            ticketId={ticket.id}
+            tasks={ticketTodos}
+            canManage={user?.role !== "USER"}
+            onRefresh={fetchTicketTodos}
+          />
 
           {/* Comments and Activity */}
           <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">

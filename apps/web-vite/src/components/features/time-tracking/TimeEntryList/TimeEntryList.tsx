@@ -464,10 +464,12 @@ export function TimeEntryList({ entries, userTimezone = "UTC", onRefresh }: Time
                   <span className="font-medium min-w-[80px]">Started:</span>
                   <span className="text-neutral-900 dark:text-neutral-100">{formatDate(entry.started_at, entry.timezone)}</span>
                 </div>
+                {entry.timezone && (
                 <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
                   <span className="font-medium min-w-[80px]">Timezone:</span>
-                  <span className="font-mono text-xs text-neutral-900 dark:text-neutral-100">{entry.timezone || userTimezone}</span>
+                  <span className="font-mono text-xs text-neutral-900 dark:text-neutral-100">{entry.timezone}</span>
                 </div>
+                )}
                 {entry.location && (
                   <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
                     <span className="font-medium min-w-[80px]">Location:</span>
@@ -568,7 +570,14 @@ export function TimeEntryList({ entries, userTimezone = "UTC", onRefresh }: Time
       )}
 
       {/* Table View */}
-      {viewMode === "table" && (
+      {viewMode === "table" && (() => {
+        const hasAnyTicket = entries.some((e) => e.ticket_id);
+        const hasAnyBreaks = entries.some((e) => e.breaks && e.breaks.length > 0);
+        const hasAnyLocation = entries.some((e) => e.location);
+        const hasAnyTags = entries.some((e) => e.tags.length > 0);
+        const hasAnyTimezone = entries.some((e) => e.timezone);
+
+        return (
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead className="bg-neutral-50 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700">
@@ -586,30 +595,40 @@ export function TimeEntryList({ entries, userTimezone = "UTC", onRefresh }: Time
               <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                 Name
               </th>
+              {hasAnyTicket && (
               <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden md:table-cell">
                 Ticket
               </th>
+              )}
               <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                 Status
               </th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                 Duration
               </th>
+              {hasAnyBreaks && (
               <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                 Breaks
               </th>
+              )}
               <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                 Started
               </th>
+              {hasAnyTimezone && (
               <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden lg:table-cell">
                 Timezone
               </th>
+              )}
+              {hasAnyLocation && (
               <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider hidden md:table-cell">
                 Location
               </th>
+              )}
+              {hasAnyTags && (
               <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                 Tags
               </th>
+              )}
               <th className="px-6 py-3 text-left text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
                 Actions
               </th>
@@ -662,6 +681,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC", onRefresh }: Time
                       </div>
                     </Link>
                   </td>
+                  {hasAnyTicket && (
                   <td className="px-6 py-4 whitespace-nowrap text-sm hidden md:table-cell">
                     {entry.ticket_id ? (
                       <Link
@@ -674,6 +694,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC", onRefresh }: Time
                       <span className="text-neutral-400">&mdash;</span>
                     )}
                   </td>
+                  )}
                   <td className="px-6 py-4 whitespace-nowrap">
                     <Badge className={getStatusColor(entry.status)}>{getStatusLabel(entry.status)}</Badge>
                   </td>
@@ -683,6 +704,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC", onRefresh }: Time
                       className="font-mono text-sm"
                     />
                   </td>
+                  {hasAnyBreaks && (
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-600 dark:text-neutral-400">
                     {entry.breaks && entry.breaks.length > 0 ? (
                       <span className="font-mono text-xs text-error-600 dark:text-error-400">
@@ -692,12 +714,16 @@ export function TimeEntryList({ entries, userTimezone = "UTC", onRefresh }: Time
                       <span className="text-xs text-neutral-400">&mdash;</span>
                     )}
                   </td>
+                  )}
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-600 dark:text-neutral-400">
                     {formatDate(entry.started_at, entry.timezone)}
                   </td>
+                  {hasAnyTimezone && (
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-600 dark:text-neutral-400 hidden lg:table-cell">
                     <span className="font-mono text-xs">{entry.timezone || userTimezone}</span>
                   </td>
+                  )}
+                  {hasAnyLocation && (
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-600 dark:text-neutral-400 hidden md:table-cell">
                     {entry.location ? (
                       <div className="flex items-center gap-1">
@@ -711,6 +737,8 @@ export function TimeEntryList({ entries, userTimezone = "UTC", onRefresh }: Time
                       <span className="text-xs text-neutral-400">&mdash;</span>
                     )}
                   </td>
+                  )}
+                  {hasAnyTags && (
                   <td className="px-6 py-4">
                     {entry.tags.length > 0 ? (
                       <div className="flex flex-wrap gap-1">
@@ -732,6 +760,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC", onRefresh }: Time
                       <span className="text-xs text-neutral-400">&mdash;</span>
                     )}
                   </td>
+                  )}
                   <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-2">
                       {canPause(entry.status) && (
@@ -815,7 +844,8 @@ export function TimeEntryList({ entries, userTimezone = "UTC", onRefresh }: Time
           </tbody>
         </table>
       </div>
-      )}
+        );
+      })()}
       <OverviewContextMenu
         open={!!contextMenu}
         x={contextMenu?.x ?? 0}

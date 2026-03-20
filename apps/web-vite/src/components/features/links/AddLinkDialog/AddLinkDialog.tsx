@@ -102,7 +102,7 @@ export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, select
 
       setExtractingMetadata(true);
       try {
-        const result = await api.post<{ title?: string; description?: string }>("/links/extract-metadata", { url: formattedUrl });
+        const result = await api.post<{ title?: string; description?: string }>("/links/metadata", { url: formattedUrl });
         if (result) {
           if (isYouTubeUrl(formattedUrl) && result.title) {
             setTitle(result.title);
@@ -236,12 +236,12 @@ export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, select
           try {
             const details = await Promise.all(
               ids.map(async (id) => {
-                const existing = await api.get<{ id: string; title: string; url: string; created_at: string }>(`/links/${id}`);
+                const existing = await api.get<{ link: { id: string; title: string; url: string; created_at: string } }>(`/links/${id}`);
                 return {
-                  id: existing.id,
-                  title: existing.title || existing.url,
-                  url: existing.url,
-                  created_at: existing.created_at,
+                  id: existing.link.id,
+                  title: existing.link.title || existing.link.url,
+                  url: existing.link.url,
+                  created_at: existing.link.created_at,
                 } as DuplicateLinkSummary;
               })
             );
