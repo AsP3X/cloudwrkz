@@ -222,8 +222,9 @@ export function StartTimerDialog({ open, onOpenChange, onCreated }: StartTimerDi
     if (angle < 0) angle += Math.PI * 2;
 
     if (timeDialModeRef.current === "hour") {
+      // hourIndex matches label idx (0..11 → numbers 1..12 on the dial); do not map 0→12.
       const hourIndex = Math.round(angle / (Math.PI * 2 / 12)) % 12;
-      const hourValue = hourIndex === 0 ? 12 : hourIndex;
+      const hourValue = hourIndex + 1;
       setClockHour(hourValue);
       return;
     }
