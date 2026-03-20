@@ -165,7 +165,7 @@ export function AddTimeEntryDialog({ open, onOpenChange, onCreated }: AddTimeEnt
             />
           </div>
 
-          <div className="animate-field-in grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ "--field-delay": "160ms" } as React.CSSProperties}>
+          <div className="animate-field-in grid grid-cols-2 gap-3" style={{ "--field-delay": "160ms" } as React.CSSProperties}>
             <DateTimeFields
               label="Start Time"
               value={startedAt}

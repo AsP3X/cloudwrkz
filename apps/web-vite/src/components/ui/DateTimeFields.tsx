@@ -161,8 +161,8 @@ export function DateTimeFields({
       >
         {label}
       </label>
-      <div className="inline-flex w-fit px-3 py-2.5 rounded-xl border border-neutral-200/80 dark:border-neutral-700/70 bg-gradient-to-b from-white to-neutral-50/80 dark:from-neutral-900 dark:to-neutral-900/80 text-neutral-900 dark:text-neutral-100 items-center gap-1.5 shadow-soft hover:shadow-soft-md focus-within:border-primary-500/70 dark:focus-within:border-primary-400/70 focus-within:shadow-[0_0_0_3px_rgba(59,130,246,0.15)] transition-all duration-200">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mr-1">
+      <div className="inline-flex w-fit px-2.5 py-2 rounded-xl border border-neutral-200/80 dark:border-neutral-700/70 bg-gradient-to-b from-white to-neutral-50/80 dark:from-neutral-900 dark:to-neutral-900/80 text-neutral-900 dark:text-neutral-100 items-center gap-1 shadow-soft hover:shadow-soft-md focus-within:border-primary-500/70 dark:focus-within:border-primary-400/70 focus-within:shadow-[0_0_0_3px_rgba(59,130,246,0.15)] transition-all duration-200">
+        <span className="hidden sm:inline text-[10px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mr-1">
           Date
         </span>
         <input
@@ -213,10 +213,10 @@ export function DateTimeFields({
           placeholder="JJJJ"
           pattern="\\d{4}"
           onKeyDown={handleYearKeyDown}
-          className="w-12 bg-transparent text-center text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none"
+          className="w-10 bg-transparent text-center text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none"
         />
-        <span className="mx-1 h-5 w-px bg-neutral-300 dark:bg-neutral-600" />
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 ml-0.5 mr-0.5">
+        <span className="mx-0.5 h-5 w-px bg-neutral-300 dark:bg-neutral-600" />
+        <span className="hidden sm:inline text-[10px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 ml-0.5 mr-0.5">
           Time
         </span>
         <input
