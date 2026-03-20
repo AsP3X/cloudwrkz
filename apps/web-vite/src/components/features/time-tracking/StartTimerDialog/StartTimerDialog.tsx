@@ -63,6 +63,12 @@ const to24Hour = (hour12: number, meridiem: "AM" | "PM"): number => {
   return hour12 === 12 ? 12 : hour12 + 12;
 };
 
+/** Strip time for stable date when applying clock selection (matches iOS date+time flow). */
+const startOfDay = (date: Date): Date => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+/** Every 5 minutes we show a larger tick + numeric label; other minutes use a small dot. */
+const MINUTE_LABEL_VALUES = Array.from({ length: 12 }, (_, i) => i * 5);
+
 interface StartTimerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -71,6 +77,8 @@ interface StartTimerDialogProps {
 
 export function StartTimerDialog({ open, onOpenChange, onCreated }: StartTimerDialogProps) {
   const pickerTriggerRef = React.useRef<HTMLButtonElement | null>(null);
+  const clockDialRef = React.useRef<HTMLDivElement | null>(null);
+  const activePointerIdRef = React.useRef<number | null>(null);
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [name, setName] = React.useState("");
@@ -174,6 +182,55 @@ export function StartTimerDialog({ open, onOpenChange, onCreated }: StartTimerDi
   const handleRemoveTag = (tagToRemove: string) => {
     setTags(tags.filter((tag) => tag !== tagToRemove));
   };
+
+  const draftDateTimeRef = React.useRef(draftDateTime);
+  const clockHourRef = React.useRef(clockHour);
+  const clockMeridiemRef = React.useRef(clockMeridiem);
+  const timeDialModeRef = React.useRef(timeDialMode);
+  const clockMinuteRef = React.useRef(clockMinute);
+  draftDateTimeRef.current = draftDateTime;
+  clockHourRef.current = clockHour;
+  clockMeridiemRef.current = clockMeridiem;
+  timeDialModeRef.current = timeDialMode;
+  clockMinuteRef.current = clockMinute;
+
+  const commitTimeSelection = React.useCallback((minute: number) => {
+    const next = withTime(
+      startOfDay(draftDateTimeRef.current),
+      to24Hour(clockHourRef.current, clockMeridiemRef.current),
+      minute
+    );
+    setStartedAt(next);
+    setStartedAtInput(formatEuropeanDateTime(next));
+    setServerError(null);
+    setIsDateTimePickerOpen(false);
+  }, []);
+
+  const updateDialFromPointer = React.useCallback((clientX: number, clientY: number) => {
+    if (!clockDialRef.current) return;
+    const rect = clockDialRef.current.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const dx = clientX - centerX;
+    const dy = clientY - centerY;
+    const dist = Math.hypot(dx, dy);
+    const minRadius = Math.min(rect.width, rect.height) * 0.08;
+    if (dist < minRadius) return;
+
+    // Convert to clockwise angle from 12 o'clock.
+    let angle = Math.atan2(dy, dx) + Math.PI / 2;
+    if (angle < 0) angle += Math.PI * 2;
+
+    if (timeDialModeRef.current === "hour") {
+      const hourIndex = Math.round(angle / (Math.PI * 2 / 12)) % 12;
+      const hourValue = hourIndex === 0 ? 12 : hourIndex;
+      setClockHour(hourValue);
+      return;
+    }
+
+    const minuteValue = Math.round(angle / (Math.PI * 2 / 60)) % 60;
+    setClockMinute(minuteValue);
+  }, []);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -351,47 +408,22 @@ export function StartTimerDialog({ open, onOpenChange, onCreated }: StartTimerDi
                 </div>
                   </div>
                   <div
-                    className={`space-y-4 transition-all duration-300 ease-out ${
+                    className={`space-y-3 transition-all duration-300 ease-out ${
                       pickerStep === "time"
                         ? "translate-x-0 opacity-100"
                         : "translate-x-6 opacity-0 pointer-events-none absolute inset-0"
                     }`}
                   >
-                    <div className="flex items-center justify-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setTimeDialMode("hour")}
-                        className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${
-                          timeDialMode === "hour"
-                            ? "bg-primary-600 text-white"
-                            : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300"
-                        }`}
-                      >
-                        Hour
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setTimeDialMode("minute")}
-                        className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${
-                          timeDialMode === "minute"
-                            ? "bg-primary-600 text-white"
-                            : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300"
-                        }`}
-                      >
-                        Minute
-                      </button>
-                    </div>
-
-                    <div className="flex items-center justify-center gap-2">
+                    <div className="flex items-center justify-center gap-2 rounded-full bg-neutral-100/90 dark:bg-neutral-800/90 p-1 border border-neutral-200/80 dark:border-neutral-700/80">
                       {(["AM", "PM"] as const).map((meridiem) => (
                         <button
                           key={meridiem}
                           type="button"
                           onClick={() => setClockMeridiem(meridiem)}
-                          className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold ${
+                          className={`flex-1 max-w-[88px] py-1.5 rounded-full text-xs font-semibold transition ${
                             clockMeridiem === meridiem
-                              ? "bg-primary-600 text-white"
-                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300"
+                              ? "bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 shadow-sm"
+                              : "text-neutral-600 dark:text-neutral-400"
                           }`}
                         >
                           {meridiem}
@@ -399,59 +431,192 @@ export function StartTimerDialog({ open, onOpenChange, onCreated }: StartTimerDi
                       ))}
                     </div>
 
-                    <div className="mx-auto relative w-52 h-52 rounded-full bg-gradient-to-b from-neutral-50 to-neutral-100 dark:from-neutral-800 dark:to-neutral-900 border border-neutral-200 dark:border-neutral-700 shadow-inner">
-                      {(timeDialMode === "hour"
-                        ? Array.from({ length: 12 }, (_, i) => i + 1).map((value) => ({
-                            label: String(value),
-                            value,
-                          }))
-                        : Array.from({ length: 12 }, (_, i) => i * 5).map((value) => ({
-                            label: String(value).padStart(2, "0"),
-                            value,
-                          }))
-                      ).map((tick, idx) => {
-                        const angle = (idx / 12) * Math.PI * 2 - Math.PI / 2;
-                        const x = 50 + Math.cos(angle) * 40;
-                        const y = 50 + Math.sin(angle) * 40;
-                        const selected =
-                          timeDialMode === "hour" ? clockHour === tick.value : clockMinute === tick.value;
+                    <p className="text-center text-[11px] font-medium text-neutral-500 dark:text-neutral-400">
+                      {timeDialMode === "hour"
+                        ? "Drag or tap the dial to choose hour"
+                        : "Drag the dial for exact minutes, release to apply"}
+                    </p>
+
+                    <div
+                      ref={clockDialRef}
+                      className="mx-auto relative w-52 h-52 rounded-full bg-gradient-to-b from-neutral-100 to-neutral-200/90 dark:from-neutral-700 dark:to-neutral-800 border border-neutral-300/80 dark:border-neutral-600 shadow-[inset_0_2px_8px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_2px_12px_rgba(0,0,0,0.25)]"
+                    >
+                      {/* Analog hand — iOS-style pointer from center */}
+                      {(() => {
+                        /* Hour dots at idx*30° from top; minutes use 6° per minute. */
+                        const handDeg =
+                          timeDialMode === "hour"
+                            ? (clockHour - 1) * 30
+                            : clockMinute * 6;
                         return (
-                          <button
-                            key={`${timeDialMode}-${tick.value}`}
-                            type="button"
-                            onClick={() => {
-                              if (timeDialMode === "hour") {
-                                setClockHour(tick.value);
-                                setTimeDialMode("minute");
-                              } else {
-                                setClockMinute(tick.value);
-                                const next = withTime(
-                                  draftDateTime,
-                                  to24Hour(clockHour, clockMeridiem),
-                                  tick.value
-                                );
-                                setStartedAt(next);
-                                setStartedAtInput(formatEuropeanDateTime(next));
-                                setServerError(null);
-                                setIsDateTimePickerOpen(false);
-                              }
+                          <div
+                            className="absolute left-1/2 top-1/2 z-[16] w-1 h-[38%] -mt-[38%] rounded-full bg-primary-600 dark:bg-primary-500 shadow-sm origin-bottom pointer-events-none transition-transform duration-200 ease-out"
+                            style={{
+                              transform: `translateX(-50%) rotate(${handDeg}deg)`,
                             }}
-                            className={`absolute w-8 h-8 -translate-x-1/2 -translate-y-1/2 rounded-full text-[11px] font-semibold transition ${
-                              selected
-                                ? "bg-primary-600 text-white shadow-lg"
-                                : "bg-white dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 hover:bg-primary-50 dark:hover:bg-neutral-600"
-                            }`}
-                            style={{ left: `${x}%`, top: `${y}%` }}
-                          >
-                            {tick.label}
-                          </button>
+                          />
                         );
-                      })}
-                      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-3 py-2 rounded-xl bg-white/90 dark:bg-neutral-800/90 border border-neutral-200 dark:border-neutral-600 shadow">
-                        <span className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
-                          {String(clockHour).padStart(2, "0")}:{String(clockMinute).padStart(2, "0")} {clockMeridiem}
-                        </span>
-                      </div>
+                      })()}
+                      <div className="absolute left-1/2 top-1/2 z-[26] h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary-600 dark:bg-primary-500 border-2 border-white dark:border-neutral-900 shadow pointer-events-none" />
+
+                      {/* Minute mode: 60 accurate tick positions (small dots + 5‑min majors + labels). */}
+                      {timeDialMode === "minute" &&
+                        Array.from({ length: 60 }, (_, m) => {
+                          const angle = (m / 60) * Math.PI * 2 - Math.PI / 2;
+                          const rPct = 42.5;
+                          const x = 50 + Math.cos(angle) * rPct;
+                          const y = 50 + Math.sin(angle) * rPct;
+                          const isMajor = m % 5 === 0;
+                          const isSelected = clockMinute === m;
+                          return (
+                            <span
+                              key={`min-dot-${m}`}
+                              aria-hidden
+                              className={`absolute z-[10] -translate-x-1/2 -translate-y-1/2 rounded-full pointer-events-none transition-colors duration-150 ${
+                                isMajor
+                                  ? isSelected
+                                    ? "h-2 w-2 bg-primary-600 dark:bg-primary-400 ring-2 ring-primary-300/60 dark:ring-primary-600/50"
+                                    : "h-2 w-2 bg-neutral-600 dark:bg-neutral-300"
+                                  : isSelected
+                                    ? "h-1.5 w-1.5 bg-primary-500 dark:bg-primary-400"
+                                    : "h-[2.5px] w-[2.5px] min-h-[2.5px] min-w-[2.5px] bg-neutral-400/95 dark:bg-neutral-500/95"
+                              }`}
+                              style={{ left: `${x}%`, top: `${y}%` }}
+                            />
+                          );
+                        })}
+
+                      {timeDialMode === "minute" &&
+                        MINUTE_LABEL_VALUES.map((value) => {
+                          const angle = (value / 60) * Math.PI * 2 - Math.PI / 2;
+                          const rLabel = 30;
+                          const x = 50 + Math.cos(angle) * rLabel;
+                          const y = 50 + Math.sin(angle) * rLabel;
+                          const isSelected = clockMinute === value;
+                          return (
+                            <span
+                              key={`min-lbl-${value}`}
+                              aria-hidden
+                              className={`absolute z-[12] flex h-5 min-w-[1.25rem] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded text-[9px] font-bold tabular-nums pointer-events-none select-none transition-colors duration-150 ${
+                                isSelected
+                                  ? "text-primary-700 dark:text-primary-300"
+                                  : "text-neutral-500 dark:text-neutral-400"
+                              }`}
+                              style={{ left: `${x}%`, top: `${y}%` }}
+                            >
+                              {String(value).padStart(2, "0")}
+                            </span>
+                          );
+                        })}
+
+                      {timeDialMode === "minute" && (
+                        <div
+                          className="pointer-events-none absolute left-1/2 top-[20%] z-[25] w-[88%] -translate-x-1/2 text-center"
+                          aria-live="polite"
+                        >
+                          <div className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                            {clockMeridiem}
+                          </div>
+                          <div className="text-xl font-bold tabular-nums leading-tight text-neutral-900 dark:text-neutral-50">
+                            {clockHour}
+                            <span className="mx-0.5 text-neutral-400 dark:text-neutral-500 font-semibold">:</span>
+                            {String(clockMinute).padStart(2, "0")}
+                          </div>
+                          <div className="mt-0.5 text-[9px] font-medium text-neutral-500 dark:text-neutral-400">
+                            Precise to the minute — drag the ring
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Hour labels — visual only; drag layer on top (z-40). */}
+                      {timeDialMode === "hour" &&
+                        Array.from({ length: 12 }, (_, i) => i + 1).map((value, idx) => {
+                          const angle = (idx / 12) * Math.PI * 2 - Math.PI / 2;
+                          const x = 50 + Math.cos(angle) * 40;
+                          const y = 50 + Math.sin(angle) * 40;
+                          const selected = clockHour === value;
+                          return (
+                            <span
+                              key={`hour-${value}`}
+                              aria-hidden
+                              className={`absolute z-[15] flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-sm font-semibold pointer-events-none select-none transition-all duration-150 ${
+                                selected
+                                  ? "bg-primary-600 text-white shadow-md scale-110"
+                                  : "text-neutral-800 dark:text-neutral-100"
+                              }`}
+                              style={{ left: `${x}%`, top: `${y}%` }}
+                            >
+                              {value}
+                            </span>
+                          );
+                        })}
+
+                      <div
+                        className="absolute inset-0 z-[40] rounded-full touch-none cursor-grab active:cursor-grabbing"
+                        style={{ touchAction: "none" }}
+                        onPointerDown={(e) => {
+                          if (e.button !== 0 && e.pointerType === "mouse") return;
+                          activePointerIdRef.current = e.pointerId;
+                          try {
+                            e.currentTarget.setPointerCapture(e.pointerId);
+                          } catch {
+                            /* ignore */
+                          }
+                          updateDialFromPointer(e.clientX, e.clientY);
+                        }}
+                        onPointerMove={(e) => {
+                          if (activePointerIdRef.current !== e.pointerId) return;
+                          updateDialFromPointer(e.clientX, e.clientY);
+                        }}
+                        onPointerUp={(e) => {
+                          if (activePointerIdRef.current !== e.pointerId) return;
+                          try {
+                            e.currentTarget.releasePointerCapture(e.pointerId);
+                          } catch {
+                            /* ignore */
+                          }
+                          activePointerIdRef.current = null;
+                          updateDialFromPointer(e.clientX, e.clientY);
+                          if (timeDialModeRef.current === "hour") {
+                            setTimeDialMode("minute");
+                            return;
+                          }
+                          const rect = clockDialRef.current?.getBoundingClientRect();
+                          if (!rect) return;
+                          const dx = e.clientX - (rect.left + rect.width / 2);
+                          const dy = e.clientY - (rect.top + rect.height / 2);
+                          const dist = Math.hypot(dx, dy);
+                          const minRadius = Math.min(rect.width, rect.height) * 0.08;
+                          let minuteValue = clockMinuteRef.current;
+                          if (dist >= minRadius) {
+                            let angle = Math.atan2(dy, dx) + Math.PI / 2;
+                            if (angle < 0) angle += Math.PI * 2;
+                            minuteValue = Math.round(angle / (Math.PI * 2 / 60)) % 60;
+                          }
+                          commitTimeSelection(minuteValue);
+                        }}
+                        onPointerCancel={(e) => {
+                          if (activePointerIdRef.current !== e.pointerId) return;
+                          try {
+                            e.currentTarget.releasePointerCapture(e.pointerId);
+                          } catch {
+                            /* ignore */
+                          }
+                          activePointerIdRef.current = null;
+                        }}
+                      />
+                    </div>
+
+                    <div className="flex justify-center">
+                      {timeDialMode === "minute" ? (
+                        <button
+                          type="button"
+                          className="text-xs font-semibold text-primary-600 dark:text-primary-400"
+                          onClick={() => setTimeDialMode("hour")}
+                        >
+                          Change hour
+                        </button>
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -480,6 +645,7 @@ export function StartTimerDialog({ open, onOpenChange, onCreated }: StartTimerDi
                         setClockHour(to12Hour(next.getHours()));
                         setClockMinute(next.getMinutes());
                         setClockMeridiem(next.getHours() >= 12 ? "PM" : "AM");
+                        setTimeDialMode("hour");
                       }}
                       className="px-2.5 py-1 text-[11px] font-semibold rounded-full border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                     >
