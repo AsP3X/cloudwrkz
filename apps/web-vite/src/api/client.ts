@@ -45,6 +45,7 @@ async function requestWithBase<T>(
   };
 
   const token = localStorage.getItem("auth_token");
+  const hadAuthToken = Boolean(token);
   if (token) {
     (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
   }
@@ -82,7 +83,10 @@ async function requestWithBase<T>(
     });
   }
 
-  if (response.status === 401) {
+  // Only invalidate local session when the failing request was sent with a token.
+  // This prevents stale unauthenticated background calls (e.g. /me during login)
+  // from clearing a freshly stored token due to race timing.
+  if (response.status === 401 && hadAuthToken) {
     localStorage.removeItem("auth_token");
     window.dispatchEvent(new CustomEvent("auth:unauthorized"));
   }

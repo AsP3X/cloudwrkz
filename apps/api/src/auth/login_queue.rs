@@ -141,6 +141,7 @@ pub async fn attempt_login(
     let user_name: Option<String> = user.get("name");
     let user_password: String = user.get("password");
     let status: String = user.get("status");
+    let email_verified: bool = user.get("email_verified");
 
     if status == "DELETED" {
         audit::write_audit_log(
@@ -182,6 +183,30 @@ pub async fn attempt_login(
         );
         return Err(LoginAttemptError::Final(AppError::unauthorized(
             "Invalid email or password",
+        )));
+    }
+
+    // Keep login/session behavior consistent with AuthUser extractor used by /me:
+    // only ACTIVE + verified accounts can establish a usable session.
+    if status != "ACTIVE" || !email_verified {
+        audit::write_audit_log(
+            pool,
+            WriteAuditParams {
+                user_id: Some(user_id.clone()),
+                action: "auth.login.attempt".into(),
+                resource_type: None,
+                resource_id: None,
+                context: Some(serde_json::json!({
+                    "outcome": "inactive_or_unverified",
+                    "status": status,
+                    "email_verified": email_verified,
+                })),
+                ip_address: ip.clone(),
+                user_agent: user_agent.clone(),
+            },
+        );
+        return Err(LoginAttemptError::Final(AppError::unauthorized(
+            "Account not active. Please complete verification or contact support.",
         )));
     }
 

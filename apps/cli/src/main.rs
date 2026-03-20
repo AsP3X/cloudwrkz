@@ -7,6 +7,7 @@
 //!   cloudwrkz-cli db migrate      Run pending SQLx migrations
 //!   cloudwrkz-cli db status       Check database connection
 //!   cloudwrkz-cli db stats        Show table counts
+//!   cloudwrkz-cli db reset        Drop + recreate schema and run migrations (destructive)
 //!   cloudwrkz-cli admin create-admin <email> <password> [name]  Create first admin (DB only, no API)
 //!   cloudwrkz-cli diagnostics-token generate   Store hashed token in DB; print plaintext once (for GET …/health/detailed)
 
@@ -24,7 +25,7 @@ use argon2::password_hash::{
 use argon2::Argon2;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use inquire::{Password, Text};
+use inquire::{Confirm, Password, Text};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 
@@ -176,6 +177,15 @@ enum DbCommand {
     Status,
     /// Show table row counts
     Stats,
+    /// Drop and recreate public schema, then run migrations
+    Reset {
+        /// Directory containing migrations (default: apps/api/migrations from cwd)
+        #[arg(long, env = "MIGRATIONS_DIR")]
+        migrations_dir: Option<PathBuf>,
+        /// Skip confirmation prompt
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 fn migrations_dir(given: Option<PathBuf>) -> PathBuf {
@@ -271,6 +281,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 }
                 DbCommand::Status => run_status(&database_url).await?,
                 DbCommand::Stats => run_stats(&database_url).await?,
+                DbCommand::Reset {
+                    migrations_dir: dir,
+                    yes,
+                } => {
+                    let dir = migrations_dir(dir);
+                    run_reset(&database_url, &dir, yes).await?;
+                }
             }
         }
         Commands::Admin { subcommand } => {
@@ -554,6 +571,7 @@ enum AppScreen {
     Help(String),
     UserDetailsJson(String),
     PermissionTable { _user_id: String, email: String, permissions: Vec<PermissionOption> },
+    ConfirmDbReset,
 }
 
 /// Main menu: right-panel action list for each sidebar row (must stay in sync with `AppScreen::Main`).
@@ -576,6 +594,7 @@ fn main_section_submenu(section: usize, has_token: bool) -> Vec<String> {
             "Migrate".to_string(),
             "Seed".to_string(),
             "Stats".to_string(),
+            "Reset (dangerous)".to_string(),
         ],
         5 => vec!["View help (press Enter)".to_string()],
         6 => vec!["Exit CLI".to_string()],
@@ -643,6 +662,7 @@ fn panel_content(screen: &AppScreen, sidebar_idx: usize, has_token: bool) -> Vec
             _ => vec![
                 "View full details".to_string(),
                 "Change display name".to_string(),
+                "Verify email".to_string(),
                 "Set status".to_string(),
                 "Set role".to_string(),
                 "Manage permissions".to_string(),
@@ -848,6 +868,16 @@ fn panel_content(screen: &AppScreen, sidebar_idx: usize, has_token: bool) -> Vec
                 rows
             }
         }
+        AppScreen::ConfirmDbReset => {
+            if sidebar_idx == 0 {
+                main_section_submenu(4, has_token)
+            } else {
+                vec![
+                    "Yes, reset database".to_string(),
+                    "No, cancel".to_string(),
+                ]
+            }
+        }
     }
 }
 
@@ -990,6 +1020,23 @@ fn build_ui(
             sidebar.push(format!("Permissions — {}", email));
             let content = panel_content(screen, sidebar_index, has_token);
             (" Direct permissions ".to_string(), sidebar, format!(" {} ", permissions.len()), content, None)
+        }
+        AppScreen::ConfirmDbReset => {
+            let mut sidebar = sidebar_parent_plus_submenu(4, has_token);
+            sidebar.push("Reset database".to_string());
+            let content = panel_content(screen, sidebar_index, has_token);
+            let header = vec![
+                "WARNING: This will delete all data in schema public.".to_string(),
+                "The schema will be recreated and migrations re-applied.".to_string(),
+                "This action cannot be undone.".to_string(),
+            ];
+            (
+                " Confirm reset ".to_string(),
+                sidebar,
+                " Danger zone ".to_string(),
+                content,
+                Some((header, "Database reset".to_string())),
+            )
         }
     }
 }
@@ -1261,10 +1308,15 @@ async fn dispatch_tui_action(
                     stack.push(AppScreen::SessionsList(res.sessions));
                 }
                 4 => {
-                    let dir = migrations_dir(None);
-                    let out = run_db_action_capture(database_url, content_idx, &dir).await?;
-                    tui_state.sidebar_index = 1 + content_idx;
-                    stack.push(AppScreen::DbOutput(out));
+                    if content_idx == 4 {
+                        tui_state.sidebar_index = 1;
+                        stack.push(AppScreen::ConfirmDbReset);
+                    } else {
+                        let dir = migrations_dir(None);
+                        let out = run_db_action_capture(database_url, content_idx, &dir).await?;
+                        tui_state.sidebar_index = 1 + content_idx;
+                        stack.push(AppScreen::DbOutput(out));
+                    }
                 }
                 5 => {
                     let text = help_text();
@@ -1391,22 +1443,25 @@ async fn dispatch_tui_action(
                     }
                 }
                 2 => {
-                    tui_state.sidebar_index = 1;
-                    stack.push(AppScreen::StatusChoice { user_id, email });
+                    let _ = run_verify_email(database_url, &user_id).await;
                 }
                 3 => {
                     tui_state.sidebar_index = 1;
-                    stack.push(AppScreen::RoleChoice { user_id, email });
+                    stack.push(AppScreen::StatusChoice { user_id, email });
                 }
                 4 => {
                     tui_state.sidebar_index = 1;
-                    stack.push(AppScreen::Permissions { user_id, email, status });
+                    stack.push(AppScreen::RoleChoice { user_id, email });
                 }
                 5 => {
                     tui_state.sidebar_index = 1;
-                    stack.push(AppScreen::ConfirmDelete { user_id, email });
+                    stack.push(AppScreen::Permissions { user_id, email, status });
                 }
                 6 => {
+                    tui_state.sidebar_index = 1;
+                    stack.push(AppScreen::ConfirmDelete { user_id, email });
+                }
+                7 => {
                     stack.pop();
                 }
                 _ => {}
@@ -1659,6 +1714,17 @@ async fn dispatch_tui_action(
                 stack.pop();
             }
         }
+        AppScreen::ConfirmDbReset => {
+            if content_idx == 0 {
+                let dir = migrations_dir(None);
+                let out = run_reset_string(database_url, &dir).await?;
+                stack.pop();
+                tui_state.sidebar_index = 5;
+                stack.push(AppScreen::DbOutput(out));
+            } else {
+                stack.pop();
+            }
+        }
     }
 
     Ok(DispatchResult::Continue)
@@ -1723,11 +1789,19 @@ async fn run_migrate_string(database_url: &str, migrations_dir: &PathBuf) -> Res
     Ok("Migrations complete.".to_string())
 }
 
+async fn run_reset_string(
+    database_url: &str,
+    migrations_dir: &PathBuf,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    run_reset(database_url, migrations_dir, true).await?;
+    Ok("Database reset complete.".to_string())
+}
+
 fn help_text() -> String {
     let w = terminal_cols();
     let line = "─".repeat(w);
     format!(
-        "{} CLI Help — Command-line interface documentation\n\n{}\nAvailable command categories:\n\n  Users   User management (list, show, edit) — requires API + CLOUDWRKZ_TOKEN\n  Groups  Group management (list) — requires API + token\n  Modules Module management (list) — requires API + token\n  Sessions Session management (list) — requires API + token\n  Database Database maintenance (status, migrate, seed, stats) — local DB\n\n{}\nManagement (API):\n\n  Set CLOUDWRKZ_API_URL (default: http://localhost:8080/api/v1)\n  Get a token: cloudwrkz-cli login then set CLOUDWRKZ_TOKEN\n\n{}\nExamples (non-interactive):\n\n  cloudwrkz-cli login   Log in and print token\n  cloudwrkz-cli db status   Check DB connection\n  cloudwrkz-cli db migrate   Run migrations\n  cloudwrkz-cli db seed   Seed modules & permissions\n  cloudwrkz-cli db stats   Table row counts\n\n{}\nInteractive: Run cloudwrkz-cli with no arguments for the menu-driven interface.",
+        "{} CLI Help — Command-line interface documentation\n\n{}\nAvailable command categories:\n\n  Users   User management (list, show, edit) — requires API + CLOUDWRKZ_TOKEN\n  Groups  Group management (list) — requires API + token\n  Modules Module management (list) — requires API + token\n  Sessions Session management (list) — requires API + token\n  Database Database maintenance (status, migrate, seed, stats, reset) — local DB\n\n{}\nManagement (API):\n\n  Set CLOUDWRKZ_API_URL (default: http://localhost:8080/api/v1)\n  Get a token: cloudwrkz-cli login then set CLOUDWRKZ_TOKEN\n\n{}\nExamples (non-interactive):\n\n  cloudwrkz-cli login   Log in and print token\n  cloudwrkz-cli db status   Check DB connection\n  cloudwrkz-cli db migrate   Run migrations\n  cloudwrkz-cli db seed   Seed modules & permissions\n  cloudwrkz-cli db stats   Table row counts\n  cloudwrkz-cli db reset   Reset schema + migrations (destructive)\n\n{}\nInteractive: Run cloudwrkz-cli with no arguments for the menu-driven interface.",
         APP_NAME, line, line, line, line
     )
 }
@@ -1844,6 +1918,66 @@ async fn run_stats(database_url: &str) -> Result<(), Box<dyn std::error::Error +
     println!("Time entries: {}", time_entries);
     println!("Links:        {}", links);
 
+    pool.close().await;
+    Ok(())
+}
+
+async fn run_reset(
+    database_url: &str,
+    migrations_dir: &PathBuf,
+    skip_confirm: bool,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if !skip_confirm {
+        let confirmed = Confirm::new(
+            "WARNING: Reset database will delete all data in schema public. Continue?",
+        )
+        .with_default(false)
+        .prompt()
+        .unwrap_or(false);
+        if !confirmed {
+            println!("Database reset cancelled.");
+            return Ok(());
+        }
+    }
+
+    if !migrations_dir.exists() {
+        return Err(format!(
+            "Migrations directory not found: {}. Set MIGRATIONS_DIR or run from repo root.",
+            migrations_dir.display()
+        )
+        .into());
+    }
+
+    println!("Resetting database schema...");
+    let pool = pool(database_url).await?;
+    sqlx::query("DROP SCHEMA IF EXISTS public CASCADE;")
+        .execute(&pool)
+        .await?;
+    sqlx::query("CREATE SCHEMA public;").execute(&pool).await?;
+    sqlx::query("GRANT ALL ON SCHEMA public TO postgres;")
+        .execute(&pool)
+        .await
+        .ok();
+    sqlx::query("GRANT ALL ON SCHEMA public TO public;")
+        .execute(&pool)
+        .await
+        .ok();
+    pool.close().await;
+
+    run_migrate(database_url, migrations_dir).await?;
+    println!("Database reset complete.");
+    Ok(())
+}
+
+async fn run_verify_email(
+    database_url: &str,
+    user_id: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let pool = pool(database_url).await?;
+    sqlx::query("UPDATE users SET email_verified = true, updated_at = NOW() WHERE id = $1")
+        .bind(user_id)
+        .execute(&pool)
+        .await?;
     pool.close().await;
     Ok(())
 }
