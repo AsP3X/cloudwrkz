@@ -35,7 +35,7 @@ pub fn router() -> Router<AppState> {
         .route("/time-tracking/{id}/breaks", post(add_break))
         .route(
             "/time-tracking/{id}/breaks/{break_id}",
-            axum::routing::delete(delete_break),
+            axum::routing::patch(update_break).delete(delete_break),
         )
 }
 
@@ -301,6 +301,12 @@ async fn create_entry(
     Ok((StatusCode::CREATED, Json(serde_json::json!({ "id": id }))))
 }
 
+fn parse_iso_datetime_utc_naive(s: &str) -> Option<chrono::NaiveDateTime> {
+    chrono::DateTime::parse_from_rfc3339(s.trim())
+        .ok()
+        .map(|dt| dt.naive_utc())
+}
+
 async fn add_manual_entry(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -346,7 +352,7 @@ async fn update_entry(
     Path(id): Path<String>,
     Json(body): Json<UpdateTimeEntryRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    check_owned(&state.pool, &id, &user.id).await?;
+    let existing = fetch_owned(&state.pool, &id, &user.id).await?;
 
     if let Some(ref name) = body.name {
         sqlx::query("UPDATE time_entries SET name = $1, updated_at = NOW() WHERE id = $2")
@@ -368,6 +374,64 @@ async fn update_entry(
         sqlx::query("UPDATE time_entries SET billable = $1, updated_at = NOW() WHERE id = $2")
             .bind(billable).bind(&id).execute(&state.pool).await?;
     }
+
+    match body.timezone.as_ref() {
+        Some(value) if value.is_null() => {
+            sqlx::query("UPDATE time_entries SET timezone = NULL, updated_at = NOW() WHERE id = $1")
+                .bind(&id).execute(&state.pool).await?;
+        }
+        Some(value) => {
+            if let Some(tz_str) = value.as_str() {
+                sqlx::query("UPDATE time_entries SET timezone = $1, updated_at = NOW() WHERE id = $2")
+                    .bind(tz_str).bind(&id).execute(&state.pool).await?;
+            }
+        }
+        None => {}
+    }
+
+    let started_at_update = match body.started_at.as_deref() {
+        Some(raw) => Some(parse_iso_datetime_utc_naive(raw).ok_or_else(|| {
+            AppError::bad_request("Invalid started_at timestamp (expected ISO-8601 / RFC3339)")
+        })?),
+        None => None,
+    };
+
+    let stopped_at_update: Option<Option<chrono::NaiveDateTime>> = match body.stopped_at.as_ref() {
+        None => None,
+        Some(value) if value.is_null() => Some(None),
+        Some(value) => {
+            let raw = value.as_str().ok_or_else(|| {
+                AppError::bad_request("Invalid stopped_at value (expected ISO-8601 string or null)")
+            })?;
+            let parsed = parse_iso_datetime_utc_naive(raw).ok_or_else(|| {
+                AppError::bad_request("Invalid stopped_at timestamp (expected ISO-8601 / RFC3339)")
+            })?;
+            Some(Some(parsed))
+        }
+    };
+
+    if started_at_update.is_some() || stopped_at_update.is_some() {
+        let final_started = started_at_update.unwrap_or(existing.started_at);
+        let final_stopped = stopped_at_update.unwrap_or(existing.stopped_at);
+        let recalculated_duration = final_stopped
+            .map(|stop| (stop - final_started).num_seconds())
+            .unwrap_or(existing.total_duration as i64);
+
+        if recalculated_duration < 0 {
+            return Err(AppError::bad_request("End time must be after start time"));
+        }
+
+        sqlx::query(
+            "UPDATE time_entries SET started_at = $1, stopped_at = $2, total_duration = $3, updated_at = NOW() WHERE id = $4",
+        )
+        .bind(final_started)
+        .bind(final_stopped)
+        .bind(recalculated_duration as i32)
+        .bind(&id)
+        .execute(&state.pool)
+        .await?;
+    }
+
     if let Some(ref archived) = body.archived_at {
         if archived.is_null() {
             sqlx::query("UPDATE time_entries SET archived_at = NULL, updated_at = NOW() WHERE id = $1")
@@ -482,6 +546,52 @@ async fn add_break(
     .execute(&state.pool).await?;
 
     Ok((StatusCode::CREATED, Json(serde_json::json!({ "id": break_id }))))
+}
+
+async fn update_break(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path((id, break_id)): Path<(String, String)>,
+    Json(body): Json<UpdateBreakRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    check_owned(&state.pool, &id, &user.id).await?;
+
+    if let Some(ref raw) = body.started_at {
+        let parsed = parse_iso_datetime_utc_naive(raw).ok_or_else(|| {
+            AppError::bad_request("Invalid started_at timestamp")
+        })?;
+        sqlx::query("UPDATE time_entry_breaks SET started_at = $1, updated_at = NOW() WHERE id = $2 AND time_entry_id = $3")
+            .bind(parsed).bind(&break_id).bind(&id).execute(&state.pool).await?;
+    }
+
+    match body.ended_at.as_ref() {
+        Some(value) if value.is_null() => {
+            sqlx::query("UPDATE time_entry_breaks SET ended_at = NULL, duration = 0, updated_at = NOW() WHERE id = $1 AND time_entry_id = $2")
+                .bind(&break_id).bind(&id).execute(&state.pool).await?;
+        }
+        Some(value) => {
+            let raw = value.as_str().ok_or_else(|| {
+                AppError::bad_request("Invalid ended_at value")
+            })?;
+            let parsed = parse_iso_datetime_utc_naive(raw).ok_or_else(|| {
+                AppError::bad_request("Invalid ended_at timestamp")
+            })?;
+            let row = sqlx::query("SELECT started_at FROM time_entry_breaks WHERE id = $1 AND time_entry_id = $2")
+                .bind(&break_id).bind(&id).fetch_one(&state.pool).await?;
+            let started: chrono::NaiveDateTime = row.get("started_at");
+            let dur = (parsed - started).num_seconds() as i32;
+            sqlx::query("UPDATE time_entry_breaks SET ended_at = $1, duration = $2, updated_at = NOW() WHERE id = $3 AND time_entry_id = $4")
+                .bind(parsed).bind(dur).bind(&break_id).bind(&id).execute(&state.pool).await?;
+        }
+        None => {}
+    }
+
+    if let Some(ref desc) = body.description {
+        sqlx::query("UPDATE time_entry_breaks SET description = $1, updated_at = NOW() WHERE id = $2 AND time_entry_id = $3")
+            .bind(desc).bind(&break_id).bind(&id).execute(&state.pool).await?;
+    }
+
+    Ok(Json(serde_json::json!({ "success": true })))
 }
 
 async fn delete_break(

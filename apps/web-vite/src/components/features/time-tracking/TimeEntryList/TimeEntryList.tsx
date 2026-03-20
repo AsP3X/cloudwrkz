@@ -18,6 +18,7 @@ import { formatDateTimeInTimezone } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
 import type { TimeEntry, TimeEntryStatus } from "@/lib/types";
 import { OverviewContextMenu, type OverviewContextMenuItem } from "@/components/ui/OverviewContextMenu";
+import { EditTimeEntryDialog } from "../EditTimeEntryDialog";
 
 interface TimeEntryListProps {
   entries: TimeEntry[];
@@ -34,6 +35,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC", onRefresh }: Time
   const [error, setError] = React.useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false);
   const [entryToDelete, setEntryToDelete] = React.useState<TimeEntry | null>(null);
+  const [editingEntry, setEditingEntry] = React.useState<TimeEntry | null>(null);
   const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number; entry: TimeEntry } | null>(null);
   const selectAllRef = React.useRef<HTMLInputElement>(null);
 
@@ -176,7 +178,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC", onRefresh }: Time
           label: "Edit",
           onClick: () => {
             setContextMenu(null);
-            navigate(`/dashboard/time-tracking/${entry.id}`);
+            setEditingEntry(entry);
           },
           disabled: processing.has(entry.id) || isProcessing,
           separatorAbove: canPause(entry.status) || canResume(entry.status) || canStop(entry.status),
@@ -539,7 +541,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC", onRefresh }: Time
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    navigate(`/dashboard/time-tracking/${entry.id}`);
+                    setEditingEntry(entry);
                   }}
                   disabled={isProcessingEntry || isProcessing}
                   className="px-3 py-2 text-neutral-600 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 disabled:opacity-50"
@@ -813,7 +815,7 @@ export function TimeEntryList({ entries, userTimezone = "UTC", onRefresh }: Time
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          navigate(`/dashboard/time-tracking/${entry.id}`);
+                          setEditingEntry(entry);
                         }}
                         disabled={isProcessingEntry || isProcessing}
                         className="p-2 text-neutral-600 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 disabled:opacity-50"
@@ -906,6 +908,17 @@ export function TimeEntryList({ entries, userTimezone = "UTC", onRefresh }: Time
             </div>
           </div>
         </div>
+      )}
+      {editingEntry && (
+        <EditTimeEntryDialog
+          open={!!editingEntry}
+          onOpenChange={(open) => {
+            if (!open) setEditingEntry(null);
+          }}
+          entry={editingEntry}
+          userTimezone={userTimezone}
+          onUpdated={onRefresh}
+        />
       )}
     </div>
   );

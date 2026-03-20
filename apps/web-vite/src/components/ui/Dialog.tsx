@@ -42,7 +42,6 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
       [ref]
     );
 
-    // Handle escape key
     React.useEffect(() => {
       if (!open) return;
 
@@ -56,7 +55,6 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
       return () => document.removeEventListener("keydown", handleEscape);
     }, [open, onOpenChange]);
 
-    // Focus trap
     React.useEffect(() => {
       if (!open || !dialogRef.current) return;
 
@@ -90,7 +88,6 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
       return () => document.removeEventListener("keydown", handleKeyDown);
     }, [open]);
 
-    // Focus first focusable on open
     React.useEffect(() => {
       if (open && dialogRef.current) {
         const firstInput = dialogRef.current.querySelector(
@@ -115,7 +112,7 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
         {/* Backdrop */}
         <div
           role="presentation"
-          className="fixed inset-0 bg-black/50 animate-fade-in z-[40]"
+          className="fixed inset-0 bg-black/40 animate-dialog-backdrop z-[40]"
           onClick={() => onOpenChange?.(false)}
         />
 
@@ -132,10 +129,12 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
           <div
             ref={internalRef}
             className={cn(
-              "bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800",
-              "shadow-soft-xl",
+              "bg-white dark:bg-neutral-900",
+              "rounded-2xl",
+              "border border-neutral-200/80 dark:border-neutral-700/60",
+              "shadow-[0_25px_60px_-12px_rgba(0,0,0,0.15)] dark:shadow-[0_25px_60px_-12px_rgba(0,0,0,0.4)]",
               "w-full max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-hidden overflow-x-hidden",
-              "animate-slide-in relative",
+              "animate-dialog-panel relative",
               className
             )}
             onKeyDown={(e) => e.stopPropagation()}
@@ -147,46 +146,49 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
           >
             {/* Header */}
             {(title || description) && (
-              <div className="px-4 sm:px-6 py-4 flex items-center justify-between gap-4 border-b border-neutral-200 dark:border-neutral-800">
-                <div className="min-w-0 flex-1">
-                  {title && (
-                    <h2
-                      id="dialog-title"
-                      className="text-xl font-bold text-neutral-900 dark:text-neutral-100 break-words"
-                    >
-                      {title}
-                    </h2>
-                  )}
-                  {description && (
-                    <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1 break-words">
-                      {description}
-                    </p>
-                  )}
-                </div>
-                <button
-                  onClick={() => onOpenChange?.(false)}
-                  className="p-1.5 rounded-md text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-                  aria-label="Close dialog"
-                >
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
+              <div className="relative">
+                <div className="px-5 sm:px-7 py-5 flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    {title && (
+                      <h2
+                        id="dialog-title"
+                        className="text-lg font-semibold tracking-tight text-neutral-900 dark:text-neutral-50"
+                      >
+                        {title}
+                      </h2>
+                    )}
+                    {description && (
+                      <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">
+                        {description}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => onOpenChange?.(false)}
+                    className="group -mt-0.5 p-2 rounded-lg text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-all duration-200 active:scale-95"
+                    aria-label="Close dialog"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
+                    <svg
+                      className="w-4.5 h-4.5 transition-transform duration-200 group-hover:rotate-90"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2.5}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+                <div className="h-px bg-gradient-to-r from-primary-500/30 via-primary-400/10 to-transparent animate-accent-line" />
               </div>
             )}
 
             {/* Content */}
-            <div className="overflow-y-auto overflow-x-hidden max-h-[calc(90vh-120px)]">
+            <div className="overflow-y-auto overflow-x-hidden max-h-[calc(90vh-120px)] scrollbar-thin">
               {children}
             </div>
           </div>

@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { Input, type InputProps } from "@/components/ui/Input";
 import { searchApi } from "@/api/client";
 
@@ -63,6 +64,11 @@ export function LocationAutocompleteInput({
   const [isOpen, setIsOpen] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
   const [highlightedIndex, setHighlightedIndex] = React.useState<number | null>(null);
+  const [dropdownPosition, setDropdownPosition] = React.useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
 
   const containerRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -214,6 +220,29 @@ export function LocationAutocompleteInput({
     };
   }, []);
 
+  React.useEffect(() => {
+    if (!isOpen || !containerRef.current) return;
+
+    const updatePosition = () => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: rect.width,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [isOpen]);
+
   const showDropdown = isOpen && suggestions.length > 0;
 
   const renderHighlighted = (label: string) => {
@@ -247,10 +276,15 @@ export function LocationAutocompleteInput({
           Searching...
         </div>
       )}
-      {showDropdown && (
+      {showDropdown && dropdownPosition && createPortal(
         <ul
-          className="absolute z-50 mt-1 w-full max-h-60 overflow-auto rounded-xl border border-neutral-200/90 bg-white/95 shadow-xl backdrop-blur dark:border-neutral-700/80 dark:bg-neutral-900/95 p-1 flex flex-col items-start gap-1"
+          className="fixed z-[9999] max-h-60 overflow-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-soft-lg p-1"
           role="listbox"
+          style={{
+            top: dropdownPosition.top,
+            left: dropdownPosition.left,
+            width: dropdownPosition.width,
+          }}
         >
           {suggestions.map((suggestion, index) => {
             const isHistory = suggestion.source === "history";
@@ -260,7 +294,7 @@ export function LocationAutocompleteInput({
                 role="option"
                 aria-selected={highlightedIndex === index}
                 className={[
-                  "w-fit max-w-full px-3 py-2.5 text-sm cursor-pointer text-neutral-800 dark:text-neutral-100 rounded-lg transition-colors",
+                  "w-full px-3 py-2 text-sm cursor-pointer text-neutral-800 dark:text-neutral-100 rounded-md transition-colors",
                   highlightedIndex === index
                     ? "bg-primary-50 dark:bg-primary-900/40"
                     : "hover:bg-neutral-50 dark:hover:bg-neutral-800",
@@ -269,8 +303,8 @@ export function LocationAutocompleteInput({
                 onClick={() => handleSelect(suggestion)}
                 onMouseEnter={() => setHighlightedIndex(index)}
               >
-                <div className="flex items-start gap-2.5">
-                  <span className="mt-0.5 text-neutral-400 dark:text-neutral-500">
+                <div className="flex items-start gap-2">
+                  <span className="mt-0.5 text-neutral-400 dark:text-neutral-500 flex-shrink-0">
                     {isHistory ? (
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -282,9 +316,9 @@ export function LocationAutocompleteInput({
                       </svg>
                     )}
                   </span>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="truncate">{renderHighlighted(suggestion.label)}</div>
-                    <div className="mt-0.5 text-[11px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                    <div className="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mt-0.5">
                       {isHistory ? "Recent location" : "Map suggestion"}
                     </div>
                   </div>
@@ -292,7 +326,8 @@ export function LocationAutocompleteInput({
               </li>
             );
           })}
-        </ul>
+        </ul>,
+        document.body
       )}
     </div>
   );

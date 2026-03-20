@@ -72,7 +72,20 @@ pub struct UpdateTimeEntryRequest {
     pub tags: Option<Vec<String>>,
     pub location: Option<String>,
     pub billable: Option<bool>,
+    #[serde(default, alias = "startedAt")]
+    pub started_at: Option<String>,
+    #[serde(default, alias = "stoppedAt")]
+    pub stopped_at: Option<serde_json::Value>,
+    #[serde(default)]
+    pub timezone: Option<serde_json::Value>,
     pub archived_at: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateBreakRequest {
+    pub started_at: Option<String>,
+    pub ended_at: Option<serde_json::Value>,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

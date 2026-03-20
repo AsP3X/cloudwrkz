@@ -4,14 +4,24 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { api } from "@/api/client";
-import { toDatetimeLocalValue } from "@/lib/utils/date";
 import { LocationAutocompleteInput } from "@/components/ui/LocationAutocompleteInput";
 import { TagAutocompleteInput } from "@/components/ui/TagAutocompleteInput";
+import { DateTimeFields } from "@/components/ui/DateTimeFields";
 
 interface AddTimeEntryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated?: () => void;
+}
+
+function SectionHeader({ icon, label }: { icon: React.ReactNode; label: string }) {
+  return (
+    <div className="flex items-center gap-2.5 pb-1">
+      <span className="text-primary-500 dark:text-primary-400">{icon}</span>
+      <span className="text-xs font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">{label}</span>
+      <div className="flex-1 h-px bg-neutral-200/60 dark:bg-neutral-700/60" />
+    </div>
+  );
 }
 
 export function AddTimeEntryDialog({ open, onOpenChange, onCreated }: AddTimeEntryDialogProps) {
@@ -21,17 +31,18 @@ export function AddTimeEntryDialog({ open, onOpenChange, onCreated }: AddTimeEnt
   const [description, setDescription] = React.useState("");
   const [location, setLocation] = React.useState("");
   const [startedAt, setStartedAt] = React.useState<Date | null>(null);
-  const [hours, setHours] = React.useState(0);
-  const [minutes, setMinutes] = React.useState(0);
-  const [seconds, setSeconds] = React.useState(0);
+  const [stoppedAt, setStoppedAt] = React.useState<Date | null>(null);
   const [tags, setTags] = React.useState<string[]>([]);
   const [tagInput, setTagInput] = React.useState("");
 
   React.useEffect(() => {
-    if (open && !startedAt) {
-      setStartedAt(new Date());
+    if (open && !startedAt && !stoppedAt) {
+      const now = new Date();
+      const defaultEnd = new Date(now.getTime() + 60 * 60 * 1000);
+      setStartedAt(now);
+      setStoppedAt(defaultEnd);
     }
-  }, [open, startedAt]);
+  }, [open, startedAt, stoppedAt]);
 
   React.useEffect(() => {
     if (!open) {
@@ -39,9 +50,7 @@ export function AddTimeEntryDialog({ open, onOpenChange, onCreated }: AddTimeEnt
       setDescription("");
       setLocation("");
       setStartedAt(null);
-      setHours(0);
-      setMinutes(0);
-      setSeconds(0);
+      setStoppedAt(null);
       setTags([]);
       setTagInput("");
       setServerError(null);
@@ -66,9 +75,21 @@ export function AddTimeEntryDialog({ open, onOpenChange, onCreated }: AddTimeEnt
     setIsSubmitting(true);
 
     try {
-      const totalSeconds = hours * 3600 + minutes * 60 + seconds;
-      const start = startedAt || new Date();
-      const stoppedAt = new Date(start.getTime() + totalSeconds * 1000);
+      const start = startedAt;
+      const stop = stoppedAt;
+
+      if (!start || !stop) {
+        setServerError("Start and end date/time are required.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      const totalSeconds = Math.floor((stop.getTime() - start.getTime()) / 1000);
+      if (totalSeconds < 0) {
+        setServerError("End date/time must be after start date/time.");
+        setIsSubmitting(false);
+        return;
+      }
 
       await api.post("/time-tracking/add", {
         name: name.trim() || undefined,
@@ -77,7 +98,7 @@ export function AddTimeEntryDialog({ open, onOpenChange, onCreated }: AddTimeEnt
         location: location.trim() || undefined,
         total_duration: totalSeconds,
         started_at: start.toISOString(),
-        stopped_at: stoppedAt.toISOString(),
+        stopped_at: stop.toISOString(),
       });
       onOpenChange(false);
       onCreated?.();
@@ -93,150 +114,137 @@ export function AddTimeEntryDialog({ open, onOpenChange, onCreated }: AddTimeEnt
       open={open}
       onOpenChange={onOpenChange}
       title="Add Time Entry"
-      description="Manually add a time entry with specific duration"
+      description="Manually add a completed time entry"
     >
-      <form onSubmit={onSubmit} className="p-6 space-y-6">
+      <form onSubmit={onSubmit} className="px-5 sm:px-7 py-5 space-y-6">
         {serverError && (
-          <div className="p-4 rounded-lg bg-error-50 dark:bg-error-900/20 border border-error-200 dark:border-error-800">
-            <p className="text-sm text-error-600 dark:text-error-400">{serverError}</p>
+          <div className="flex items-start gap-3 p-4 rounded-xl bg-error-50 dark:bg-error-900/20 border border-error-200 dark:border-error-800 animate-error-shake">
+            <svg className="w-5 h-5 text-error-500 dark:text-error-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+            </svg>
+            <p className="text-sm text-error-700 dark:text-error-300">{serverError}</p>
           </div>
         )}
 
-        <Input
-          label="Name"
-          placeholder="Enter entry name (optional)"
-          helperText="Leave empty to auto-generate a timer number (e.g., #TMR-000001)"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-
-        <Textarea
-          label="Description"
-          placeholder="Optional description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-
-        <LocationAutocompleteInput
-          label="Location"
-          placeholder="Optional location/address"
-          value={location}
-          onChange={setLocation}
-        />
-
-        <div>
-          <span className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-            Duration
-          </span>
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label htmlFor="add-time-hours" className="block text-xs text-neutral-600 dark:text-neutral-400 mb-1">Hours</label>
-              <input
-                id="add-time-hours"
-                type="number"
-                min="0"
-                max="23"
-                value={hours}
-                onChange={(e) => setHours(parseInt(e.target.value, 10) || 0)}
-                className="w-full px-4 py-2 rounded-lg border-2 border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-              />
-            </div>
-            <div>
-              <label htmlFor="add-time-minutes" className="block text-xs text-neutral-600 dark:text-neutral-400 mb-1">Minutes</label>
-              <input
-                id="add-time-minutes"
-                type="number"
-                min="0"
-                max="59"
-                value={minutes}
-                onChange={(e) => setMinutes(parseInt(e.target.value, 10) || 0)}
-                className="w-full px-4 py-2 rounded-lg border-2 border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-              />
-            </div>
-            <div>
-              <label htmlFor="add-time-seconds" className="block text-xs text-neutral-600 dark:text-neutral-400 mb-1">Seconds</label>
-              <input
-                id="add-time-seconds"
-                type="number"
-                min="0"
-                max="59"
-                value={seconds}
-                onChange={(e) => setSeconds(parseInt(e.target.value, 10) || 0)}
-                className="w-full px-4 py-2 rounded-lg border-2 border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <label htmlFor="add-time-start" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-            Start Time
-          </label>
-          <input
-            id="add-time-start"
-            type="datetime-local"
-            lang="en-GB"
-            value={
-              startedAt && !isNaN(startedAt.getTime())
-                ? toDatetimeLocalValue(startedAt)
-                : ""
-            }
-            onChange={(e) => {
-              const value = e.target.value;
-              if (!value) {
-                setStartedAt(null);
-                return;
-              }
-              const next = new Date(value);
-              if (isNaN(next.getTime())) return;
-              setStartedAt(next);
-            }}
-            className="w-full px-4 py-2 rounded-lg border-2 border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="add-time-tags" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-            Tags
-          </label>
-          <div className="flex gap-2 mb-2">
-            <TagAutocompleteInput
-              id="add-time-tags"
-              value={tagInput}
-              selectedTags={tags}
-              onChange={setTagInput}
-              onSubmitTag={handleAddTag}
-              placeholder="Add a tag"
+        {/* Details Section */}
+        <div className="space-y-4">
+          <div className="animate-field-in" style={{ "--field-delay": "0ms" } as React.CSSProperties}>
+            <SectionHeader
+              icon={<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>}
+              label="Details"
             />
-            <Button type="button" variant="outline" onClick={handleAddTag}>
-              Add
-            </Button>
           </div>
-          {tags.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 text-sm"
-                >
-                  {tag}
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveTag(tag)}
-                    className="hover:text-primary-900 dark:hover:text-primary-100"
-                  >
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
+
+          <div className="animate-field-in" style={{ "--field-delay": "40ms" } as React.CSSProperties}>
+            <Input
+              label="Name"
+              placeholder="Enter entry name (optional)"
+              helperText="Leave empty to auto-generate (e.g., #TMR-000001)"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+
+          <div className="animate-field-in" style={{ "--field-delay": "80ms" } as React.CSSProperties}>
+            <Textarea
+              label="Description"
+              placeholder="What were you working on?"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+            />
+          </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 pt-4 border-t border-neutral-200 dark:border-neutral-800">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
+        {/* Schedule Section */}
+        <div className="space-y-4">
+          <div className="animate-field-in" style={{ "--field-delay": "120ms" } as React.CSSProperties}>
+            <SectionHeader
+              icon={<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+              label="Schedule"
+            />
+          </div>
+
+          <div className="animate-field-in grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ "--field-delay": "160ms" } as React.CSSProperties}>
+            <DateTimeFields
+              label="Start Time"
+              value={startedAt}
+              onChange={setStartedAt}
+              required
+              idPrefix="add-time-entry-started-at"
+            />
+            <DateTimeFields
+              label="End Time"
+              value={stoppedAt}
+              onChange={setStoppedAt}
+              required
+              idPrefix="add-time-entry-stopped-at"
+            />
+          </div>
+        </div>
+
+        {/* Organization Section */}
+        <div className="space-y-4">
+          <div className="animate-field-in" style={{ "--field-delay": "240ms" } as React.CSSProperties}>
+            <SectionHeader
+              icon={<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" /><path strokeLinecap="round" strokeLinejoin="round" d="M6 6h.008v.008H6V6z" /></svg>}
+              label="Organization"
+            />
+          </div>
+
+          <div className="animate-field-in" style={{ "--field-delay": "280ms" } as React.CSSProperties}>
+            <LocationAutocompleteInput
+              label="Location"
+              placeholder="Where were you working?"
+              value={location}
+              onChange={setLocation}
+            />
+          </div>
+
+          <div className="animate-field-in" style={{ "--field-delay": "320ms" } as React.CSSProperties}>
+            <label htmlFor="add-time-tags" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">
+              Tags
+            </label>
+            <div className="flex gap-2 mb-2">
+              <TagAutocompleteInput
+                id="add-time-tags"
+                value={tagInput}
+                selectedTags={tags}
+                onChange={setTagInput}
+                onSubmitTag={handleAddTag}
+                placeholder="Type a tag and press Enter"
+              />
+              <Button type="button" variant="outline" onClick={handleAddTag} className="flex-shrink-0">
+                Add
+              </Button>
+            </div>
+            {tags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="animate-tag-pop inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-primary-50 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 border border-primary-200/60 dark:border-primary-700/40 transition-all duration-200 hover:bg-primary-100 dark:hover:bg-primary-900/60"
+                  >
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveTag(tag)}
+                      className="ml-0.5 p-0.5 rounded hover:bg-primary-200/60 dark:hover:bg-primary-800/60 transition-colors"
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="animate-field-in flex items-center justify-end gap-3 pt-5 border-t border-neutral-200/80 dark:border-neutral-700/60" style={{ "--field-delay": "360ms" } as React.CSSProperties}>
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
             Cancel
           </Button>
           <Button type="submit" disabled={isSubmitting} loading={isSubmitting}>

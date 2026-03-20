@@ -137,6 +137,105 @@
     animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
+  @keyframes dialogBackdropIn {
+    from { opacity: 0; backdrop-filter: blur(0); }
+    to { opacity: 1; backdrop-filter: blur(4px); }
+  }
+
+  @keyframes dialogPanelIn {
+    from {
+      opacity: 0;
+      transform: scale(0.96) translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
+  @keyframes fieldStaggerIn {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes tagPopIn {
+    0% {
+      transform: scale(0.5);
+      opacity: 0;
+    }
+    60% {
+      transform: scale(1.08);
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  @keyframes errorShake {
+    0%, 100% { transform: translateX(0); }
+    15%, 55% { transform: translateX(-5px); }
+    35%, 75% { transform: translateX(5px); }
+  }
+
+  @keyframes subtlePulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+
+  @keyframes accentLine {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+  }
+
+  .animate-dialog-backdrop {
+    animation: dialogBackdropIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    backdrop-filter: blur(4px);
+  }
+
+  .animate-dialog-panel {
+    animation: dialogPanelIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .animate-field-in {
+    animation: fieldStaggerIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: var(--field-delay, 0ms);
+  }
+
+  .animate-tag-pop {
+    animation: tagPopIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .animate-error-shake {
+    animation: errorShake 0.45s ease-in-out;
+  }
+
+  .animate-accent-line {
+    animation: accentLine 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+    transform-origin: left;
+  }
+
+  .dialog-section-icon {
+    @apply w-4 h-4 text-primary-500 dark:text-primary-400 flex-shrink-0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-dialog-backdrop,
+    .animate-dialog-panel,
+    .animate-field-in,
+    .animate-tag-pop,
+    .animate-error-shake,
+    .animate-accent-line {
+      animation: none !important;
+    }
+  }
+
   /**
    * Health-banner retry indicator: plain CSS so it always runs (Tailwind utilities
    * are optional here). Do NOT nest these inside a disabled <button> — animations
