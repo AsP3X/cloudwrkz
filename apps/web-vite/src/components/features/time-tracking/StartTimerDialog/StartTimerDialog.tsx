@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { api } from "@/api/client";
 import { toDatetimeLocalValue } from "@/lib/utils/date";
+import { LocationAutocompleteInput } from "@/components/ui/LocationAutocompleteInput";
+import { TagAutocompleteInput } from "@/components/ui/TagAutocompleteInput";
 
 interface StartTimerDialogProps {
   open: boolean;
@@ -123,11 +125,11 @@ export function StartTimerDialog({ open, onOpenChange, onCreated }: StartTimerDi
           />
         </div>
 
-        <Input
+        <LocationAutocompleteInput
           label="Location"
           placeholder="Optional location/address"
           value={location}
-          onChange={(e) => setLocation(e.target.value)}
+          onChange={setLocation}
         />
 
         <div>
@@ -135,19 +137,13 @@ export function StartTimerDialog({ open, onOpenChange, onCreated }: StartTimerDi
             Tags
           </label>
           <div className="flex gap-2 mb-2">
-            <input
-              type="text"
+            <TagAutocompleteInput
               id="start-timer-tags"
               value={tagInput}
-              onChange={(e) => setTagInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleAddTag();
-                }
-              }}
+              selectedTags={tags}
+              onChange={setTagInput}
+              onSubmitTag={handleAddTag}
               placeholder="Add a tag"
-              className="flex-1 px-4 py-2 rounded-lg border-2 border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             />
             <Button type="button" variant="outline" onClick={handleAddTag}>
               Add

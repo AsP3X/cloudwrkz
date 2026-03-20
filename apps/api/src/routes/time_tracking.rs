@@ -16,6 +16,7 @@ use crate::routes::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/time-tracking", get(list_entries).post(create_entry))
+        .route("/time-tracking/tags", get(list_tag_suggestions))
         .route("/time-tracking/active", get(active_entries))
         .route("/time-tracking/add", post(add_manual_entry))
         .route("/time-tracking/bulk-update", post(bulk_update_entries))
@@ -36,6 +37,100 @@ pub fn router() -> Router<AppState> {
             "/time-tracking/{id}/breaks/{break_id}",
             axum::routing::delete(delete_break),
         )
+}
+
+#[derive(Debug, Deserialize)]
+struct TagSuggestionParams {
+    q: Option<String>,
+}
+
+async fn list_tag_suggestions(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Query(params): Query<TagSuggestionParams>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let query = params.q.unwrap_or_default();
+    let trimmed = query.trim();
+
+    if trimmed.is_empty() {
+        let rows = sqlx::query(
+            r#"
+            SELECT tag, COUNT(*)::INT AS usage_count
+            FROM (
+              SELECT unnest(tags) AS tag
+              FROM time_entries
+              WHERE user_id = $1 AND archived_at IS NULL
+            ) t
+            GROUP BY tag
+            ORDER BY usage_count DESC, tag ASC
+            LIMIT 5
+            "#,
+        )
+        .bind(&user.id)
+        .fetch_all(&state.pool)
+        .await?;
+
+        let tags: Vec<String> = rows.into_iter().map(|row| row.get("tag")).collect();
+        return Ok(Json(serde_json::json!({ "tags": tags })));
+    }
+
+    let pattern = format!("%{}%", trimmed);
+
+    let has_share_table: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+           SELECT 1
+           FROM information_schema.tables
+           WHERE table_schema = 'public' AND table_name = 'time_entry_shares'
+         )",
+    )
+    .fetch_one(&state.pool)
+    .await?;
+
+    let rows = if has_share_table {
+        sqlx::query(
+            r#"
+            SELECT DISTINCT tag
+            FROM (
+              SELECT unnest(te.tags) AS tag
+              FROM time_entries te
+              WHERE te.user_id = $1 AND te.archived_at IS NULL
+
+              UNION
+
+              SELECT unnest(te.tags) AS tag
+              FROM time_entries te
+              INNER JOIN time_entry_shares tes ON tes.time_entry_id = te.id
+              WHERE tes.shared_with_user_id = $1 AND te.archived_at IS NULL
+            ) tags
+            WHERE tag ILIKE $2
+            ORDER BY tag ASC
+            LIMIT 50
+            "#,
+        )
+        .bind(&user.id)
+        .bind(&pattern)
+        .fetch_all(&state.pool)
+        .await?
+    } else {
+        sqlx::query(
+            r#"
+            SELECT DISTINCT unnest(tags) AS tag
+            FROM time_entries
+            WHERE user_id = $1
+              AND archived_at IS NULL
+              AND EXISTS (SELECT 1 FROM unnest(tags) AS tag WHERE tag ILIKE $2)
+            ORDER BY tag ASC
+            LIMIT 50
+            "#,
+        )
+        .bind(&user.id)
+        .bind(&pattern)
+        .fetch_all(&state.pool)
+        .await?
+    };
+
+    let tags: Vec<String> = rows.into_iter().map(|row| row.get("tag")).collect();
+    Ok(Json(serde_json::json!({ "tags": tags })))
 }
 
 const ENTRY_SELECT: &str = r#"SELECT id, name, description, status::text as status,
