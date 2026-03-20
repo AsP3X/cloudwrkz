@@ -24,6 +24,15 @@ function formatDateForInput(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function parseLocalDateStart(value: string): number | null {
+  const [yearRaw, monthRaw, dayRaw] = value.split("-");
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  const day = Number(dayRaw);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day, 0, 0, 0, 0).getTime();
+}
+
 /** Total time (hours) from entries, updating every second when there are running timers */
 function TotalTimeDisplay({ entries }: { entries: TimeEntry[] }) {
   const [totalHours, setTotalHours] = useState(0);
@@ -76,12 +85,15 @@ function TimeTrackingPageContent() {
       const dateFrom = params.get("dateFrom");
       const dateTo = params.get("dateTo");
       if (dateFrom && dateTo) {
-        const from = new Date(dateFrom).getTime();
-        const to = new Date(dateTo).getTime() + 86400000;
-        result = result.filter((e) => {
-          const t = new Date(e.started_at).getTime();
-          return t >= from && t < to;
-        });
+        const from = parseLocalDateStart(dateFrom);
+        const toStart = parseLocalDateStart(dateTo);
+        if (from !== null && toStart !== null) {
+          const to = toStart + 86400000;
+          result = result.filter((e) => {
+            const t = new Date(e.started_at).getTime();
+            return t >= from && t < to;
+          });
+        }
       }
       setEntries(result);
     } catch {
