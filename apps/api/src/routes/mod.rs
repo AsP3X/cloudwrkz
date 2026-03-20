@@ -26,7 +26,9 @@ use crate::config::AppConfig;
 pub fn v1_router(pool: PgPool, config: AppConfig, api_started_at: std::time::Instant) -> Router {
     Router::new()
         .merge(health::v1_router())
-        .merge(auth::router())
+        .merge(
+            auth::router().layer(crate::auth_governor::auth_rate_limit_layer(&config)),
+        )
         .merge(me::router())
         .merge(tickets::router())
         .merge(todos::router())

@@ -1,0 +1,201 @@
+# Hand-curated OpenAPI 3.0 subset for CloudWrkz `/api/v1`.
+# Source of truth for behavior remains the Rust handlers in `apps/api/src/routes/`.
+# Update this file (or replace with generated output) when paths or JSON shapes change
+# so `apps/web-vite`, `cloudwrkz-cli`, and future clients stay aligned.
+openapi: 3.0.3
+info:
+  title: CloudWrkz API
+  version: 0.1.0
+  description: |
+    Versioned JSON API under `/api/v1`. Session auth accepts `Authorization: Bearer <token>`
+    or a `session` cookie (see Axum handlers). This spec lists high-traffic routes only;
+    admin and module routes follow the same patterns (JSON bodies, camelCase in responses where noted in code).
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development
+  - url: https://api.example.com/api/v1
+    description: Production (replace host)
+
+tags:
+  - name: health
+  - name: auth
+  - name: me
+  - name: admin
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Public health status
+      responses:
+        "200":
+          description: Status, timestamp, API metadata, database summary
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /ping:
+    get:
+      tags: [health]
+      summary: Liveness ping (no DB)
+      responses:
+        "200":
+          description: OK payload with timing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Register (async job when DB is warming)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                confirm_password:
+                  type: string
+      responses:
+        "200":
+          description: Immediate success (rare path)
+        "202":
+          description: Queued — poll `/auth/register/status/{job_id}`
+        "429":
+          description: Auth rate limit (per client IP)
+
+  /auth/register/status/{job_id}:
+    get:
+      tags: [auth]
+      summary: Register job status
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Job status and optional user payload
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Login (async job)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+                remember_me:
+                  type: boolean
+                device_name:
+                  type: string
+                user_agent:
+                  type: string
+      responses:
+        "202":
+          description: Queued — poll `/auth/login/status/{job_id}`
+        "429":
+          description: Auth rate limit (per client IP)
+
+  /auth/login/status/{job_id}:
+    get:
+      tags: [auth]
+      summary: Login job status
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Job status; completed jobs include token and user
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: End session
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Logged out
+
+  /me:
+    get:
+      tags: [me]
+      summary: Current user, modules, permissions
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          description: User profile and module list
+        "401":
+          description: Missing or invalid session
+
+  /admin/permissions:
+    get:
+      tags: [admin]
+      summary: List all permission definitions
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Permissions array
+        "401":
+          description: Unauthorized
+        "403":
+          description: Missing admin.permissions.view / manage or role
+
+  /admin/statistics:
+    get:
+      tags: [admin]
+      summary: Aggregate counts (admin role)
+      security:
+        - bearerAuth: []
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Counts object
+        "403":
+          description: Admin only
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: session token
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session

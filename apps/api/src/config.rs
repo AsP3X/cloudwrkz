@@ -1,4 +1,5 @@
 use std::env;
+use std::time::Duration;
 
 #[derive(Debug, Clone, Default)]
 pub struct DeploymentCliOverrides {
@@ -22,6 +23,10 @@ pub struct AppConfig {
     pub api_nodes_available: u32,
     /// Optional plaintext override for `GET …/health/detailed` (use rotation via admin/CLI + DB hash in production).
     pub diagnostics_health_token: Option<String>,
+    /// Time between adding one token to the per-IP bucket for `/api/v1/auth/*` (sustained ≈ 60/refill_secs per minute).
+    pub auth_rate_limit_refill_period: Duration,
+    /// Max burst of auth requests per IP before shedding (429).
+    pub auth_rate_limit_burst: u32,
 }
 
 impl AppConfig {
@@ -65,6 +70,20 @@ impl AppConfig {
                 .ok()
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty()),
+            auth_rate_limit_refill_period: {
+                let per_minute: u32 = env::var("AUTH_RATE_LIMIT_PER_MINUTE")
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(60)
+                    .clamp(6, 600);
+                let period_ms = (60_000u64 / u64::from(per_minute)).max(1);
+                Duration::from_millis(period_ms)
+            },
+            auth_rate_limit_burst: env::var("AUTH_RATE_LIMIT_BURST")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(30)
+                .clamp(1, 300),
         }
     }
 

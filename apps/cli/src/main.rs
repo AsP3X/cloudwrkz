@@ -9,7 +9,8 @@
 //!   cloudwrkz-cli db stats        Show table counts
 //!   cloudwrkz-cli db reset        Drop + recreate schema and run migrations (destructive)
 //!   cloudwrkz-cli admin create-admin <email> <password> [name]  Create first admin (DB only, no API)
-//!   cloudwrkz-cli diagnostics-token generate   Store hashed token in DB; print plaintext once (for GET …/health/detailed)
+//!   cloudwrkz-cli diagnostics-token generate   Store hashed token in DB; print plaintext once (for GET …/health/detailed).
+//!                                                Prefer this in CI/deploy when you standardize on the CLI binary (equivalent to `cloudwrkz-api diagnostics-token generate`).
 
 mod api;
 mod tui;
@@ -129,7 +130,7 @@ enum Commands {
         #[command(subcommand)]
         subcommand: AdminCommand,
     },
-    /// Generate diagnostics API token (stored hashed in DB; same as `cloudwrkz-api diagnostics-token generate`)
+    /// Generate diagnostics API token (stored hashed in DB; same as `cloudwrkz-api diagnostics-token generate`; prefer this subcommand in CI when the CLI is the shipped binary)
     DiagnosticsToken {
         #[command(subcommand)]
         subcommand: DiagnosticsTokenCommand,

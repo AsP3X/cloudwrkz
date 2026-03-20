@@ -393,6 +393,7 @@ server {
 - [ ] `VITE_API_URL` at build time points to the production API (e.g. `https://api.example.com/api/v1`)
 - [ ] HTTPS everywhere; no API or web over plain HTTP in production
 - [ ] Firewall: only 80/443 (and optionally 22) open; API port (8080) not exposed publicly if behind a reverse proxy
+- [ ] Reverse proxy sets `X-Forwarded-For` / `Forwarded` from the edge only (trusted), so per-IP auth rate limits and logs see real clients
 - [ ] Backups configured for PostgreSQL data volume
 
 ---
@@ -439,13 +440,35 @@ curl http://localhost:8080/api/v1/me \
 
 Expected: `200 OK` with `{"name":"Test User","email":"test@example.com","modules":[...]}`
 
+**Brute-force protection:** `POST /api/v1/auth/login`, `POST /api/v1/auth/register`, and related `/auth/*` routes are rate-limited per client IP (`AUTH_RATE_LIMIT_PER_MINUTE`, `AUTH_RATE_LIMIT_BURST` in `apps/api/.env`). Excess traffic returns `429`. Behind a reverse proxy, forward a real client IP via `X-Forwarded-For` / `Forwarded` only from trusted hops so limits are meaningful.
+
+**Response headers:** The API adds baseline security headers (`X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`). A reverse proxy may add the same headers; either stack is fine, but avoid conflicting values in production.
+
+### 4.2a — OpenAPI contract (clients)
+
+A hand-maintained description of common `/api/v1` paths and shapes lives at **[openapi-v1.yaml](./openapi-v1.yaml)**. The Vite app and CLI currently encode URLs manually; use this file as a shared checklist when adding endpoints or validating payloads. It is not auto-generated from Rust yet—extend it when handlers change.
+
+### 4.2b — Diagnostics token: choosing a CLI entry point
+
+`cloudwrkz-api diagnostics-token generate` and `cloudwrkz-cli diagnostics-token generate` both hash and store a token in the database (same as **Admin → System Settings**). For **CI and deploy scripts**, pick one binary and document it in your runbook—**prefer `cloudwrkz-cli diagnostics-token generate`** when your pipeline already builds or ships the CLI, so token rotation does not depend on the full API server binary. Use the API binary’s subcommand when the CLI is not available in the image.
+
 ### 4.3 — Web app (manual)
 
 1. Open the web app in a browser (test: http://localhost:5173; live: https://app.example.com).
 2. Register a new user and log in.
 3. Confirm dashboard loads and no console/network errors related to CORS or wrong API URL.
 
-### 4.4 — Full test environment in one go
+### 4.4 — API integration tests (Rust + PostgreSQL)
+
+With PostgreSQL running and `DATABASE_URL` set (for example `source apps/api/.env` from the repo root):
+
+```bash
+cargo test -p cloudwrkz-api
+```
+
+This exercises the Axum router against a real database (migrations + HTTP checks): unauthenticated `/me`/`/admin/…`, session extraction, permission grants, security headers, and related wiring.
+
+### 4.5 — Full test environment in one go
 
 ```bash
 # Terminal 1: build and start everything (from repo root)
@@ -516,9 +539,11 @@ curl -s http://localhost:8080/api/ping
 | `APP_ENV`         | No       | (from build)      | Optional deploy label surfaced as `api.environment` on `/health` (e.g. `staging`, `production`). Falls back from `RUST_ENV` or debug/release build. |
 | `API_REGION`      | No       | —                 | Region ID for this instance (`api.region` on `/health`, public health UI). Use one value per geographic / logical region. |
 | `API_NODES_AVAILABLE` | No  | `1`               | Reported number of API nodes for this deployment (`api.nodes_available` on `/health`). Keep `1` for a single process; raise when your global router exposes multiple healthy backends. |
-| `DIAGNOSTICS_HEALTH_TOKEN` | No | —            | Optional plaintext Bearer token accepted for `GET …/health/detailed` (in addition to the hashed token in `system_settings`). Prefer generating via Admin Settings or `cloudwrkz-api diagnostics-token generate`. |
+| `DIAGNOSTICS_HEALTH_TOKEN` | No | —            | Optional plaintext Bearer token accepted for `GET …/health/detailed` (in addition to the hashed token in `system_settings`). Prefer generating via Admin Settings or CLI (see below). |
+| `AUTH_RATE_LIMIT_PER_MINUTE` | No | `60` (clamped 6–600) | Sustained allowance for `/api/v1/auth/*` per IP (token bucket refill derived from this). |
+| `AUTH_RATE_LIMIT_BURST` | No | `30` (clamped 1–300) | Burst size for auth routes before `429` responses. |
 
-**Running the API binary:** You can control verbosity with `-v` (overrides env): `./cloudwrkz-api` = prod logging; `./cloudwrkz-api -v` or `./cloudwrkz-api -v debug` = debug/verbose; `./cloudwrkz-api -v prod` = prod. **Deployment overrides (also in `apps/api/.env`):** `--region <ID>` or `--region=<ID>` sets the same value as `API_REGION`; `--api-nodes <N>` or `--api-nodes=<N>` overrides `API_NODES_AVAILABLE`. CLI wins over env when passed. **Diagnostics token (no HTTP server):** `cloudwrkz-api diagnostics-token generate` connects with `DATABASE_URL`, runs migrations, stores an argon2 hash in `system_settings`, and prints the plaintext token once (same as Admin → System Settings). Use `./cloudwrkz-api --help` for the full option list.
+**Running the API binary:** You can control verbosity with `-v` (overrides env): `./cloudwrkz-api` = prod logging; `./cloudwrkz-api -v` or `./cloudwrkz-api -v debug` = debug/verbose; `./cloudwrkz-api -v prod` = prod. **Deployment overrides (also in `apps/api/.env`):** `--region <ID>` or `--region=<ID>` sets the same value as `API_REGION`; `--api-nodes <N>` or `--api-nodes=<N>` overrides `API_NODES_AVAILABLE`. CLI wins over env when passed. **Diagnostics token (no HTTP server):** `cloudwrkz-api diagnostics-token generate` and `cloudwrkz-cli diagnostics-token generate` are equivalent (DB hash + one-time plaintext). For CI/deploy scripts, standardize on whichever binary you ship—often **`cloudwrkz-cli diagnostics-token generate`**. Use `./cloudwrkz-api --help` for server options.
 
 **Monitoring:** The API logs at INFO by default: startup, listen address, and each HTTP request. Each request gets a `request_id` (from header `X-Request-ID` or generated). **LOG_VERBOSITY**: use `prod` (default) in production to log only required fields; use `debug` for full request/response details (client_ip, user_agent, path+query, response content_length). Use `RUST_LOG=debug` for more crate-level detail. Set `LOG_FORMAT=json` in production for NDJSON with `timestamp` (UTC RFC3339), `level`, `target`, `message`, and event fields flattened for log analyzers (Datadog, ELK, Splunk, CloudWatch).
 
