@@ -175,6 +175,7 @@ export function AddTimeEntryDialog({ open, onOpenChange, onCreated }: AddTimeEnt
           <input
             id="add-time-start"
             type="datetime-local"
+            lang="en-GB"
             value={
               startedAt && !isNaN(startedAt.getTime())
                 ? toDatetimeLocalValue(startedAt)

@@ -242,6 +242,7 @@ export function AddTimeEntryDialog({ open, onOpenChange }: AddTimeEntryDialogPro
               <input
                 id="add-time-start"
                 type="datetime-local"
+                lang="en-GB"
                 value={
                   field.value && !isNaN(new Date(field.value).getTime())
                     ? toDatetimeLocalValue(new Date(field.value))
