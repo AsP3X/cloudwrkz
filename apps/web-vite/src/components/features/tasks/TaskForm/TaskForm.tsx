@@ -285,7 +285,7 @@ export function TaskForm({ users = [], tickets = [], canAssign = false }: TaskFo
         />
       </div>
 
-      <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-3 pt-4">
+      <div className="flex flex-col-reverse sm:flex-row items-center justify-end gap-3 pt-4">
         <Button
           type="button"
           variant="outline"
@@ -295,11 +295,7 @@ export function TaskForm({ users = [], tickets = [], canAssign = false }: TaskFo
           Cancel
         </Button>
         {createQueuedBannerState ? (
-          <LoginQueuedBanner
-            shrinkToContent
-            state={createQueuedBannerState}
-            className="min-h-[3rem] self-end sm:self-center"
-          />
+          <LoginQueuedBanner shrinkToContent state={createQueuedBannerState} />
         ) : (
           <Button type="submit" variant="primary" loading={isSubmitting} disabled={isSubmitting}>
             Create ToDo

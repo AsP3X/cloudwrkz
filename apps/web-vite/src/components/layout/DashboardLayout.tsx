@@ -8,7 +8,6 @@ import { DashboardHeader } from "./DashboardHeader";
 import { ROUTES } from "@/lib/constants/routes";
 import { cn } from "@/lib/utils/cn";
 import { api } from "@/api/client";
-import { LocalOfflineQueueNotice } from "@/components/ui/LocalOfflineQueueNotice";
 import { MutationQueueNotice } from "@/components/ui/MutationQueueNotice";
 
 const Spinner = () => (
@@ -82,11 +81,17 @@ export const DashboardLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   /**
-   * Create-todo page uses inline `LoginQueuedBanner` (server 202 + offline queue); skip duplicate
-   * global notices.
+   * ToDo create (`/todos/new`) and task detail (`/todos/:id`) use inline `LoginQueuedBanner` in the
+   * form / delete dialog for local → API → DB — hide duplicate top notices here.
    */
-  const showMutationQueueNotice = location.pathname !== "/dashboard/todos/new";
-  const showTopOfflineNotice = showMutationQueueNotice;
+  const path = location.pathname;
+  const isTodoCreatePage = path === "/dashboard/todos/new";
+  const isTodoDetailPage =
+    /^\/dashboard\/todos\/[^/]+$/.test(path) &&
+    path !== "/dashboard/todos/new" &&
+    path !== "/dashboard/todos/archive";
+  const hideTopQueuedNotices = isTodoCreatePage || isTodoDetailPage;
+  const showMutationQueueNotice = !hideTopQueuedNotices;
 
   useEffect(() => {
     if (!loading && !user) {
@@ -113,7 +118,6 @@ export const DashboardLayout = () => {
         <DashboardLayoutContent />
         <main className={cn("min-h-screen relative z-10", "lg:pl-64")}>
           <div className="p-4 sm:p-6 lg:p-8">
-            {showTopOfflineNotice ? <LocalOfflineQueueNotice /> : null}
             {showMutationQueueNotice ? <MutationQueueNotice /> : null}
             <Outlet />
           </div>

@@ -41,21 +41,32 @@ export function LoginQueuedBanner({ state, className, shrinkToContent = false }:
   return (
     <div
       className={cn(
-        "rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/50 shadow-sm px-2.5 py-2 mb-3",
-        shrinkToContent && "w-fit max-w-full",
+        "rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/50 shadow-sm",
+        shrinkToContent
+          ? cn(
+              "mb-0 w-fit max-w-full px-2.5 flex flex-col",
+              showDetails ? "py-1" : "h-10 min-h-[2.5rem] box-border justify-center",
+            )
+          : "px-2.5 py-2 mb-3",
         className,
       )}
       role="status"
       aria-live="polite"
       aria-busy="true"
     >
-      <div className={cn("flex items-center gap-2", shrinkToContent && "w-fit")}>
+      <div className={cn("flex items-center gap-2", shrinkToContent && "w-fit min-h-0")}>
         <div
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-amber-200/80 dark:bg-amber-900/60"
+          className={cn(
+            "shrink-0 flex items-center justify-center rounded-md bg-amber-200/80 dark:bg-amber-900/60",
+            shrinkToContent ? "h-6 w-6" : "h-7 w-7",
+          )}
           aria-hidden
         >
           <svg
-            className="h-3.5 w-3.5 text-amber-800 dark:text-amber-200 animate-spin"
+            className={cn(
+              "text-amber-800 dark:text-amber-200 animate-spin",
+              shrinkToContent ? "h-3 w-3" : "h-3.5 w-3.5",
+            )}
             fill="none"
             viewBox="0 0 24 24"
           >
@@ -69,8 +80,8 @@ export function LoginQueuedBanner({ state, className, shrinkToContent = false }:
         </div>
         <div
           className={cn(
-            "min-w-0 flex items-center gap-1.5 flex-wrap text-xs leading-tight",
-            shrinkToContent ? "flex-none" : "flex-1",
+            "min-w-0 flex items-center gap-1.5 text-xs leading-none",
+            shrinkToContent ? "flex-none flex-nowrap" : "flex-1 flex-wrap leading-tight",
           )}
         >
           <span className="shrink-0 rounded bg-amber-200/90 dark:bg-amber-900/80 px-1.5 py-0.5 font-bold uppercase tracking-wide text-[10px] text-amber-950 dark:text-amber-100">
@@ -79,7 +90,7 @@ export function LoginQueuedBanner({ state, className, shrinkToContent = false }:
           <span
             className={cn(
               "font-medium text-amber-950 dark:text-amber-50",
-              shrinkToContent ? "" : "truncate max-w-[min(100%,14rem)] sm:max-w-none",
+              shrinkToContent ? "truncate min-w-0" : "truncate max-w-[min(100%,14rem)] sm:max-w-none",
             )}
           >
             {state.headline}
@@ -88,13 +99,16 @@ export function LoginQueuedBanner({ state, className, shrinkToContent = false }:
         </div>
         <button
           type="button"
-          className="shrink-0 rounded-md p-1 text-amber-800 dark:text-amber-200 hover:bg-amber-200/60 dark:hover:bg-amber-900/50 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1 dark:focus:ring-offset-amber-950"
+          className={cn(
+            "shrink-0 rounded-md text-amber-800 dark:text-amber-200 hover:bg-amber-200/60 dark:hover:bg-amber-900/50 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1 dark:focus:ring-offset-amber-950",
+            shrinkToContent ? "p-0.5" : "p-1",
+          )}
           aria-expanded={showDetails}
           aria-controls={detailsId}
           aria-label={showDetails ? "Hide queued sign-in details" : "More about queued sign-in"}
           onClick={() => setShowDetails((v) => !v)}
         >
-          <InfoIcon className="h-5 w-5" />
+          <InfoIcon className={shrinkToContent ? "h-4 w-4" : "h-5 w-5"} />
         </button>
       </div>
       {showDetails && (

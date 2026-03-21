@@ -563,6 +563,7 @@ export default function TaskDetailPage() {
           open={deleteDialogOpen}
           onOpenChange={setDeleteDialogOpen}
           onConfirm={handleDeleteConfirm}
+          apiMutationPath={`/todos/${task.id}`}
           taskTitle={task.title}
           subtasks={subtodos.map((s) => ({ id: s.id, title: s.title, status: s.status, priority: s.priority }))}
         />

@@ -1272,6 +1272,7 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, showBulkSelect 
           onOpenChange={setShowBulkDeleteDialog}
           onConfirm={handleBulkDeleteConfirm}
           selectedCount={selectedTodos.size}
+          apiMutationPaths={Array.from(selectedTodos).map((id) => `/todos/${id}`)}
         />
       )}
     </>
