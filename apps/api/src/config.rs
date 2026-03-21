@@ -1,6 +1,13 @@
 use std::env;
 use std::time::Duration;
 
+fn env_u64_compat(key: &str, default: u64) -> u64 {
+    env::var(key)
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(default)
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct DeploymentCliOverrides {
     pub region: Option<String>,
@@ -27,6 +34,16 @@ pub struct AppConfig {
     pub auth_rate_limit_refill_period: Duration,
     /// Max burst of auth requests per IP before shedding (429).
     pub auth_rate_limit_burst: u32,
+    /// Wall-clock cap for each queued mutation future (tokio timeout).
+    pub mutation_tx_max_ms: u64,
+    /// PostgreSQL `SET LOCAL lock_timeout` for mutation transactions (wait to acquire row lock).
+    pub mutation_lock_timeout_ms: u64,
+    /// PostgreSQL `SET LOCAL statement_timeout` per mutation transaction.
+    pub mutation_statement_timeout_ms: u64,
+    /// Bounded mpsc capacity per shard (backpressure when full).
+    pub mutation_queue_capacity: usize,
+    pub idempotency_max_entries: usize,
+    pub idempotency_ttl_secs: u64,
 }
 
 impl AppConfig {
@@ -84,6 +101,19 @@ impl AppConfig {
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(30)
                 .clamp(1, 300),
+            mutation_tx_max_ms: env_u64_compat("COMMAND_DB_TX_MAX_MS", 30_000).clamp(1_000, 600_000),
+            mutation_lock_timeout_ms: env_u64_compat("COMMAND_DB_LOCK_TIMEOUT_MS", 8_000)
+                .clamp(100, 120_000),
+            mutation_statement_timeout_ms: env_u64_compat(
+                "COMMAND_DB_STATEMENT_TIMEOUT_MS",
+                25_000,
+            )
+            .clamp(100, 600_000),
+            mutation_queue_capacity: env_u64_compat("MUTATION_QUEUE_CAPACITY", 1024)
+                .clamp(8, 65_536) as usize,
+            idempotency_max_entries: env_u64_compat("IDEMPOTENCY_MAX_ENTRIES", 4096)
+                .clamp(64, 1_000_000) as usize,
+            idempotency_ttl_secs: env_u64_compat("IDEMPOTENCY_TTL_SECS", 86_400).clamp(60, 604_800),
         }
     }
 

@@ -33,7 +33,7 @@ pub struct LinkListResponse {
     pub total_pages: i64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateLinkRequest {
     pub url: String,
     pub title: Option<String>,
@@ -49,7 +49,7 @@ pub struct CreateLinkRequest {
     pub allow_duplicates: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct UpdateLinkRequest {
     pub title: Option<String>,
     pub url: Option<String>,
@@ -81,12 +81,12 @@ pub struct LinkListParams {
     pub search: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
 pub struct ExtractMetadataRequest {
     pub url: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ExtractMetadataResponse {
     pub title: Option<String>,
     pub description: Option<String>,

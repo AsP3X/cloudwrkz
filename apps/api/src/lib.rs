@@ -2,6 +2,7 @@
 
 mod audit;
 pub mod auth;
+mod command_queue;
 mod auth_governor;
 mod config;
 pub mod db;
@@ -60,6 +61,9 @@ Commands:
 Environment: LOG_VERBOSITY (debug|prod), LOG_FORMAT (json), RUST_LOG, DATABASE_URL,
              API_REGION, API_NODES_AVAILABLE, DIAGNOSTICS_HEALTH_TOKEN (optional plaintext override for detailed health),
              AUTH_RATE_LIMIT_PER_MINUTE, AUTH_RATE_LIMIT_BURST,
+             COMMAND_DB_TX_MAX_MS, COMMAND_DB_LOCK_TIMEOUT_MS, COMMAND_DB_STATEMENT_TIMEOUT_MS,
+             MUTATION_QUEUE_CAPACITY, IDEMPOTENCY_MAX_ENTRIES, IDEMPOTENCY_TTL_SECS,
+             (Deferred mutations: GET /api/v1/mutation-jobs/{job_id} after HTTP 202 when DB was transient.)
              DATABASE_POOL_ACQUIRE_TIMEOUT_SECS, DATABASE_POOL_MAX_CONNECTIONS,
              DATABASE_MIGRATE_RETRY_MAX_SECS, etc.
 "#;

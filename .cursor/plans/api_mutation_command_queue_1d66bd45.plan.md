@@ -4,34 +4,34 @@ overview: Introduce a per–API-node, ordered command queue for all mutating ope
 todos:
   - id: db-numbering
     content: "Add DB migration: atomic ticket_number / todo_number generation (sequence or counter table + unique constraints)."
-    status: pending
+    status: completed
   - id: command-queue-core
     content: "Implement per-node command broker: shard keys, mpsc/oneshot, lazy per-shard workers, bounded queues + policy."
-    status: pending
+    status: completed
   - id: row-lock-writes
     content: "Every queued write: BEGIN → SELECT … FOR UPDATE on target row(s) → mutate → COMMIT; multi-row ops lock in deterministic order; creates use counter/sequence lock path."
-    status: pending
+    status: completed
   - id: lock-watchdog-timeouts
-    content: "Record lock/txn start timestamp per command; cancel+rollback if over max duration; set lock_timeout / statement_timeout / idle_in_transaction_session_timeout on pool."
-    status: pending
+    content: Record lock/txn start timestamp per command; cancel+rollback if over max duration; set lock_timeout / statement_timeout / idle_in_transaction_session_timeout on pool.
+    status: completed
   - id: refactor-handlers
     content: Extract DB logic from route handlers into CommandProcessor functions; handlers enqueue + await (sync HTTP).
-    status: pending
+    status: completed
   - id: wire-tickets-todos
     content: Route ticket and todo mutations through queue; wrap comment+activity in one transaction in worker.
-    status: pending
+    status: completed
   - id: wire-links-time
     content: Route link and time-tracking mutations (including bulk) through queue; isolate metadata extract.
-    status: pending
+    status: completed
   - id: idempotency
     content: Add optional Idempotency-Key dedup store with TTL and bounded size.
-    status: pending
+    status: completed
   - id: tests
     content: Add concurrency/integration tests for numbering, ordered PATCHes, idempotent retries.
-    status: pending
+    status: completed
   - id: optional-search-coalesce
     content: "Optional: in-flight dedup for global_search/advanced_search identical keys."
-    status: pending
+    status: completed
 isProject: false
 ---
 
@@ -153,14 +153,13 @@ Still, match the product requirement explicitly:
 
 1. **Always record a timestamp** when the mutation transaction is considered “active for locking”—e.g. immediately after `BEGIN` or immediately before the first `SELECT … FOR UPDATE`. Store it on the **worker context** (and optionally log `shard_key`, `command_type`, `user_id`, `resource_id` for ops).
 2. **Maximum lock / transaction duration** (configurable, e.g. `COMMAND_DB_TX_MAX_MS` in the 5–30s range depending on bulk ops): wrap the DB section in a **timeout** (`tokio::time::timeout` or equivalent). On expiry, **drop the `Transaction`** / cancel the query so PostgreSQL **rolls back** and **releases all row locks** for that command. Return a clear error (e.g. 503/504) so the client can retry.
-3. **Waiters must not block forever:** set **`lock_timeout`** on the connection/pool used by workers (e.g. a few seconds) so a second writer **fails** if it cannot acquire `FOR UPDATE` in time, instead of waiting until the holder finishes—paired with (2) so the holder is bounded.
-4. **Session-level safety nets** on the same pool (or a dedicated writer role): **`statement_timeout`** (cap per-statement CPU/IO), **`idle_in_transaction_session_timeout`** (rollback if the app opens a transaction then stalls without committing)—both release locks automatically.
+3. **Waiters must not block forever:** set `**lock_timeout`** on the connection/pool used by workers (e.g. a few seconds) so a second writer **fails** if it cannot acquire `FOR UPDATE` in time, instead of waiting until the holder finishes—paired with (2) so the holder is bounded.
+4. **Session-level safety nets** on the same pool (or a dedicated writer role): `**statement_timeout`** (cap per-statement CPU/IO), `**idle_in_transaction_session_timeout**` (rollback if the app opens a transaction then stalls without committing)—both release locks automatically.
 5. **Optional observability:** per-shard in-memory `current_command_lock_started_at` (and command id) updated when a job starts and cleared on completion, for metrics/debug endpoints—this is **not** a second lock layer; PostgreSQL remains source of truth.
 
 **Reads:** unchanged—plain `SELECT` paths are unaffected; timeouts apply only to **mutation** transactions.
 
-**Cross-node:** the in-node queue orders work per shard on one process; **another API replica** can still issue a concurrent `UPDATE` on the same row. **`FOR UPDATE` in the worker transaction** is what forces those writers to serialize at the database—so the queue + row lock combine **local ordering** with **global write exclusion** on each row. The **timestamp + max duration** bounds ensure a crashed or stuck replica’s transaction is either ended by the DB (`idle_in_transaction_session_timeout`) or by bounded app-side cancellation where implemented.
-
+**Cross-node:** the in-node queue orders work per shard on one process; **another API replica** can still issue a concurrent `UPDATE` on the same row. `**FOR UPDATE` in the worker transaction** is what forces those writers to serialize at the database—so the queue + row lock combine **local ordering** with **global write exclusion** on each row. The **timestamp + max duration** bounds ensure a crashed or stuck replica’s transaction is either ended by the DB (`idle_in_transaction_session_timeout`) or by bounded app-side cancellation where implemented.
 
 ```mermaid
 flowchart LR
@@ -199,7 +198,7 @@ Execute numbering **inside the same transaction** as `INSERT` for the entity.
 
 ## Idempotency (no duplicate side effects)
 
-- Accept optional header **`Idempotency-Key`** (string, max length capped).
+- Accept optional header `**Idempotency-Key`** (string, max length capped).
 - In-node store: `key -> (expires_at, completed_result_summary)` e.g. 24h TTL, bounded LRU to cap memory.
 - If the same key arrives for the **same route + user + body hash** (or stored body hash), return **cached response** without re-executing.
 - For **creates**, cache `{ id, ticket_number }` / `{ id }` etc.
@@ -218,7 +217,7 @@ Avoid baking `LoginJobs`-style status maps into the core path unless you add asy
 
 1. **Infrastructure**: `command_queue` module (shard router, oneshot replies, backpressure policy, metrics hooks: queue depth per shard, drop/timeout policy; **per-command lock start time + max DB transaction duration**).
 2. **DB migration**: atomic ticket/todo numbering.
-3. **Refactor handlers**: extract “pure” DB functions from route handlers; route becomes thin: auth + enqueue + await. Each processor path uses **`sqlx::Transaction`** with **`SELECT … FOR UPDATE`** before mutating; configure **`lock_timeout`**, **`statement_timeout`**, and **`idle_in_transaction_session_timeout`** on the worker pool as appropriate.
+3. **Refactor handlers**: extract “pure” DB functions from route handlers; route becomes thin: auth + enqueue + await. Each processor path uses `**sqlx::Transaction`** with `**SELECT … FOR UPDATE**` before mutating; configure `**lock_timeout**`, `**statement_timeout**`, and `**idle_in_transaction_session_timeout**` on the worker pool as appropriate.
 4. **Wire modules** in order of risk: **tickets** (lock ticket row → comment + activity in same tx) → **todos** (lock parent for subtree rules if needed) → **links** (metadata: minimize lock scope) → **time_tracking** (lock entry row; bulk: lock all targets in sorted order).
 5. **Idempotency** middleware or per-handler helper.
 6. **Tests**: concurrency tests for numbering; two parallel creates; idempotent replay; same-ticket concurrent PATCHes applied in order.
@@ -235,8 +234,8 @@ Avoid baking `LoginJobs`-style status maps into the core path unless you add asy
 
 ## Risk notes
 
-- **Write contention**: two concurrent writers on the **same row** serialize at the DB; **`lock_timeout`** on waiters avoids indefinite waits if a holder misbehaves (and **max tx duration** bounds the holder).
+- **Write contention**: two concurrent writers on the **same row** serialize at the DB; `**lock_timeout`** on waiters avoids indefinite waits if a holder misbehaves (and **max tx duration** bounds the holder).
 - **Multi-node**: per-node queue only gives **per-node** ordering; **global** ordering for `ticket_number` requires the **DB sequence/counter** (above), not the queue alone.
 - **Backpressure**: bounded channels; on full queue return **503** or **429** with `Retry-After` (documented), so overload does not OOM the node.
-- **`extract_metadata`**: consider **timeout** and isolation so slow upstreams do not block other link commands for that user shard.
+- `**extract_metadata`**: consider **timeout** and isolation so slow upstreams do not block other link commands for that user shard.
 

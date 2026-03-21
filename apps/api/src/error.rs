@@ -24,6 +24,8 @@ pub struct AppError {
     pub code: String,
     pub message: String,
     pub fields: Option<serde_json::Value>,
+    /// True when the underlying cause is a transient DB/connectivity issue (queued mutations may retry).
+    pub transient_database: bool,
 }
 
 impl AppError {
@@ -33,6 +35,7 @@ impl AppError {
             code: "UNAUTHORIZED".into(),
             message: msg.into(),
             fields: None,
+            transient_database: false,
         }
     }
 
@@ -42,6 +45,7 @@ impl AppError {
             code: "FORBIDDEN".into(),
             message: msg.into(),
             fields: None,
+            transient_database: false,
         }
     }
 
@@ -51,6 +55,7 @@ impl AppError {
             code: "NOT_FOUND".into(),
             message: msg.into(),
             fields: None,
+            transient_database: false,
         }
     }
 
@@ -60,6 +65,7 @@ impl AppError {
             code: "BAD_REQUEST".into(),
             message: msg.into(),
             fields: None,
+            transient_database: false,
         }
     }
 
@@ -69,6 +75,7 @@ impl AppError {
             code: "VALIDATION_ERROR".into(),
             message: msg.into(),
             fields: Some(fields),
+            transient_database: false,
         }
     }
 
@@ -78,6 +85,7 @@ impl AppError {
             code: "RATE_LIMIT".into(),
             message: msg.into(),
             fields: None,
+            transient_database: false,
         }
     }
 
@@ -87,6 +95,27 @@ impl AppError {
             code: "INTERNAL_ERROR".into(),
             message: msg.into(),
             fields: None,
+            transient_database: false,
+        }
+    }
+
+    pub fn service_unavailable(msg: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            code: "SERVICE_UNAVAILABLE".into(),
+            message: msg.into(),
+            fields: None,
+            transient_database: false,
+        }
+    }
+
+    pub fn gateway_timeout(msg: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::GATEWAY_TIMEOUT,
+            code: "GATEWAY_TIMEOUT".into(),
+            message: msg.into(),
+            fields: None,
+            transient_database: false,
         }
     }
 }
@@ -106,8 +135,34 @@ impl IntoResponse for AppError {
 
 impl From<sqlx::Error> for AppError {
     fn from(err: sqlx::Error) -> Self {
-        tracing::error!(event = "error", error_type = "database", "Database error: {:?}", err);
-        Self::internal("A database error occurred")
+        use crate::db::is_transient_sqlx;
+        let transient = is_transient_sqlx(&err);
+        if transient {
+            tracing::warn!(event = "error", error_type = "database_transient", "Transient database error: {:?}", err);
+        } else {
+            tracing::error!(event = "error", error_type = "database", "Database error: {:?}", err);
+        }
+        Self {
+            status: if transient {
+                StatusCode::SERVICE_UNAVAILABLE
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            },
+            code: if transient {
+                "SERVICE_UNAVAILABLE"
+            } else {
+                "INTERNAL_ERROR"
+            }
+            .into(),
+            message: if transient {
+                "Database is temporarily unavailable. Please try again."
+            } else {
+                "A database error occurred"
+            }
+            .into(),
+            fields: None,
+            transient_database: transient,
+        }
     }
 }
 

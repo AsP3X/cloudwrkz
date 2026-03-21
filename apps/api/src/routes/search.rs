@@ -1,3 +1,6 @@
+use std::sync::Arc;
+use std::time::Duration;
+
 use axum::{
     extract::{Query, State},
     routing::get,
@@ -6,6 +9,7 @@ use axum::{
 use serde::Deserialize;
 use serde_json::json;
 use sqlx::Row;
+use tokio::sync::Mutex;
 
 use crate::auth::extractors::AuthUser;
 use crate::error::AppError;
@@ -32,7 +36,7 @@ struct AdvancedSearchParams {
 }
 
 /// Response shape expected by the Vite search UI: unified list + total.
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 struct SearchResponse {
     results: Vec<serde_json::Value>,
     total: u64,
@@ -114,6 +118,26 @@ async fn global_search(
     }
 
     let limit = params.limit.unwrap_or(20).min(50);
+
+    let coalesce_key = format!("glob:{}:{}:{}", user.id, query, limit);
+    let slot = {
+        let mut m = state.search_coalesce.lock().await;
+        if m.len() > 300 {
+            m.clear();
+        }
+        m.entry(coalesce_key)
+            .or_insert_with(|| Arc::new(Mutex::new(None)))
+            .clone()
+    };
+    {
+        let g = slot.lock().await;
+        if let Some(v) = g.as_ref() {
+            let sr: SearchResponse = serde_json::from_value(v.clone()).map_err(|_| {
+                AppError::internal("Search coalesce decode failed")
+            })?;
+            return Ok(Json(sr));
+        }
+    }
 
     let mut results: Vec<serde_json::Value> = Vec::new();
 
@@ -229,7 +253,19 @@ async fn global_search(
     }
 
     let total = results.len() as u64;
-    Ok(Json(SearchResponse { results, total }))
+    let response = SearchResponse { results, total };
+    if let Ok(v) = serde_json::to_value(&response) {
+        let mut g = slot.lock().await;
+        *g = Some(v);
+        drop(g);
+        let clear = slot.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(80)).await;
+            let mut g = clear.lock().await;
+            *g = None;
+        });
+    }
+    Ok(Json(response))
 }
 
 async fn advanced_search(
@@ -250,6 +286,32 @@ async fn advanced_search(
         .type_filter
         .as_deref()
         .map(|s| s.to_lowercase());
+
+    let coalesce_key = format!(
+        "adv:{}:{}:{}:{:?}",
+        user.id,
+        query,
+        limit,
+        type_filter.as_deref()
+    );
+    let slot = {
+        let mut m = state.search_coalesce.lock().await;
+        if m.len() > 300 {
+            m.clear();
+        }
+        m.entry(coalesce_key)
+            .or_insert_with(|| Arc::new(Mutex::new(None)))
+            .clone()
+    };
+    {
+        let g = slot.lock().await;
+        if let Some(v) = g.as_ref() {
+            let sr: SearchResponse = serde_json::from_value(v.clone()).map_err(|_| {
+                AppError::internal("Search coalesce decode failed")
+            })?;
+            return Ok(Json(sr));
+        }
+    }
 
     let run_tickets = type_filter
         .as_deref()
@@ -384,5 +446,17 @@ async fn advanced_search(
     }
 
     let total = results.len() as u64;
-    Ok(Json(SearchResponse { results, total }))
+    let response = SearchResponse { results, total };
+    if let Ok(v) = serde_json::to_value(&response) {
+        let mut g = slot.lock().await;
+        *g = Some(v);
+        drop(g);
+        let clear = slot.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(80)).await;
+            let mut g = clear.lock().await;
+            *g = None;
+        });
+    }
+    Ok(Json(response))
 }

@@ -42,7 +42,7 @@ pub struct TimeEntryBreakRow {
     pub updated_at: chrono::NaiveDateTime,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateTimeEntryRequest {
     pub name: Option<String>,
     pub description: Option<String>,
@@ -52,7 +52,7 @@ pub struct CreateTimeEntryRequest {
     pub ticket_id: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AddTimeEntryRequest {
     pub name: String,
     pub description: Option<String>,
@@ -65,7 +65,7 @@ pub struct AddTimeEntryRequest {
     pub started_at: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct UpdateTimeEntryRequest {
     pub name: Option<String>,
     pub description: Option<String>,
@@ -81,14 +81,14 @@ pub struct UpdateTimeEntryRequest {
     pub archived_at: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct UpdateBreakRequest {
     pub started_at: Option<String>,
     pub ended_at: Option<serde_json::Value>,
     pub description: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateBreakRequest {
     pub started_at: Option<String>,
     pub ended_at: Option<String>,

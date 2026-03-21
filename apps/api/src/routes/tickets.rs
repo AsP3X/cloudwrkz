@@ -1,12 +1,20 @@
+use std::sync::Arc;
+
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::HeaderMap,
+    response::Response,
     routing::get,
     Json, Router,
 };
-use sqlx::{PgPool, Row};
+use sqlx::Row;
 
 use crate::auth::extractors::AuthUser;
+use crate::command_queue::{
+    apply_mutation_tx_settings, mutation_response, run_mutation_defer, JsonMutationResult,
+    MutationRunContext,
+};
+use crate::db::numbering::next_ticket_number;
 use crate::error::AppError;
 use crate::id;
 use crate::models::ticket::{
@@ -14,41 +22,11 @@ use crate::models::ticket::{
     TicketListItem, TicketListParams, TicketRow, TicketUpdateRequest,
 };
 use crate::routes::helpers::{
-    check_permission, fetch_comment_author, fetch_group_summary, fetch_user_summary,
-    get_user_permission_keys,
+    check_permission, check_permission_mut_tx, fetch_comment_author, fetch_group_summary,
+    fetch_user_summary, get_user_permission_keys, hash_json_for_idempotency,
+    idempotency_key_from_headers,
 };
 use crate::routes::AppState;
-
-/// Map ticket type to prefix for ticket number. All tickets use the 3-letter prefix TSK.
-fn ticket_type_prefix(_t: &str) -> &'static str {
-    "TSK"
-}
-
-/// Generate next sequential ticket number for the given type: PREFIX-000001.
-async fn next_ticket_number(pool: &PgPool, ticket_type: &str) -> Result<String, AppError> {
-    let prefix = ticket_type_prefix(ticket_type);
-    let pattern = format!("{}-%", prefix);
-
-    let row = sqlx::query_scalar::<_, String>(
-        r#"SELECT ticket_number FROM tickets
-           WHERE ticket_number LIKE $1
-           ORDER BY ticket_number DESC
-           LIMIT 1"#,
-    )
-    .bind(&pattern)
-    .fetch_optional(pool)
-    .await?;
-
-    let next_seq = match &row {
-        Some(num) => {
-            let seq_str = num.rsplit('-').next().unwrap_or("0");
-            seq_str.parse::<u32>().unwrap_or(0).saturating_add(1)
-        }
-        None => 1,
-    };
-
-    Ok(format!("{}-{:06}", prefix, next_seq))
-}
 
 /// Strip HTML tags for plain-text fallback (e.g. content_plain). Does not decode entities.
 fn strip_html_tags(html: &str) -> String {
@@ -291,8 +269,9 @@ async fn get_ticket(
 async fn create_ticket(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
+    headers: HeaderMap,
     Json(body): Json<TicketCreateRequest>,
-) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
+) -> Result<Response, AppError> {
     let permission_keys = get_user_permission_keys(&state.pool, &user.id).await;
     let can_create = permission_keys.iter().any(|k| k == "tickets.create" || k == "admin.tickets.manage")
         || permission_keys.is_empty(); // Allow when user has no permissions (e.g. create ticket to request access)
@@ -305,170 +284,319 @@ async fn create_ticket(
         return Err(AppError::bad_request("Title is required"));
     }
 
-    let id = crate::id::new_cuid();
-    let ticket_type = body.r#type.as_deref().unwrap_or("QUESTION");
-    let ticket_number = next_ticket_number(&state.pool, ticket_type).await?;
-    let priority = body.priority.as_deref().unwrap_or("MEDIUM");
-
-    let tags = body.tags.as_deref().unwrap_or(&[]);
-    sqlx::query(
-        r#"INSERT INTO tickets (id, ticket_number, title, description, description_plain,
+    let body_hash = hash_json_for_idempotency(&body);
+    let ctx = MutationRunContext {
+        user_id: user.id.clone(),
+        route: "POST /tickets".into(),
+        idempotency_key: idempotency_key_from_headers(&headers),
+        body_hash,
+    };
+    let uid = user.id.clone();
+    let b = body.clone();
+    let broker = state.mutation_broker.clone();
+    let lock_ms = broker.lock_timeout_ms;
+    let stmt_ms = broker.statement_timeout_ms;
+    let pool = state.pool.clone();
+    let jobs = state.mutation_jobs.clone();
+    let make_arc = Arc::new(tokio::sync::Mutex::new({
+        let user_id = uid.clone();
+        let body = b.clone();
+        move || {
+            let user_id = user_id.clone();
+            let body = body.clone();
+            move |pool: sqlx::PgPool| async move {
+                let mut tx = pool.begin().await.map_err(AppError::from)?;
+                apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms)
+                    .await
+                    .map_err(AppError::from)?;
+                let ticket_number = next_ticket_number(&mut tx)
+                    .await
+                    .map_err(AppError::from)?;
+                let id = id::new_cuid();
+                let ticket_type = body.r#type.as_deref().unwrap_or("QUESTION");
+                let priority = body.priority.as_deref().unwrap_or("MEDIUM");
+                let tags = body.tags.as_deref().unwrap_or(&[]);
+                sqlx::query(
+                    r#"INSERT INTO tickets (id, ticket_number, title, description, description_plain,
                                 type, status, priority, tags, created_by_id, assigned_to_id,
                                 assigned_to_group_id, created_at, updated_at)
            VALUES ($1, $2, $3, $4, $5, $6::"TicketType", 'OPEN'::"TicketStatus",
                    $7::"TicketPriority", $8, $9, $10, $11, NOW(), NOW())"#,
+                )
+                .bind(&id)
+                .bind(&ticket_number)
+                .bind(body.title.trim())
+                .bind(&body.description)
+                .bind(&body.description_plain)
+                .bind(ticket_type)
+                .bind(priority)
+                .bind(tags)
+                .bind(&user_id)
+                .bind(&body.assigned_to_id)
+                .bind(&body.assigned_to_group_id)
+                .execute(&mut *tx)
+                .await?;
+                tx.commit().await.map_err(AppError::from)?;
+                Ok(JsonMutationResult::created(serde_json::json!({
+                    "id": id,
+                    "ticket_number": ticket_number
+                })))
+            }
+        }
+    }));
+    let out = run_mutation_defer(
+        broker,
+        pool,
+        "ticket:create".to_string(),
+        ctx,
+        jobs,
+        user.id.clone(),
+        make_arc,
     )
-    .bind(&id)
-    .bind(&ticket_number)
-    .bind(body.title.trim())
-    .bind(&body.description)
-    .bind(&body.description_plain)
-    .bind(ticket_type)
-    .bind(priority)
-    .bind(tags)
-    .bind(&user.id)
-    .bind(&body.assigned_to_id)
-    .bind(&body.assigned_to_group_id)
-    .execute(&state.pool)
     .await?;
-
-    Ok((
-        StatusCode::CREATED,
-        Json(serde_json::json!({ "id": id, "ticket_number": ticket_number })),
-    ))
+    Ok(mutation_response(out))
 }
 
 async fn update_ticket(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Json(body): Json<TicketUpdateRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let ticket = sqlx::query("SELECT id, created_by_id FROM tickets WHERE id = $1")
-        .bind(&id)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or_else(|| AppError::not_found("Ticket not found"))?;
-
-    let created_by_id: Option<String> = ticket.get("created_by_id");
-    let can_edit_all = check_permission(&state.pool, &user.id, "tickets.edit_all").await;
-    if !can_edit_all && created_by_id.as_deref() != Some(&user.id) {
-        return Err(AppError::forbidden(
-            "You don't have permission to update this ticket",
-        ));
-    }
-
-    if let Some(ref archived) = body.archived_at {
-        if archived.is_null() {
-            sqlx::query("UPDATE tickets SET archived_at = NULL, updated_at = NOW() WHERE id = $1")
+) -> Result<Response, AppError> {
+    let body_hash = hash_json_for_idempotency(&body);
+    let route = format!("PATCH /tickets/{id}");
+    let ctx = MutationRunContext {
+        user_id: user.id.clone(),
+        route,
+        idempotency_key: idempotency_key_from_headers(&headers),
+        body_hash,
+    };
+    let id_clone = id.clone();
+    let uid = user.id.clone();
+    let b = body.clone();
+    let shard = format!("ticket:{id}");
+    let broker = state.mutation_broker.clone();
+    let lock_ms = broker.lock_timeout_ms;
+    let stmt_ms = broker.statement_timeout_ms;
+    let pool = state.pool.clone();
+    let jobs = state.mutation_jobs.clone();
+    let make_arc = Arc::new(tokio::sync::Mutex::new({
+        let id = id_clone.clone();
+        let user_id = uid.clone();
+        let body = b.clone();
+        move || {
+            let id = id.clone();
+            let user_id = user_id.clone();
+            let body = body.clone();
+            move |pool: sqlx::PgPool| async move {
+                let mut tx = pool.begin().await.map_err(AppError::from)?;
+                apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms)
+                    .await
+                    .map_err(AppError::from)?;
+                let ticket = sqlx::query(
+                    "SELECT id, created_by_id FROM tickets WHERE id = $1 FOR UPDATE",
+                )
                 .bind(&id)
-                .execute(&state.pool)
-                .await?;
-        }
-    }
-    if let Some(ref title) = body.title {
-        sqlx::query("UPDATE tickets SET title = $1, updated_at = NOW() WHERE id = $2")
-            .bind(title)
-            .bind(&id)
-            .execute(&state.pool)
-            .await?;
-    }
-    if let Some(ref status) = body.status {
-        sqlx::query(
-            "UPDATE tickets SET status = $1::\"TicketStatus\", updated_at = NOW() WHERE id = $2",
-        )
-        .bind(status)
-        .bind(&id)
-        .execute(&state.pool)
-        .await?;
-    }
-    if let Some(ref priority) = body.priority {
-        sqlx::query(
-            "UPDATE tickets SET priority = $1::\"TicketPriority\", updated_at = NOW() WHERE id = $2",
-        )
-        .bind(priority)
-        .bind(&id)
-        .execute(&state.pool)
-        .await?;
-    }
-    if let Some(ref desc) = body.description {
-        sqlx::query("UPDATE tickets SET description = $1, updated_at = NOW() WHERE id = $2")
-            .bind(desc)
-            .bind(&id)
-            .execute(&state.pool)
-            .await?;
-    }
-    if let Some(ref t) = body.r#type {
-        sqlx::query("UPDATE tickets SET type = $1::\"TicketType\", updated_at = NOW() WHERE id = $2")
-            .bind(t)
-            .bind(&id)
-            .execute(&state.pool)
-            .await?;
-    }
-    if let Some(ref v) = body.assigned_to_id {
-        let opt: Option<String> = if v.is_empty() { None } else { Some(v.clone()) };
-        sqlx::query("UPDATE tickets SET assigned_to_id = $1, updated_at = NOW() WHERE id = $2")
-            .bind(&opt)
-            .bind(&id)
-            .execute(&state.pool)
-            .await?;
-    }
-    if let Some(ref v) = body.assigned_to_group_id {
-        let opt: Option<String> = if v.is_empty() { None } else { Some(v.clone()) };
-        sqlx::query("UPDATE tickets SET assigned_to_group_id = $1, updated_at = NOW() WHERE id = $2")
-            .bind(&opt)
-            .bind(&id)
-            .execute(&state.pool)
-            .await?;
-    }
-    if let Some(ref tags) = body.tags {
-        sqlx::query("UPDATE tickets SET tags = $1, updated_at = NOW() WHERE id = $2")
-            .bind(tags)
-            .bind(&id)
-            .execute(&state.pool)
-            .await?;
-    }
-    if let Some(ref due) = body.due_date {
-        sqlx::query("UPDATE tickets SET due_date = $1::timestamp, updated_at = NOW() WHERE id = $2")
-            .bind(due)
-            .bind(&id)
-            .execute(&state.pool)
-            .await?;
-    }
+                .fetch_optional(&mut *tx)
+                .await?
+                .ok_or_else(|| AppError::not_found("Ticket not found"))?;
 
-    Ok(Json(
-        serde_json::json!({ "success": true, "message": "Ticket updated" }),
-    ))
+                let created_by_id: Option<String> = ticket.get("created_by_id");
+                let can_edit_all =
+                    check_permission_mut_tx(&mut tx, &user_id, "tickets.edit_all").await;
+                if !can_edit_all && created_by_id.as_deref() != Some(&user_id) {
+                    return Err(AppError::forbidden(
+                        "You don't have permission to update this ticket",
+                    ));
+                }
+
+                if let Some(ref archived) = body.archived_at {
+                    if archived.is_null() {
+                        sqlx::query(
+                            "UPDATE tickets SET archived_at = NULL, updated_at = NOW() WHERE id = $1",
+                        )
+                        .bind(&id)
+                        .execute(&mut *tx)
+                        .await?;
+                    }
+                }
+                if let Some(ref title) = body.title {
+                    sqlx::query("UPDATE tickets SET title = $1, updated_at = NOW() WHERE id = $2")
+                        .bind(title)
+                        .bind(&id)
+                        .execute(&mut *tx)
+                        .await?;
+                }
+                if let Some(ref status) = body.status {
+                    sqlx::query(
+                        "UPDATE tickets SET status = $1::\"TicketStatus\", updated_at = NOW() WHERE id = $2",
+                    )
+                    .bind(status)
+                    .bind(&id)
+                    .execute(&mut *tx)
+                    .await?;
+                }
+                if let Some(ref priority) = body.priority {
+                    sqlx::query(
+                        "UPDATE tickets SET priority = $1::\"TicketPriority\", updated_at = NOW() WHERE id = $2",
+                    )
+                    .bind(priority)
+                    .bind(&id)
+                    .execute(&mut *tx)
+                    .await?;
+                }
+                if let Some(ref desc) = body.description {
+                    sqlx::query(
+                        "UPDATE tickets SET description = $1, updated_at = NOW() WHERE id = $2",
+                    )
+                    .bind(desc)
+                    .bind(&id)
+                    .execute(&mut *tx)
+                    .await?;
+                }
+                if let Some(ref t) = body.r#type {
+                    sqlx::query(
+                        "UPDATE tickets SET type = $1::\"TicketType\", updated_at = NOW() WHERE id = $2",
+                    )
+                    .bind(t)
+                    .bind(&id)
+                    .execute(&mut *tx)
+                    .await?;
+                }
+                if let Some(ref v) = body.assigned_to_id {
+                    let opt: Option<String> =
+                        if v.is_empty() { None } else { Some(v.clone()) };
+                    sqlx::query(
+                        "UPDATE tickets SET assigned_to_id = $1, updated_at = NOW() WHERE id = $2",
+                    )
+                    .bind(&opt)
+                    .bind(&id)
+                    .execute(&mut *tx)
+                    .await?;
+                }
+                if let Some(ref v) = body.assigned_to_group_id {
+                    let opt: Option<String> =
+                        if v.is_empty() { None } else { Some(v.clone()) };
+                    sqlx::query(
+                        "UPDATE tickets SET assigned_to_group_id = $1, updated_at = NOW() WHERE id = $2",
+                    )
+                    .bind(&opt)
+                    .bind(&id)
+                    .execute(&mut *tx)
+                    .await?;
+                }
+                if let Some(ref tags) = body.tags {
+                    sqlx::query("UPDATE tickets SET tags = $1, updated_at = NOW() WHERE id = $2")
+                        .bind(tags)
+                        .bind(&id)
+                        .execute(&mut *tx)
+                        .await?;
+                }
+                if let Some(ref due) = body.due_date {
+                    sqlx::query(
+                        "UPDATE tickets SET due_date = $1::timestamp, updated_at = NOW() WHERE id = $2",
+                    )
+                    .bind(due)
+                    .bind(&id)
+                    .execute(&mut *tx)
+                    .await?;
+                }
+
+                tx.commit().await.map_err(AppError::from)?;
+                Ok(JsonMutationResult::ok(serde_json::json!({
+                    "success": true,
+                    "message": "Ticket updated"
+                })))
+            }
+        }
+    }));
+    let out = run_mutation_defer(
+        broker,
+        pool,
+        shard,
+        ctx,
+        jobs,
+        user.id.clone(),
+        make_arc,
+    )
+    .await?;
+    Ok(mutation_response(out))
 }
 
 async fn delete_ticket(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
-) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
-    let ticket = sqlx::query("SELECT id, created_by_id FROM tickets WHERE id = $1")
-        .bind(&id)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or_else(|| AppError::not_found("Ticket not found"))?;
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    let body_hash = 0u64;
+    let route = format!("DELETE /tickets/{id}");
+    let ctx = MutationRunContext {
+        user_id: user.id.clone(),
+        route,
+        idempotency_key: idempotency_key_from_headers(&headers),
+        body_hash,
+    };
+    let id_clone = id.clone();
+    let uid = user.id.clone();
+    let shard = format!("ticket:{id}");
+    let broker = state.mutation_broker.clone();
+    let lock_ms = broker.lock_timeout_ms;
+    let stmt_ms = broker.statement_timeout_ms;
+    let pool = state.pool.clone();
+    let jobs = state.mutation_jobs.clone();
+    let make_arc = Arc::new(tokio::sync::Mutex::new({
+        let id = id_clone.clone();
+        let user_id = uid.clone();
+        move || {
+            let id = id.clone();
+            let user_id = user_id.clone();
+            move |pool: sqlx::PgPool| async move {
+                let mut tx = pool.begin().await.map_err(AppError::from)?;
+                apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms)
+                    .await
+                    .map_err(AppError::from)?;
+                let ticket = sqlx::query(
+                    "SELECT id, created_by_id FROM tickets WHERE id = $1 FOR UPDATE",
+                )
+                .bind(&id)
+                .fetch_optional(&mut *tx)
+                .await?
+                .ok_or_else(|| AppError::not_found("Ticket not found"))?;
 
-    let created_by_id: Option<String> = ticket.get("created_by_id");
-    let can_delete_all = check_permission(&state.pool, &user.id, "tickets.delete_all").await;
-    if !can_delete_all && created_by_id.as_deref() != Some(&user.id) {
-        return Err(AppError::forbidden(
-            "You don't have permission to delete this ticket",
-        ));
-    }
+                let created_by_id: Option<String> = ticket.get("created_by_id");
+                let can_delete_all =
+                    check_permission_mut_tx(&mut tx, &user_id, "tickets.delete_all").await;
+                if !can_delete_all && created_by_id.as_deref() != Some(&user_id) {
+                    return Err(AppError::forbidden(
+                        "You don't have permission to delete this ticket",
+                    ));
+                }
 
-    sqlx::query("DELETE FROM tickets WHERE id = $1")
-        .bind(&id)
-        .execute(&state.pool)
-        .await?;
-
-    Ok((
-        StatusCode::OK,
-        Json(serde_json::json!({ "success": true, "message": "Ticket deleted" })),
-    ))
+                sqlx::query("DELETE FROM tickets WHERE id = $1")
+                    .bind(&id)
+                    .execute(&mut *tx)
+                    .await?;
+                tx.commit().await.map_err(AppError::from)?;
+                Ok(JsonMutationResult::ok(serde_json::json!({
+                    "success": true,
+                    "message": "Ticket deleted"
+                })))
+            }
+        }
+    }));
+    let out = run_mutation_defer(
+        broker,
+        pool,
+        shard,
+        ctx,
+        jobs,
+        user.id.clone(),
+        make_arc,
+    )
+    .await?;
+    Ok(mutation_response(out))
 }
 
 async fn list_ticket_comments(
@@ -544,10 +672,11 @@ async fn create_ticket_comment(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Json(body): Json<TicketCommentCreateRequest>,
-) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
-    let content = body.content.trim();
-    if content.is_empty() {
+) -> Result<Response, AppError> {
+    let content_trimmed = body.content.trim().to_string();
+    if content_trimmed.is_empty() {
         return Err(AppError::bad_request("Comment cannot be empty"));
     }
 
@@ -560,73 +689,125 @@ async fn create_ticket_comment(
         }
     }
 
-    let can_view_all = check_permission(&state.pool, &user.id, "tickets.view_all").await;
-
-    let ticket = sqlx::query(
-        "SELECT id, created_by_id, assigned_to_id FROM tickets WHERE id = $1
-         AND ($2::bool OR created_by_id = $3 OR assigned_to_id = $3)",
-    )
-    .bind(&id)
-    .bind(can_view_all)
-    .bind(&user.id)
-    .fetch_optional(&state.pool)
-    .await?;
-
-    let _ticket = ticket.ok_or_else(|| AppError::not_found("Ticket not found"))?;
-
-    let can_comment = check_permission(&state.pool, &user.id, "tickets.comment").await
-        || check_permission(&state.pool, &user.id, "tickets.view").await
-        || check_permission(&state.pool, &user.id, "tickets.view_all").await
-        || check_permission(&state.pool, &user.id, "admin.tickets.manage").await;
-    if !can_comment {
-        return Err(AppError::forbidden(
-            "You don't have permission to comment on this ticket",
-        ));
-    }
-
-    let content_plain = strip_html_tags(content);
-    let content_plain = if content_plain.is_empty() {
-        content.to_string()
-    } else {
-        content_plain
+    let body_hash = hash_json_for_idempotency(&body);
+    let route = format!("POST /tickets/{id}/comments");
+    let ctx = MutationRunContext {
+        user_id: user.id.clone(),
+        route,
+        idempotency_key: idempotency_key_from_headers(&headers),
+        body_hash,
     };
+    let id_clone = id.clone();
+    let uid = user.id.clone();
+    let uname = user.name.clone();
+    let b = body.clone();
+    let content_for_html = content_trimmed.clone();
+    let shard = format!("ticket:{id}");
+    let broker = state.mutation_broker.clone();
+    let lock_ms = broker.lock_timeout_ms;
+    let stmt_ms = broker.statement_timeout_ms;
+    let pool = state.pool.clone();
+    let jobs = state.mutation_jobs.clone();
+    let make_arc = Arc::new(tokio::sync::Mutex::new({
+        let ticket_id = id_clone.clone();
+        let user_id = uid.clone();
+        let user_name = uname.clone();
+        let body = b.clone();
+        let content_trimmed = content_for_html.clone();
+        move || {
+            let ticket_id = ticket_id.clone();
+            let user_id = user_id.clone();
+            let user_name = user_name.clone();
+            let body = body.clone();
+            let content_trimmed = content_trimmed.clone();
+            move |pool: sqlx::PgPool| async move {
+                let mut tx = pool.begin().await.map_err(AppError::from)?;
+                apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms)
+                    .await
+                    .map_err(AppError::from)?;
 
-    let comment_id = id::new_cuid();
-    let now = chrono::Utc::now().naive_utc();
+                let can_view_all =
+                    check_permission_mut_tx(&mut tx, &user_id, "tickets.view_all").await;
+                let ticket = sqlx::query(
+                    "SELECT id, created_by_id, assigned_to_id FROM tickets WHERE id = $1
+         AND ($2::bool OR created_by_id = $3 OR assigned_to_id = $3) FOR UPDATE",
+                )
+                .bind(&ticket_id)
+                .bind(can_view_all)
+                .bind(&user_id)
+                .fetch_optional(&mut *tx)
+                .await?;
 
-    sqlx::query(
-        r#"INSERT INTO ticket_comments (id, ticket_id, user_id, content, content_html, content_plain, is_agent_only, created_at, updated_at)
+                let _ticket = ticket.ok_or_else(|| AppError::not_found("Ticket not found"))?;
+
+                let can_comment = check_permission_mut_tx(&mut tx, &user_id, "tickets.comment")
+                    .await
+                    || check_permission_mut_tx(&mut tx, &user_id, "tickets.view").await
+                    || check_permission_mut_tx(&mut tx, &user_id, "tickets.view_all").await
+                    || check_permission_mut_tx(&mut tx, &user_id, "admin.tickets.manage").await;
+                if !can_comment {
+                    return Err(AppError::forbidden(
+                        "You don't have permission to comment on this ticket",
+                    ));
+                }
+
+                let mut content_plain = strip_html_tags(&content_trimmed);
+                if content_plain.is_empty() {
+                    content_plain = content_trimmed.clone();
+                }
+
+                let comment_id = id::new_cuid();
+                let now = chrono::Utc::now().naive_utc();
+
+                sqlx::query(
+                    r#"INSERT INTO ticket_comments (id, ticket_id, user_id, content, content_html, content_plain, is_agent_only, created_at, updated_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)"#,
-    )
-    .bind(&comment_id)
-    .bind(&id)
-    .bind(&user.id)
-    .bind(&content_plain)
-    .bind(content)
-    .bind(&content_plain)
-    .bind(body.is_agent_only)
-    .bind(now)
-    .execute(&state.pool)
-    .await?;
+                )
+                .bind(&comment_id)
+                .bind(&ticket_id)
+                .bind(&user_id)
+                .bind(&content_plain)
+                .bind(&content_trimmed)
+                .bind(&content_plain)
+                .bind(body.is_agent_only)
+                .bind(now)
+                .execute(&mut *tx)
+                .await?;
 
-    let activity_id = id::new_cuid();
-    sqlx::query(
-        r#"INSERT INTO ticket_activities (id, ticket_id, activity_type, changed_by_id, changed_by_name, metadata, created_at)
+                let activity_id = id::new_cuid();
+                sqlx::query(
+                    r#"INSERT INTO ticket_activities (id, ticket_id, activity_type, changed_by_id, changed_by_name, metadata, created_at)
            VALUES ($1, $2, 'COMMENT_ADDED'::"TicketActivityType", $3, $4, $5, $6)"#,
-    )
-    .bind(&activity_id)
-    .bind(&id)
-    .bind(&user.id)
-    .bind(&user.name)
-    .bind(serde_json::json!({ "commentId": comment_id, "isAgentOnly": body.is_agent_only }))
-    .bind(now)
-    .execute(&state.pool)
-    .await?;
+                )
+                .bind(&activity_id)
+                .bind(&ticket_id)
+                .bind(&user_id)
+                .bind(&user_name)
+                .bind(serde_json::json!({ "commentId": comment_id, "isAgentOnly": body.is_agent_only }))
+                .bind(now)
+                .execute(&mut *tx)
+                .await?;
 
-    Ok((
-        StatusCode::CREATED,
-        Json(serde_json::json!({ "id": comment_id, "success": true, "message": "Comment added successfully" })),
-    ))
+                tx.commit().await.map_err(AppError::from)?;
+                Ok(JsonMutationResult::created(serde_json::json!({
+                    "id": comment_id,
+                    "success": true,
+                    "message": "Comment added successfully"
+                })))
+            }
+        }
+    }));
+    let out = run_mutation_defer(
+        broker,
+        pool,
+        shard,
+        ctx,
+        jobs,
+        user.id.clone(),
+        make_arc,
+    )
+    .await?;
+    Ok(mutation_response(out))
 }
 
 async fn list_ticket_activities(

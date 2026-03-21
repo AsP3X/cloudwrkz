@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/Button";
 import { createTodoSchema, type CreateTodoInput } from "@/lib/validations/todos";
 import { api } from "@/api/client";
 import { ROUTES } from "@/lib/constants/routes";
+import type { LoginQueuedUiState } from "@/components/providers/AuthProvider";
+import { LoginQueuedBanner } from "@/features/auth/LoginQueuedBanner";
 
 const STATUS_OPTIONS = [
   { value: "NOT_STARTED", label: "Not Started" },
@@ -43,9 +45,88 @@ interface TaskFormProps {
   canAssign?: boolean;
 }
 
+const CREATE_TODO_API_PATH = "/todos";
+
 export function TaskForm({ users = [], tickets = [], canAssign = false }: TaskFormProps) {
   const navigate = useNavigate();
   const [serverError, setServerError] = React.useState<string | null>(null);
+  const [createQueuedUi, setCreateQueuedUi] = React.useState<LoginQueuedUiState | null>(null);
+  const [offlineCreateQueuedUi, setOfflineCreateQueuedUi] = React.useState<LoginQueuedUiState | null>(null);
+  /** Set when submit starts; cleared in `finally` so the banner covers local → API → DB for the whole request. */
+  const [pipelineStartedAt, setPipelineStartedAt] = React.useState<number | null>(null);
+
+  const pipelinePhaseUi: LoginQueuedUiState | null =
+    pipelineStartedAt !== null && !offlineCreateQueuedUi && !createQueuedUi
+      ? {
+          headline: "Create ToDo queued",
+          supportLines: [
+            "Local → API → database: your create request is in the pipeline.",
+            "Stay on this page until it completes—do not press Create again.",
+          ],
+          maxWaitSecs: 0,
+          startedAt: pipelineStartedAt,
+        }
+      : null;
+
+  const createQueuedBannerState =
+    offlineCreateQueuedUi ?? createQueuedUi ?? pipelinePhaseUi;
+
+  React.useEffect(() => {
+    const onQueued = (e: Event) => {
+      const d = (
+        e as CustomEvent<{
+          path: string;
+          retry_deadline_secs: number;
+        }>
+      ).detail;
+      if (d.path !== CREATE_TODO_API_PATH) return;
+      const retry = d.retry_deadline_secs ?? 30;
+      const maxWaitSecs = retry + 5;
+      setCreateQueuedUi({
+        headline: "Creating ToDo",
+        supportLines: [
+          "Your create request was accepted with HTTP 202: the API applies it in the background, including automatic retries if the database was briefly unavailable.",
+          `If Postgres was down when you submitted, the server retries for up to about ${retry} seconds—stay on this page.`,
+          "We poll job status about once per second—do not press Create again unless this times out or fails.",
+          `If nothing completes within about ${maxWaitSecs} seconds, you will see an error above.`,
+        ],
+        maxWaitSecs,
+        startedAt: Date.now(),
+      });
+    };
+    window.addEventListener("cloudwrkz:mutation-queued", onQueued);
+    return () => {
+      window.removeEventListener("cloudwrkz:mutation-queued", onQueued);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    const onOfflineEnqueued = (e: Event) => {
+      const d = (e as CustomEvent<{ path: string; method: string }>).detail;
+      if (d.path !== CREATE_TODO_API_PATH || d.method !== "POST") return;
+      setOfflineCreateQueuedUi({
+        headline: "Create ToDo queued",
+        supportLines: [
+          "The server could not be reached. Your create request is saved on this device.",
+          "It will send automatically when your connection is working again. Stay on this page or return later.",
+          "Do not create the same ToDo again elsewhere until this completes or you see an error above.",
+        ],
+        maxWaitSecs: 0,
+        startedAt: Date.now(),
+      });
+    };
+    const onOfflineFinished = (e: Event) => {
+      const d = (e as CustomEvent<{ path: string; method: string }>).detail;
+      if (d.path !== CREATE_TODO_API_PATH || d.method !== "POST") return;
+      setOfflineCreateQueuedUi(null);
+    };
+    window.addEventListener("cloudwrkz:offline-mutation-enqueued", onOfflineEnqueued);
+    window.addEventListener("cloudwrkz:offline-mutation-finished", onOfflineFinished);
+    return () => {
+      window.removeEventListener("cloudwrkz:offline-mutation-enqueued", onOfflineEnqueued);
+      window.removeEventListener("cloudwrkz:offline-mutation-finished", onOfflineFinished);
+    };
+  }, []);
 
   const userOptions = [
     { value: "", label: "Unassigned" },
@@ -77,6 +158,8 @@ export function TaskForm({ users = [], tickets = [], canAssign = false }: TaskFo
 
   const onSubmit = async (data: CreateTodoInput) => {
     setServerError(null);
+    setCreateQueuedUi(null);
+    setPipelineStartedAt(Date.now());
     try {
       const body: Record<string, unknown> = {
         title: data.title.trim(),
@@ -97,6 +180,9 @@ export function TaskForm({ users = [], tickets = [], canAssign = false }: TaskFo
           ? String((err as { message: string }).message)
           : "Failed to create task. Please try again.";
       setServerError(message);
+    } finally {
+      setPipelineStartedAt(null);
+      setCreateQueuedUi(null);
     }
   };
 
@@ -114,6 +200,7 @@ export function TaskForm({ users = [], tickets = [], canAssign = false }: TaskFo
         placeholder="Brief description of the todo"
         error={errors.title?.message}
         required
+        disabled={Boolean(createQueuedBannerState)}
         {...register("title")}
       />
 
@@ -128,6 +215,7 @@ export function TaskForm({ users = [], tickets = [], canAssign = false }: TaskFo
               error={errors.description?.message}
               value={field.value || ""}
               onChange={field.onChange}
+              disabled={Boolean(createQueuedBannerState)}
             />
           )}
         />
@@ -138,12 +226,14 @@ export function TaskForm({ users = [], tickets = [], canAssign = false }: TaskFo
           label="Status"
           options={STATUS_OPTIONS}
           error={errors.status?.message}
+          disabled={Boolean(createQueuedBannerState)}
           {...register("status")}
         />
         <Select
           label="Priority"
           options={PRIORITY_OPTIONS}
           error={errors.priority?.message}
+          disabled={Boolean(createQueuedBannerState)}
           {...register("priority")}
         />
       </div>
@@ -153,6 +243,7 @@ export function TaskForm({ users = [], tickets = [], canAssign = false }: TaskFo
           label="Assign To"
           options={userOptions}
           error={errors.assignedToId?.message}
+          disabled={Boolean(createQueuedBannerState)}
           {...register("assignedToId")}
         />
       )}
@@ -162,6 +253,7 @@ export function TaskForm({ users = [], tickets = [], canAssign = false }: TaskFo
           label="Link to Ticket"
           options={ticketOptions}
           error={errors.ticketId?.message}
+          disabled={Boolean(createQueuedBannerState)}
           {...register("ticketId")}
         />
       )}
@@ -174,19 +266,45 @@ export function TaskForm({ users = [], tickets = [], canAssign = false }: TaskFo
           step="0.1"
           min={0}
           error={errors.estimatedHours?.message}
+          disabled={Boolean(createQueuedBannerState)}
           {...register("estimatedHours")}
         />
-        <Input label="Start Date" type="date" error={errors.startDate?.message} {...register("startDate")} />
-        <Input label="Due Date" type="date" error={errors.dueDate?.message} {...register("dueDate")} />
+        <Input
+          label="Start Date"
+          type="date"
+          error={errors.startDate?.message}
+          disabled={Boolean(createQueuedBannerState)}
+          {...register("startDate")}
+        />
+        <Input
+          label="Due Date"
+          type="date"
+          error={errors.dueDate?.message}
+          disabled={Boolean(createQueuedBannerState)}
+          {...register("dueDate")}
+        />
       </div>
 
       <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-3 pt-4">
-        <Button type="button" variant="outline" onClick={() => navigate(`${ROUTES.DASHBOARD}/todos`)} disabled={isSubmitting}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => navigate(`${ROUTES.DASHBOARD}/todos`)}
+          disabled={isSubmitting || Boolean(createQueuedBannerState)}
+        >
           Cancel
         </Button>
-        <Button type="submit" variant="primary" loading={isSubmitting} disabled={isSubmitting}>
-          Create ToDo
-        </Button>
+        {createQueuedBannerState ? (
+          <LoginQueuedBanner
+            shrinkToContent
+            state={createQueuedBannerState}
+            className="min-h-[3rem] self-end sm:self-center"
+          />
+        ) : (
+          <Button type="submit" variant="primary" loading={isSubmitting} disabled={isSubmitting}>
+            Create ToDo
+          </Button>
+        )}
       </div>
     </form>
   );

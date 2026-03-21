@@ -5,6 +5,8 @@ import { cn } from "@/lib/utils/cn";
 type Props = {
   state: LoginQueuedUiState;
   className?: string;
+  /** Width follows content (no flex-grow); use where the banner replaces a button. */
+  shrinkToContent?: boolean;
 };
 
 function InfoIcon({ className }: { className?: string }) {
@@ -21,7 +23,7 @@ function InfoIcon({ className }: { className?: string }) {
 }
 
 /** Visible while AuthProvider polls login job status after HTTP 202. */
-export function LoginQueuedBanner({ state, className }: Props) {
+export function LoginQueuedBanner({ state, className, shrinkToContent = false }: Props) {
   const [showDetails, setShowDetails] = useState(false);
   const detailsId = useId();
   const [, force] = useState(0);
@@ -31,19 +33,23 @@ export function LoginQueuedBanner({ state, className }: Props) {
   }, [state.startedAt]);
 
   const elapsedSec = Math.max(0, Math.floor((Date.now() - state.startedAt) / 1000));
-  const timeLabel = `${elapsedSec}s · ~${state.maxWaitSecs}s max`;
+  const timeLabel =
+    state.maxWaitSecs <= 0
+      ? `${elapsedSec}s`
+      : `${elapsedSec}s · ~${state.maxWaitSecs}s max`;
 
   return (
     <div
       className={cn(
         "rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/50 shadow-sm px-2.5 py-2 mb-3",
+        shrinkToContent && "w-fit max-w-full",
         className,
       )}
       role="status"
       aria-live="polite"
       aria-busy="true"
     >
-      <div className="flex items-center gap-2">
+      <div className={cn("flex items-center gap-2", shrinkToContent && "w-fit")}>
         <div
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-amber-200/80 dark:bg-amber-900/60"
           aria-hidden
@@ -61,11 +67,21 @@ export function LoginQueuedBanner({ state, className }: Props) {
             />
           </svg>
         </div>
-        <div className="min-w-0 flex-1 flex items-center gap-1.5 flex-wrap text-xs leading-tight">
+        <div
+          className={cn(
+            "min-w-0 flex items-center gap-1.5 flex-wrap text-xs leading-tight",
+            shrinkToContent ? "flex-none" : "flex-1",
+          )}
+        >
           <span className="shrink-0 rounded bg-amber-200/90 dark:bg-amber-900/80 px-1.5 py-0.5 font-bold uppercase tracking-wide text-[10px] text-amber-950 dark:text-amber-100">
             Queued
           </span>
-          <span className="font-medium text-amber-950 dark:text-amber-50 truncate max-w-[min(100%,14rem)] sm:max-w-none">
+          <span
+            className={cn(
+              "font-medium text-amber-950 dark:text-amber-50",
+              shrinkToContent ? "" : "truncate max-w-[min(100%,14rem)] sm:max-w-none",
+            )}
+          >
             {state.headline}
           </span>
           <span className="text-amber-800/90 dark:text-amber-200/80 tabular-nums shrink-0">{timeLabel}</span>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Outlet, useNavigate } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { SidebarProvider } from "./SidebarContext";
 import { DashboardSidebar, type NavCounts } from "./DashboardSidebar";
@@ -8,6 +8,8 @@ import { DashboardHeader } from "./DashboardHeader";
 import { ROUTES } from "@/lib/constants/routes";
 import { cn } from "@/lib/utils/cn";
 import { api } from "@/api/client";
+import { LocalOfflineQueueNotice } from "@/components/ui/LocalOfflineQueueNotice";
+import { MutationQueueNotice } from "@/components/ui/MutationQueueNotice";
 
 const Spinner = () => (
   <div className="flex items-center justify-center min-h-[50vh]">
@@ -78,6 +80,13 @@ function DashboardLayoutContent() {
 export const DashboardLayout = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  /**
+   * Create-todo page uses inline `LoginQueuedBanner` (server 202 + offline queue); skip duplicate
+   * global notices.
+   */
+  const showMutationQueueNotice = location.pathname !== "/dashboard/todos/new";
+  const showTopOfflineNotice = showMutationQueueNotice;
 
   useEffect(() => {
     if (!loading && !user) {
@@ -104,6 +113,8 @@ export const DashboardLayout = () => {
         <DashboardLayoutContent />
         <main className={cn("min-h-screen relative z-10", "lg:pl-64")}>
           <div className="p-4 sm:p-6 lg:p-8">
+            {showTopOfflineNotice ? <LocalOfflineQueueNotice /> : null}
+            {showMutationQueueNotice ? <MutationQueueNotice /> : null}
             <Outlet />
           </div>
         </main>

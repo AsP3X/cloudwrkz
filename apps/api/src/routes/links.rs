@@ -1,15 +1,23 @@
+use std::sync::Arc;
+
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
-use sqlx::Row;
 use serde::Deserialize;
+use sqlx::Row;
 
 use crate::auth::extractors::AuthUser;
+use crate::command_queue::{
+    apply_mutation_tx_settings, mutation_response, run_mutation_defer, JsonMutationResult,
+    MutationHandlerOutput, MutationRunContext,
+};
 use crate::error::AppError;
 use crate::models::link::*;
+use crate::routes::helpers::{hash_json_for_idempotency, idempotency_key_from_headers};
 use crate::routes::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -283,275 +291,463 @@ async fn get_link(
 async fn create_link(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
+    headers: HeaderMap,
     Json(body): Json<CreateLinkRequest>,
-) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
+) -> Result<Response, AppError> {
     if body.url.trim().is_empty() {
         return Err(AppError::bad_request("URL is required"));
     }
 
-    let allow_duplicates = body.allow_duplicates.unwrap_or(false);
-    let should_extract = body.extract_metadata.unwrap_or(false) || body.title.is_none() || body.description.is_none();
+    let body_hash = hash_json_for_idempotency(&body);
+    let ctx = MutationRunContext {
+        user_id: user.id.clone(),
+        route: "POST /links".into(),
+        idempotency_key: idempotency_key_from_headers(&headers),
+        body_hash,
+    };
+    let uid = user.id.clone();
+    let shard = format!("link:create:{uid}");
+    let b = body.clone();
+    let broker = state.mutation_broker.clone();
+    let lock_ms = broker.lock_timeout_ms;
+    let stmt_ms = broker.statement_timeout_ms;
+    let pool = state.pool.clone();
+    let jobs = state.mutation_jobs.clone();
+    let make_arc = Arc::new(tokio::sync::Mutex::new({
+        let user_id = uid.clone();
+        let body = b.clone();
+        move || {
+            let user_id = user_id.clone();
+            let body = body.clone();
+            move |pool: sqlx::PgPool| async move {
+                let allow_duplicates = body.allow_duplicates.unwrap_or(false);
+                let should_extract = body.extract_metadata.unwrap_or(false)
+                    || body.title.is_none()
+                    || body.description.is_none();
 
-    let id = crate::id::new_cuid();
-    let normalized = normalize_url(&body.url);
-    let mut title = body.title.clone();
-    let mut description = body.description.clone();
-    let mut favicon: Option<String> = None;
-    let mut metadata: Option<serde_json::Value> = None;
-    let mut metadata_extracted_at: Option<chrono::NaiveDateTime> = None;
+                let id = crate::id::new_cuid();
+                let normalized = normalize_url(&body.url);
+                let mut title = body.title.clone();
+                let mut description = body.description.clone();
+                let mut favicon: Option<String> = None;
+                let mut metadata: Option<serde_json::Value> = None;
+                let mut metadata_extracted_at: Option<chrono::NaiveDateTime> = None;
 
-    if !allow_duplicates {
-        let exact_duplicate_ids = sqlx::query_scalar::<_, String>(
-            "SELECT id FROM links WHERE user_id = $1 AND normalized_url = $2",
-        )
-        .bind(&user.id)
-        .bind(&normalized)
-        .fetch_all(&state.pool)
-        .await?;
+                if should_extract {
+                    if let Ok(extracted) = extract_metadata_from_url(&body.url).await {
+                        let extracted_title = extracted.title.clone();
+                        let extracted_description = extracted.description.clone();
+                        let extracted_favicon = extracted.favicon.clone();
 
-        if !exact_duplicate_ids.is_empty() {
-            let host = normalized.split('/').next().unwrap_or_default().to_string();
-            let similar_link_ids = sqlx::query_scalar::<_, String>(
-                r#"SELECT id
+                        if title.is_none() {
+                            title = extracted_title.clone();
+                        }
+                        if description.is_none() {
+                            description = extracted_description.clone();
+                        }
+                        favicon = extracted_favicon.clone();
+                        metadata_extracted_at = Some(chrono::Utc::now().naive_utc());
+                        metadata = Some(serde_json::json!({
+                            "title": extracted_title,
+                            "description": extracted_description,
+                            "favicon": extracted_favicon,
+                        }));
+                    }
+                }
+
+                let mut tx = pool.begin().await.map_err(AppError::from)?;
+                apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms)
+                    .await
+                    .map_err(AppError::from)?;
+
+                if !allow_duplicates {
+                    let exact_duplicate_ids = sqlx::query_scalar::<_, String>(
+                        "SELECT id FROM links WHERE user_id = $1 AND normalized_url = $2",
+                    )
+                    .bind(&user_id)
+                    .bind(&normalized)
+                    .fetch_all(&mut *tx)
+                    .await?;
+
+                    if !exact_duplicate_ids.is_empty() {
+                        let host = normalized.split('/').next().unwrap_or_default().to_string();
+                        let similar_link_ids = sqlx::query_scalar::<_, String>(
+                            r#"SELECT id
                    FROM links
                    WHERE user_id = $1
                      AND split_part(normalized_url, '/', 1) = $2
                      AND normalized_url <> $3"#,
-            )
-            .bind(&user.id)
-            .bind(&host)
-            .bind(&normalized)
-            .fetch_all(&state.pool)
-            .await?;
+                        )
+                        .bind(&user_id)
+                        .bind(&host)
+                        .bind(&normalized)
+                        .fetch_all(&mut *tx)
+                        .await?;
+                        drop(tx);
+                        return Ok(JsonMutationResult::new(
+                            StatusCode::OK,
+                            serde_json::json!({
+                                "success": false,
+                                "error": "A link with this exact URL already exists",
+                                "duplicate_link_ids": exact_duplicate_ids,
+                                "similar_link_ids": similar_link_ids,
+                            }),
+                        ));
+                    }
+                }
 
-            return Ok((
-                StatusCode::OK,
-                Json(serde_json::json!({
-                    "success": false,
-                    "error": "A link with this exact URL already exists",
-                    "duplicate_link_ids": exact_duplicate_ids,
-                    "similar_link_ids": similar_link_ids,
-                })),
-            ));
-        }
-    }
+                let link_type = body.link_type.as_deref().unwrap_or("WEBSITE");
+                let tags = body.tags.clone().unwrap_or_default();
+                let is_favorite = body.is_favorite.unwrap_or(false);
+                let title = title.unwrap_or_else(|| body.url.clone());
 
-    if should_extract {
-        if let Ok(extracted) = extract_metadata_from_url(&body.url).await {
-            let extracted_title = extracted.title.clone();
-            let extracted_description = extracted.description.clone();
-            let extracted_favicon = extracted.favicon.clone();
-
-            if title.is_none() {
-                title = extracted_title.clone();
-            }
-            if description.is_none() {
-                description = extracted_description.clone();
-            }
-            favicon = extracted_favicon.clone();
-            metadata_extracted_at = Some(chrono::Utc::now().naive_utc());
-            metadata = Some(serde_json::json!({
-                "title": extracted_title,
-                "description": extracted_description,
-                "favicon": extracted_favicon,
-            }));
-        }
-    }
-
-    let link_type = body.link_type.as_deref().unwrap_or("WEBSITE");
-    let tags = body.tags.unwrap_or_default();
-    let is_favorite = body.is_favorite.unwrap_or(false);
-    let title = title.unwrap_or_else(|| body.url.clone());
-
-    sqlx::query(
-        r#"INSERT INTO links (id, title, url, normalized_url, description, favicon, link_type, tags,
+                sqlx::query(
+                    r#"INSERT INTO links (id, title, url, normalized_url, description, favicon, link_type, tags,
                               notes, is_favorite, metadata, metadata_extracted_at, user_id, created_at, updated_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7::"LinkType", $8, $9, $10, $11, $12, $13, NOW(), NOW())"#,
-    )
-    .bind(&id)
-    .bind(&title)
-    .bind(&body.url)
-    .bind(&normalized)
-    .bind(&description)
-    .bind(&favicon)
-    .bind(link_type)
-    .bind(&tags)
-    .bind(&body.notes)
-    .bind(is_favorite)
-    .bind(&metadata)
-    .bind(metadata_extracted_at)
-    .bind(&user.id)
-    .execute(&state.pool)
-    .await?;
+                )
+                .bind(&id)
+                .bind(&title)
+                .bind(&body.url)
+                .bind(&normalized)
+                .bind(&description)
+                .bind(&favicon)
+                .bind(link_type)
+                .bind(&tags)
+                .bind(&body.notes)
+                .bind(is_favorite)
+                .bind(&metadata)
+                .bind(metadata_extracted_at)
+                .bind(&user_id)
+                .execute(&mut *tx)
+                .await?;
 
-    if let Some(ref collection_ids) = body.collection_ids {
-        for cid in collection_ids {
-            let lc_id = crate::id::new_cuid();
-            let _ = sqlx::query(
+                if let Some(ref collection_ids) = body.collection_ids {
+                    for cid in collection_ids {
+                        let lc_id = crate::id::new_cuid();
+                        let _ = sqlx::query(
                 "INSERT INTO link_collections (id, link_id, collection_id, created_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT DO NOTHING",
             )
-            .bind(&lc_id)
-            .bind(&id)
-            .bind(cid)
-            .execute(&state.pool)
-            .await;
-        }
-    }
+                        .bind(&lc_id)
+                        .bind(&id)
+                        .bind(cid)
+                        .execute(&mut *tx)
+                        .await;
+                    }
+                }
 
-    Ok((StatusCode::CREATED, Json(serde_json::json!({ "id": id }))))
+                tx.commit().await.map_err(AppError::from)?;
+                Ok(JsonMutationResult::created(serde_json::json!({ "id": id })))
+            }
+        }
+    }));
+    let out = run_mutation_defer(
+        broker,
+        pool,
+        shard,
+        ctx,
+        jobs,
+        user.id.clone(),
+        make_arc,
+    )
+    .await?;
+    Ok(mutation_response(out))
 }
 
 async fn update_link(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Json(body): Json<UpdateLinkRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let existing = sqlx::query("SELECT id, user_id FROM links WHERE id = $1")
-        .bind(&id)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or_else(|| AppError::not_found("Link not found"))?;
+) -> Result<Response, AppError> {
+    let body_hash = hash_json_for_idempotency(&body);
+    let route = format!("PUT /links/{id}");
+    let ctx = MutationRunContext {
+        user_id: user.id.clone(),
+        route,
+        idempotency_key: idempotency_key_from_headers(&headers),
+        body_hash,
+    };
+    let id_clone = id.clone();
+    let uid = user.id.clone();
+    let b = body.clone();
+    let shard = format!("link:{id}");
+    let broker = state.mutation_broker.clone();
+    let lock_ms = broker.lock_timeout_ms;
+    let stmt_ms = broker.statement_timeout_ms;
+    let pool = state.pool.clone();
+    let jobs = state.mutation_jobs.clone();
+    let make_arc = Arc::new(tokio::sync::Mutex::new({
+        let id = id_clone.clone();
+        let user_id = uid.clone();
+        let body = b.clone();
+        move || {
+            let id = id.clone();
+            let user_id = user_id.clone();
+            let body = body.clone();
+            move |pool: sqlx::PgPool| async move {
+                let mut tx = pool.begin().await.map_err(AppError::from)?;
+                apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms)
+                    .await
+                    .map_err(AppError::from)?;
 
-    let owner: String = existing.get("user_id");
-    if owner != user.id {
-        return Err(AppError::forbidden("Not your link"));
-    }
-
-    if let Some(ref title) = body.title {
-        sqlx::query("UPDATE links SET title = $1, updated_at = NOW() WHERE id = $2")
-            .bind(title)
-            .bind(&id)
-            .execute(&state.pool)
-            .await?;
-    }
-    if let Some(ref url) = body.url {
-        let normalized = normalize_url(url);
-        sqlx::query(
-            "UPDATE links SET url = $1, normalized_url = $2, updated_at = NOW() WHERE id = $3",
-        )
-        .bind(url)
-        .bind(&normalized)
-        .bind(&id)
-        .execute(&state.pool)
-        .await?;
-    }
-    if let Some(ref desc) = body.description {
-        sqlx::query("UPDATE links SET description = $1, updated_at = NOW() WHERE id = $2")
-            .bind(desc)
-            .bind(&id)
-            .execute(&state.pool)
-            .await?;
-    }
-    if let Some(ref tags) = body.tags {
-        sqlx::query("UPDATE links SET tags = $1, updated_at = NOW() WHERE id = $2")
-            .bind(tags)
-            .bind(&id)
-            .execute(&state.pool)
-            .await?;
-    }
-    if let Some(is_fav) = body.is_favorite {
-        sqlx::query("UPDATE links SET is_favorite = $1, updated_at = NOW() WHERE id = $2")
-            .bind(is_fav)
-            .bind(&id)
-            .execute(&state.pool)
-            .await?;
-    }
-    if let Some(ref archived) = body.archived_at {
-        if archived.is_null() {
-            sqlx::query("UPDATE links SET archived_at = NULL, updated_at = NOW() WHERE id = $1")
+                let existing = sqlx::query(
+                    "SELECT id, user_id FROM links WHERE id = $1 FOR UPDATE",
+                )
                 .bind(&id)
-                .execute(&state.pool)
-                .await?;
-        } else {
-            sqlx::query("UPDATE links SET archived_at = NOW(), updated_at = NOW() WHERE id = $1")
-                .bind(&id)
-                .execute(&state.pool)
-                .await?;
-        }
-    }
-    if let Some(ref notes) = body.notes {
-        sqlx::query("UPDATE links SET notes = $1, updated_at = NOW() WHERE id = $2")
-            .bind(notes)
-            .bind(&id)
-            .execute(&state.pool)
-            .await?;
-    }
-    if let Some(ref link_type) = body.link_type {
-        sqlx::query("UPDATE links SET link_type = $1::\"LinkType\", updated_at = NOW() WHERE id = $2")
-            .bind(link_type)
-            .bind(&id)
-            .execute(&state.pool)
-            .await?;
-    }
-    if let Some(ref rating) = body.rating {
-        sqlx::query("UPDATE links SET rating = $1, updated_at = NOW() WHERE id = $2")
-            .bind(rating)
-            .bind(&id)
-            .execute(&state.pool)
-            .await?;
-    }
+                .fetch_optional(&mut *tx)
+                .await?
+                .ok_or_else(|| AppError::not_found("Link not found"))?;
 
-    if let Some(ref collection_ids) = body.collection_ids {
-        sqlx::query("DELETE FROM link_collections WHERE link_id = $1")
-            .bind(&id)
-            .execute(&state.pool)
-            .await?;
-        for cid in collection_ids {
-            let lc_id = crate::id::new_cuid();
-            let _ = sqlx::query(
+                let owner: String = existing.get("user_id");
+                if owner != user_id {
+                    return Err(AppError::forbidden("Not your link"));
+                }
+
+                if let Some(ref title) = body.title {
+                    sqlx::query("UPDATE links SET title = $1, updated_at = NOW() WHERE id = $2")
+                        .bind(title)
+                        .bind(&id)
+                        .execute(&mut *tx)
+                        .await?;
+                }
+                if let Some(ref url) = body.url {
+                    let normalized = normalize_url(url);
+                    sqlx::query(
+                        "UPDATE links SET url = $1, normalized_url = $2, updated_at = NOW() WHERE id = $3",
+                    )
+                    .bind(url)
+                    .bind(&normalized)
+                    .bind(&id)
+                    .execute(&mut *tx)
+                    .await?;
+                }
+                if let Some(ref desc) = body.description {
+                    sqlx::query("UPDATE links SET description = $1, updated_at = NOW() WHERE id = $2")
+                        .bind(desc)
+                        .bind(&id)
+                        .execute(&mut *tx)
+                        .await?;
+                }
+                if let Some(ref tags) = body.tags {
+                    sqlx::query("UPDATE links SET tags = $1, updated_at = NOW() WHERE id = $2")
+                        .bind(tags)
+                        .bind(&id)
+                        .execute(&mut *tx)
+                        .await?;
+                }
+                if let Some(is_fav) = body.is_favorite {
+                    sqlx::query(
+                        "UPDATE links SET is_favorite = $1, updated_at = NOW() WHERE id = $2",
+                    )
+                    .bind(is_fav)
+                    .bind(&id)
+                    .execute(&mut *tx)
+                    .await?;
+                }
+                if let Some(ref archived) = body.archived_at {
+                    if archived.is_null() {
+                        sqlx::query(
+                            "UPDATE links SET archived_at = NULL, updated_at = NOW() WHERE id = $1",
+                        )
+                        .bind(&id)
+                        .execute(&mut *tx)
+                        .await?;
+                    } else {
+                        sqlx::query(
+                            "UPDATE links SET archived_at = NOW(), updated_at = NOW() WHERE id = $1",
+                        )
+                        .bind(&id)
+                        .execute(&mut *tx)
+                        .await?;
+                    }
+                }
+                if let Some(ref notes) = body.notes {
+                    sqlx::query("UPDATE links SET notes = $1, updated_at = NOW() WHERE id = $2")
+                        .bind(notes)
+                        .bind(&id)
+                        .execute(&mut *tx)
+                        .await?;
+                }
+                if let Some(ref link_type) = body.link_type {
+                    sqlx::query(
+                        "UPDATE links SET link_type = $1::\"LinkType\", updated_at = NOW() WHERE id = $2",
+                    )
+                    .bind(link_type)
+                    .bind(&id)
+                    .execute(&mut *tx)
+                    .await?;
+                }
+                if let Some(ref rating) = body.rating {
+                    sqlx::query("UPDATE links SET rating = $1, updated_at = NOW() WHERE id = $2")
+                        .bind(rating)
+                        .bind(&id)
+                        .execute(&mut *tx)
+                        .await?;
+                }
+
+                if let Some(ref collection_ids) = body.collection_ids {
+                    sqlx::query("DELETE FROM link_collections WHERE link_id = $1")
+                        .bind(&id)
+                        .execute(&mut *tx)
+                        .await?;
+                    for cid in collection_ids {
+                        let lc_id = crate::id::new_cuid();
+                        let _ = sqlx::query(
                 "INSERT INTO link_collections (id, link_id, collection_id, created_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT DO NOTHING",
             )
-            .bind(&lc_id)
-            .bind(&id)
-            .bind(cid)
-            .execute(&state.pool)
-            .await;
-        }
-    }
+                        .bind(&lc_id)
+                        .bind(&id)
+                        .bind(cid)
+                        .execute(&mut *tx)
+                        .await;
+                    }
+                }
 
-    Ok(Json(
-        serde_json::json!({ "success": true, "message": "Link updated" }),
-    ))
+                tx.commit().await.map_err(AppError::from)?;
+                Ok(JsonMutationResult::ok(serde_json::json!({
+                    "success": true,
+                    "message": "Link updated"
+                })))
+            }
+        }
+    }));
+    let out = run_mutation_defer(
+        broker,
+        pool,
+        shard,
+        ctx,
+        jobs,
+        user.id.clone(),
+        make_arc,
+    )
+    .await?;
+    Ok(mutation_response(out))
 }
 
 async fn delete_link(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let existing = sqlx::query("SELECT id, user_id FROM links WHERE id = $1")
-        .bind(&id)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or_else(|| AppError::not_found("Link not found"))?;
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    let ctx = MutationRunContext {
+        user_id: user.id.clone(),
+        route: format!("DELETE /links/{id}"),
+        idempotency_key: idempotency_key_from_headers(&headers),
+        body_hash: 0,
+    };
+    let id_clone = id.clone();
+    let uid = user.id.clone();
+    let shard = format!("link:{id}");
+    let broker = state.mutation_broker.clone();
+    let lock_ms = broker.lock_timeout_ms;
+    let stmt_ms = broker.statement_timeout_ms;
+    let pool = state.pool.clone();
+    let jobs = state.mutation_jobs.clone();
+    let make_arc = Arc::new(tokio::sync::Mutex::new({
+        let id = id_clone.clone();
+        let user_id = uid.clone();
+        move || {
+            let id = id.clone();
+            let user_id = user_id.clone();
+            move |pool: sqlx::PgPool| async move {
+                let mut tx = pool.begin().await.map_err(AppError::from)?;
+                apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms)
+                    .await
+                    .map_err(AppError::from)?;
 
-    let owner: String = existing.get("user_id");
-    if owner != user.id {
-        return Err(AppError::forbidden("Not your link"));
-    }
+                let existing = sqlx::query(
+                    "SELECT id, user_id FROM links WHERE id = $1 FOR UPDATE",
+                )
+                .bind(&id)
+                .fetch_optional(&mut *tx)
+                .await?
+                .ok_or_else(|| AppError::not_found("Link not found"))?;
 
-    sqlx::query("DELETE FROM links WHERE id = $1")
-        .bind(&id)
-        .execute(&state.pool)
-        .await?;
+                let owner: String = existing.get("user_id");
+                if owner != user_id {
+                    return Err(AppError::forbidden("Not your link"));
+                }
 
-    Ok(Json(
-        serde_json::json!({ "success": true, "message": "Link deleted" }),
-    ))
+                sqlx::query("DELETE FROM links WHERE id = $1")
+                    .bind(&id)
+                    .execute(&mut *tx)
+                    .await?;
+                tx.commit().await.map_err(AppError::from)?;
+                Ok(JsonMutationResult::ok(serde_json::json!({
+                    "success": true,
+                    "message": "Link deleted"
+                })))
+            }
+        }
+    }));
+    let out = run_mutation_defer(
+        broker,
+        pool,
+        shard,
+        ctx,
+        jobs,
+        user.id.clone(),
+        make_arc,
+    )
+    .await?;
+    Ok(mutation_response(out))
 }
 
 async fn extract_metadata(
-    State(_state): State<AppState>,
-    AuthUser(_user): AuthUser,
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    headers: HeaderMap,
     Json(body): Json<ExtractMetadataRequest>,
-) -> Result<Json<ExtractMetadataResponse>, AppError> {
+) -> Result<Response, AppError> {
     let url_str = body.url.trim().to_string();
     if url_str.is_empty() {
         return Err(AppError::bad_request("URL is required"));
     }
-    let extracted = extract_metadata_from_url(&url_str).await?;
-    Ok(Json(extracted))
+    let body_hash = hash_json_for_idempotency(&body);
+    let ctx = MutationRunContext {
+        user_id: user.id.clone(),
+        route: "POST /links/metadata".into(),
+        idempotency_key: idempotency_key_from_headers(&headers),
+        body_hash,
+    };
+    let shard = format!("link:metadata:{}", user.id);
+    let broker = state.mutation_broker.clone();
+    let pool = state.pool.clone();
+    let jobs = state.mutation_jobs.clone();
+    let make_arc = Arc::new(tokio::sync::Mutex::new({
+        let url_str = url_str.clone();
+        move || {
+            let url_str = url_str.clone();
+            move |_pool: sqlx::PgPool| async move {
+                let extracted = extract_metadata_from_url(&url_str).await?;
+                let body = serde_json::to_value(&extracted).map_err(|e| {
+                    AppError::internal(format!("serialize extract metadata: {e}"))
+                })?;
+                Ok(JsonMutationResult::ok(body))
+            }
+        }
+    }));
+    let out = run_mutation_defer(
+        broker,
+        pool,
+        shard,
+        ctx,
+        jobs,
+        user.id.clone(),
+        make_arc,
+    )
+    .await?;
+    match out {
+        MutationHandlerOutput::Ready(jr) => {
+            let extracted: ExtractMetadataResponse = serde_json::from_value(jr.body)
+                .map_err(|_| AppError::internal("invalid extract payload"))?;
+            Ok(Json(extracted).into_response())
+        }
+        MutationHandlerOutput::Queued(q) => Ok((StatusCode::ACCEPTED, Json(q)).into_response()),
+    }
 }
 
 async fn extract_metadata_from_url(url_str: &str) -> Result<ExtractMetadataResponse, AppError> {

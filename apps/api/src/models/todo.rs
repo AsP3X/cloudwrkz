@@ -83,7 +83,7 @@ pub struct TodoListItem {
     pub dependencies: Vec<TodoDependencyItem>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CreateTodoRequest {
     pub title: String,
     pub description: Option<String>,
@@ -98,7 +98,7 @@ pub struct CreateTodoRequest {
     pub due_date: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct UpdateTodoRequest {
     pub title: Option<String>,
     pub description: Option<String>,

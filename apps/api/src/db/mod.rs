@@ -4,6 +4,8 @@ use std::time::Duration;
 
 mod transient;
 
+pub mod numbering;
+
 pub(crate) use transient::is_transient_sqlx;
 
 fn env_u64(key: &str, default: u64) -> u64 {

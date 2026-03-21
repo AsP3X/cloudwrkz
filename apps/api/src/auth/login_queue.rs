@@ -228,6 +228,7 @@ pub async fn attempt_login(
             code: "FORBIDDEN".into(),
             message: "This account has been banned.".into(),
             fields: None,
+            transient_database: false,
         }));
     }
     if status == "SUSPENDED" {
@@ -248,6 +249,7 @@ pub async fn attempt_login(
             code: "FORBIDDEN".into(),
             message: "Your account has been suspended. Please contact support.".into(),
             fields: None,
+            transient_database: false,
         }));
     }
 

@@ -1,5 +1,13 @@
 import { log } from "@/lib/logger";
 import { credentialsForApiFetch, getApiBaseUrl } from "@/lib/apiBaseUrl";
+import {
+  enqueueOfflineMutation,
+  initOfflineMutationQueueListeners,
+  pickReplayHeaders,
+  registerOfflineMutationExecutor,
+  shouldQueueOfflineMutation,
+} from "@/api/offlineMutationQueue";
+import { wrapFetchFailure } from "@/api/networkTransportError";
 
 const API_BASE_URL = getApiBaseUrl();
 
@@ -28,6 +36,75 @@ export class ApiError extends Error {
   ) {
     super(message);
     this.name = "ApiError";
+  }
+}
+
+/**
+ * POST /auth/login and /auth/register return 202 + { queued, job_id } but use dedicated
+ * status URLs (`/auth/login/status/...`, `/auth/register/status/...`). They must not go
+ * through mutation-job polling (GET /mutation-jobs/:id), or AuthProvider never gets the
+ * 202 JSON and the login form cannot show the queued sign-in banner.
+ */
+const MUTATION_JOB_POLL_EXCLUDED_PATHS = new Set(["/auth/login", "/auth/register"]);
+
+/** API returned 202 when Postgres was briefly unreachable; same pattern as login/register. */
+interface MutationQueuedPayload {
+  queued?: boolean;
+  job_id?: string;
+  retry_deadline_secs?: number;
+  message?: string;
+}
+
+interface MutationJobStatusPayload {
+  status: "pending" | "completed" | "failed";
+  message?: string;
+  http_status?: number;
+  body?: unknown;
+}
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function pollMutationJobUntilDone<T>(
+  jobId: string,
+  retryDeadlineSecs: number,
+  path: string,
+): Promise<T> {
+  const maxWaitSecs = retryDeadlineSecs + 5;
+  const deadline = Date.now() + maxWaitSecs * 1000;
+  try {
+    while (Date.now() < deadline) {
+      await sleepMs(800);
+      const st = await requestWithBase<MutationJobStatusPayload>(
+        API_BASE_URL,
+        `/mutation-jobs/${jobId}`,
+        { method: "GET" },
+      );
+      if (st.status === "completed") {
+        const code = st.http_status ?? 200;
+        if (code >= 400) {
+          const msg =
+            typeof st.message === "string" ? st.message : "Request failed";
+          throw new ApiError(code, msg, st.body);
+        }
+        return st.body as T;
+      }
+      if (st.status === "failed") {
+        throw new ApiError(
+          400,
+          st.message || "Change could not be applied",
+          st,
+        );
+      }
+    }
+    throw new ApiError(
+      504,
+      "The server took too long to apply your change. Please try again.",
+      undefined,
+    );
+  } finally {
+    window.dispatchEvent(new CustomEvent("cloudwrkz:mutation-finished", { detail: { path, jobId } }));
   }
 }
 
@@ -68,7 +145,7 @@ async function requestWithBase<T>(
       message,
       err: err instanceof Error ? err : String(err),
     });
-    throw err;
+    throw wrapFetchFailure(err);
   }
 
   const isMe401 = path === "/me" && response.status === 401;
@@ -113,6 +190,36 @@ async function requestWithBase<T>(
     throw new ApiError(response.status, message, data);
   }
 
+  if (
+    response.status === 202 &&
+    ["POST", "PATCH", "PUT", "DELETE"].includes(method) &&
+    !MUTATION_JOB_POLL_EXCLUDED_PATHS.has(path)
+  ) {
+    const data = (await response.json()) as MutationQueuedPayload;
+    if (data?.queued && typeof data.job_id === "string") {
+      log.info("API mutation queued for DB retry", {
+        path,
+        jobId: data.job_id,
+      });
+      window.dispatchEvent(
+        new CustomEvent("cloudwrkz:mutation-queued", {
+          detail: {
+            job_id: data.job_id,
+            message: data.message,
+            path,
+            retry_deadline_secs: data.retry_deadline_secs ?? 30,
+          },
+        }),
+      );
+      return pollMutationJobUntilDone<T>(
+        data.job_id,
+        data.retry_deadline_secs ?? 30,
+        path,
+      );
+    }
+    return data as T;
+  }
+
   if (response.status === 204) {
     return undefined as T;
   }
@@ -120,11 +227,40 @@ async function requestWithBase<T>(
   return response.json();
 }
 
+registerOfflineMutationExecutor(async (item) => {
+  return requestWithBase(API_BASE_URL, item.path, {
+    method: item.method,
+    body: item.body ?? undefined,
+    headers: item.headers,
+  });
+});
+
+initOfflineMutationQueueListeners();
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  return requestWithBase<T>(API_BASE_URL, path, options);
+  const method = (options.method || "GET").toUpperCase();
+  try {
+    return await requestWithBase<T>(API_BASE_URL, path, options);
+  } catch (err) {
+    if (!shouldQueueOfflineMutation(path, method, err)) {
+      throw err;
+    }
+    const body =
+      typeof options.body === "string"
+        ? options.body
+        : options.body != null
+          ? String(options.body)
+          : null;
+    return enqueueOfflineMutation<T>({
+      path,
+      method,
+      body,
+      headers: pickReplayHeaders(options.headers),
+    });
+  }
 }
 
 export const api = {
@@ -155,6 +291,7 @@ export const api = {
   delete: <T>(path: string, options?: RequestInit) =>
     request<T>(path, { ...options, method: "DELETE" }),
 
+  /** Multipart uploads are not persisted to the offline queue (body is not JSON-serializable). */
   upload: <T>(path: string, formData: FormData, options?: RequestInit) => {
     const url = `${API_BASE_URL}${path}`;
     const headers: Record<string, string> = {};
@@ -173,7 +310,7 @@ export const api = {
     .catch((err) => {
       const message = err instanceof Error ? err.message : String(err);
       log.error("API upload failed (network)", { path, url, message, err });
-      throw err;
+      throw wrapFetchFailure(err);
     })
     .then(async (response) => {
       log.info("API response", {

@@ -52,7 +52,7 @@ pub struct GroupSummary {
     pub description: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct TicketUpdateRequest {
     pub archived_at: Option<serde_json::Value>,
     pub title: Option<String>,
@@ -66,7 +66,7 @@ pub struct TicketUpdateRequest {
     pub due_date: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct TicketCreateRequest {
     pub title: String,
     pub description: Option<String>,
@@ -118,7 +118,7 @@ pub struct TicketCommentItem {
     pub user: Option<CommentAuthor>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct TicketCommentCreateRequest {
     pub content: String,
     #[serde(default)]

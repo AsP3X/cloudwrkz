@@ -6,6 +6,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use sqlx::PgPool;
+use std::sync::Arc;
 use std::time::Instant;
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -29,6 +30,12 @@ fn test_config(database_url: String) -> AppConfig {
         diagnostics_health_token: None,
         auth_rate_limit_refill_period: std::time::Duration::from_secs(60),
         auth_rate_limit_burst: 200,
+        mutation_tx_max_ms: 30_000,
+        mutation_lock_timeout_ms: 8_000,
+        mutation_statement_timeout_ms: 25_000,
+        mutation_queue_capacity: 1024,
+        idempotency_max_entries: 4096,
+        idempotency_ttl_secs: 86_400,
     }
 }
 
@@ -49,6 +56,19 @@ fn req_get_bearer(uri: &str, token: &str) -> Request<Body> {
         .header("authorization", format!("Bearer {token}"))
         .body(Body::empty())
         .unwrap()
+}
+
+fn req_post_tickets_json(token: &str, json_body: &str, idempotency_key: Option<&str>) -> Request<Body> {
+    let mut b = Request::builder()
+        .method("POST")
+        .uri("/api/v1/tickets")
+        .header("x-forwarded-for", "203.0.113.42")
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json");
+    if let Some(k) = idempotency_key {
+        b = b.header("idempotency-key", k);
+    }
+    b.body(Body::from(json_body.to_string())).unwrap()
 }
 
 async fn seed_user_with_session(
@@ -194,6 +214,76 @@ async fn list_permissions_with_explicit_grant_succeeds(pool: PgPool) {
     let body = res.into_body().collect().await.unwrap().to_bytes();
     let v: serde_json::Value = serde_json::from_slice(&body).expect("json");
     assert!(v["permissions"].is_array());
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn ticket_create_idempotent_returns_same_ticket(pool: PgPool) {
+    let token = seed_user_with_session(&pool, "idem-ticket@example.com", "USER")
+        .await
+        .expect("seed");
+    let app = build_http_app(
+        pool.clone(),
+        test_config(std::env::var("DATABASE_URL").expect("DATABASE_URL set by sqlx::test")),
+        Instant::now(),
+    );
+    let body = r#"{"title":"Idempotent ticket"}"#;
+    let res1 = app
+        .clone()
+        .oneshot(req_post_tickets_json(&token, body, Some("ticket-idem-1")))
+        .await
+        .expect("oneshot");
+    assert_eq!(res1.status(), StatusCode::CREATED);
+    let b1 = res1.into_body().collect().await.unwrap().to_bytes();
+    let v1: serde_json::Value = serde_json::from_slice(&b1).expect("json");
+
+    let res2 = app
+        .oneshot(req_post_tickets_json(&token, body, Some("ticket-idem-1")))
+        .await
+        .expect("oneshot");
+    assert_eq!(res2.status(), StatusCode::CREATED);
+    let b2 = res2.into_body().collect().await.unwrap().to_bytes();
+    let v2: serde_json::Value = serde_json::from_slice(&b2).expect("json");
+
+    assert_eq!(v1["id"], v2["id"]);
+    assert_eq!(v1["ticket_number"], v2["ticket_number"]);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn concurrent_ticket_creates_get_distinct_numbers(pool: PgPool) {
+    let token = seed_user_with_session(&pool, "conc-ticket@example.com", "USER")
+        .await
+        .expect("seed");
+    let app = Arc::new(build_http_app(
+        pool.clone(),
+        test_config(std::env::var("DATABASE_URL").expect("DATABASE_URL set by sqlx::test")),
+        Instant::now(),
+    ));
+    let t1 = token.clone();
+    let app1 = app.clone();
+    let h1 = tokio::spawn(async move {
+        let req = req_post_tickets_json(&t1, r#"{"title":"Concurrent A"}"#, None);
+        let res = (*app1).clone().oneshot(req).await.expect("oneshot");
+        let st = res.status();
+        let b = res.into_body().collect().await.unwrap().to_bytes();
+        (st, b)
+    });
+    let t2 = token.clone();
+    let app2 = app.clone();
+    let h2 = tokio::spawn(async move {
+        let req = req_post_tickets_json(&t2, r#"{"title":"Concurrent B"}"#, None);
+        let res = (*app2).clone().oneshot(req).await.expect("oneshot");
+        let st = res.status();
+        let b = res.into_body().collect().await.unwrap().to_bytes();
+        (st, b)
+    });
+    let (r1, r2) = tokio::join!(h1, h2);
+    let (st1, b1) = r1.expect("task1");
+    let (st2, b2) = r2.expect("task2");
+    assert_eq!(st1, StatusCode::CREATED);
+    assert_eq!(st2, StatusCode::CREATED);
+    let v1: serde_json::Value = serde_json::from_slice(&b1).expect("json");
+    let v2: serde_json::Value = serde_json::from_slice(&b2).expect("json");
+    assert_ne!(v1["ticket_number"], v2["ticket_number"]);
 }
 
 #[sqlx::test(migrations = "./migrations")]

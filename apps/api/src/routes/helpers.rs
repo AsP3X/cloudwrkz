@@ -1,4 +1,8 @@
-use sqlx::{PgPool, Row};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
+use axum::http::HeaderMap;
+use sqlx::{PgPool, Postgres, Row};
 
 use crate::models::ticket::{CommentAuthor, GroupSummary};
 use crate::models::user::UserSummary;
@@ -28,6 +32,42 @@ pub async fn check_permission(pool: &PgPool, user_id: &str, permission_key: &str
     .bind(user_id)
     .bind(permission_key)
     .fetch_one(pool)
+    .await
+    .unwrap_or(0);
+
+    group > 0
+}
+
+/// Same as [`check_permission`] but uses an open PostgreSQL transaction (e.g. after `FOR UPDATE`).
+pub async fn check_permission_mut_tx(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    user_id: &str,
+    permission_key: &str,
+) -> bool {
+    let direct: i64 = sqlx::query_scalar(
+        r#"SELECT COUNT(*) FROM user_permissions up
+           JOIN permissions p ON up.permission_id = p.id
+           WHERE up.user_id = $1 AND p.key = $2"#,
+    )
+    .bind(user_id)
+    .bind(permission_key)
+    .fetch_one(&mut **tx)
+    .await
+    .unwrap_or(0);
+
+    if direct > 0 {
+        return true;
+    }
+
+    let group: i64 = sqlx::query_scalar(
+        r#"SELECT COUNT(*) FROM group_permissions gp
+           JOIN permissions p ON gp.permission_id = p.id
+           JOIN group_memberships gm ON gm.group_id = gp.group_id
+           WHERE gm.user_id = $1 AND p.key = $2"#,
+    )
+    .bind(user_id)
+    .bind(permission_key)
+    .fetch_one(&mut **tx)
     .await
     .unwrap_or(0);
 
@@ -114,4 +154,19 @@ pub async fn fetch_comment_author(pool: &PgPool, user_id: &str) -> Option<Commen
             status: r.get("status"),
             role: r.get("role"),
         })
+}
+
+pub fn idempotency_key_from_headers(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get("idempotency-key")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+pub fn hash_json_for_idempotency<T: serde::Serialize>(value: &T) -> u64 {
+    let bytes = serde_json::to_vec(value).unwrap_or_default();
+    let mut h = DefaultHasher::new();
+    bytes.hash(&mut h);
+    h.finish()
 }
