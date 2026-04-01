@@ -1,44 +1,137 @@
 # Cloudwrkz
 
-Monorepo for the Cloudwrkz product: web application and iOS app. Single git repository, no submodules.
+Monorepo for the Cloudwrkz product: **Vite + Rust API** stack, **Next.js** app, **Rust CLI**, and **iOS** app. Single git repository, no submodules.
 
 ## Structure
 
-| App        | Path        | Description                          |
-|-----------|-------------|--------------------------------------|
-| **Web**   | [apps/web](apps/web)   | Next.js 16 app (API, dashboard, Prisma, Docker) |
-| **iOS**   | [apps/ios](apps/ios)   | Native iOS app (Swift, Xcode)        |
+| Component | Path | Description |
+|-----------|------|-------------|
+| **Web (Vite)** | [apps/web-vite](apps/web-vite) | React SPA, Tailwind; talks to the Rust API |
+| **API** | [apps/api](apps/api) | Rust (Axum, SQLx, PostgreSQL) |
+| **CLI** | [apps/cli](apps/cli) | Rust CLI for DB tasks, bootstrap admin, API-backed menus |
+| **Web (Next.js)** | [apps/web](apps/web) | Next.js 16 app (Prisma, dashboard, Docker); legacy/alternate UI |
+| **iOS** | [apps/ios](apps/ios) | Native iOS app (Swift, Xcode) |
 
-## Quick start
+## Prerequisites
 
-### From repo root
+- **Node.js** ≥ 25.2.0 ([apps/web/.nvmrc](apps/web/.nvmrc) pins the recommended version)
+- **pnpm** ≥ 9 — enable via Corepack:
+  ```bash
+  corepack enable
+  corepack prepare pnpm@latest --activate
+  ```
+- **Docker** and **Docker Compose** (v2: `docker compose`) — local PostgreSQL, optional API container
+- **Rust** (stable) — only if you build or run `apps/api` and `apps/cli` on the host instead of using the API container
 
-With pnpm installed at the repo root you can run web app commands via the root `package.json`:
+## Setup
+
+### 1. Clone and install JavaScript dependencies
+
+From the repository root:
 
 ```bash
-pnpm install          # installs workspace (web app deps)
-pnpm dev              # start web dev server
-pnpm build            # build web app
-pnpm db:studio        # open Prisma Studio for web app DB
+git clone <repository-url> cloudwrkz
+cd cloudwrkz
+pnpm install
 ```
 
-These delegate to `apps/web`. See [apps/web/README.md](apps/web/README.md) for full web setup (PostgreSQL, `.env.local`, migrations).
+This installs the pnpm workspace packages under [apps/web](apps/web) and [apps/web-vite](apps/web-vite) (see [pnpm-workspace.yaml](pnpm-workspace.yaml)).
 
-### Web app (`apps/web`)
+### 2. Environment files
 
-- **Stack**: Next.js 16, Tailwind, PostgreSQL, Prisma, pnpm
-- **Setup**: `cd apps/web && pnpm install`, configure `.env.local`, start Postgres (e.g. `docker-compose up -d`), run `pnpm db:push` or `pnpm db:migrate`
-- **Details**: [apps/web/README.md](apps/web/README.md)
+| App | Action |
+|-----|--------|
+| **API** | Copy [apps/api/.env.example](apps/api/.env.example) to `apps/api/.env` and adjust if needed. Defaults match the root Compose Postgres credentials. |
+| **Vite** | Copy [apps/web-vite/.env.example](apps/web-vite/.env.example) to `apps/web-vite/.env`. Defaults proxy `/api/v1` to the API on port 8080. |
+| **Next.js** | Copy `apps/web/.env.example` to `apps/web/.env.local` — see [apps/web/README.md](apps/web/README.md). |
+| **CLI** | Optional: copy [apps/cli/.env.example](apps/cli/.env.example) to `apps/cli/.env` for tokens and local overrides. |
 
-### iOS app (`apps/ios`)
+### 3. Database and API (recommended: Docker Compose from repo root)
 
-- **Stack**: Swift, Xcode
-- **Setup**: Open `apps/ios/Cloudwrkz.xcodeproj` in Xcode and build/run. Configure the app’s server URL as needed.
+From the **repository root**:
+
+```bash
+docker compose up -d
+```
+
+This starts:
+
+- **PostgreSQL** on port `5432` (user `cloudwrkz`, database `cloudwrkz`, default password `cloudwrkz_dev_password` unless you set `POSTGRES_PASSWORD`)
+- **Rust API** on port `8080` (applies SQLx migrations on startup)
+- **pgAdmin** on port `5050` (default login `admin@cloudwrkz.test` / `admin`)
+
+Check API health: [http://localhost:8080/api/health](http://localhost:8080/api/health).
+
+To stop: `docker compose down`. To remove data volumes: `docker compose down -v`.
+
+### 4. Run the Vite web app
+
+From the repository root:
+
+```bash
+pnpm dev:vite
+```
+
+Open [http://localhost:5173](http://localhost:5173). The dev server proxies API requests to `http://127.0.0.1:8080` when `VITE_API_URL` is the default `/api/v1`.
+
+**Run the API on the host instead of Docker:** from the repo root, with `apps/api/.env` present:
+
+```bash
+cargo run -p cloudwrkz-api
+```
+
+Ensure Postgres is reachable at the `DATABASE_URL` in that file (e.g. after `docker compose up -d postgres` only, or a local Postgres instance).
+
+### 5. First admin account (bootstrap)
+
+With the database up, build the CLI from the repo root and create the first admin (requires a bootstrap secret — see [apps/cli/README.md](apps/cli/README.md)):
+
+```bash
+cargo build --release -p cloudwrkz-cli
+export CLOUDWRKZ_BOOTSTRAP_SECRET=local-dev
+./target/release/cloudwrkz-cli admin create-admin you@example.com "YourPassword" "Your Name"
+```
+
+On **Windows** (PowerShell), after `cargo build`:
+
+```powershell
+$env:CLOUDWRKZ_BOOTSTRAP_SECRET = "local-dev"
+.\target\release\cloudwrkz-cli.exe admin create-admin you@example.com "YourPassword" "Your Name"
+```
+
+### 6. Next.js app (`apps/web`) — optional
+
+Uses Prisma and its own Docker Compose under `apps/web` for local Postgres (or align `DATABASE_URL` with the root stack). Full steps: [apps/web/README.md](apps/web/README.md).
+
+Root scripts still target the Next.js package as `web`:
+
+```bash
+pnpm dev              # Next.js dev server
+pnpm build            # Next.js production build
+pnpm db:studio        # Prisma Studio
+```
+
+### 7. iOS app
+
+Open [apps/ios/Cloudwrkz.xcodeproj](apps/ios/Cloudwrkz.xcodeproj) in Xcode and build/run. Point the app at your API base URL as needed.
+
+## Quick reference (repo root)
+
+| Command | Description |
+|---------|-------------|
+| `pnpm dev` | Next.js dev server (`apps/web`) |
+| `pnpm dev:vite` | Vite dev server (`apps/web-vite`) |
+| `pnpm build` / `pnpm build:vite` | Production builds |
+| `pnpm db:*` | Prisma commands for `apps/web` (generate, push, migrate, studio, …) |
+| `docker compose up -d` | Postgres + API + pgAdmin |
+| `cargo run -p cloudwrkz-api` | Run API locally |
+| `cargo build --release -p cloudwrkz-cli` | Build CLI binary |
 
 ## Tooling
 
-- **Package manager**: pnpm; workspace is defined in [pnpm-workspace.yaml](pnpm-workspace.yaml) (currently only `apps/web`).
-- **CI**: GitHub Actions under [.github/workflows](.github/workflows) (e.g. Docker image build for the web app with context `apps/web`).
+- **JavaScript**: pnpm workspace in [pnpm-workspace.yaml](pnpm-workspace.yaml) (`apps/web`, `apps/web-vite`).
+- **Rust**: Cargo workspace in [Cargo.toml](Cargo.toml) (`apps/api`, `apps/cli`).
+- **CI**: GitHub Actions under [.github/workflows](.github/workflows).
 
 ## License
 

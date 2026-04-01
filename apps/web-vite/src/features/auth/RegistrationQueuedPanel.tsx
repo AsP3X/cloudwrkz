@@ -52,7 +52,8 @@ export function RegistrationQueuedPanel({
   const [pollError, setPollError] = useState<string | null>(null);
   const [pendingStartedAt, setPendingStartedAt] = useState<number | null>(null);
 
-  const activeJobId = jobId ?? triggerJobId ?? null;
+  /** Prefer an explicit trigger from the parent so a new submit is not overridden by a stale stored job id. */
+  const activeJobId = triggerJobId ?? jobId ?? null;
 
   useEffect(() => {
     if (triggerJobId) {
@@ -64,7 +65,7 @@ export function RegistrationQueuedPanel({
   }, [triggerJobId]);
 
   useEffect(() => {
-    const pollId = jobId ?? triggerJobId;
+    const pollId = triggerJobId ?? jobId;
     if (!pollId) {
       setPayload(null);
       setPendingStartedAt(null);

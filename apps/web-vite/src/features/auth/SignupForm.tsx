@@ -22,6 +22,12 @@ export function SignupForm({ disabled = false }: SignupFormProps) {
   const handlePanelTerminal = useCallback((outcome: "completed" | "failed" | "expired") => {
     if (outcome === "completed") {
       setRegistrationSuccess(true);
+    } else if (outcome === "expired") {
+      setServerError(
+        "That registration session is no longer available. Please submit the form again to create your account.",
+      );
+    } else if (outcome === "failed") {
+      setServerError("Registration could not be completed. Please try again or use a different email.");
     }
     setQueuedJobTrigger(null);
   }, []);
