@@ -10,9 +10,10 @@ use sqlx::Row;
 use tracing::{info, warn};
 
 use crate::audit::{self, WriteAuditParams};
-use crate::auth::extractors::AuthUser;
+use crate::auth::extractors::{extract_token_from_headers, AuthUser};
 use crate::auth::login_queue::{spawn_login_retry, LoginJobStatusResponse, PendingLoginPayload};
 use crate::auth::password::{hash_password, verify_password};
+use crate::auth::session::generate_token;
 use crate::auth::register_queue::{
     new_job_id, spawn_register_retry, PendingRegisterPayload, RegisterJobStatusResponse,
 };
@@ -235,6 +236,7 @@ async fn logout(
 
 async fn change_password(
     State(state): State<AppState>,
+    headers: HeaderMap,
     AuthUser(user): AuthUser,
     Json(body): Json<ChangePasswordRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
@@ -269,6 +271,32 @@ async fn change_password(
         ));
     }
 
+    let bearer = extract_token_from_headers(&headers)
+        .ok_or_else(|| AppError::unauthorized("Missing token"))?;
+
+    let prev = sqlx::query(
+        r#"SELECT device_name, device_type, device_os, device_browser, user_agent, ip_address
+           FROM sessions WHERE token = $1 AND user_id = $2"#,
+    )
+    .bind(&bearer)
+    .bind(&user.id)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    let (device_name, device_type, device_os, device_browser, user_agent, ip_address) =
+        if let Some(ref row) = prev {
+            (
+                row.try_get::<Option<String>, _>("device_name").ok().flatten(),
+                row.try_get::<Option<String>, _>("device_type").ok().flatten(),
+                row.try_get::<Option<String>, _>("device_os").ok().flatten(),
+                row.try_get::<Option<String>, _>("device_browser").ok().flatten(),
+                row.try_get::<Option<String>, _>("user_agent").ok().flatten(),
+                row.try_get::<Option<String>, _>("ip_address").ok().flatten(),
+            )
+        } else {
+            (None, None, None, None, None, None)
+        };
+
     let db_hash = row.password.clone();
     let current = body.current_password.clone();
     let valid = tokio::task::spawn_blocking(move || verify_password(&current, &db_hash))
@@ -292,6 +320,34 @@ async fn change_password(
         .execute(&state.pool)
         .await?;
 
+    sqlx::query("DELETE FROM sessions WHERE user_id = $1")
+        .bind(&user.id)
+        .execute(&state.pool)
+        .await?;
+
+    let new_token = generate_token();
+    let session_id = crate::id::new_cuid();
+    let expires_at = Utc::now().naive_utc()
+        + chrono::Duration::seconds(state.config.session_max_age_secs);
+
+    sqlx::query(
+        r#"INSERT INTO sessions (id, token, user_id, expires_at, created_at, updated_at,
+                                  device_name, device_type, device_os, device_browser, user_agent, ip_address)
+           VALUES ($1, $2, $3, $4, NOW(), NOW(), $5, $6, $7, $8, $9, $10)"#,
+    )
+    .bind(&session_id)
+    .bind(&new_token)
+    .bind(&user.id)
+    .bind(expires_at)
+    .bind(&device_name)
+    .bind(&device_type)
+    .bind(&device_os)
+    .bind(&device_browser)
+    .bind(&user_agent)
+    .bind(&ip_address)
+    .execute(&state.pool)
+    .await?;
+
     audit::write_audit_log(
         &state.pool,
         WriteAuditParams {
@@ -299,13 +355,16 @@ async fn change_password(
             action: "auth.password.change".into(),
             resource_type: Some("user".into()),
             resource_id: Some(user.id),
-            context: None,
+            context: Some(serde_json::json!({ "sessions_revoked": true })),
             ip_address: None,
             user_agent: None,
         },
     );
 
-    Ok(Json(serde_json::json!({ "message": "Password updated" })))
+    Ok(Json(serde_json::json!({
+        "message": "Password updated",
+        "token": new_token,
+    })))
 }
 
 async fn extend_session(

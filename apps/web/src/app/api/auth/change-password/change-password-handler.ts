@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUserFromBearerToken } from "@/lib/utils/auth-server";
-import { hashPassword, verifyPassword } from "@/lib/utils/auth";
+import { generateToken, hashPassword, verifyPassword } from "@/lib/utils/auth";
 import { changePasswordSchema } from "@/lib/validations/settings";
+
+const SESSION_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Shared handler for POST /api/change-password and POST /api/auth/change-password.
@@ -14,6 +16,12 @@ export async function changePasswordApiHandler(request: Request) {
   try {
     const user = await getCurrentUserFromBearerToken(request);
     if (!user) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
+
+    const auth = request.headers.get("Authorization");
+    const bearerToken = auth?.startsWith("Bearer ") ? auth.slice(7).trim() : null;
+    if (!bearerToken) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
@@ -57,12 +65,52 @@ export async function changePasswordApiHandler(request: Request) {
     }
 
     const newHashedPassword = await hashPassword(newPassword);
-    await prisma.user.update({
-      where: { id: dbUser.id },
-      data: { password: newHashedPassword },
+
+    const existingSession = await prisma.session.findUnique({
+      where: { token: bearerToken },
+      select: {
+        userId: true,
+        deviceName: true,
+        deviceType: true,
+        deviceOs: true,
+        deviceBrowser: true,
+        userAgent: true,
+        ipAddress: true,
+      },
     });
 
-    return NextResponse.json({ message: "Password updated" }, { status: 200 });
+    if (!existingSession || existingSession.userId !== dbUser.id) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
+
+    const newToken = generateToken();
+    const expiresAt = new Date(Date.now() + SESSION_LIFETIME_MS);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: dbUser.id },
+        data: { password: newHashedPassword },
+      });
+      await tx.session.deleteMany({ where: { userId: dbUser.id } });
+      await tx.session.create({
+        data: {
+          token: newToken,
+          userId: dbUser.id,
+          expiresAt,
+          deviceName: existingSession.deviceName,
+          deviceType: existingSession.deviceType,
+          deviceOs: existingSession.deviceOs,
+          deviceBrowser: existingSession.deviceBrowser,
+          userAgent: existingSession.userAgent,
+          ipAddress: existingSession.ipAddress,
+        },
+      });
+    });
+
+    return NextResponse.json(
+      { message: "Password updated", token: newToken },
+      { status: 200 }
+    );
   } catch (error) {
     console.error("[change-password]", error);
     return NextResponse.json(

@@ -195,7 +195,8 @@ enum AuthService {
         return changePath.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
     }
 
-    /// POST change-password with Bearer token. Body: currentPassword, newPassword, confirmPassword. 200 = success.
+    /// POST change-password with Bearer token. Body: currentPassword, newPassword, confirmPassword.
+    /// 200 JSON may include `token` (new session after all other sessions were revoked); stored when present.
     static func changePassword(currentPassword: String, newPassword: String, confirmPassword: String, config: ServerConfig) async -> Result<Void, AuthChangePasswordFailure> {
         guard let base = config.baseURL else {
             return .failure(.noServerURL)
@@ -234,6 +235,13 @@ enum AuthService {
             case 200...299:
                 if isHTMLData(data) {
                     return .failure(.serverError(message: "Server returned a web page instead of a response. No route at: \(request.url?.absoluteString ?? "")"))
+                }
+                struct ChangePasswordSuccess: Decodable {
+                    let token: String?
+                }
+                if let decoded = try? JSONDecoder().decode(ChangePasswordSuccess.self, from: data),
+                   let newToken = decoded.token, !newToken.isEmpty {
+                    AuthTokenStorage.save(token: newToken)
                 }
                 return .success(())
             case 401:

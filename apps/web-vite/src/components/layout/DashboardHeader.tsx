@@ -6,7 +6,7 @@ import { useSidebar } from "./SidebarContext";
 import { getAvatarUrl } from "@/lib/utils/users";
 import { GlobalSearch } from "@/components/features/search/GlobalSearch";
 import { NotificationBell } from "@/components/features/notifications/NotificationBell";
-import type { User } from "@/components/providers/AuthProvider";
+import type { User } from "@/lib/auth/types";
 
 interface DashboardHeaderProps {
   user: User;

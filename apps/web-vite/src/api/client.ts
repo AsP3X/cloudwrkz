@@ -296,6 +296,7 @@ export const api = {
     const url = `${API_BASE_URL}${path}`;
     const headers: Record<string, string> = {};
     const token = localStorage.getItem("auth_token");
+    const hadAuthToken = Boolean(token);
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
     }
@@ -319,6 +320,10 @@ export const api = {
         status: response.status,
         statusText: response.statusText,
       });
+      if (response.status === 401 && hadAuthToken) {
+        localStorage.removeItem("auth_token");
+        window.dispatchEvent(new CustomEvent("auth:unauthorized"));
+      }
       if (!response.ok) {
         let data: unknown;
         try {

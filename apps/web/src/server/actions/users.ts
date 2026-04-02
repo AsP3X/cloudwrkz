@@ -1,11 +1,14 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth } from "@/lib/utils/auth-server";
 import { revalidatePath } from "next/cache";
 import type { UpdateProfileInput } from "@/lib/validations/auth";
 import { changePasswordSchema, type ChangePasswordInput } from "@/lib/validations/settings";
-import { hashPassword, verifyPassword } from "@/lib/utils/auth";
+import { generateToken, hashPassword, verifyPassword } from "@/lib/utils/auth";
+
+const SESSION_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type ActionResult<T = void> =
   | { success: true; data?: T; message?: string }
@@ -308,14 +311,71 @@ export async function changePassword(input: ChangePasswordInput): Promise<Action
       };
     }
 
-    // Hash and update to the new password
+    // Hash and update to the new password; revoke all sessions then issue a new one for this browser
     const newHashedPassword = await hashPassword(newPassword);
 
-    await prisma.user.update({
-      where: { id: dbUser.id },
-      data: {
-        password: newHashedPassword,
+    const cookieStore = await cookies();
+    const sessionToken = cookieStore.get("session")?.value;
+    if (!sessionToken) {
+      return {
+        success: false,
+        error: "No active session.",
+      };
+    }
+
+    const existingSession = await prisma.session.findUnique({
+      where: { token: sessionToken },
+      select: {
+        userId: true,
+        deviceName: true,
+        deviceType: true,
+        deviceOs: true,
+        deviceBrowser: true,
+        userAgent: true,
+        ipAddress: true,
       },
+    });
+
+    if (!existingSession || existingSession.userId !== dbUser.id) {
+      return {
+        success: false,
+        error: "Session is invalid. Please sign in again.",
+      };
+    }
+
+    const newToken = generateToken();
+    const expiresAt = new Date(Date.now() + SESSION_LIFETIME_MS);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: dbUser.id },
+        data: {
+          password: newHashedPassword,
+        },
+      });
+      await tx.session.deleteMany({ where: { userId: dbUser.id } });
+      await tx.session.create({
+        data: {
+          token: newToken,
+          userId: dbUser.id,
+          expiresAt,
+          deviceName: existingSession.deviceName,
+          deviceType: existingSession.deviceType,
+          deviceOs: existingSession.deviceOs,
+          deviceBrowser: existingSession.deviceBrowser,
+          userAgent: existingSession.userAgent,
+          ipAddress: existingSession.ipAddress,
+        },
+      });
+    });
+
+    const maxAgeSecs = Math.floor(SESSION_LIFETIME_MS / 1000);
+    cookieStore.set("session", newToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: maxAgeSecs,
+      path: "/",
     });
 
     // Revalidate relevant paths

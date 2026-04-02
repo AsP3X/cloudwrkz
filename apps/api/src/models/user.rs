@@ -94,9 +94,11 @@ pub struct RegisterResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct ChangePasswordRequest {
+    #[serde(alias = "currentPassword")]
     pub current_password: String,
+    #[serde(alias = "newPassword")]
     pub new_password: String,
-    #[serde(default)]
+    #[serde(default, alias = "confirmPassword")]
     pub confirm_password: Option<String>,
 }
 

@@ -1,26 +1,18 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError } from "@/api/client";
+import { NetworkTransportError } from "@/api/networkTransportError";
 import { log } from "@/lib/logger";
 import { ROUTES } from "@/lib/constants/routes";
 import { setStoredRegisterJobId } from "@/lib/auth/pendingRegistration";
+import {
+  clearUserCache,
+  readCachedUser,
+  writeUserCache,
+} from "@/lib/auth/userCache";
+import type { User } from "@/lib/auth/types";
 
-export interface User {
-  id: string;
-  email: string;
-  name: string | null;
-  role: "USER" | "AGENT" | "ADMIN" | "MODERATOR";
-  status: string;
-  avatar: string | null;
-  timezone: string | null;
-  theme: string | null;
-  emailVerified: boolean;
-  createdAt: string;
-  bio: string | null;
-  lastLoginAt: string | null;
-  modules: string[];
-  permissions: string[];
-}
+export type { User };
 
 /** Set while the API returned 202 and the client is polling `/auth/login/status/...`. */
 export type LoginQueuedUiState = {
@@ -33,6 +25,11 @@ export type LoginQueuedUiState = {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  /**
+   * True when the API could not be reached or returned a non-auth error while a token still exists.
+   * The session is not cleared; user may be restored from cache or missing until the API is back.
+   */
+  needsConnection: boolean;
   modules: string[];
   /** Permission keys the user has (from API /me). Empty if not using permission system. */
   permissions: string[];
@@ -48,12 +45,7 @@ interface AuthContextType {
     | { success: true; wasQueued: true }
     | { success: false; error: string; outageHint?: boolean; httpStatus?: number }
   >;
-  register: (data: {
-    name: string;
-    email: string;
-    password: string;
-    confirmPassword: string;
-  }  ) => Promise<
+  register: (data: { name: string; email: string; password: string }) => Promise<
     | { success: true; queued: true; jobId: string; message: string }
     | { success: false; error: string; outageHint?: boolean; httpStatus?: number }
   >;
@@ -99,6 +91,20 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const ME_FETCH_MAX_ATTEMPTS = 3;
+
+function isMeRetryable(err: unknown): boolean {
+  if (err instanceof NetworkTransportError) return true;
+  if (err instanceof ApiError) {
+    return err.status === 502 || err.status === 503 || err.status === 504;
+  }
+  return false;
+}
+
+function hasAuthToken(): boolean {
+  return Boolean(localStorage.getItem("auth_token"));
+}
+
 interface RegisterApiResponse {
   message: string;
   user_id?: string;
@@ -113,6 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [modules, setModules] = useState<string[]>([]);
   const [permissions, setPermissions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [needsConnection, setNeedsConnection] = useState(false);
   const [loginQueuedUi, setLoginQueuedUi] = useState<LoginQueuedUiState | null>(null);
   const navigate = useNavigate();
 
@@ -122,42 +129,84 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [permissions]);
 
   const fetchUser = useCallback(async () => {
-    try {
-      const data = await api.get<MeResponse>("/me");
-      const perms = data.permissions ?? [];
-      setUser({
-        id: data.id,
-        email: data.email,
-        name: data.name,
-        role: data.role as User["role"],
-        status: data.status,
-        avatar: data.avatar,
-        timezone: data.timezone,
-        theme: data.theme,
-        emailVerified: data.emailVerified,
-        createdAt: data.createdAt,
-        bio: data.bio ?? null,
-        lastLoginAt: data.lastLoginAt ?? null,
-        modules: data.modules,
-        permissions: perms,
-      });
-      setModules(data.modules);
-      setPermissions(perms);
-    } catch (err) {
-      const status = err instanceof ApiError ? err.status : undefined;
-      if (status !== 401) {
-        const msg = err instanceof Error ? err.message : String(err);
-        log.warn("GET /me failed (API unreachable or error)", {
-          message: msg,
-          status,
-        });
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= ME_FETCH_MAX_ATTEMPTS; attempt++) {
+      try {
+        const data = await api.get<MeResponse>("/me");
+        const perms = data.permissions ?? [];
+        const next: User = {
+          id: data.id,
+          email: data.email,
+          name: data.name,
+          role: data.role as User["role"],
+          status: data.status,
+          avatar: data.avatar,
+          timezone: data.timezone,
+          theme: data.theme,
+          emailVerified: data.emailVerified,
+          createdAt: data.createdAt,
+          bio: data.bio ?? null,
+          lastLoginAt: data.lastLoginAt ?? null,
+          modules: data.modules,
+          permissions: perms,
+        };
+        setUser(next);
+        setModules(data.modules);
+        setPermissions(perms);
+        writeUserCache(next);
+        setNeedsConnection(false);
+        setLoading(false);
+        return;
+      } catch (err) {
+        lastErr = err;
+        if (err instanceof ApiError && err.status === 401) {
+          break;
+        }
+        if (attempt < ME_FETCH_MAX_ATTEMPTS && isMeRetryable(err)) {
+          await sleep(600 * attempt);
+          continue;
+        }
+        break;
       }
+    }
+
+    const err = lastErr;
+    if (err instanceof ApiError && err.status === 401) {
+      log.debug("GET /me returned 401 (session invalid or logged out)", {
+        status: err.status,
+      });
+      clearUserCache();
       setUser(null);
       setModules([]);
       setPermissions([]);
-    } finally {
-      setLoading(false);
+      setNeedsConnection(false);
+    } else {
+      const status = err instanceof ApiError ? err.status : undefined;
+      const msg = err instanceof Error ? err.message : String(err);
+      log.warn("GET /me failed (API unreachable or non-auth error)", {
+        message: msg,
+        status,
+      });
+      if (hasAuthToken()) {
+        const cached = readCachedUser();
+        if (cached) {
+          setUser(cached);
+          setModules(cached.modules);
+          setPermissions(cached.permissions);
+        } else {
+          setUser(null);
+          setModules([]);
+          setPermissions([]);
+        }
+        setNeedsConnection(true);
+      } else {
+        setUser(null);
+        setModules([]);
+        setPermissions([]);
+        setNeedsConnection(false);
+      }
     }
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -166,8 +215,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const handleUnauthorized = () => {
+      clearUserCache();
+      setNeedsConnection(false);
       setUser(null);
       setModules([]);
+      setPermissions([]);
       navigate(ROUTES.LOGIN + "?error=session_expired");
     };
     window.addEventListener("auth:unauthorized", handleUnauthorized);
@@ -272,14 +324,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const register = async (data: { name: string; email: string; password: string; confirmPassword: string }) => {
+  const register = async (data: { name: string; email: string; password: string }) => {
     try {
       log.info("Register attempt", { email: data.email });
       const res = await api.post<RegisterApiResponse>("/auth/register", {
         name: data.name,
         email: data.email,
         password: data.password,
-        confirm_password: data.confirmPassword,
       });
       if (res.queued && res.job_id) {
         setStoredRegisterJobId(res.job_id);
@@ -327,6 +378,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Ignore errors during logout
     }
     localStorage.removeItem("auth_token");
+    clearUserCache();
+    setNeedsConnection(false);
     setUser(null);
     setModules([]);
     setPermissions([]);
@@ -342,6 +395,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         loading,
+        needsConnection,
         modules,
         permissions,
         can,

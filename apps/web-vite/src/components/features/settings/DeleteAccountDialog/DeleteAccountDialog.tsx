@@ -4,6 +4,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { api } from "@/api/client";
 import { ROUTES } from "@/lib/constants/routes";
+import { clearUserCache } from "@/lib/auth/userCache";
 
 interface DeleteAccountDialogProps {
   open: boolean;
@@ -30,6 +31,7 @@ export const DeleteAccountDialog = ({ open, onOpenChange }: DeleteAccountDialogP
     try {
       await api.post("/auth/delete-account");
       localStorage.removeItem("auth_token");
+      clearUserCache();
       navigate(ROUTES.LOGIN);
     } catch (error) {
       console.error("Account deletion error:", error);

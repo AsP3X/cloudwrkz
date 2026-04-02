@@ -10,6 +10,7 @@ import {
   type ChangeEmailInput,
 } from "@/lib/validations/settings";
 import { api } from "@/api/client";
+import { useAuth } from "@/components/providers/AuthProvider";
 
 interface AccountSettingsFormProps {
   currentEmail: string;
@@ -22,6 +23,7 @@ export const AccountSettingsForm = ({
   emailVerified,
   onSaved,
 }: AccountSettingsFormProps) => {
+  const { refreshUser } = useAuth();
   const [activeTab, setActiveTab] = React.useState<"email" | "password">("email");
   const [emailError, setEmailError] = React.useState<string | null>(null);
   const [emailSuccess, setEmailSuccess] = React.useState<string | null>(null);
@@ -71,11 +73,15 @@ export const AccountSettingsForm = ({
     setPasswordSuccess(null);
 
     try {
-      await api.post("/auth/change-password", {
+      const res = await api.post<{ message?: string; token?: string }>("/auth/change-password", {
         current_password: data.currentPassword,
         new_password: data.newPassword,
         confirm_password: data.confirmPassword,
       });
+      if (res.token) {
+        localStorage.setItem("auth_token", res.token);
+      }
+      await refreshUser();
       setPasswordSuccess("Password changed successfully");
       resetPassword();
       onSaved?.();

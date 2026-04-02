@@ -10,14 +10,17 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { ROUTES } from "@/lib/constants/routes";
 
 export default function HomePage() {
-  const { user, loading } = useAuth();
+  const { user, loading, needsConnection } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
     if (!loading && user) {
       navigate(ROUTES.DASHBOARD, { replace: true });
     }
-  }, [user, loading, navigate]);
+    if (!loading && !user && needsConnection) {
+      navigate(ROUTES.DASHBOARD, { replace: true });
+    }
+  }, [user, loading, needsConnection, navigate]);
 
   if (loading) {
     return (

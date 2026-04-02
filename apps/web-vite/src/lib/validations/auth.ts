@@ -1,35 +1,36 @@
 import { z } from "zod";
+import { registerPasswordIssues } from "@/lib/auth/passwordStrength";
 
-export const registerSchema = z
-  .object({
-    name: z
-      .string()
-      .min(2, "Name must be at least 2 characters")
-      .max(100, "Name must be less than 100 characters")
-      .trim(),
-    email: z
-      .string()
-      .email("Please enter a valid email address")
-      .toLowerCase()
-      .trim()
-      .max(255, "Email must be less than 255 characters"),
-    password: z
-      .string()
-      .min(8, "Password must be at least 8 characters")
-      .max(128, "Password must be less than 128 characters")
-      .regex(
-        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
-        "Password must contain at least one uppercase letter, one lowercase letter, and one number"
-      ),
-    confirmPassword: z.string(),
-    agreeToTerms: z.boolean().refine((val) => val === true, {
-      message: "You must agree to the terms and conditions",
+export const registerSchema = z.object({
+  name: z
+    .string()
+    .min(2, "Name must be at least 2 characters")
+    .max(100, "Name must be less than 100 characters")
+    .trim(),
+  email: z
+    .string()
+    .email("Please enter a valid email address")
+    .toLowerCase()
+    .trim()
+    .max(255, "Email must be less than 255 characters"),
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .max(128, "Password must be less than 128 characters")
+    .superRefine((val, ctx) => {
+      if (val.length < 8 || val.length > 128) return;
+      const issues = registerPasswordIssues(val).filter((m) => !m.startsWith("Use at least 8"));
+      if (issues.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: issues[0]!,
+        });
+      }
     }),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
-  });
+  agreeToTerms: z.boolean().refine((val) => val === true, {
+    message: "You must agree to the terms and conditions",
+  }),
+});
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 

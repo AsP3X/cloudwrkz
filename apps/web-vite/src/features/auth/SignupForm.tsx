@@ -1,5 +1,5 @@
-import React, { useCallback } from "react";
-import { useForm } from "react-hook-form";
+import React, { useCallback, useState } from "react";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link } from "react-router-dom";
 import { Input } from "@/components/ui/Input";
@@ -8,6 +8,9 @@ import { ROUTES } from "@/lib/constants/routes";
 import { registerSchema, type RegisterInput } from "@/lib/validations/auth";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { RegistrationQueuedPanel } from "@/features/auth/RegistrationQueuedPanel";
+import { PasswordStrengthBar } from "@/features/auth/PasswordStrengthBar";
+import { getPwnedPasswordCount } from "@/lib/auth/pwnedPasswords";
+import { isCommonPassword } from "@/lib/auth/passwordStrength";
 
 type SignupFormProps = {
   disabled?: boolean;
@@ -34,17 +37,64 @@ export function SignupForm({ disabled = false }: SignupFormProps) {
 
   const {
     register,
+    control,
     handleSubmit,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm<RegisterInput>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
       agreeToTerms: false,
+      password: "",
     },
   });
 
+  const passwordValue = useWatch({ control, name: "password", defaultValue: "" }) ?? "";
+
+  const [hibpCount, setHibpCount] = useState<number | null>(null);
+  const [hibpLoading, setHibpLoading] = useState(false);
+  const [hibpCheckedPwd, setHibpCheckedPwd] = useState("");
+
+  const checkPwned = useCallback(async (pwd: string) => {
+    if (!pwd || pwd.length < 8) {
+      setHibpCount(null);
+      setHibpCheckedPwd("");
+      return;
+    }
+    if (pwd === hibpCheckedPwd && hibpCount !== null) return;
+
+    setHibpLoading(true);
+    setHibpCount(null);
+    try {
+      const count = await getPwnedPasswordCount(pwd);
+      setHibpCount(count);
+      setHibpCheckedPwd(pwd);
+    } finally {
+      setHibpLoading(false);
+    }
+  }, [hibpCheckedPwd, hibpCount]);
+
+  const passwordField = register("password");
+
+  const handlePasswordBlur = useCallback(
+    (e: React.FocusEvent<HTMLInputElement>) => {
+      passwordField.onBlur(e);
+      checkPwned(e.target.value);
+    },
+    [passwordField, checkPwned],
+  );
+
   const onSubmit = async (data: RegisterInput) => {
     setServerError(null);
+
+    const breachCount = await getPwnedPasswordCount(data.password);
+    if (breachCount !== null && breachCount > 0) {
+      setError("password", {
+        type: "manual",
+        message: `This password has appeared in known data breaches (${breachCount.toLocaleString()} times). Please choose a different password.`,
+      });
+      return;
+    }
 
     const result = await registerUser(data);
 
@@ -59,6 +109,10 @@ export function SignupForm({ disabled = false }: SignupFormProps) {
       setServerError("Unexpected response from server.");
     }
   };
+
+  const passwordIsBreached = hibpCount != null && hibpCount > 0;
+  const passwordIsCommon = isCommonPassword(passwordValue);
+  const passwordBlocked = passwordIsBreached || passwordIsCommon;
 
   const fieldsLocked = Boolean(queuedJobTrigger) || registrationSuccess;
 
@@ -146,26 +200,27 @@ export function SignupForm({ disabled = false }: SignupFormProps) {
         {...register("email")}
       />
 
-      <Input
-        label="Password"
-        type="password"
-        placeholder="••••••••"
-        error={errors.password?.message}
-        helperText="Must be at least 8 characters with uppercase, lowercase, and number"
-        required
-        disabled={disabled || fieldsLocked}
-        {...register("password")}
-      />
-
-      <Input
-        label="Confirm Password"
-        type="password"
-        placeholder="••••••••"
-        error={errors.confirmPassword?.message}
-        required
-        disabled={disabled || fieldsLocked}
-        {...register("confirmPassword")}
-      />
+      <div>
+        <Input
+          label="Password"
+          type="password"
+          placeholder="••••••••"
+          error={errors.password?.message}
+          required
+          disabled={disabled || fieldsLocked}
+          autoComplete="new-password"
+          ref={passwordField.ref}
+          name={passwordField.name}
+          onChange={passwordField.onChange}
+          onBlur={handlePasswordBlur}
+        />
+        <PasswordStrengthBar
+          password={passwordValue}
+          pwnedCount={hibpCount}
+          pwnedLoading={hibpLoading}
+          className="mt-2"
+        />
+      </div>
 
       <div className="flex items-start">
         <div className="flex items-center h-5">
@@ -215,7 +270,7 @@ export function SignupForm({ disabled = false }: SignupFormProps) {
           size="lg"
           className="w-full"
           loading={isSubmitting}
-          disabled={isSubmitting || disabled}
+          disabled={isSubmitting || disabled || passwordBlocked}
         >
           Create Account
         </Button>

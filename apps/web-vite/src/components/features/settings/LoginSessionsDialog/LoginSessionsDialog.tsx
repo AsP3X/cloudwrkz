@@ -6,6 +6,7 @@ import { formatDateTimeFull } from "@/lib/utils/date";
 import { api } from "@/api/client";
 import { cn } from "@/lib/utils/cn";
 import { ROUTES } from "@/lib/constants/routes";
+import { clearUserCache } from "@/lib/auth/userCache";
 
 interface MySession {
   id: string;
@@ -63,6 +64,7 @@ export const LoginSessionsDialog = ({ open, onOpenChange }: LoginSessionsDialogP
       const stillHasCurrent = sessions?.some((s) => s.isCurrent);
       if (!stillHasCurrent) {
         localStorage.removeItem("auth_token");
+        clearUserCache();
         navigate(ROUTES.LOGIN);
       }
     } catch (err) {
@@ -95,6 +97,7 @@ export const LoginSessionsDialog = ({ open, onOpenChange }: LoginSessionsDialogP
       await api.delete("/me/sessions");
       setSuccess("All sessions revoked successfully");
       localStorage.removeItem("auth_token");
+      clearUserCache();
       navigate(ROUTES.LOGIN);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to revoke sessions");

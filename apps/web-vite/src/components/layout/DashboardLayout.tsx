@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { SidebarProvider } from "./SidebarContext";
@@ -9,6 +9,10 @@ import { ROUTES } from "@/lib/constants/routes";
 import { cn } from "@/lib/utils/cn";
 import { api } from "@/api/client";
 import { MutationQueueNotice } from "@/components/ui/MutationQueueNotice";
+
+function hasStoredAuthToken(): boolean {
+  return Boolean(localStorage.getItem("auth_token"));
+}
 
 const Spinner = () => (
   <div className="flex items-center justify-center min-h-[50vh]">
@@ -76,10 +80,50 @@ function DashboardLayoutContent() {
   );
 }
 
+function SessionConnectionWaitScreen({
+  onRetry,
+  retrying,
+}: {
+  onRetry: () => Promise<void>;
+  retrying: boolean;
+}) {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-gradient-to-br from-primary-50 via-white to-secondary-50 p-6 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950">
+      <div className="max-w-md rounded-xl border border-neutral-200 bg-white p-8 text-center shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+          Can&apos;t reach the server
+        </h1>
+        <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+          You are still signed in. When the API or database is back, we&apos;ll load your account again.
+          This is not a sign-out.
+        </p>
+        <button
+          type="button"
+          disabled={retrying}
+          onClick={() => void onRetry()}
+          className="mt-6 inline-flex items-center justify-center rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-60"
+        >
+          {retrying ? "Retrying…" : "Try again"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export const DashboardLayout = () => {
-  const { user, loading } = useAuth();
+  const { user, loading, needsConnection, refreshUser } = useAuth();
+  const [connectionRetrying, setConnectionRetrying] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+
+  const retryConnection = useCallback(async () => {
+    setConnectionRetrying(true);
+    try {
+      await refreshUser();
+    } finally {
+      setConnectionRetrying(false);
+    }
+  }, [refreshUser]);
   /**
    * ToDo create (`/todos/new`) and task detail (`/todos/:id`) use inline `LoginQueuedBanner` in the
    * form / delete dialog for local → API → DB — hide duplicate top notices here.
@@ -94,12 +138,17 @@ export const DashboardLayout = () => {
   const showMutationQueueNotice = !hideTopQueuedNotices;
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading && !user && !hasStoredAuthToken()) {
       navigate(ROUTES.LOGIN + "?error=session_expired", { replace: true });
     }
   }, [user, loading, navigate]);
 
   if (loading) return <Spinner />;
+  if (!user && hasStoredAuthToken()) {
+    return (
+      <SessionConnectionWaitScreen onRetry={retryConnection} retrying={connectionRetrying} />
+    );
+  }
   if (!user) return <Spinner />;
   if (user.role !== "USER" && user.role !== "AGENT" && user.role !== "ADMIN" && user.role !== "MODERATOR") {
     navigate(ROUTES.HOME, { replace: true });
@@ -109,6 +158,19 @@ export const DashboardLayout = () => {
   return (
     <SidebarProvider>
       <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-secondary-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950">
+        {needsConnection ? (
+          <div className="relative z-20 border-b border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
+            <span className="font-medium">Limited connectivity.</span>{" "}
+            Showing saved profile data until the server responds.{" "}
+            <button
+              type="button"
+              className="underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-50"
+              onClick={() => void retryConnection()}
+            >
+              Retry
+            </button>
+          </div>
+        ) : null}
         {/* Background decoration - matches Next.js app */}
         <div className="fixed inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-20 left-10 w-96 h-96 bg-primary-200 dark:bg-primary-900 rounded-full mix-blend-multiply filter blur-3xl opacity-10 dark:opacity-5" />
