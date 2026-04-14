@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils/cn";
 
@@ -41,16 +41,19 @@ export function OverviewContextMenu({
   className,
 }: OverviewContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ left: x + MENU_PADDING, top: y + MENU_PADDING });
 
   useLayoutEffect(() => {
     if (!open || !ref.current) return;
     const el = ref.current;
+    const baseLeft = x + MENU_PADDING;
+    const baseTop = y + MENU_PADDING;
+    el.style.left = `${baseLeft}px`;
+    el.style.top = `${baseTop}px`;
     const rect = el.getBoundingClientRect();
     const viewportW = window.innerWidth;
     const viewportH = window.innerHeight;
-    let left = x + MENU_PADDING;
-    let top = y + MENU_PADDING;
+    let left = baseLeft;
+    let top = baseTop;
     if (left + rect.width > viewportW - MENU_PADDING) {
       left = Math.max(MENU_PADDING, viewportW - rect.width - MENU_PADDING);
     }
@@ -59,8 +62,9 @@ export function OverviewContextMenu({
     }
     if (left < MENU_PADDING) left = MENU_PADDING;
     if (top < MENU_PADDING) top = MENU_PADDING;
-    setPosition({ left, top });
-  }, [open, x, y]);
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+  }, [open, x, y, items]);
 
   useEffect(() => {
     if (!open) return;
@@ -91,7 +95,7 @@ export function OverviewContextMenu({
         "fixed z-[100] min-w-[180px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 py-1 shadow-lg",
         className
       )}
-      style={{ left: position.left, top: position.top }}
+      style={{ left: x + MENU_PADDING, top: y + MENU_PADDING }}
       onClick={(e) => e.stopPropagation()}
     >
       {visibleItems.map((item) => (
