@@ -4,6 +4,7 @@ use axum::{
     routing::{get, patch, post},
     Json, Router,
 };
+use rand::Rng;
 use serde::Deserialize;
 use sqlx::Row;
 
@@ -38,6 +39,7 @@ pub fn router() -> Router<AppState> {
         )
         .route("/admin/users/{id}/ban", post(ban_user))
         .route("/admin/users/{id}/unban", post(unban_user))
+        .route("/admin/users/{id}/reset-password", post(reset_user_password))
         .route(
             "/admin/users/{id}/permissions",
             get(list_user_permissions).post(grant_user_permission),
@@ -1153,11 +1155,61 @@ async fn unban_user(
     Ok(Json(serde_json::json!({ "success": true })))
 }
 
+fn generate_secure_temp_password() -> String {
+    const CHARSET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz0123456789";
+    let mut rng = rand::rng();
+    (0..22)
+        .map(|_| {
+            let i = (rng.random::<u32>() as usize) % CHARSET.len();
+            CHARSET[i] as char
+        })
+        .collect()
+}
+
+async fn reset_user_password(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if user.role != "ADMIN" && user.role != "MODERATOR" {
+        return Err(AppError::forbidden("Admin access required"));
+    }
+    let plain = generate_secure_temp_password();
+    let hash = password::hash_password(&plain).map_err(|e| AppError::internal(e.to_string()))?;
+    let n = sqlx::query("UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2")
+        .bind(&hash)
+        .bind(&id)
+        .execute(&state.pool)
+        .await?
+        .rows_affected();
+    if n == 0 {
+        return Err(AppError::not_found("User not found"));
+    }
+    sqlx::query("DELETE FROM sessions WHERE user_id = $1")
+        .bind(&id)
+        .execute(&state.pool)
+        .await?;
+    audit::write_audit_log(
+        &state.pool,
+        WriteAuditParams {
+            user_id: Some(user.id),
+            action: "admin.users.password_reset".into(),
+            resource_type: Some("user".into()),
+            resource_id: Some(id.clone()),
+            context: None,
+            ip_address: None,
+            user_agent: None,
+        },
+    );
+    Ok(Json(serde_json::json!({ "plainPassword": plain })))
+}
+
 #[derive(Deserialize)]
 struct UpdateUserRequest {
     name: Option<String>,
     role: Option<String>,
     status: Option<String>,
+    password: Option<String>,
 }
 
 async fn update_user(
@@ -1170,8 +1222,25 @@ async fn update_user(
         return Err(AppError::forbidden("Admin only"));
     }
 
+    if let Some(ref raw_pw) = body.password {
+        let pw = raw_pw.trim();
+        if pw.len() < 8 {
+            return Err(AppError::bad_request("Password must be at least 8 characters"));
+        }
+        let hash = password::hash_password(pw).map_err(|e| AppError::internal(e.to_string()))?;
+        sqlx::query("UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2")
+            .bind(&hash)
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
+        sqlx::query("DELETE FROM sessions WHERE user_id = $1")
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
+    }
+
     if let Some(ref role) = body.role {
-        sqlx::query("UPDATE users SET role = $1::\"UserRole\", updated_at = NOW() WHERE id = $2")
+        sqlx::query("UPDATE users SET role = $1::\"Role\", updated_at = NOW() WHERE id = $2")
             .bind(role)
             .bind(&id)
             .execute(&state.pool)

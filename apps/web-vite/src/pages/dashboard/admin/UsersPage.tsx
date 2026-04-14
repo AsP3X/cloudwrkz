@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
-import { api } from "@/api/client";
+import { api, ApiError } from "@/api/client";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -10,6 +10,8 @@ import { Dialog } from "@/components/ui/Dialog";
 import { Textarea } from "@/components/ui/Textarea";
 import type { AdminUser } from "@/lib/types";
 import { formatDate } from "@/lib/utils/date";
+import { OverviewContextMenu, type OverviewContextMenuItem } from "@/components/ui/OverviewContextMenu";
+import { cn } from "@/lib/utils/cn";
 
 const getRoleBadgeVariant = (role: string) => {
   switch (role) {
@@ -32,7 +34,7 @@ const getStatusBadgeVariant = (status: string) => {
 };
 
 export default function UsersPage() {
-  const { user } = useAuth();
+  const { user, can, permissions } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -53,6 +55,26 @@ export default function UsersPage() {
   const [banDialogOpen, setBanDialogOpen] = useState(false);
   const [unbanDialogOpen, setUnbanDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; user: AdminUser } | null>(null);
+
+  /** Aligns with Next.js admin users: gate items by admin.users.* when /me returns permissions. */
+  const rowContextCaps = useMemo(() => {
+    if (permissions.length === 0) {
+      return { canViewDetail: true, canUpdate: true, canDelete: true };
+    }
+    return {
+      canViewDetail:
+        can("admin.users.view") ||
+        can("admin.users.update") ||
+        can("admin.users.delete"),
+      canUpdate: can("admin.users.update"),
+      canDelete: can("admin.users.delete"),
+    };
+  }, [permissions, can]);
+
+  const showUserRowContextMenu =
+    (user?.role === "ADMIN" || user?.role === "MODERATOR") &&
+    (rowContextCaps.canViewDetail || rowContextCaps.canUpdate || rowContextCaps.canDelete);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -123,15 +145,31 @@ export default function UsersPage() {
     setIsLoading(false);
   };
 
-  const handleEdit = async (userId: string, data: { name?: string; role: string; status: string }) => {
+  const handleEdit = async (
+    userId: string,
+    data: { name?: string; role: string; status: string; password?: string },
+  ) => {
     setIsLoading(true);
     try {
-      await api.patch(`/admin/users/${userId}`, data);
-      setEditDialogOpen(false);
+      const payload: Record<string, unknown> = {
+        name: data.name,
+        role: data.role,
+        status: data.status,
+      };
+      if (data.password?.trim()) {
+        payload.password = data.password.trim();
+      }
+      await api.patch(`/admin/users/${userId}`, payload);
       setSelectedUser(null);
       fetchUsers();
-    } catch { /* ignore */ }
-    setIsLoading(false);
+    } catch (e) {
+      if (e instanceof ApiError) {
+        throw new Error(e.message);
+      }
+      throw e instanceof Error ? e : new Error("Could not save changes");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleDelete = async (userId: string) => {
@@ -166,6 +204,70 @@ export default function UsersPage() {
     } catch { /* ignore */ }
     setIsLoading(false);
   };
+
+  const getUserContextMenuItems = useCallback(
+    (rowUser: AdminUser): OverviewContextMenuItem[] => {
+      const items: OverviewContextMenuItem[] = [];
+      if (rowContextCaps.canViewDetail) {
+        items.push({
+          id: "view",
+          label: "View details",
+          onClick: () => {
+            setContextMenu(null);
+            navigate(`/dashboard/admin/users/${rowUser.id}`);
+          },
+        });
+      }
+      if (rowContextCaps.canUpdate) {
+        items.push({
+          id: "edit",
+          label: "Edit",
+          onClick: () => {
+            setContextMenu(null);
+            setSelectedUser(rowUser);
+            setEditDialogOpen(true);
+          },
+        });
+        if (rowUser.status === "BANNED") {
+          items.push({
+            id: "unban",
+            label: "Unban",
+            onClick: () => {
+              setContextMenu(null);
+              setSelectedUser(rowUser);
+              setUnbanDialogOpen(true);
+            },
+          });
+        } else {
+          items.push({
+            id: "ban",
+            label: "Ban",
+            onClick: () => {
+              setContextMenu(null);
+              setSelectedUser(rowUser);
+              setBanDialogOpen(true);
+            },
+            destructive: true,
+          });
+        }
+      }
+      if (rowContextCaps.canDelete) {
+        items.push({
+          id: "delete",
+          label: "Delete",
+          onClick: () => {
+            setContextMenu(null);
+            setSelectedUser(rowUser);
+            setDeleteDialogOpen(true);
+          },
+          destructive: true,
+          separatorAbove: items.length > 0,
+        });
+      }
+      return items;
+    },
+    [navigate, rowContextCaps]
+  );
 
   if (user?.role !== "ADMIN" && user?.role !== "MODERATOR") {
     return (
@@ -276,7 +378,20 @@ export default function UsersPage() {
               </thead>
               <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
                 {users.map((u) => (
-                  <tr key={u.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800">
+                  <tr
+                    key={u.id}
+                    className={cn(
+                      "hover:bg-neutral-50 dark:hover:bg-neutral-800",
+                      showUserRowContextMenu && "cursor-context-menu"
+                    )}
+                    onContextMenu={(e) => {
+                      if (!showUserRowContextMenu) return;
+                      const items = getUserContextMenuItems(u);
+                      if (items.length === 0) return;
+                      e.preventDefault();
+                      setContextMenu({ x: e.clientX, y: e.clientY, user: u });
+                    }}
+                  >
                     <td className="px-4 py-3">
                       <input
                         type="checkbox"
@@ -342,6 +457,14 @@ export default function UsersPage() {
         )}
       </div>
 
+      <OverviewContextMenu
+        open={!!contextMenu}
+        x={contextMenu?.x ?? 0}
+        y={contextMenu?.y ?? 0}
+        onClose={() => setContextMenu(null)}
+        items={contextMenu ? getUserContextMenuItems(contextMenu.user) : []}
+      />
+
       <UserCreateDialog
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
@@ -354,8 +477,17 @@ export default function UsersPage() {
             open={editDialogOpen}
             onOpenChange={setEditDialogOpen}
             user={selectedUser}
-            onSubmit={(data) => handleEdit(selectedUser.id, data)}
+            onSubmit={async (data) => {
+              await handleEdit(selectedUser.id, data);
+            }}
             isLoading={isLoading}
+            onResetPassword={async () => {
+              const res = await api.post<{ plainPassword: string }>(
+                `/admin/users/${selectedUser.id}/reset-password`,
+                {},
+              );
+              return res.plainPassword;
+            }}
           />
           <UserBanDialog
             open={banDialogOpen}
@@ -426,42 +558,225 @@ function UserCreateDialog({ open, onOpenChange, onSubmit, isLoading }: {
   );
 }
 
-function UserEditDialog({ open, onOpenChange, user: editUser, onSubmit, isLoading }: {
+function FieldGroupTitle({ children }: { children: React.ReactNode }) {
+  return <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{children}</h3>;
+}
+
+function UserEditDialog({
+  open,
+  onOpenChange,
+  user: editUser,
+  onSubmit,
+  isLoading,
+  onResetPassword,
+}: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   user: AdminUser;
-  onSubmit: (data: { name?: string; role: string; status: string }) => void;
+  onSubmit: (data: { name?: string; role: string; status: string; password?: string }) => Promise<void>;
   isLoading: boolean;
+  onResetPassword: () => Promise<string>;
 }) {
   const [name, setName] = useState(editUser.name || "");
   const [role, setRole] = useState(editUser.role);
   const [status, setStatus] = useState(editUser.status);
+  const [manualPassword, setManualPassword] = useState("");
+  const [oneTimePassword, setOneTimePassword] = useState<string | null>(null);
+  const [copyHint, setCopyHint] = useState<string | null>(null);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [showManualPassword, setShowManualPassword] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setName(editUser.name || "");
     setRole(editUser.role);
     setStatus(editUser.status);
+    setManualPassword("");
+    setOneTimePassword(null);
+    setCopyHint(null);
+    setShowManualPassword(false);
+    setError(null);
   }, [editUser]);
 
+  const handleOpenChange = (next: boolean) => {
+    if (!next) {
+      setOneTimePassword(null);
+      setCopyHint(null);
+    }
+    onOpenChange(next);
+  };
+
+  const handleGenerate = async () => {
+    setError(null);
+    setCopyHint(null);
+    setResetLoading(true);
+    try {
+      const plain = await onResetPassword();
+      setOneTimePassword(plain);
+      setManualPassword("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to reset password");
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const copyPassword = async () => {
+    if (!oneTimePassword) return;
+    try {
+      await navigator.clipboard.writeText(oneTimePassword);
+      setCopyHint("Copied to clipboard");
+    } catch {
+      setCopyHint("Could not copy — select the password and copy manually");
+    }
+  };
+
+  const handleSave = async () => {
+    setError(null);
+    try {
+      await onSubmit({
+        name: name || undefined,
+        role,
+        status,
+        password: manualPassword.trim() || undefined,
+      });
+      handleOpenChange(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save changes");
+    }
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} title={`Edit User: ${editUser.email}`}>
-      <div className="p-6 space-y-4">
-        <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} />
-        <Select label="Role" options={[
-          { value: "USER", label: "User" },
-          { value: "AGENT", label: "Agent" },
-          { value: "MODERATOR", label: "Moderator" },
-          { value: "ADMIN", label: "Admin" },
-        ]} value={role} onChange={(e) => setRole(e.target.value)} />
-        <Select label="Status" options={[
-          { value: "ACTIVE", label: "Active" },
-          { value: "PENDING", label: "Pending" },
-          { value: "SUSPENDED", label: "Suspended" },
-          { value: "BANNED", label: "Banned" },
-        ]} value={status} onChange={(e) => setStatus(e.target.value)} />
-        <div className="flex justify-end gap-3 pt-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={() => onSubmit({ name: name || undefined, role, status })} loading={isLoading}>Save</Button>
+    <Dialog
+      open={open}
+      onOpenChange={handleOpenChange}
+      title="Edit user"
+      description={editUser.email}
+      className="max-w-lg sm:max-w-lg"
+    >
+      <div className="px-6 pb-6 pt-2 space-y-8">
+          {error && (
+            <div className="p-3 rounded-lg bg-error-50 dark:bg-error-950/80 border border-error-200/80 dark:border-error-800/80 text-error-700 dark:text-error-300 text-sm">
+              {error}
+            </div>
+          )}
+
+          <section className="space-y-4" aria-labelledby="vite-edit-account">
+            <div id="vite-edit-account">
+              <FieldGroupTitle>Account</FieldGroupTitle>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                Display name — email is fixed in the header
+              </p>
+            </div>
+            <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} />
+          </section>
+
+          <section className="space-y-4 pt-2 border-t border-neutral-200 dark:border-neutral-800" aria-labelledby="vite-edit-access">
+            <div id="vite-edit-access">
+              <FieldGroupTitle>Role &amp; status</FieldGroupTitle>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                What they can do and whether they can sign in
+              </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Select
+                label="Role"
+                options={[
+                  { value: "USER", label: "User" },
+                  { value: "AGENT", label: "Agent" },
+                  { value: "MODERATOR", label: "Moderator" },
+                  { value: "ADMIN", label: "Admin" },
+                ]}
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+              />
+              <Select
+                label="Status"
+                options={[
+                  { value: "ACTIVE", label: "Active" },
+                  { value: "PENDING", label: "Pending" },
+                  { value: "SUSPENDED", label: "Suspended" },
+                  { value: "BANNED", label: "Banned" },
+                ]}
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+              />
+            </div>
+          </section>
+
+          <section className="space-y-4 pt-2 border-t border-neutral-200 dark:border-neutral-800" aria-labelledby="vite-edit-password">
+            <div id="vite-edit-password">
+              <FieldGroupTitle>Password</FieldGroupTitle>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                Random reset signs the user out everywhere. Copy the new password before you close — it is not shown again.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full sm:w-auto sm:self-start"
+                loading={resetLoading}
+                disabled={resetLoading || isLoading}
+                onClick={handleGenerate}
+              >
+                Generate new password
+              </Button>
+
+              {oneTimePassword && (
+                <div
+                  className={cn(
+                    "rounded-lg border px-3 py-3 space-y-2",
+                    "border-amber-200/90 dark:border-amber-800/80 bg-amber-50/60 dark:bg-amber-950/25",
+                  )}
+                  role="status"
+                >
+                  <p className="text-xs font-medium text-amber-900 dark:text-amber-200/90">
+                    Copy now — won&apos;t be shown again
+                  </p>
+                  <div className="flex flex-col sm:flex-row sm:items-stretch gap-2">
+                    <code className="flex-1 min-w-0 break-all rounded-md bg-white/70 dark:bg-neutral-950/50 px-2.5 py-2 text-xs sm:text-sm font-mono text-neutral-900 dark:text-neutral-100 border border-amber-200/60 dark:border-amber-900/50">
+                      {oneTimePassword}
+                    </code>
+                    <Button type="button" variant="primary" size="sm" onClick={copyPassword} className="shrink-0 sm:self-center">
+                      Copy
+                    </Button>
+                  </div>
+                  {copyHint && <p className="text-xs text-amber-800/90 dark:text-amber-200/80">{copyHint}</p>}
+                </div>
+              )}
+
+              <div className="pt-1">
+                <button
+                  type="button"
+                  className="text-xs text-neutral-500 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 underline-offset-2 hover:underline"
+                  onClick={() => setShowManualPassword((v) => !v)}
+                >
+                  {showManualPassword ? "Hide custom password" : "Set a custom password instead"}
+                </button>
+              </div>
+
+              {showManualPassword && (
+                <Input
+                  label="New password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={manualPassword}
+                  onChange={(e) => setManualPassword(e.target.value)}
+                  helperText="Applied when you save."
+                />
+              )}
+            </div>
+          </section>
+
+        <div className="flex justify-end gap-3 pt-4 border-t border-neutral-200 dark:border-neutral-800">
+          <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={isLoading || resetLoading}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={handleSave} loading={isLoading} disabled={resetLoading}>
+            Save changes
+          </Button>
         </div>
       </div>
     </Dialog>

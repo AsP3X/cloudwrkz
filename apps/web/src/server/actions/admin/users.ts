@@ -1,5 +1,6 @@
 "use server";
 
+import { randomBytes } from "crypto";
 import { prisma } from "@/lib/db/prisma";
 import { requireAuth } from "@/lib/utils/auth-server";
 import { getUserPermissions, type TicketPermissionAction } from "@/lib/utils/permissions";
@@ -13,6 +14,10 @@ import { MODULE_KEYS } from "@/lib/constants/modules";
 export type ActionResult<T = void> =
   | { success: true; data?: T; message?: string }
   | { success: false; error: string; fieldErrors?: Record<string, string[]> };
+
+function generateSecurePassword(): string {
+  return randomBytes(18).toString("base64url");
+}
 
 const createUserSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -468,6 +473,43 @@ export async function updateUserAdmin(
     return {
       success: false,
       error: error.message || "Failed to update user",
+    };
+  }
+}
+
+/**
+ * Set a random password for a user (admin only). Returns the plaintext once for secure handoff.
+ */
+export async function resetUserPasswordAdmin(
+  userId: string
+): Promise<ActionResult<{ plainPassword: string }>> {
+  try {
+    const { requireAnyPermission } = await import("@/lib/utils/auth-server");
+    await requireAnyPermission("admin.users.update");
+
+    const plainPassword = generateSecurePassword();
+    const hashed = await bcrypt.hash(plainPassword, 10);
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { password: hashed },
+    });
+
+    await prisma.session.deleteMany({ where: { userId } });
+
+    revalidatePath("/dashboard/admin/users");
+    revalidatePath(`/dashboard/admin/users/${userId}`);
+
+    return {
+      success: true,
+      data: { plainPassword },
+      message: "Password reset",
+    };
+  } catch (error: any) {
+    console.error("Reset user password error:", error);
+    return {
+      success: false,
+      error: error.message || "Failed to reset password",
     };
   }
 }

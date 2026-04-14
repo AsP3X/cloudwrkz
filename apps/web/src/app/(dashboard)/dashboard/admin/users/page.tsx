@@ -3,6 +3,7 @@ import { getCurrentUser, requireRole, requireAnyPermissionOrRedirect } from "@/l
 import { ROUTES } from "@/lib/constants/routes";
 import { getAllUsersAdmin } from "@/server/actions/admin/users";
 import { UserManagementPage } from "@/components/features/admin/UserManagement/UserManagementPage";
+import { getUserPermissions } from "@/lib/utils/permissions";
 
 export default async function AdminUsersPage({
   searchParams,
@@ -30,13 +31,25 @@ export default async function AdminUsersPage({
   const search = params.search as string | undefined;
   const page = params.page ? parseInt(params.page as string) : 1;
 
-  const result = await getAllUsersAdmin({
-    status,
-    role,
-    search,
-    page,
-    limit: 50,
-  });
+  const [result, perms] = await Promise.all([
+    getAllUsersAdmin({
+      status,
+      role,
+      search,
+      page,
+      limit: 50,
+    }),
+    getUserPermissions(user.id),
+  ]);
 
-  return <UserManagementPage initialData={result} />;
+  const userAdminRowContext = {
+    canViewDetail:
+      perms.has("admin.users.view") ||
+      perms.has("admin.users.update") ||
+      perms.has("admin.users.delete"),
+    canUpdate: perms.has("admin.users.update"),
+    canDelete: perms.has("admin.users.delete"),
+  };
+
+  return <UserManagementPage initialData={result} userAdminRowContext={userAdminRowContext} />;
 }
