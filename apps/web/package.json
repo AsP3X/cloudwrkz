@@ -41,6 +41,7 @@
     "@tiptap/extension-text-style": "^3.17.1",
     "@tiptap/react": "^3.17.1",
     "@tiptap/starter-kit": "^3.17.1",
+    "@tiptap/suggestion": "3.20.4",
     "bcryptjs": "^2.4.3",
     "boxen": "^7.1.1",
     "chalk": "^5.6.2",
