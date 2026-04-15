@@ -251,6 +251,7 @@ function githubRepoPageHeadlineTitle(stored: string, url: string): string | null
 /**
  * Heading for the link detail page: avoid showing a stored title that concatenates
  * the page title and description when metadata (or the saved description) still holds them separately.
+ * Full behavior: repository `docs/link-detail-headlines.md`.
  */
 export function getLinkDetailHeadlineTitle(link: {
   title: string;

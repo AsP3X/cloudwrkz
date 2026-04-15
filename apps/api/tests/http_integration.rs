@@ -36,7 +36,8 @@ fn test_config(database_url: String) -> AppConfig {
         mutation_queue_capacity: 1024,
         idempotency_max_entries: 4096,
         idempotency_ttl_secs: 86_400,
-        github_metadata_min_interval_secs: 60,
+        github_api_token: None,
+        github_anonymous_max_requests_per_hour: 60,
         job_queue_github_max_concurrent: 1,
         job_queue_github_min_start_interval_secs: None,
     }

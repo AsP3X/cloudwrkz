@@ -44,8 +44,10 @@ pub struct AppConfig {
     pub mutation_queue_capacity: usize,
     pub idempotency_max_entries: usize,
     pub idempotency_ttl_secs: u64,
-    /// Minimum seconds between consecutive GitHub API requests inside a GitHub link metadata job (anonymous limit ~60/hour).
-    pub github_metadata_min_interval_secs: u64,
+    /// Optional `GITHUB_TOKEN` / `GITHUB_API_TOKEN` for GitHub REST (higher rate limits; no in-process hourly cap).
+    pub github_api_token: Option<String>,
+    /// Max anonymous GitHub REST requests per rolling hour for this process (GitHub allows 60/hour per IP without auth).
+    pub github_anonymous_max_requests_per_hour: u32,
     /// Max concurrent `github_link_metadata` jobs the global worker will run (each job still rate-limits HTTP internally).
     pub job_queue_github_max_concurrent: u32,
     /// Optional minimum seconds between *starting* two `github_link_metadata` jobs (pacing on top of concurrency).
@@ -120,11 +122,16 @@ impl AppConfig {
             idempotency_max_entries: env_u64_compat("IDEMPOTENCY_MAX_ENTRIES", 4096)
                 .clamp(64, 1_000_000) as usize,
             idempotency_ttl_secs: env_u64_compat("IDEMPOTENCY_TTL_SECS", 86_400).clamp(60, 604_800),
-            github_metadata_min_interval_secs: env_u64_compat(
-                "GITHUB_METADATA_MIN_INTERVAL_SECS",
-                60,
-            )
-            .clamp(1, 3_600),
+            github_api_token: env::var("GITHUB_TOKEN")
+                .or_else(|_| env::var("GITHUB_API_TOKEN"))
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
+            github_anonymous_max_requests_per_hour: env::var("GITHUB_ANONYMOUS_MAX_REQUESTS_PER_HOUR")
+                .ok()
+                .and_then(|s| s.parse::<u32>().ok())
+                .unwrap_or(60)
+                .clamp(1, 100_000),
             job_queue_github_max_concurrent: std::env::var("JOB_QUEUE_GITHUB_MAX_CONCURRENT")
                 .ok()
                 .and_then(|s| s.parse::<u32>().ok())

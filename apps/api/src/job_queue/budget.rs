@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use super::JobTypePolicy;
@@ -13,6 +13,24 @@ struct TypeState {
 pub struct TypeBudgets {
     configs: HashMap<String, JobTypePolicy>,
     state: Mutex<HashMap<String, TypeState>>,
+}
+
+/// Releases one acquired slot for `job_type` when dropped (e.g. after a spawned job finishes or panics).
+pub(crate) struct BudgetReleaseOnDrop {
+    budgets: Arc<TypeBudgets>,
+    job_type: String,
+}
+
+impl BudgetReleaseOnDrop {
+    pub(crate) fn new(budgets: Arc<TypeBudgets>, job_type: String) -> Self {
+        Self { budgets, job_type }
+    }
+}
+
+impl Drop for BudgetReleaseOnDrop {
+    fn drop(&mut self) {
+        self.budgets.release(&self.job_type);
+    }
 }
 
 impl TypeBudgets {

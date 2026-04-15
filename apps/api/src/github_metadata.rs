@@ -1,6 +1,7 @@
-//! Background queue + GitHub REST enrichment for link metadata (rate-limited server-side).
+//! GitHub REST enrichment for link metadata (`github_link_metadata` jobs).
+//! Rate limits are enforced by [`crate::github_rate_limit::GithubRestRateLimit`]; see `docs/background-jobs-and-github.md`.
 
-use std::time::{Duration, Instant};
+use std::sync::Arc;
 
 use regex::Regex;
 use reqwest::Client;
@@ -8,6 +9,8 @@ use serde_json::{Value, json};
 use sqlx::{PgPool, Row};
 use tracing::info;
 use url::Url;
+
+use crate::github_rate_limit::GithubRestRateLimit;
 
 const GITHUB_ACCEPT: &str = "application/vnd.github+json";
 const GITHUB_UA: &str = "Cloudwrkz-API (link metadata enrichment; public repos only)";
@@ -59,66 +62,48 @@ fn parse_last_page_from_link_header(link_header: Option<&str>) -> Option<i64> {
     cap.get(1)?.as_str().parse().ok()
 }
 
-async fn github_throttle_wait(last_request_at: &mut Option<Instant>, min_interval: Duration) {
-    if let Some(prev) = *last_request_at {
-        let elapsed = prev.elapsed();
-        if elapsed < min_interval {
-            tokio::time::sleep(min_interval - elapsed).await;
-        }
-    }
-}
-
 async fn github_get(
     client: &Client,
     url: &str,
-    last_request_at: &mut Option<Instant>,
-    min_interval: Duration,
+    rate: &Arc<GithubRestRateLimit>,
 ) -> Result<reqwest::Response, String> {
-    github_throttle_wait(last_request_at, min_interval).await;
-    github_get_after_throttle(client, url, last_request_at).await
-}
-
-/// One GitHub GET (headers only); updates `last_request_at` when the response is returned.
-async fn github_get_after_throttle(
-    client: &Client,
-    url: &str,
-    last_request_at: &mut Option<Instant>,
-) -> Result<reqwest::Response, String> {
-    let res = client
+    rate.acquire(1).await;
+    let req = client
         .get(url)
         .header(reqwest::header::ACCEPT, GITHUB_ACCEPT)
-        .header(reqwest::header::USER_AGENT, GITHUB_UA)
+        .header(reqwest::header::USER_AGENT, GITHUB_UA);
+    rate.apply_auth(req)
         .send()
         .await
-        .map_err(|e| e.to_string())?;
-    *last_request_at = Some(Instant::now());
-    Ok(res)
+        .map_err(|e| e.to_string())
 }
 
-/// Waits once, then issues two GETs in parallel (counts as two requests against GitHub quota).
+/// Two parallel GETs after reserving two slots in the anonymous hourly window.
 async fn github_get_parallel_pair(
     client: &Client,
     url_a: &str,
     url_b: &str,
-    last_request_at: &mut Option<Instant>,
-    min_interval: Duration,
+    rate: &Arc<GithubRestRateLimit>,
 ) -> Result<(reqwest::Response, reqwest::Response), String> {
-    github_throttle_wait(last_request_at, min_interval).await;
+    rate.acquire(2).await;
     let (ra, rb) = tokio::join!(
-        client
-            .get(url_a)
-            .header(reqwest::header::ACCEPT, GITHUB_ACCEPT)
-            .header(reqwest::header::USER_AGENT, GITHUB_UA)
-            .send(),
-        client
-            .get(url_b)
-            .header(reqwest::header::ACCEPT, GITHUB_ACCEPT)
-            .header(reqwest::header::USER_AGENT, GITHUB_UA)
-            .send(),
+        rate.apply_auth(
+            client
+                .get(url_a)
+                .header(reqwest::header::ACCEPT, GITHUB_ACCEPT)
+                .header(reqwest::header::USER_AGENT, GITHUB_UA),
+        )
+        .send(),
+        rate.apply_auth(
+            client
+                .get(url_b)
+                .header(reqwest::header::ACCEPT, GITHUB_ACCEPT)
+                .header(reqwest::header::USER_AGENT, GITHUB_UA),
+        )
+        .send(),
     );
     let ra = ra.map_err(|e| e.to_string())?;
     let rb = rb.map_err(|e| e.to_string())?;
-    *last_request_at = Some(Instant::now());
     Ok((ra, rb))
 }
 
@@ -153,11 +138,10 @@ const BRANCH_LIST_PER_PAGE: i64 = 100;
 async fn fetch_branches_metadata(
     client: &Client,
     repo_api: &str,
-    last_request_at: &mut Option<Instant>,
-    min_interval: Duration,
+    rate: &Arc<GithubRestRateLimit>,
 ) -> Result<(Option<Value>, Option<Value>), String> {
     let url1 = format!("{repo_api}/branches?per_page={BRANCH_LIST_PER_PAGE}");
-    let br_res = github_get(client, &url1, last_request_at, min_interval).await?;
+    let br_res = github_get(client, &url1, rate).await?;
     if !br_res.status().is_success() {
         return Ok((None, None));
     }
@@ -186,7 +170,7 @@ async fn fetch_branches_metadata(
         }
         Some(lp) if lp > 1 => {
             let url2 = format!("{repo_api}/branches?per_page={BRANCH_LIST_PER_PAGE}&page={lp}");
-            let br2 = github_get(client, &url2, last_request_at, min_interval).await?;
+            let br2 = github_get(client, &url2, rate).await?;
             if !br2.status().is_success() {
                 None
             } else {
@@ -207,12 +191,11 @@ async fn fetch_github_enrichment(
     client: &Client,
     owner: &str,
     repo: &str,
-    min_interval: Duration,
-    last_request_at: &mut Option<Instant>,
+    rate: &Arc<GithubRestRateLimit>,
 ) -> Result<Value, String> {
     let repo_api = repo_api_url(owner, repo);
 
-    let repo_res = github_get(client, &repo_api, last_request_at, min_interval).await?;
+    let repo_res = github_get(client, &repo_api, rate).await?;
     if !repo_res.status().is_success() {
         return Err(format!("GitHub repo API returned {}", repo_res.status()));
     }
@@ -274,8 +257,7 @@ async fn fetch_github_enrichment(
         out["githubLastPushedAt"] = json!(pushed);
     }
 
-    let (branch_names, branch_count) =
-        fetch_branches_metadata(client, &repo_api, last_request_at, min_interval).await?;
+    let (branch_names, branch_count) = fetch_branches_metadata(client, &repo_api, rate).await?;
     if let Some(v) = branch_names {
         out["githubBranches"] = v;
     }
@@ -298,8 +280,7 @@ async fn fetch_github_enrichment(
     let rel_url = format!("{repo_api}/releases?per_page=1");
 
     let (rel_res, com_res) =
-        github_get_parallel_pair(client, &rel_url, &commits_url, last_request_at, min_interval)
-            .await?;
+        github_get_parallel_pair(client, &rel_url, &commits_url, rate).await?;
 
     if rel_res.status().is_success() {
         if let Some(last) = parse_last_page_from_link_header(
@@ -339,7 +320,7 @@ async fn mark_background_job_failed(pool: &PgPool, job_id: &str, msg: &str) {
 pub async fn execute_github_link_metadata_job(
     pool: &PgPool,
     client: &Client,
-    min_interval: Duration,
+    rate: &Arc<GithubRestRateLimit>,
     job_id: &str,
     link_id: &str,
 ) -> Result<(), String> {
@@ -363,15 +344,7 @@ pub async fn execute_github_link_metadata_job(
     }
 
     let (owner, repo) = parse_github_owner_repo(&url).unwrap();
-    let mut last_req: Option<Instant> = None;
-    let enrichment = match fetch_github_enrichment(
-        client,
-        &owner,
-        &repo,
-        min_interval,
-        &mut last_req,
-    )
-    .await
+    let enrichment = match fetch_github_enrichment(client, &owner, &repo, rate).await
     {
         Ok(v) => v,
         Err(e) => {

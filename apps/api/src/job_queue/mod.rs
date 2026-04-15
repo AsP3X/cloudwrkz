@@ -1,23 +1,33 @@
 //! Global background job queue: dequeue, per-type concurrency / pacing, pluggable handlers.
 //!
+//! Operator documentation: repository root `docs/background-jobs-and-github.md`.
+//!
 //! To add a job type: define a `JOB_TYPE_*` constant, insert rows with `job_type` and JSON `payload`,
 //! extend `policies_from_config` with limits, and add a branch in `run_one_job` that runs your worker
 //! (updating `background_jobs` status when finished).
+//!
+//! The dispatcher loop claims jobs and spawns each as its own async task so **multiple jobs can run
+//! concurrently** up to each type's `max_concurrent` (and optional `min_interval_between_starts` when set).
+//!
+//! Dispatcher and per-job lifecycle lines use `tracing::debug!` with **target `jobs`** (`event` fields
+//! `jobs.daemon_ready`, `jobs.daemon_wake`, `jobs.job_start`, `jobs.job_done`). Enable with
+//! `LOG_VERBOSITY=debug` (default filter includes `jobs=debug`) or `RUST_LOG=info,jobs=debug`.
 
 mod budget;
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use budget::TypeBudgets;
+use budget::{BudgetReleaseOnDrop, TypeBudgets};
 use reqwest::Client;
 use serde_json::json;
 use sqlx::{PgPool, Row};
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use crate::config::AppConfig;
 use crate::github_metadata;
+use crate::github_rate_limit::GithubRestRateLimit;
 use crate::id::new_cuid;
 
 pub const JOB_TYPE_GITHUB_LINK_METADATA: &str = "github_link_metadata";
@@ -45,8 +55,6 @@ fn policies_from_config(config: &AppConfig) -> HashMap<String, JobTypePolicy> {
         JOB_TYPE_GITHUB_LINK_METADATA.to_string(),
         JobTypePolicy {
             max_concurrent: config.job_queue_github_max_concurrent.max(1),
-            // Spacing between starts is enforced in SQL using one GitHub job start per UTC clock minute
-            // (`try_claim_next`); `JOB_QUEUE_GITHUB_MIN_START_INTERVAL_SECS` is not applied to this type.
             min_interval_between_starts: None,
         },
     );
@@ -64,8 +72,6 @@ async fn mark_job_failed(pool: &PgPool, job_id: &str, msg: &str) {
 }
 
 /// Enqueue GitHub link metadata refresh if none pending/processing for this link.
-///
-/// The worker runs at most **one** `github_link_metadata` job per **UTC clock minute** (see claim SQL).
 pub async fn enqueue_github_link_metadata_job(
     pool: &PgPool,
     link_id: &str,
@@ -108,7 +114,7 @@ fn payload_link_id(payload: &serde_json::Value) -> Option<String> {
 async fn run_one_job(
     pool: &PgPool,
     client: &Client,
-    github_http_min_interval: Duration,
+    github_rate: Arc<GithubRestRateLimit>,
     job_id: String,
     job_type: String,
     payload: serde_json::Value,
@@ -119,7 +125,7 @@ async fn run_one_job(
                 let _ = github_metadata::execute_github_link_metadata_job(
                     pool,
                     client,
-                    github_http_min_interval,
+                    &github_rate,
                     &job_id,
                     &link_id,
                 )
@@ -166,49 +172,20 @@ async fn try_claim_next(
             continue;
         }
 
-        let claimed = if job_type == JOB_TYPE_GITHUB_LINK_METADATA {
-            // At most one GitHub metadata job may *start* per UTC wall-clock minute (epoch minute bucket).
-            sqlx::query_scalar::<_, String>(
-                r#"UPDATE background_jobs AS b
-                   SET status = 'processing',
-                       started_at = clock_timestamp(),
-                       updated_at = clock_timestamp()
-                   WHERE b.id = $1
-                     AND b.job_type = $2
-                     AND b.status = 'pending'
-                     AND (b.run_after IS NULL OR b.run_after <= clock_timestamp())
-                     AND NOT EXISTS (
-                       SELECT 1 FROM background_jobs AS g
-                       WHERE g.job_type = $2
-                         AND g.id <> b.id
-                         AND g.started_at IS NOT NULL
-                         AND (EXTRACT(EPOCH FROM g.started_at)::bigint / 60)
-                             = (EXTRACT(EPOCH FROM clock_timestamp())::bigint / 60)
-                     )
-                   RETURNING b.id"#,
-            )
-            .bind(&id)
-            .bind(JOB_TYPE_GITHUB_LINK_METADATA)
-            .fetch_optional(pool)
-            .await
-            .ok()
-            .flatten()
-        } else {
-            sqlx::query_scalar::<_, String>(
-                r#"UPDATE background_jobs
-                   SET status = 'processing',
-                       started_at = clock_timestamp(),
-                       updated_at = clock_timestamp()
-                   WHERE id = $1 AND status = 'pending'
-                     AND (run_after IS NULL OR run_after <= clock_timestamp())
-                   RETURNING id"#,
-            )
-            .bind(&id)
-            .fetch_optional(pool)
-            .await
-            .ok()
-            .flatten()
-        };
+        let claimed = sqlx::query_scalar::<_, String>(
+            r#"UPDATE background_jobs
+               SET status = 'processing',
+                   started_at = clock_timestamp(),
+                   updated_at = clock_timestamp()
+               WHERE id = $1 AND status = 'pending'
+                 AND (run_after IS NULL OR run_after <= clock_timestamp())
+               RETURNING id"#,
+        )
+        .bind(&id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten();
 
         if claimed.is_none() {
             budgets.release(&job_type);
@@ -222,7 +199,7 @@ async fn try_claim_next(
 pub fn spawn_job_queue_worker(pool: PgPool, config: AppConfig) {
     let policies = policies_from_config(&config);
     let budgets = Arc::new(TypeBudgets::new(policies));
-    let github_http_min = Duration::from_secs(config.github_metadata_min_interval_secs.max(1));
+    let github_rate = GithubRestRateLimit::from_config(&config);
 
     tokio::spawn(async move {
         let client = match Client::builder().timeout(Duration::from_secs(60)).build() {
@@ -237,20 +214,57 @@ pub fn spawn_job_queue_worker(pool: PgPool, config: AppConfig) {
             event = "job_queue.worker_start",
             "background job worker started"
         );
+        debug!(
+            target: "jobs",
+            event = "jobs.daemon_ready",
+            "job queue dispatcher running (debug target `jobs`)"
+        );
+
+        /// Cap claims per wake so a deep backlog cannot starve the runtime in one tick.
+        const MAX_CLAIMS_PER_WAKE: u32 = 128;
 
         loop {
             tokio::time::sleep(Duration::from_millis(400)).await;
-            if let Some((job_id, job_type, payload)) = try_claim_next(&pool, &budgets).await {
-                run_one_job(
-                    &pool,
-                    &client,
-                    github_http_min,
-                    job_id.clone(),
-                    job_type.clone(),
-                    payload,
-                )
-                .await;
-                budgets.release(&job_type);
+            let mut claimed_this_wake = 0u32;
+            while claimed_this_wake < MAX_CLAIMS_PER_WAKE {
+                let Some((job_id, job_type, payload)) = try_claim_next(&pool, &budgets).await else {
+                    break;
+                };
+                claimed_this_wake += 1;
+                let pool = pool.clone();
+                let client = client.clone();
+                let budgets = budgets.clone();
+                let gh_rate = github_rate.clone();
+                let job_id_for_log = job_id.clone();
+                let job_type_for_log = job_type.clone();
+                tokio::spawn(async move {
+                    let _slot = BudgetReleaseOnDrop::new(budgets, job_type.clone());
+                    let started = Instant::now();
+                    debug!(
+                        target: "jobs",
+                        event = "jobs.job_start",
+                        job_id = %job_id_for_log,
+                        job_type = %job_type_for_log,
+                        "background job processing started"
+                    );
+                    run_one_job(&pool, &client, gh_rate, job_id, job_type, payload).await;
+                    debug!(
+                        target: "jobs",
+                        event = "jobs.job_done",
+                        job_id = %job_id_for_log,
+                        job_type = %job_type_for_log,
+                        elapsed_ms = started.elapsed().as_millis() as u64,
+                        "background job processing finished"
+                    );
+                });
+            }
+            if claimed_this_wake > 0 {
+                debug!(
+                    target: "jobs",
+                    event = "jobs.daemon_wake",
+                    spawned = claimed_this_wake,
+                    "job queue dispatcher claimed batch"
+                );
             }
         }
     });

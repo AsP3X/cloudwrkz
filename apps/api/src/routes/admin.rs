@@ -2210,8 +2210,9 @@ async fn list_background_jobs(
             "github_link_metadata": {
                 "maxConcurrent": cfg.job_queue_github_max_concurrent,
                 "minStartIntervalSecs": serde_json::Value::Null,
-                "githubUtcMinuteStartSlot": true,
-                "githubHttpMinIntervalSecs": cfg.github_metadata_min_interval_secs,
+                "githubUtcMinuteStartSlot": false,
+                "githubAnonymousMaxRequestsPerHour": cfg.github_anonymous_max_requests_per_hour,
+                "githubApiTokenConfigured": cfg.github_api_token.as_ref().is_some_and(|s| !s.trim().is_empty()),
             }
         }
     })))

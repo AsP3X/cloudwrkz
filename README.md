@@ -8,7 +8,7 @@ Monorepo for the Cloudwrkz product: **Vite + Rust API** stack, **Next.js** app, 
 | Component         | Path                           | Description                                                     |
 | ----------------- | ------------------------------ | --------------------------------------------------------------- |
 | **Web (Vite)**    | [apps/web-vite](apps/web-vite) | React SPA, Tailwind; talks to the Rust API                      |
-| **API**           | [apps/api](apps/api)           | Rust (Axum, SQLx, PostgreSQL)                                   |
+| **API**           | [apps/api](apps/api)           | Rust (Axum, SQLx, PostgreSQL); see [apps/api/README.md](apps/api/README.md) and [docs/background-jobs-and-github.md](docs/background-jobs-and-github.md) |
 | **CLI**           | [apps/cli](apps/cli)           | Rust CLI for DB tasks, bootstrap admin, API-backed menus        |
 | **Web (Next.js)** | [apps/web](apps/web)           | Next.js 16 app (Prisma, dashboard, Docker); legacy/alternate UI |
 | **iOS**           | [apps/ios](apps/ios)           | Native iOS app (Swift, Xcode)                                   |
@@ -132,6 +132,14 @@ Open [apps/ios/Cloudwrkz.xcodeproj](apps/ios/Cloudwrkz.xcodeproj) in Xcode and b
 | `cargo run -p cloudwrkz-api`             | Run API locally                                                     |
 | `cargo build --release -p cloudwrkz-cli` | Build CLI binary                                                    |
 
+
+## Documentation
+
+Index: **[docs/README.md](docs/README.md)**
+
+- **[Background jobs and GitHub metadata](docs/background-jobs-and-github.md)** — job queue, `github_link_metadata`, rate limits, `jobs` tracing.
+- **[Link detail headlines](docs/link-detail-headlines.md)** — how link titles are shown on detail pages (Vite + Next.js).
+- **API** — [apps/api/README.md](apps/api/README.md) (run, env overview, links to the docs above).
 
 ## Tooling
 

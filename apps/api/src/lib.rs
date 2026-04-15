@@ -9,6 +9,7 @@ pub mod db;
 mod diagnostics_token;
 mod error;
 mod github_metadata;
+mod github_rate_limit;
 pub mod id;
 mod job_queue;
 mod models;
@@ -61,6 +62,8 @@ Commands:
                                Requires DATABASE_URL; runs migrations. Use with GET /api/v1/health/detailed.
 
 Environment: LOG_VERBOSITY (debug|prod), LOG_FORMAT (json), RUST_LOG, DATABASE_URL,
+             With LOG_VERBOSITY=debug the default filter includes jobs=debug (dispatcher + per-job tracing on target `jobs`).
+             With LOG_VERBOSITY=prod you can still set RUST_LOG=info,jobs=debug to log only the background job queue.
              API_REGION, API_NODES_AVAILABLE, DIAGNOSTICS_HEALTH_TOKEN (optional plaintext override for detailed health),
              AUTH_RATE_LIMIT_PER_MINUTE, AUTH_RATE_LIMIT_BURST,
              COMMAND_DB_TX_MAX_MS, COMMAND_DB_LOCK_TIMEOUT_MS, COMMAND_DB_STATEMENT_TIMEOUT_MS,
@@ -68,11 +71,11 @@ Environment: LOG_VERBOSITY (debug|prod), LOG_FORMAT (json), RUST_LOG, DATABASE_U
              (Deferred mutations: GET /api/v1/mutation-jobs/{job_id} after HTTP 202 when DB was transient.)
              DATABASE_POOL_ACQUIRE_TIMEOUT_SECS, DATABASE_POOL_MAX_CONNECTIONS,
              DATABASE_MIGRATE_RETRY_MAX_SECS, etc.
-             GITHUB_METADATA_MIN_INTERVAL_SECS (default 60): minimum delay between GitHub HTTP *rounds* inside a github_link_metadata job
-             (each round is one throttled step; releases + commits share one round as two parallel GETs). Typical job: ~3 rounds (~3 min) or ~4 if >100 branches.
-             GitHub metadata jobs: at most one job may *start* per UTC wall-clock minute (epoch minute); the worker polls ~400ms.
+             GITHUB_TOKEN or GITHUB_API_TOKEN (optional): authenticated GitHub REST (higher rate limits; no in-process hourly cap).
+             GITHUB_ANONYMOUS_MAX_REQUESTS_PER_HOUR (default 60): rolling-hour cap on GitHub REST GETs for this process when no token is set (GitHub allows 60/hour per IP unauthenticated). Jobs may wait inside a run until slots free; no fixed spacing between requests.
+             GitHub metadata jobs: dispatcher polls ~400ms and runs jobs concurrently up to JOB_QUEUE_GITHUB_MAX_CONCURRENT.
              JOB_QUEUE_GITHUB_MAX_CONCURRENT (default 1): max concurrent github_link_metadata jobs.
-             JOB_QUEUE_GITHUB_MIN_START_INTERVAL_SECS: ignored for github_link_metadata (minute slot scheduling replaces it).
+             JOB_QUEUE_GITHUB_MIN_START_INTERVAL_SECS: optional pacing between job starts (per job type policy; not used for github_link_metadata today).
 "#;
 
 /// Parse `-v` / `-v debug` / `-v prod` and `-h` from env::args(). CLI overrides LOG_VERBOSITY env.
@@ -120,7 +123,12 @@ impl<B> OnResponse<B> for ApiOnResponse {
 }
 
 fn init_logging() {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let default_directive = match log_verbosity() {
+        LogVerbosity::Debug => "info,jobs=debug",
+        LogVerbosity::Prod => "info",
+    };
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(default_directive));
     let use_json = std::env::var("LOG_FORMAT").as_deref() == Ok("json");
     let timer = UtcTime::rfc_3339();
     let fmt = tracing_subscriber::fmt()
