@@ -694,6 +694,14 @@ async fn require_admin_settings(pool: &sqlx::PgPool, user_id: &str) -> Result<()
     Ok(())
 }
 
+/// List/detail background jobs: requires `admin.jobs.view` only.
+async fn require_admin_jobs_view(pool: &sqlx::PgPool, user_id: &str) -> Result<(), AppError> {
+    if check_permission(pool, user_id, "admin.jobs.view").await {
+        return Ok(());
+    }
+    Err(AppError::forbidden("admin.jobs.view required"))
+}
+
 async fn admin_settings(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -2125,7 +2133,7 @@ async fn list_background_jobs(
     AuthUser(user): AuthUser,
     Query(q): Query<BackgroundJobsQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    require_admin_settings(&state.pool, &user.id).await?;
+    require_admin_jobs_view(&state.pool, &user.id).await?;
     let limit = q.limit.unwrap_or(120).clamp(1, 500);
     let include_completed = q.include_completed.unwrap_or(false);
 
@@ -2223,7 +2231,7 @@ async fn get_background_job(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    require_admin_settings(&state.pool, &user.id).await?;
+    require_admin_jobs_view(&state.pool, &user.id).await?;
 
     let row = sqlx::query(
         r#"SELECT b.id, b.job_type, b.status, b.payload, b.error_message, b.dedupe_key, b.created_by_user_id,

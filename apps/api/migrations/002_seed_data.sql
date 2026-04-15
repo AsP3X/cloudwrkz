@@ -64,6 +64,8 @@ VALUES
   (gen_random_uuid()::text, 'admin.permissions.view', 'View Permissions', 'View user and group permissions (read-only)', 'admin', NULL, NOW(), NOW()),
   (gen_random_uuid()::text, 'admin.permissions.manage', 'Manage Permissions', 'View and manage user and group permissions', 'admin', NULL, NOW(), NOW()),
   (gen_random_uuid()::text, 'admin.settings.manage', 'Modify System Settings', 'Modify system settings', 'admin', NULL, NOW(), NOW()),
+  (gen_random_uuid()::text, 'admin.jobs.view', 'View Background Jobs', 'View the background job queue and job details in admin', 'admin', NULL, NOW(), NOW()),
+  (gen_random_uuid()::text, 'search.jobs.view', 'Search Background Jobs', 'Include background jobs in global fuzzy search (when implemented)', 'search', NULL, NOW(), NOW()),
   (gen_random_uuid()::text, 'admin.modules.manage', 'Manage Modules', 'Enable/disable modules', 'admin', NULL, NOW(), NOW()),
   (gen_random_uuid()::text, 'admin.sessions.view', 'View Sessions', 'View user sessions', 'admin', NULL, NOW(), NOW()),
   (gen_random_uuid()::text, 'admin.statistics.view', 'View Statistics', 'View system statistics', 'admin', NULL, NOW(), NOW()),

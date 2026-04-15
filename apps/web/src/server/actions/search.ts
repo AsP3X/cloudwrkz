@@ -36,6 +36,11 @@ export type SearchResult = {
   contextHighlight?: string;
 };
 
+/**
+ * Future: include background jobs in global fuzzy search only when the user has
+ * `search.jobs.view` (see `SEARCH_JOBS_PERMISSION_KEY` in `@/lib/constants/permissions`).
+ */
+
 export type SearchResponse = {
   results: SearchResult[];
   total: number;

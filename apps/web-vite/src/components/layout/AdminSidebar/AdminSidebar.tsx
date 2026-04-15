@@ -90,6 +90,8 @@ export interface AdminSidebarProps {
   canViewAuditLog: boolean;
   canViewDbConsole: boolean;
   canManageSettings: boolean;
+  /** View admin Background Jobs (queue + detail); also allow legacy access via Manage Settings. */
+  canViewBackgroundJobs: boolean;
 }
 
 export function AdminSidebar({
@@ -104,6 +106,7 @@ export function AdminSidebar({
   canViewAuditLog,
   canViewDbConsole,
   canManageSettings,
+  canViewBackgroundJobs,
 }: AdminSidebarProps) {
   const pathname = useLocation().pathname;
   const { isMobileOpen, setIsMobileOpen } = useSidebar();
@@ -135,7 +138,7 @@ export function AdminSidebar({
     canViewAuditLog && { name: "Audit Log", href: ROUTES.ADMIN_AUDIT, icon: ClipboardIcon },
     canViewDbConsole && { name: "Database Console", href: ROUTES.ADMIN_DB_CONSOLE, icon: DatabaseIcon },
     canManageSettings && { name: "System Settings", href: ROUTES.ADMIN_SETTINGS, icon: SettingsIcon },
-    canManageSettings && { name: "Jobs", href: ROUTES.ADMIN_BACKGROUND_JOBS, icon: QueueIcon },
+    canViewBackgroundJobs && { name: "Jobs", href: ROUTES.ADMIN_BACKGROUND_JOBS, icon: QueueIcon },
   ].filter(Boolean) as { name: string; href: string; icon: () => JSX.Element }[];
 
   const NavLink = ({ item, icon: Icon }: { item: { name: string; href: string }; icon: () => JSX.Element }) => {

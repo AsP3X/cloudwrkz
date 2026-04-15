@@ -249,15 +249,17 @@ export default function AdminSettingsPage() {
         <p className="text-neutral-600 dark:text-neutral-400 mt-1">
           System information and configuration
         </p>
-        <p className="mt-3 text-sm">
-          <Link
-            to={ROUTES.ADMIN_BACKGROUND_JOBS}
-            className="font-medium text-primary-600 dark:text-primary-400 hover:underline"
-          >
-            Jobs
-          </Link>
-          <span className="text-neutral-500 dark:text-neutral-400"> — pending and running on the server</span>
-        </p>
+        {can("admin.jobs.view") && (
+          <p className="mt-3 text-sm">
+            <Link
+              to={ROUTES.ADMIN_BACKGROUND_JOBS}
+              className="font-medium text-primary-600 dark:text-primary-400 hover:underline"
+            >
+              Jobs
+            </Link>
+            <span className="text-neutral-500 dark:text-neutral-400"> — pending and running on the server</span>
+          </p>
+        )}
       </div>
 
       {/* System Health */}

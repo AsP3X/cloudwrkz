@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/api/client";
 import { ROUTES } from "@/lib/constants/routes";
+import { useAuth } from "@/components/providers/AuthProvider";
 
 export type AdminStats = {
   totalUsers: number;
@@ -28,6 +29,8 @@ const cardBase =
   "bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50";
 
 export function AdminDashboard({ displayName }: { displayName: string }) {
+  const { can } = useAuth();
+  const showJobsCard = can("admin.jobs.view");
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -350,25 +353,27 @@ export function AdminDashboard({ displayName }: { displayName: string }) {
         </div>
       </div>
 
-      <Link
-        to={ROUTES.ADMIN_BACKGROUND_JOBS}
-        className={
-          cardBase +
-          " p-5 block transition-all duration-200 hover:border-primary-300 dark:hover:border-primary-700 hover:shadow-soft-md"
-        }
-      >
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Jobs</p>
-            <p className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mt-1">
-              <span className="tabular-nums">{stats.backgroundJobs?.pending ?? 0}</span> pending
-              <span className="text-neutral-400 dark:text-neutral-500 mx-2">·</span>
-              <span className="tabular-nums">{stats.backgroundJobs?.processing ?? 0}</span> running
-            </p>
+      {showJobsCard && (
+        <Link
+          to={ROUTES.ADMIN_BACKGROUND_JOBS}
+          className={
+            cardBase +
+            " p-5 block transition-all duration-200 hover:border-primary-300 dark:hover:border-primary-700 hover:shadow-soft-md"
+          }
+        >
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Jobs</p>
+              <p className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mt-1">
+                <span className="tabular-nums">{stats.backgroundJobs?.pending ?? 0}</span> pending
+                <span className="text-neutral-400 dark:text-neutral-500 mx-2">·</span>
+                <span className="tabular-nums">{stats.backgroundJobs?.processing ?? 0}</span> running
+              </p>
+            </div>
+            <span className="text-sm font-medium text-primary-600 dark:text-primary-400 shrink-0">View jobs →</span>
           </div>
-          <span className="text-sm font-medium text-primary-600 dark:text-primary-400 shrink-0">View jobs →</span>
-        </div>
-      </Link>
+        </Link>
+      )}
 
       {/* Quick Actions */}
       <div

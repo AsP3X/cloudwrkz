@@ -532,8 +532,7 @@ function useAgoLabel(updatedAt: number | null) {
   return `${h}h ago`;
 }
 
-export default function AdminBackgroundJobsPage() {
-  const { can } = useAuth();
+function AdminBackgroundJobsPageContent() {
   const [activeJobs, setActiveJobs] = useState<BackgroundJobRow[]>([]);
   const [completedJobs, setCompletedJobs] = useState<BackgroundJobRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -711,16 +710,6 @@ export default function AdminBackgroundJobsPage() {
     setHistoryPageSize(size);
     setHistoryPage(1);
   }, []);
-
-  if (!can("admin.settings.manage")) {
-    return (
-      <AccessDeniedWarning
-        message="You need permission to manage system settings to view jobs."
-        primaryLabel="Back to Dashboard"
-        primaryHref={ROUTES.DASHBOARD}
-      />
-    );
-  }
 
   return (
     <div className="space-y-8 pb-10">
@@ -974,4 +963,18 @@ export default function AdminBackgroundJobsPage() {
       </Dialog>
     </div>
   );
+}
+
+export default function AdminBackgroundJobsPage() {
+  const { can } = useAuth();
+  if (!can("admin.jobs.view")) {
+    return (
+      <AccessDeniedWarning
+        message="You need the View Background Jobs permission to open this page."
+        primaryLabel="Back to Dashboard"
+        primaryHref={ROUTES.DASHBOARD}
+      />
+    );
+  }
+  return <AdminBackgroundJobsPageContent />;
 }

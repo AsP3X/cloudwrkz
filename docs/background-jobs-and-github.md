@@ -29,6 +29,13 @@ There is **no** fixed delay between requests inside a job. A single enrichment r
 - With **`LOG_VERBOSITY=debug`**, the default `RUST_LOG` filter includes **`jobs=debug`** so these lines appear without setting `RUST_LOG` manually.
 - With **`LOG_VERBOSITY=prod`**, use e.g. **`RUST_LOG=info,jobs=debug`** to enable only the job queue debug lines.
 
+## Permissions
+
+- **`admin.jobs.view`**: Required for `GET /admin/background-jobs` and `GET /admin/background-jobs/{id}` (admin UI: Jobs queue and detail). **Not** implied by `admin.settings.manage`; assign both if someone should manage settings and inspect jobs.
+- **`search.jobs.view`**: Reserved for a later feature: include background jobs in **global fuzzy search**. Until that is implemented, assign this permission only if you want to prepare groups/users for the future behavior.
+
+Migration **`010_grant_admin_jobs_view_where_settings_manage`** grants `admin.jobs.view` everywhere `admin.settings.manage` was already assigned, so existing deployments keep prior access after this split.
+
 ## Admin API (job types)
 
 `GET` admin background-jobs listing includes **`typePolicies.github_link_metadata`**, for example:
