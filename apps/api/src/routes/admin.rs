@@ -2209,7 +2209,8 @@ async fn list_background_jobs(
         "typePolicies": {
             "github_link_metadata": {
                 "maxConcurrent": cfg.job_queue_github_max_concurrent,
-                "minStartIntervalSecs": cfg.job_queue_github_min_start_interval_secs,
+                "minStartIntervalSecs": serde_json::Value::Null,
+                "githubUtcMinuteStartSlot": true,
                 "githubHttpMinIntervalSecs": cfg.github_metadata_min_interval_secs,
             }
         }

@@ -45,8 +45,6 @@ pub struct AppConfig {
     pub idempotency_max_entries: usize,
     pub idempotency_ttl_secs: u64,
     /// Minimum seconds between consecutive GitHub API requests inside a GitHub link metadata job (anonymous limit ~60/hour).
-    /// Also used when enqueueing: earliest worker start is at least this many seconds after enqueue, or after the last
-    /// completed/failed github_link_metadata job's `completed_at`, whichever yields the later time when a job ran recently.
     pub github_metadata_min_interval_secs: u64,
     /// Max concurrent `github_link_metadata` jobs the global worker will run (each job still rate-limits HTTP internally).
     pub job_queue_github_max_concurrent: u32,

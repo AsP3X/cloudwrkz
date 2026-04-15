@@ -12,7 +12,7 @@ use url::Url;
 const GITHUB_ACCEPT: &str = "application/vnd.github+json";
 const GITHUB_UA: &str = "Cloudwrkz-API (link metadata enrichment; public repos only)";
 
-fn parse_github_owner_repo(raw_url: &str) -> Option<(String, String)> {
+pub(crate) fn parse_github_owner_repo(raw_url: &str) -> Option<(String, String)> {
     let trimmed = raw_url.trim();
     let with_proto = if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
         trimmed.to_string()
@@ -30,6 +30,25 @@ fn parse_github_owner_repo(raw_url: &str) -> Option<(String, String)> {
         return None;
     }
     Some((owner, repo))
+}
+
+/// True when `metadata` already includes GitHub REST enrichment for the same `owner/repo` as `url`.
+pub(crate) fn link_github_enrichment_matches_repo(metadata: &Option<Value>, url: &str) -> bool {
+    let Some((url_owner, url_repo)) = parse_github_owner_repo(url) else {
+        return false;
+    };
+    let Some(Value::Object(obj)) = metadata.as_ref() else {
+        return false;
+    };
+    let owner_ok = obj
+        .get("githubOwner")
+        .and_then(|v| v.as_str())
+        .is_some_and(|s| s.eq_ignore_ascii_case(&url_owner));
+    let repo_ok = obj
+        .get("githubRepo")
+        .and_then(|v| v.as_str())
+        .is_some_and(|s| s.eq_ignore_ascii_case(&url_repo));
+    owner_ok && repo_ok
 }
 
 fn parse_last_page_from_link_header(link_header: Option<&str>) -> Option<i64> {
@@ -234,7 +253,7 @@ async fn fetch_github_enrichment(
 
 async fn mark_background_job_failed(pool: &PgPool, job_id: &str, msg: &str) {
     let _ = sqlx::query(
-        r#"UPDATE background_jobs SET status = 'failed', error_message = $2, updated_at = NOW(), completed_at = NOW() WHERE id = $1"#,
+        r#"UPDATE background_jobs SET status = 'failed', error_message = $2, updated_at = clock_timestamp(), completed_at = clock_timestamp() WHERE id = $1"#,
     )
     .bind(job_id)
     .bind(msg)
@@ -306,7 +325,7 @@ pub async fn execute_github_link_metadata_job(
     }
 
     let _ = sqlx::query(
-        r#"UPDATE background_jobs SET status = 'completed', error_message = NULL, updated_at = NOW(), completed_at = NOW() WHERE id = $1"#,
+        r#"UPDATE background_jobs SET status = 'completed', error_message = NULL, updated_at = clock_timestamp(), completed_at = clock_timestamp() WHERE id = $1"#,
     )
     .bind(job_id)
     .execute(&mut *tx)

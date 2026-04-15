@@ -68,11 +68,10 @@ Environment: LOG_VERBOSITY (debug|prod), LOG_FORMAT (json), RUST_LOG, DATABASE_U
              (Deferred mutations: GET /api/v1/mutation-jobs/{job_id} after HTTP 202 when DB was transient.)
              DATABASE_POOL_ACQUIRE_TIMEOUT_SECS, DATABASE_POOL_MAX_CONNECTIONS,
              DATABASE_MIGRATE_RETRY_MAX_SECS, etc.
-             GITHUB_METADATA_MIN_INTERVAL_SECS (default 60): minimum delay between GitHub HTTP calls inside a job, and
-             the default minimum delay before a newly queued github_link_metadata job may start (unless a prior job finished
-             within that window, in which case the next run aligns to last_completed + this interval).
+             GITHUB_METADATA_MIN_INTERVAL_SECS (default 60): minimum delay between GitHub HTTP calls inside a github_link_metadata job.
+             GitHub metadata jobs: at most one job may *start* per UTC wall-clock minute (epoch minute); the worker polls ~400ms.
              JOB_QUEUE_GITHUB_MAX_CONCURRENT (default 1): max concurrent github_link_metadata jobs.
-             JOB_QUEUE_GITHUB_MIN_START_INTERVAL_SECS (optional): min seconds between starting two github_link_metadata jobs.
+             JOB_QUEUE_GITHUB_MIN_START_INTERVAL_SECS: ignored for github_link_metadata (minute slot scheduling replaces it).
 "#;
 
 /// Parse `-v` / `-v debug` / `-v prod` and `-h` from env::args(). CLI overrides LOG_VERBOSITY env.

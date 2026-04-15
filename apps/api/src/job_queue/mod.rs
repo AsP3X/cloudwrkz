@@ -11,7 +11,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use budget::TypeBudgets;
-use chrono::{DateTime, Utc};
 use reqwest::Client;
 use serde_json::json;
 use sqlx::{PgPool, Row};
@@ -40,36 +39,15 @@ impl Default for JobTypePolicy {
     }
 }
 
-/// When a GitHub metadata job may first run: at least `defer_secs` after enqueue, or aligned to
-/// `last_completed + defer_secs` when another job finished recently (avoids stacking duplicate waits).
-pub(crate) fn github_job_run_after(
-    now: DateTime<Utc>,
-    last_completed: Option<DateTime<Utc>>,
-    defer_secs: u64,
-) -> DateTime<Utc> {
-    let secs = defer_secs.max(1) as i64;
-    let defer = chrono::Duration::seconds(secs);
-    let from_enqueue = now + defer;
-    let Some(t) = last_completed else {
-        return from_enqueue;
-    };
-    let from_last = t + defer;
-    if from_last > now {
-        from_last
-    } else {
-        from_enqueue
-    }
-}
-
 fn policies_from_config(config: &AppConfig) -> HashMap<String, JobTypePolicy> {
     let mut m = HashMap::new();
     m.insert(
         JOB_TYPE_GITHUB_LINK_METADATA.to_string(),
         JobTypePolicy {
             max_concurrent: config.job_queue_github_max_concurrent.max(1),
-            min_interval_between_starts: config
-                .job_queue_github_min_start_interval_secs
-                .map(Duration::from_secs),
+            // Spacing between starts is enforced in SQL using one GitHub job start per UTC clock minute
+            // (`try_claim_next`); `JOB_QUEUE_GITHUB_MIN_START_INTERVAL_SECS` is not applied to this type.
+            min_interval_between_starts: None,
         },
     );
     m
@@ -77,7 +55,7 @@ fn policies_from_config(config: &AppConfig) -> HashMap<String, JobTypePolicy> {
 
 async fn mark_job_failed(pool: &PgPool, job_id: &str, msg: &str) {
     let _ = sqlx::query(
-        r#"UPDATE background_jobs SET status = 'failed', error_message = $2, updated_at = NOW(), completed_at = NOW() WHERE id = $1"#,
+        r#"UPDATE background_jobs SET status = 'failed', error_message = $2, updated_at = clock_timestamp(), completed_at = clock_timestamp() WHERE id = $1"#,
     )
     .bind(job_id)
     .bind(msg)
@@ -86,11 +64,12 @@ async fn mark_job_failed(pool: &PgPool, job_id: &str, msg: &str) {
 }
 
 /// Enqueue GitHub link metadata refresh if none pending/processing for this link.
+///
+/// The worker runs at most **one** `github_link_metadata` job per **UTC clock minute** (see claim SQL).
 pub async fn enqueue_github_link_metadata_job(
     pool: &PgPool,
     link_id: &str,
     user_id: &str,
-    defer_start_secs: u64,
 ) -> Result<(String, bool), sqlx::Error> {
     let dedupe_key = format!("{JOB_TYPE_GITHUB_LINK_METADATA}:{link_id}");
     let pending: Option<String> = sqlx::query_scalar(
@@ -107,27 +86,16 @@ pub async fn enqueue_github_link_metadata_job(
         return Ok((existing_id, true));
     }
 
-    let last_completed: Option<DateTime<Utc>> = sqlx::query_scalar(
-        r#"SELECT MAX(completed_at) FROM background_jobs
-           WHERE job_type = $1 AND status IN ('completed', 'failed')"#,
-    )
-    .bind(JOB_TYPE_GITHUB_LINK_METADATA)
-    .fetch_one(pool)
-    .await?;
-
-    let run_after = github_job_run_after(Utc::now(), last_completed, defer_start_secs);
-
     let id = new_cuid();
     sqlx::query(
         r#"INSERT INTO background_jobs (id, job_type, payload, status, dedupe_key, created_by_user_id, created_at, updated_at, run_after)
-           VALUES ($1, $2, $3, 'pending', $4, $5, NOW(), NOW(), $6)"#,
+           VALUES ($1, $2, $3, 'pending', $4, $5, NOW(), NOW(), NULL)"#,
     )
     .bind(&id)
     .bind(JOB_TYPE_GITHUB_LINK_METADATA)
     .bind(sqlx::types::Json(json!({ "link_id": link_id })))
     .bind(&dedupe_key)
     .bind(user_id)
-    .bind(run_after)
     .execute(pool)
     .await?;
     Ok((id, false))
@@ -178,7 +146,7 @@ async fn try_claim_next(
     let rows: Vec<(String, String, serde_json::Value)> = sqlx::query(
         r#"SELECT id, job_type, payload FROM background_jobs
            WHERE status = 'pending'
-             AND (run_after IS NULL OR run_after <= NOW())
+             AND (run_after IS NULL OR run_after <= clock_timestamp())
            ORDER BY priority DESC, created_at ASC
            LIMIT 32"#,
     )
@@ -197,17 +165,50 @@ async fn try_claim_next(
         if !budgets.try_acquire(&job_type) {
             continue;
         }
-        let claimed = sqlx::query_scalar::<_, String>(
-            r#"UPDATE background_jobs
-               SET status = 'processing', started_at = NOW(), updated_at = NOW()
-               WHERE id = $1 AND status = 'pending'
-               RETURNING id"#,
-        )
-        .bind(&id)
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten();
+
+        let claimed = if job_type == JOB_TYPE_GITHUB_LINK_METADATA {
+            // At most one GitHub metadata job may *start* per UTC wall-clock minute (epoch minute bucket).
+            sqlx::query_scalar::<_, String>(
+                r#"UPDATE background_jobs AS b
+                   SET status = 'processing',
+                       started_at = clock_timestamp(),
+                       updated_at = clock_timestamp()
+                   WHERE b.id = $1
+                     AND b.job_type = $2
+                     AND b.status = 'pending'
+                     AND (b.run_after IS NULL OR b.run_after <= clock_timestamp())
+                     AND NOT EXISTS (
+                       SELECT 1 FROM background_jobs AS g
+                       WHERE g.job_type = $2
+                         AND g.id <> b.id
+                         AND g.started_at IS NOT NULL
+                         AND (EXTRACT(EPOCH FROM g.started_at)::bigint / 60)
+                             = (EXTRACT(EPOCH FROM clock_timestamp())::bigint / 60)
+                     )
+                   RETURNING b.id"#,
+            )
+            .bind(&id)
+            .bind(JOB_TYPE_GITHUB_LINK_METADATA)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten()
+        } else {
+            sqlx::query_scalar::<_, String>(
+                r#"UPDATE background_jobs
+                   SET status = 'processing',
+                       started_at = clock_timestamp(),
+                       updated_at = clock_timestamp()
+                   WHERE id = $1 AND status = 'pending'
+                     AND (run_after IS NULL OR run_after <= clock_timestamp())
+                   RETURNING id"#,
+            )
+            .bind(&id)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten()
+        };
 
         if claimed.is_none() {
             budgets.release(&job_type);
@@ -255,41 +256,3 @@ pub fn spawn_job_queue_worker(pool: PgPool, config: AppConfig) {
     });
 }
 
-#[cfg(test)]
-mod run_after_tests {
-    use super::github_job_run_after;
-    use chrono::{DateTime, Utc};
-
-    fn t(s: &str) -> DateTime<Utc> {
-        s.parse::<DateTime<Utc>>().expect("valid RFC3339")
-    }
-
-    #[test]
-    fn no_prior_job_waits_defer_from_now() {
-        let now = t("2026-01-15T10:23:00Z");
-        assert_eq!(
-            github_job_run_after(now, None, 60),
-            t("2026-01-15T10:24:00Z")
-        );
-    }
-
-    #[test]
-    fn recent_completion_aligns_to_last_plus_defer() {
-        let now = t("2026-01-15T10:23:30Z");
-        let last = t("2026-01-15T10:23:00Z");
-        assert_eq!(
-            github_job_run_after(now, Some(last), 60),
-            t("2026-01-15T10:24:00Z")
-        );
-    }
-
-    #[test]
-    fn idle_system_uses_enqueue_window() {
-        let now = t("2026-01-15T10:23:00Z");
-        let last = t("2026-01-15T10:21:00Z");
-        assert_eq!(
-            github_job_run_after(now, Some(last), 60),
-            t("2026-01-15T10:24:00Z")
-        );
-    }
-}

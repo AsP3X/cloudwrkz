@@ -16,6 +16,7 @@ use crate::command_queue::{
     mutation_response, run_mutation_defer,
 };
 use crate::error::AppError;
+use crate::github_metadata;
 use crate::job_queue;
 use crate::models::link::*;
 use crate::routes::AppState;
@@ -315,13 +316,8 @@ async fn enqueue_github_metadata_refresh(
         return Err(AppError::not_found("Link not found"));
     }
 
-    let (job_id, already_queued) = job_queue::enqueue_github_link_metadata_job(
-        &state.pool,
-        &id,
-        &user.id,
-        state.config.github_metadata_min_interval_secs,
-    )
-    .await?;
+    let (job_id, already_queued) =
+        job_queue::enqueue_github_link_metadata_job(&state.pool, &id, &user.id).await?;
 
     Ok(Json(serde_json::json!({
         "jobId": job_id,
@@ -478,6 +474,21 @@ async fn create_link(
                 }
 
                 tx.commit().await.map_err(AppError::from)?;
+
+                if github_metadata::parse_github_owner_repo(&body.url).is_some()
+                    && !github_metadata::link_github_enrichment_matches_repo(&metadata, &body.url)
+                {
+                    if let Err(e) = job_queue::enqueue_github_link_metadata_job(&pool, &id, &user_id).await
+                    {
+                        tracing::warn!(
+                            event = "link.create.github_metadata_enqueue_failed",
+                            link_id = %id,
+                            error = %e,
+                            "could not enqueue GitHub metadata job after link create"
+                        );
+                    }
+                }
+
                 Ok(JsonMutationResult::created(serde_json::json!({ "id": id })))
             }
         }

@@ -11,6 +11,168 @@ import { cn } from "@/lib/utils/cn";
 
 const POLL_MS = 12_000;
 
+const JOB_PAGE_SIZE_OPTIONS = [5, 10, 25, 50, 100] as const;
+type JobPageSize = (typeof JOB_PAGE_SIZE_OPTIONS)[number] | "all";
+
+/** Bounded-length page list: ellipsis instead of thousands of controls. */
+function buildPaginationWindow(currentPage: number, totalPages: number): Array<number | "ellipsis"> {
+  if (totalPages < 1) return [];
+  if (totalPages === 1) return [1];
+  if (totalPages <= 9) {
+    return Array.from({ length: totalPages }, (_, i) => i + 1);
+  }
+  const r: Array<number | "ellipsis"> = [];
+  const left = Math.max(2, currentPage - 2);
+  const right = Math.min(totalPages - 1, currentPage + 2);
+  r.push(1);
+  if (left > 2) r.push("ellipsis");
+  for (let i = left; i <= right; i++) r.push(i);
+  if (right < totalPages - 1) r.push("ellipsis");
+  r.push(totalPages);
+  return r;
+}
+
+function JobTableFooter({
+  total,
+  page,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
+  selectId,
+  summaryLabel,
+}: {
+  total: number;
+  page: number;
+  pageSize: JobPageSize;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: JobPageSize) => void;
+  selectId: string;
+  summaryLabel: string;
+}) {
+  const pageSizeNum = pageSize === "all" ? Math.max(total, 1) : pageSize;
+  const totalPages = pageSize === "all" || total === 0 ? 1 : Math.max(1, Math.ceil(total / pageSize));
+  const showPager = pageSize !== "all" && total > pageSize;
+  const windowModel = showPager ? buildPaginationWindow(page, totalPages) : [];
+
+  const showingStart = total === 0 ? 0 : (page - 1) * pageSizeNum + 1;
+  const showingEnd = pageSize === "all" ? total : Math.min(page * pageSize, total);
+
+  return (
+    <div
+      className="border-t border-neutral-100 bg-neutral-50/50 px-3 py-3 dark:border-neutral-800 dark:bg-neutral-800/25 sm:px-4"
+      aria-label={summaryLabel}
+    >
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+          <p className="text-xs text-neutral-600 dark:text-neutral-400 whitespace-nowrap">
+            {total === 0
+              ? "No rows"
+              : pageSize === "all"
+                ? `Showing all ${total}`
+                : `Showing ${showingStart}–${showingEnd} of ${total}`}
+          </p>
+          {showPager ? (
+            <nav className="flex flex-wrap items-center gap-1" aria-label="Pagination">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 min-w-8 px-0"
+                disabled={page <= 1}
+                onClick={() => onPageChange(1)}
+                aria-label="First page"
+              >
+                «
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 min-w-8 px-0"
+                disabled={page <= 1}
+                onClick={() => onPageChange(page - 1)}
+                aria-label="Previous page"
+              >
+                ‹
+              </Button>
+              {windowModel.map((item, idx) =>
+                item === "ellipsis" ? (
+                  <span key={`ellipsis-${idx}`} className="px-1.5 text-sm text-neutral-400 select-none" aria-hidden>
+                    …
+                  </span>
+                ) : (
+                  <Button
+                    key={item}
+                    type="button"
+                    variant={item === page ? "primary" : "outline"}
+                    size="sm"
+                    className="h-8 min-w-8 px-0"
+                    onClick={() => onPageChange(item)}
+                    aria-label={`Page ${item}`}
+                    aria-current={item === page ? "page" : undefined}
+                  >
+                    {item}
+                  </Button>
+                ),
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 min-w-8 px-0"
+                disabled={page >= totalPages}
+                onClick={() => onPageChange(page + 1)}
+                aria-label="Next page"
+              >
+                ›
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 min-w-8 px-0"
+                disabled={page >= totalPages}
+                onClick={() => onPageChange(totalPages)}
+                aria-label="Last page"
+              >
+                »
+              </Button>
+            </nav>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <label htmlFor={selectId} className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
+            Rows per page
+          </label>
+          <select
+            id={selectId}
+            value={pageSize === "all" ? "all" : String(pageSize)}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "all") {
+                onPageSizeChange("all");
+              } else {
+                const n = Number(v);
+                if (JOB_PAGE_SIZE_OPTIONS.includes(n as (typeof JOB_PAGE_SIZE_OPTIONS)[number])) {
+                  onPageSizeChange(n as JobPageSize);
+                }
+              }
+            }}
+            className="h-8 min-w-[5.5rem] rounded-md border border-neutral-300 bg-white px-2 text-xs font-medium text-neutral-800 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-200 dark:focus-visible:ring-offset-neutral-900"
+          >
+            {JOB_PAGE_SIZE_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+            <option value="all">All</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type CreatedBy = {
   id: string;
   email: string;
@@ -168,43 +330,11 @@ function IconSliders({ className }: { className?: string }) {
 
 type MetricAccent = "amber" | "sky" | "emerald" | "red";
 
-function StatCard({
-  label,
-  value,
-  hint,
-  accent,
-}: {
-  label: string;
-  value: number | string;
-  hint: string;
-  accent: "neutral" | MetricAccent;
-}) {
-  const accents = {
-    neutral: "from-neutral-100 to-white dark:from-neutral-800/80 dark:to-neutral-900 ring-neutral-200/80 dark:ring-neutral-700/80",
-    amber: "from-amber-50 to-white dark:from-amber-950/40 dark:to-neutral-900 ring-amber-200/70 dark:ring-amber-900/50",
-    sky: "from-sky-50 to-white dark:from-sky-950/40 dark:to-neutral-900 ring-sky-200/70 dark:ring-sky-900/50",
-    emerald: "from-emerald-50 to-white dark:from-emerald-950/40 dark:to-neutral-900 ring-emerald-200/70 dark:ring-emerald-900/50",
-    red: "from-red-50 to-white dark:from-red-950/40 dark:to-neutral-900 ring-red-200/70 dark:ring-red-900/50",
-  };
-  return (
-    <div
-      className={cn(
-        "relative overflow-hidden rounded-xl border border-neutral-200/90 dark:border-neutral-800 bg-gradient-to-br p-5 shadow-soft-lg",
-        accents[accent],
-      )}
-    >
-      <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">{label}</p>
-      <p className="mt-2 text-3xl font-semibold tabular-nums tracking-tight text-neutral-900 dark:text-neutral-50">{value}</p>
-      <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">{hint}</p>
-    </div>
-  );
-}
-
-const METRIC_RAIL_ACCENT: Record<MetricAccent, string> = {
-  amber: "border-t-amber-500 dark:border-t-amber-400",
-  sky: "border-t-sky-500 dark:border-t-sky-400",
-  emerald: "border-t-emerald-500 dark:border-t-emerald-400",
-  red: "border-t-red-500 dark:border-t-red-400",
+const METRIC_DOT: Record<MetricAccent, string> = {
+  amber: "bg-amber-500 dark:bg-amber-400",
+  sky: "bg-sky-500 dark:bg-sky-400",
+  emerald: "bg-emerald-500 dark:bg-emerald-400",
+  red: "bg-red-500 dark:bg-red-400",
 };
 
 function JobMetricsCompactRail({
@@ -232,29 +362,31 @@ function JobMetricsCompactRail({
 
   return (
     <div
-      className="overflow-hidden rounded-xl border border-neutral-200/90 bg-white shadow-soft-lg ring-1 ring-neutral-200/40 dark:border-neutral-800 dark:bg-neutral-900 dark:ring-neutral-800/60"
+      className="overflow-hidden rounded-xl border border-neutral-200/60 bg-white shadow-sm dark:border-neutral-800/80 dark:bg-neutral-900"
       role="region"
       aria-label="Job counts summary"
     >
-      <div className="flex min-h-0">
-        {segments.map((s, i) => (
-          <div
-            key={s.label}
-            title={s.hint}
-            className={cn(
-              "min-w-0 flex-1 border-t-[3px] bg-gradient-to-b from-neutral-50/90 to-white px-2 py-2.5 sm:px-3 dark:from-neutral-800/30 dark:to-neutral-900/90",
-              METRIC_RAIL_ACCENT[s.accent],
-              i > 0 && "border-l border-neutral-200/90 dark:border-neutral-800",
-            )}
-          >
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400 truncate">
-              {s.label}
-            </p>
-            <p className="mt-0.5 text-lg font-semibold tabular-nums leading-none tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-xl">
-              {s.value}
-            </p>
-          </div>
-        ))}
+      <div className="overflow-x-auto">
+        <div className="flex min-w-[17.5rem] w-full items-stretch px-2 py-2.5 sm:min-w-0 sm:px-3 sm:py-3">
+          {segments.map((s, i) => (
+            <div
+              key={s.label}
+              title={s.hint}
+              className={cn(
+                "flex min-w-0 flex-1 flex-col items-center justify-center px-1 text-center sm:px-2",
+                i > 0 && "border-l border-neutral-200/60 dark:border-neutral-800",
+              )}
+            >
+              <span className={cn("mb-1 h-1.5 w-1.5 shrink-0 rounded-full", METRIC_DOT[s.accent])} aria-hidden />
+              <span className="w-full truncate text-[10px] font-medium leading-none text-neutral-500 dark:text-neutral-400 sm:text-[11px]">
+                {s.label}
+              </span>
+              <span className="mt-1 text-base font-semibold tabular-nums tracking-tight text-neutral-900 dark:text-neutral-50 sm:text-lg">
+                {s.value}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -264,14 +396,16 @@ function JobTable({
   jobs,
   onRowClick,
   showDuration,
+  flush,
 }: {
   jobs: BackgroundJobRow[];
   onRowClick: (id: string) => void;
   showDuration?: boolean;
+  /** When true, no inner frame — table uses the parent section border as its edge. */
+  flush?: boolean;
 }) {
-  return (
-    <div className="overflow-hidden rounded-lg border border-neutral-200/90 dark:border-neutral-800">
-      <table className="min-w-full text-sm">
+  const table = (
+    <table className="min-w-full text-sm">
         <thead>
           <tr className="border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50/90 dark:bg-neutral-800/50 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
             <th className="px-4 py-3 font-medium">Status</th>
@@ -336,7 +470,14 @@ function JobTable({
           ))}
         </tbody>
       </table>
-    </div>
+  );
+
+  if (flush) {
+    return <div className="overflow-x-auto">{table}</div>;
+  }
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-neutral-200/90 dark:border-neutral-800">{table}</div>
   );
 }
 
@@ -345,11 +486,14 @@ function SectionShell({
   title,
   subtitle,
   children,
+  flush,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   title: string;
   subtitle: string;
   children: ReactNode;
+  /** When true, body content is not inset — use with a flush JobTable so one card reads as a single surface. */
+  flush?: boolean;
 }) {
   return (
     <section className="rounded-2xl border border-neutral-200/90 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-soft-lg overflow-hidden">
@@ -364,7 +508,7 @@ function SectionShell({
           </div>
         </div>
       </div>
-      <div className="p-6">{children}</div>
+      <div className={flush ? undefined : "p-6"}>{children}</div>
     </section>
   );
 }
@@ -406,12 +550,45 @@ export default function AdminBackgroundJobsPage() {
   const [rawTitle, setRawTitle] = useState("");
   const [rawBody, setRawBody] = useState("");
 
+  const [queuePageSize, setQueuePageSize] = useState<JobPageSize>(10);
+  const [queuePage, setQueuePage] = useState(1);
+  const [historyPageSize, setHistoryPageSize] = useState<JobPageSize>(10);
+  const [historyPage, setHistoryPage] = useState(1);
+
   const agoLabel = useAgoLabel(lastUpdatedAt);
 
   const queueJobs = useMemo(
     () => activeJobs.filter((j) => j.status === "pending" || j.status === "processing"),
     [activeJobs],
   );
+
+  const queueSlice = useMemo(() => {
+    if (queuePageSize === "all") return queueJobs;
+    const start = (queuePage - 1) * queuePageSize;
+    return queueJobs.slice(start, start + queuePageSize);
+  }, [queueJobs, queuePage, queuePageSize]);
+
+  const historySlice = useMemo(() => {
+    if (historyPageSize === "all") return completedJobs;
+    const start = (historyPage - 1) * historyPageSize;
+    return completedJobs.slice(start, start + historyPageSize);
+  }, [completedJobs, historyPage, historyPageSize]);
+
+  useEffect(() => {
+    setQueuePage((p) => {
+      const ps = queuePageSize === "all" ? Math.max(queueJobs.length, 1) : queuePageSize;
+      const tp = Math.max(1, Math.ceil(queueJobs.length / ps));
+      return p > tp ? tp : p;
+    });
+  }, [queueJobs.length, queuePageSize]);
+
+  useEffect(() => {
+    setHistoryPage((p) => {
+      const ps = historyPageSize === "all" ? Math.max(completedJobs.length, 1) : historyPageSize;
+      const tp = Math.max(1, Math.ceil(completedJobs.length / ps));
+      return p > tp ? tp : p;
+    });
+  }, [completedJobs.length, historyPageSize]);
 
   const metrics = useMemo(() => {
     const pending = queueJobs.filter((j) => j.status === "pending").length;
@@ -525,6 +702,16 @@ export default function AdminBackgroundJobsPage() {
     void load({ silent: true });
   };
 
+  const handleQueuePageSizeChange = useCallback((size: JobPageSize) => {
+    setQueuePageSize(size);
+    setQueuePage(1);
+  }, []);
+
+  const handleHistoryPageSizeChange = useCallback((size: JobPageSize) => {
+    setHistoryPageSize(size);
+    setHistoryPage(1);
+  }, []);
+
   if (!can("admin.settings.manage")) {
     return (
       <AccessDeniedWarning
@@ -562,20 +749,12 @@ export default function AdminBackgroundJobsPage() {
         </div>
       </header>
 
-      <div className="xl:hidden">
-        <JobMetricsCompactRail
-          pending={metrics.pending}
-          processing={metrics.processing}
-          succeeded={metrics.ok}
-          failed={metrics.bad}
-        />
-      </div>
-      <div className="hidden gap-4 xl:grid xl:grid-cols-4">
-        <StatCard label="Pending" value={metrics.pending} hint="Waiting for a worker slot" accent="amber" />
-        <StatCard label="Running" value={metrics.processing} hint="Currently executing" accent="sky" />
-        <StatCard label="Succeeded" value={metrics.ok} hint="In the loaded history window" accent="emerald" />
-        <StatCard label="Failed" value={metrics.bad} hint="In the loaded history window" accent="red" />
-      </div>
+      <JobMetricsCompactRail
+        pending={metrics.pending}
+        processing={metrics.processing}
+        succeeded={metrics.ok}
+        failed={metrics.bad}
+      />
 
       {error && (
         <div
@@ -591,21 +770,33 @@ export default function AdminBackgroundJobsPage() {
           icon={IconQueue}
           title="Active queue"
           subtitle="Pending and processing jobs across all registered types. Select a row for full detail."
+          flush
         >
           {loading ? (
-            <div className="flex flex-col items-center justify-center gap-3 py-16">
+            <div className="flex flex-col items-center justify-center gap-3 border-t border-neutral-100 bg-neutral-50/30 px-6 py-16 dark:border-neutral-800 dark:bg-neutral-800/20">
               <div className="h-9 w-9 animate-spin rounded-full border-2 border-primary-200 border-t-primary-600" />
               <p className="text-sm text-neutral-500 dark:text-neutral-400">Loading queue…</p>
             </div>
           ) : queueJobs.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-neutral-200 dark:border-neutral-700 bg-neutral-50/50 dark:bg-neutral-800/30 px-6 py-14 text-center">
+            <div className="border-t border-neutral-100 bg-neutral-50/40 px-6 py-14 text-center dark:border-neutral-800 dark:bg-neutral-800/25">
               <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200">Queue is clear</p>
               <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400 max-w-md mx-auto">
                 There are no pending or running jobs right now. New work will appear here automatically.
               </p>
             </div>
           ) : (
-            <JobTable jobs={queueJobs} onRowClick={setDetailId} />
+            <>
+              <JobTable jobs={queueSlice} onRowClick={setDetailId} flush />
+              <JobTableFooter
+                total={queueJobs.length}
+                page={queuePage}
+                pageSize={queuePageSize}
+                onPageChange={setQueuePage}
+                onPageSizeChange={handleQueuePageSizeChange}
+                selectId="jobs-queue-page-size"
+                summaryLabel="Active queue table footer"
+              />
+            </>
           )}
         </SectionShell>
 
@@ -613,21 +804,33 @@ export default function AdminBackgroundJobsPage() {
           icon={IconHistory}
           title="History"
           subtitle="Completed, failed, and cancelled jobs in this window (newest first)."
+          flush
         >
           {loading ? (
-            <div className="flex flex-col items-center justify-center gap-3 py-12">
+            <div className="flex flex-col items-center justify-center gap-3 border-t border-neutral-100 bg-neutral-50/30 px-6 py-12 dark:border-neutral-800 dark:bg-neutral-800/20">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-200 border-t-primary-600" />
               <p className="text-sm text-neutral-500 dark:text-neutral-400">Loading history…</p>
             </div>
           ) : completedJobs.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-neutral-200 dark:border-neutral-700 bg-neutral-50/50 dark:bg-neutral-800/30 px-6 py-14 text-center">
+            <div className="border-t border-neutral-100 bg-neutral-50/40 px-6 py-14 text-center dark:border-neutral-800 dark:bg-neutral-800/25">
               <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200">No history yet</p>
               <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400 max-w-md mx-auto">
                 Finished jobs will show here after the worker processes them.
               </p>
             </div>
           ) : (
-            <JobTable jobs={completedJobs} onRowClick={setDetailId} showDuration />
+            <>
+              <JobTable jobs={historySlice} onRowClick={setDetailId} showDuration flush />
+              <JobTableFooter
+                total={completedJobs.length}
+                page={historyPage}
+                pageSize={historyPageSize}
+                onPageChange={setHistoryPage}
+                onPageSizeChange={handleHistoryPageSizeChange}
+                selectId="jobs-history-page-size"
+                summaryLabel="History table footer"
+              />
+            </>
           )}
         </SectionShell>
       </div>
