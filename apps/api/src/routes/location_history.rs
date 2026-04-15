@@ -1,8 +1,8 @@
 use axum::{
+    Json, Router,
     extract::{Query, State},
     http::StatusCode,
     routing::get,
-    Json, Router,
 };
 use serde::Deserialize;
 use sqlx::Row;

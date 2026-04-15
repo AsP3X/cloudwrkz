@@ -1,4 +1,4 @@
-use axum::{extract::State, routing::patch, Json, Router};
+use axum::{Json, Router, extract::State, routing::patch};
 use serde::Deserialize;
 
 use crate::auth::extractors::AuthUser;

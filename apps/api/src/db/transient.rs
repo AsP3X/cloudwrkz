@@ -9,7 +9,11 @@ pub fn is_transient_sqlx(err: &sqlx::Error) -> bool {
         sqlx::Error::Database(db) => matches!(
             db.code().as_deref(),
             Some(
-                "08000" | "08003" | "08006" | "08001" | "08004"
+                "08000"
+                    | "08003"
+                    | "08006"
+                    | "08001"
+                    | "08004"
                     | "57P01"
                     | "57P02"
                     | "57P03"

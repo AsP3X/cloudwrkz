@@ -78,7 +78,10 @@ pub async fn run_migrations_with_transient_retries(pool: &PgPool) {
     loop {
         match sqlx::migrate!("./migrations").run(pool).await {
             Ok(()) => {
-                tracing::info!(event = "db.migrations_applied", "database migrations applied");
+                tracing::info!(
+                    event = "db.migrations_applied",
+                    "database migrations applied"
+                );
                 return;
             }
             Err(e) => {

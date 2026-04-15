@@ -50,6 +50,7 @@ import {
   GroupDetailPage,
   ModulesPage,
   AdminSettingsPage,
+  AdminBackgroundJobsPage,
   SessionsPage,
   AdminTicketsPage,
   AdminStatisticsPage,
@@ -182,6 +183,7 @@ export default function App() {
                     <Route path="groups/:id" element={<GroupDetailPage />} />
                     <Route path="modules" element={<ModulesPage />} />
                     <Route path="settings" element={<AdminSettingsPage />} />
+                    <Route path="background-jobs" element={<AdminBackgroundJobsPage />} />
                     <Route path="sessions" element={<SessionsPage />} />
                     <Route path="tickets" element={<AdminTicketsPage />} />
                     <Route path="statistics" element={<AdminStatisticsPage />} />

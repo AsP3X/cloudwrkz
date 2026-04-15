@@ -1,18 +1,18 @@
 use std::sync::Arc;
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::HeaderMap,
     response::Response,
     routing::get,
-    Json, Router,
 };
 use sqlx::Row;
 
 use crate::auth::extractors::AuthUser;
 use crate::command_queue::{
-    apply_mutation_tx_settings, mutation_response, run_mutation_defer, JsonMutationResult,
-    MutationRunContext,
+    JsonMutationResult, MutationRunContext, apply_mutation_tx_settings, mutation_response,
+    run_mutation_defer,
 };
 use crate::db::numbering::next_ticket_number;
 use crate::error::AppError;
@@ -21,12 +21,12 @@ use crate::models::ticket::{
     TicketActivityItem, TicketCommentCreateRequest, TicketCommentItem, TicketCreateRequest,
     TicketListItem, TicketListParams, TicketRow, TicketUpdateRequest,
 };
+use crate::routes::AppState;
 use crate::routes::helpers::{
     check_permission, check_permission_mut_tx, fetch_comment_author, fetch_group_summary,
     fetch_user_summary, get_user_permission_keys, hash_json_for_idempotency,
     idempotency_key_from_headers,
 };
-use crate::routes::AppState;
 
 /// Strip HTML tags for plain-text fallback (e.g. content_plain). Does not decode entities.
 fn strip_html_tags(html: &str) -> String {
@@ -95,9 +95,7 @@ async fn list_tickets(
     );
 
     let statuses: Vec<&str> = status_filter.split(',').map(|s| s.trim()).collect();
-    let use_multi = statuses.len() > 1
-        && status_filter != "ALL"
-        && status_filter != "UNRESOLVED";
+    let use_multi = statuses.len() > 1 && status_filter != "ALL" && status_filter != "UNRESOLVED";
 
     let rows = if use_multi {
         let mut sql = String::from(
@@ -109,7 +107,9 @@ async fn list_tickets(
                WHERE status::text IN ("#,
         );
         for (i, _) in statuses.iter().enumerate() {
-            if i > 0 { sql.push_str(", "); }
+            if i > 0 {
+                sql.push_str(", ");
+            }
             sql.push_str(&format!("${}", i + 1));
         }
         let next = statuses.len() + 1;
@@ -119,7 +119,11 @@ async fn list_tickets(
                  AND (${} = 'archived' AND archived_at IS NOT NULL
                       OR ${} != 'archived' AND archived_at IS NULL)
                  ORDER BY created_at DESC"#,
-            next, next + 1, next + 1, next + 2, next + 2
+            next,
+            next + 1,
+            next + 1,
+            next + 2,
+            next + 2
         ));
         let mut query = sqlx::query(&sql);
         for s in &statuses {
@@ -273,7 +277,9 @@ async fn create_ticket(
     Json(body): Json<TicketCreateRequest>,
 ) -> Result<Response, AppError> {
     let permission_keys = get_user_permission_keys(&state.pool, &user.id).await;
-    let can_create = permission_keys.iter().any(|k| k == "tickets.create" || k == "admin.tickets.manage")
+    let can_create = permission_keys
+        .iter()
+        .any(|k| k == "tickets.create" || k == "admin.tickets.manage")
         || permission_keys.is_empty(); // Allow when user has no permissions (e.g. create ticket to request access)
     if !can_create {
         return Err(AppError::forbidden(
@@ -309,9 +315,7 @@ async fn create_ticket(
                 apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms)
                     .await
                     .map_err(AppError::from)?;
-                let ticket_number = next_ticket_number(&mut tx)
-                    .await
-                    .map_err(AppError::from)?;
+                let ticket_number = next_ticket_number(&mut tx).await.map_err(AppError::from)?;
                 let id = id::new_cuid();
                 let ticket_type = body.r#type.as_deref().unwrap_or("QUESTION");
                 let priority = body.priority.as_deref().unwrap_or("MEDIUM");
@@ -394,13 +398,12 @@ async fn update_ticket(
                 apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms)
                     .await
                     .map_err(AppError::from)?;
-                let ticket = sqlx::query(
-                    "SELECT id, created_by_id FROM tickets WHERE id = $1 FOR UPDATE",
-                )
-                .bind(&id)
-                .fetch_optional(&mut *tx)
-                .await?
-                .ok_or_else(|| AppError::not_found("Ticket not found"))?;
+                let ticket =
+                    sqlx::query("SELECT id, created_by_id FROM tickets WHERE id = $1 FOR UPDATE")
+                        .bind(&id)
+                        .fetch_optional(&mut *tx)
+                        .await?
+                        .ok_or_else(|| AppError::not_found("Ticket not found"))?;
 
                 let created_by_id: Option<String> = ticket.get("created_by_id");
                 let can_edit_all =
@@ -465,8 +468,7 @@ async fn update_ticket(
                     .await?;
                 }
                 if let Some(ref v) = body.assigned_to_id {
-                    let opt: Option<String> =
-                        if v.is_empty() { None } else { Some(v.clone()) };
+                    let opt: Option<String> = if v.is_empty() { None } else { Some(v.clone()) };
                     sqlx::query(
                         "UPDATE tickets SET assigned_to_id = $1, updated_at = NOW() WHERE id = $2",
                     )
@@ -476,8 +478,7 @@ async fn update_ticket(
                     .await?;
                 }
                 if let Some(ref v) = body.assigned_to_group_id {
-                    let opt: Option<String> =
-                        if v.is_empty() { None } else { Some(v.clone()) };
+                    let opt: Option<String> = if v.is_empty() { None } else { Some(v.clone()) };
                     sqlx::query(
                         "UPDATE tickets SET assigned_to_group_id = $1, updated_at = NOW() WHERE id = $2",
                     )
@@ -511,16 +512,7 @@ async fn update_ticket(
             }
         }
     }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        shard,
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
-    )
-    .await?;
+    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
     Ok(mutation_response(out))
 }
 
@@ -557,13 +549,12 @@ async fn delete_ticket(
                 apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms)
                     .await
                     .map_err(AppError::from)?;
-                let ticket = sqlx::query(
-                    "SELECT id, created_by_id FROM tickets WHERE id = $1 FOR UPDATE",
-                )
-                .bind(&id)
-                .fetch_optional(&mut *tx)
-                .await?
-                .ok_or_else(|| AppError::not_found("Ticket not found"))?;
+                let ticket =
+                    sqlx::query("SELECT id, created_by_id FROM tickets WHERE id = $1 FOR UPDATE")
+                        .bind(&id)
+                        .fetch_optional(&mut *tx)
+                        .await?
+                        .ok_or_else(|| AppError::not_found("Ticket not found"))?;
 
                 let created_by_id: Option<String> = ticket.get("created_by_id");
                 let can_delete_all =
@@ -586,16 +577,7 @@ async fn delete_ticket(
             }
         }
     }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        shard,
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
-    )
-    .await?;
+    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
     Ok(mutation_response(out))
 }
 
@@ -797,16 +779,7 @@ async fn create_ticket_comment(
             }
         }
     }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        shard,
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
-    )
-    .await?;
+    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
     Ok(mutation_response(out))
 }
 

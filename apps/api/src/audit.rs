@@ -2,8 +2,8 @@
 //! Failures are logged but do not affect the request.
 
 use axum::http::HeaderMap;
-use sqlx::types::Json;
 use sqlx::PgPool;
+use sqlx::types::Json;
 use std::sync::Arc;
 use tracing::warn;
 

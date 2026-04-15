@@ -40,6 +40,7 @@ export { default as GroupsPage } from "./dashboard/admin/GroupsPage";
 export { default as GroupDetailPage } from "./dashboard/admin/GroupDetailPage";
 export { default as ModulesPage } from "./dashboard/admin/ModulesPage";
 export { default as AdminSettingsPage } from "./dashboard/admin/AdminSettingsPage";
+export { default as AdminBackgroundJobsPage } from "./dashboard/admin/AdminBackgroundJobsPage";
 export { default as SessionsPage } from "./dashboard/admin/SessionsPage";
 export { default as AdminTicketsPage } from "./dashboard/admin/AdminTicketsPage";
 export { default as AdminStatisticsPage } from "./dashboard/admin/AdminStatisticsPage";

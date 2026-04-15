@@ -48,7 +48,12 @@ struct JobRecord {
 
 enum JobStatus {
     Pending,
-    Done(RegisterJobStatusKind, Option<String>, Option<String>, Option<String>),
+    Done(
+        RegisterJobStatusKind,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ),
 }
 
 #[derive(Clone)]

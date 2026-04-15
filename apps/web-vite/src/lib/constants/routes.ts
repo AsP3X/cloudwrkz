@@ -20,6 +20,7 @@ export const ROUTES = {
   ADMIN_TICKETS: "/dashboard/admin/tickets",
   ADMIN_AUDIT: "/dashboard/admin/audit",
   ADMIN_DB_CONSOLE: "/dashboard/admin/db",
+  ADMIN_BACKGROUND_JOBS: "/dashboard/admin/background-jobs",
   TIME_TRACKING: "/dashboard/time-tracking",
   TICKETS: "/dashboard/tickets",
   TODOS: "/dashboard/todos",

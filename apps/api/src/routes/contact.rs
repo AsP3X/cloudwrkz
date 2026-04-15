@@ -1,4 +1,4 @@
-use axum::{routing::post, Json, Router};
+use axum::{Json, Router, routing::post};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -32,10 +32,14 @@ async fn contact_form(
         return Err(AppError::bad_request("Invalid email address"));
     }
     if body.subject.len() < 3 {
-        return Err(AppError::bad_request("Subject must be at least 3 characters"));
+        return Err(AppError::bad_request(
+            "Subject must be at least 3 characters",
+        ));
     }
     if body.message.len() < 10 {
-        return Err(AppError::bad_request("Message must be at least 10 characters"));
+        return Err(AppError::bad_request(
+            "Message must be at least 10 characters",
+        ));
     }
 
     {

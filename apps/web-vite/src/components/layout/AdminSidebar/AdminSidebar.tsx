@@ -72,6 +72,12 @@ const CubeIcon = () => (
   </svg>
 );
 
+const QueueIcon = () => (
+  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h10M4 18h10" />
+  </svg>
+);
+
 export interface AdminSidebarProps {
   enabledModuleKeys: string[];
   canViewUsers: boolean;
@@ -129,6 +135,7 @@ export function AdminSidebar({
     canViewAuditLog && { name: "Audit Log", href: ROUTES.ADMIN_AUDIT, icon: ClipboardIcon },
     canViewDbConsole && { name: "Database Console", href: ROUTES.ADMIN_DB_CONSOLE, icon: DatabaseIcon },
     canManageSettings && { name: "System Settings", href: ROUTES.ADMIN_SETTINGS, icon: SettingsIcon },
+    canManageSettings && { name: "Jobs", href: ROUTES.ADMIN_BACKGROUND_JOBS, icon: QueueIcon },
   ].filter(Boolean) as { name: string; href: string; icon: () => JSX.Element }[];
 
   const NavLink = ({ item, icon: Icon }: { item: { name: string; href: string }; icon: () => JSX.Element }) => {

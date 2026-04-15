@@ -44,15 +44,20 @@ pub struct AppConfig {
     pub mutation_queue_capacity: usize,
     pub idempotency_max_entries: usize,
     pub idempotency_ttl_secs: u64,
-    /// Minimum seconds between consecutive GitHub API requests in the link metadata worker (anonymous limit ~60/hour).
+    /// Minimum seconds between consecutive GitHub API requests inside a GitHub link metadata job (anonymous limit ~60/hour).
+    /// Also used when enqueueing: earliest worker start is at least this many seconds after enqueue, or after the last
+    /// completed/failed github_link_metadata job's `completed_at`, whichever yields the later time when a job ran recently.
     pub github_metadata_min_interval_secs: u64,
+    /// Max concurrent `github_link_metadata` jobs the global worker will run (each job still rate-limits HTTP internally).
+    pub job_queue_github_max_concurrent: u32,
+    /// Optional minimum seconds between *starting* two `github_link_metadata` jobs (pacing on top of concurrency).
+    pub job_queue_github_min_start_interval_secs: Option<u64>,
 }
 
 impl AppConfig {
     pub fn from_env() -> Self {
         Self {
-            database_url: env::var("DATABASE_URL")
-                .expect("DATABASE_URL must be set"),
+            database_url: env::var("DATABASE_URL").expect("DATABASE_URL must be set"),
             api_host: env::var("API_HOST").unwrap_or_else(|_| "0.0.0.0".into()),
             api_port: env::var("API_PORT")
                 .ok()
@@ -103,7 +108,8 @@ impl AppConfig {
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(30)
                 .clamp(1, 300),
-            mutation_tx_max_ms: env_u64_compat("COMMAND_DB_TX_MAX_MS", 30_000).clamp(1_000, 600_000),
+            mutation_tx_max_ms: env_u64_compat("COMMAND_DB_TX_MAX_MS", 30_000)
+                .clamp(1_000, 600_000),
             mutation_lock_timeout_ms: env_u64_compat("COMMAND_DB_LOCK_TIMEOUT_MS", 8_000)
                 .clamp(100, 120_000),
             mutation_statement_timeout_ms: env_u64_compat(
@@ -121,6 +127,24 @@ impl AppConfig {
                 60,
             )
             .clamp(1, 3_600),
+            job_queue_github_max_concurrent: std::env::var("JOB_QUEUE_GITHUB_MAX_CONCURRENT")
+                .ok()
+                .and_then(|s| s.parse::<u32>().ok())
+                .unwrap_or(1)
+                .clamp(1, 32),
+            job_queue_github_min_start_interval_secs: std::env::var(
+                "JOB_QUEUE_GITHUB_MIN_START_INTERVAL_SECS",
+            )
+            .ok()
+            .and_then(|s| {
+                let t = s.trim();
+                if t.is_empty() {
+                    None
+                } else {
+                    t.parse::<u64>().ok()
+                }
+            })
+            .map(|secs| secs.clamp(1, 86_400)),
         }
     }
 

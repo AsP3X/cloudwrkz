@@ -1,9 +1,9 @@
 use axum::{
+    Json, Router,
     extract::State,
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::get,
-    Json, Router,
 };
 use serde::Serialize;
 use sqlx::PgPool;
@@ -207,11 +207,7 @@ fn resolve_hostname() -> Option<String> {
 }
 
 fn build_target_triple() -> String {
-    format!(
-        "{}-{}",
-        std::env::consts::ARCH,
-        std::env::consts::OS
-    )
+    format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS)
 }
 
 fn collect_host_blocking() -> Option<HostSnapshot> {
@@ -227,22 +223,23 @@ fn collect_host_blocking() -> Option<HostSnapshot> {
     };
 
     let load = System::load_average();
-    let load_average = if load.one > f64::EPSILON
-        || load.five > f64::EPSILON
-        || load.fifteen > f64::EPSILON
-    {
-        Some(LoadAverageSnapshot {
-            one: load.one,
-            five: load.five,
-            fifteen: load.fifteen,
-        })
-    } else {
-        None
-    };
+    let load_average =
+        if load.one > f64::EPSILON || load.five > f64::EPSILON || load.fifteen > f64::EPSILON {
+            Some(LoadAverageSnapshot {
+                one: load.one,
+                five: load.five,
+                fifteen: load.fifteen,
+            })
+        } else {
+            None
+        };
 
     let disks = Disks::new_with_refreshed_list();
     let (disk_total, disk_avail) = disks.iter().fold((0u64, 0u64), |(t, a), d| {
-        (t.saturating_add(d.total_space()), a.saturating_add(d.available_space()))
+        (
+            t.saturating_add(d.total_space()),
+            a.saturating_add(d.available_space()),
+        )
     });
     let disks = if disk_total > 0 {
         Some(DiskAggregateSnapshot {
@@ -261,7 +258,9 @@ fn collect_host_blocking() -> Option<HostSnapshot> {
         disks,
     };
 
-    if snapshot.memory_total_bytes == 0 && snapshot.disks.is_none() && snapshot.load_average.is_none()
+    if snapshot.memory_total_bytes == 0
+        && snapshot.disks.is_none()
+        && snapshot.load_average.is_none()
     {
         None
     } else {
@@ -327,11 +326,7 @@ async fn build_health_json(
             database: DatabaseHealth {
                 status: db_status,
                 connected,
-                response_time_ms: if connected {
-                    Some(db_elapsed_ms)
-                } else {
-                    None
-                },
+                response_time_ms: if connected { Some(db_elapsed_ms) } else { None },
                 pool_size,
                 pool_connections_idle,
                 error,
@@ -402,11 +397,7 @@ async fn build_detailed_health_json(
             database: DetailedDatabaseHealth {
                 status: db_status,
                 connected,
-                response_time_ms: if connected {
-                    Some(db_elapsed_ms)
-                } else {
-                    None
-                },
+                response_time_ms: if connected { Some(db_elapsed_ms) } else { None },
                 pool_size,
                 pool_connections_idle,
                 error,

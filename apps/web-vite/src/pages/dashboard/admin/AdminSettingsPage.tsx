@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { api } from "@/api/client";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/Button";
@@ -247,6 +248,15 @@ export default function AdminSettingsPage() {
         </h1>
         <p className="text-neutral-600 dark:text-neutral-400 mt-1">
           System information and configuration
+        </p>
+        <p className="mt-3 text-sm">
+          <Link
+            to={ROUTES.ADMIN_BACKGROUND_JOBS}
+            className="font-medium text-primary-600 dark:text-primary-400 hover:underline"
+          >
+            Jobs
+          </Link>
+          <span className="text-neutral-500 dark:text-neutral-400"> — pending and running on the server</span>
         </p>
       </div>
 

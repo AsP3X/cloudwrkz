@@ -1,30 +1,33 @@
 use std::sync::Arc;
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
-    Json, Router,
 };
 use serde::Deserialize;
 use sqlx::Row;
 
 use crate::auth::extractors::AuthUser;
-use crate::github_metadata;
 use crate::command_queue::{
-    apply_mutation_tx_settings, mutation_response, run_mutation_defer, JsonMutationResult,
-    MutationHandlerOutput, MutationRunContext,
+    JsonMutationResult, MutationHandlerOutput, MutationRunContext, apply_mutation_tx_settings,
+    mutation_response, run_mutation_defer,
 };
 use crate::error::AppError;
+use crate::job_queue;
 use crate::models::link::*;
-use crate::routes::helpers::{hash_json_for_idempotency, idempotency_key_from_headers};
 use crate::routes::AppState;
+use crate::routes::helpers::{hash_json_for_idempotency, idempotency_key_from_headers};
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/links", get(list_links).post(create_link))
-        .route("/links/{id}", get(get_link).put(update_link).delete(delete_link))
+        .route(
+            "/links/{id}",
+            get(get_link).put(update_link).delete(delete_link),
+        )
         .route("/links/metadata", post(extract_metadata))
         // Backwards compatible alias used by the Vite frontend.
         .route("/links/extract-metadata", post(extract_metadata))
@@ -45,7 +48,10 @@ async fn list_links(
     let offset = (page - 1) * limit;
     let archived = params.archive.as_deref().unwrap_or("false");
     let is_fav = params.is_favorite.clone().filter(|s| !s.trim().is_empty());
-    let collection_id = params.collection_id.clone().filter(|s| !s.trim().is_empty());
+    let collection_id = params
+        .collection_id
+        .clone()
+        .filter(|s| !s.trim().is_empty());
     let link_type = params.link_type.clone().filter(|s| !s.trim().is_empty());
     let search = params.search.clone().filter(|s| !s.trim().is_empty());
     let min_rating = params.min_rating;
@@ -298,20 +304,24 @@ async fn enqueue_github_metadata_refresh(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let owns: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM links WHERE id = $1 AND user_id = $2)",
-    )
-    .bind(&id)
-    .bind(&user.id)
-    .fetch_one(&state.pool)
-    .await?;
+    let owns: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM links WHERE id = $1 AND user_id = $2)")
+            .bind(&id)
+            .bind(&user.id)
+            .fetch_one(&state.pool)
+            .await?;
 
     if !owns {
         return Err(AppError::not_found("Link not found"));
     }
 
-    let (job_id, already_queued) =
-        github_metadata::enqueue_github_metadata_job(&state.pool, &id, &user.id).await?;
+    let (job_id, already_queued) = job_queue::enqueue_github_link_metadata_job(
+        &state.pool,
+        &id,
+        &user.id,
+        state.config.github_metadata_min_interval_secs,
+    )
+    .await?;
 
     Ok(Json(serde_json::json!({
         "jobId": job_id,
@@ -472,16 +482,7 @@ async fn create_link(
             }
         }
     }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        shard,
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
-    )
-    .await?;
+    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
     Ok(mutation_response(out))
 }
 
@@ -523,13 +524,12 @@ async fn update_link(
                     .await
                     .map_err(AppError::from)?;
 
-                let existing = sqlx::query(
-                    "SELECT id, user_id FROM links WHERE id = $1 FOR UPDATE",
-                )
-                .bind(&id)
-                .fetch_optional(&mut *tx)
-                .await?
-                .ok_or_else(|| AppError::not_found("Link not found"))?;
+                let existing =
+                    sqlx::query("SELECT id, user_id FROM links WHERE id = $1 FOR UPDATE")
+                        .bind(&id)
+                        .fetch_optional(&mut *tx)
+                        .await?
+                        .ok_or_else(|| AppError::not_found("Link not found"))?;
 
                 let owner: String = existing.get("user_id");
                 if owner != user_id {
@@ -555,11 +555,13 @@ async fn update_link(
                     .await?;
                 }
                 if let Some(ref desc) = body.description {
-                    sqlx::query("UPDATE links SET description = $1, updated_at = NOW() WHERE id = $2")
-                        .bind(desc)
-                        .bind(&id)
-                        .execute(&mut *tx)
-                        .await?;
+                    sqlx::query(
+                        "UPDATE links SET description = $1, updated_at = NOW() WHERE id = $2",
+                    )
+                    .bind(desc)
+                    .bind(&id)
+                    .execute(&mut *tx)
+                    .await?;
                 }
                 if let Some(ref tags) = body.tags {
                     sqlx::query("UPDATE links SET tags = $1, updated_at = NOW() WHERE id = $2")
@@ -644,16 +646,7 @@ async fn update_link(
             }
         }
     }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        shard,
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
-    )
-    .await?;
+    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
     Ok(mutation_response(out))
 }
 
@@ -689,13 +682,12 @@ async fn delete_link(
                     .await
                     .map_err(AppError::from)?;
 
-                let existing = sqlx::query(
-                    "SELECT id, user_id FROM links WHERE id = $1 FOR UPDATE",
-                )
-                .bind(&id)
-                .fetch_optional(&mut *tx)
-                .await?
-                .ok_or_else(|| AppError::not_found("Link not found"))?;
+                let existing =
+                    sqlx::query("SELECT id, user_id FROM links WHERE id = $1 FOR UPDATE")
+                        .bind(&id)
+                        .fetch_optional(&mut *tx)
+                        .await?
+                        .ok_or_else(|| AppError::not_found("Link not found"))?;
 
                 let owner: String = existing.get("user_id");
                 if owner != user_id {
@@ -714,16 +706,7 @@ async fn delete_link(
             }
         }
     }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        shard,
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
-    )
-    .await?;
+    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
     Ok(mutation_response(out))
 }
 
@@ -754,23 +737,13 @@ async fn extract_metadata(
             let url_str = url_str.clone();
             move |_pool: sqlx::PgPool| async move {
                 let extracted = extract_metadata_from_url(&url_str).await?;
-                let body = serde_json::to_value(&extracted).map_err(|e| {
-                    AppError::internal(format!("serialize extract metadata: {e}"))
-                })?;
+                let body = serde_json::to_value(&extracted)
+                    .map_err(|e| AppError::internal(format!("serialize extract metadata: {e}")))?;
                 Ok(JsonMutationResult::ok(body))
             }
         }
     }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        shard,
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
-    )
-    .await?;
+    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
     match out {
         MutationHandlerOutput::Ready(jr) => {
             let extracted: ExtractMetadataResponse = serde_json::from_value(jr.body)

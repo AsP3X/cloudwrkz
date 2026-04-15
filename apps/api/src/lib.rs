@@ -2,32 +2,33 @@
 
 mod audit;
 pub mod auth;
-mod command_queue;
 mod auth_governor;
+mod command_queue;
 mod config;
 pub mod db;
 mod diagnostics_token;
 mod error;
-pub mod id;
-mod models;
 mod github_metadata;
+pub mod id;
+mod job_queue;
+mod models;
 pub mod routes;
 
 pub use config::AppConfig;
 
-use axum::body::Body;
-use axum::http::header::{self, HeaderName, HeaderValue};
-use axum::http::Method;
 use axum::Router;
+use axum::body::Body;
+use axum::http::Method;
+use axum::http::header::{self, HeaderName, HeaderValue};
 use sqlx::PgPool;
+use std::net::SocketAddr;
 use std::sync::OnceLock;
 use std::time::Duration;
-use std::net::SocketAddr;
 use tower_http::cors::{AllowHeaders, AllowMethods, CorsLayer};
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::{OnResponse, TraceLayer};
-use tracing_subscriber::fmt::time::UtcTime;
 use tracing_subscriber::EnvFilter;
+use tracing_subscriber::fmt::time::UtcTime;
 
 use config::parse_deployment_cli_from_args;
 
@@ -67,7 +68,11 @@ Environment: LOG_VERBOSITY (debug|prod), LOG_FORMAT (json), RUST_LOG, DATABASE_U
              (Deferred mutations: GET /api/v1/mutation-jobs/{job_id} after HTTP 202 when DB was transient.)
              DATABASE_POOL_ACQUIRE_TIMEOUT_SECS, DATABASE_POOL_MAX_CONNECTIONS,
              DATABASE_MIGRATE_RETRY_MAX_SECS, etc.
-             GITHUB_METADATA_MIN_INTERVAL_SECS (default 60): minimum delay between GitHub HTTP calls in the metadata worker.
+             GITHUB_METADATA_MIN_INTERVAL_SECS (default 60): minimum delay between GitHub HTTP calls inside a job, and
+             the default minimum delay before a newly queued github_link_metadata job may start (unless a prior job finished
+             within that window, in which case the next run aligns to last_completed + this interval).
+             JOB_QUEUE_GITHUB_MAX_CONCURRENT (default 1): max concurrent github_link_metadata jobs.
+             JOB_QUEUE_GITHUB_MIN_START_INTERVAL_SECS (optional): min seconds between starting two github_link_metadata jobs.
 "#;
 
 /// Parse `-v` / `-v debug` / `-v prod` and `-h` from env::args(). CLI overrides LOG_VERBOSITY env.
@@ -105,12 +110,7 @@ impl<B> OnResponse<B> for ApiOnResponse {
                     .get(axum::http::header::CONTENT_LENGTH)
                     .and_then(|v| v.to_str().ok())
                     .unwrap_or("-");
-                tracing::info!(
-                    status,
-                    latency_ms,
-                    content_length,
-                    "request completed"
-                );
+                tracing::info!(status, latency_ms, content_length, "request completed");
             }
             LogVerbosity::Prod => {
                 tracing::info!(status, latency_ms, "request completed");
@@ -120,8 +120,7 @@ impl<B> OnResponse<B> for ApiOnResponse {
 }
 
 fn init_logging() {
-    let filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     let use_json = std::env::var("LOG_FORMAT").as_deref() == Ok("json");
     let timer = UtcTime::rfc_3339();
     let fmt = tracing_subscriber::fmt()
@@ -230,7 +229,11 @@ fn build_cors(config: &AppConfig) -> CorsLayer {
 }
 
 /// Full HTTP stack (v1 + legacy health, security headers, CORS, trace, body limit) — used in production and tests.
-pub fn build_http_app(pool: PgPool, config: AppConfig, api_started_at: std::time::Instant) -> Router {
+pub fn build_http_app(
+    pool: PgPool,
+    config: AppConfig,
+    api_started_at: std::time::Instant,
+) -> Router {
     let cors = build_cors(&config);
     let v1 = routes::v1_router(pool.clone(), config.clone(), api_started_at);
     Router::new()
@@ -305,7 +308,12 @@ pub async fn run() {
         if let Ok(exe) = std::env::current_exe() {
             if let Some(exe_dir) = exe.parent() {
                 for path in [
-                    exe_dir.join("..").join("..").join("apps").join("api").join(".env"),
+                    exe_dir
+                        .join("..")
+                        .join("..")
+                        .join("apps")
+                        .join("api")
+                        .join(".env"),
                     exe_dir.join("..").join("..").join(".env"),
                 ] {
                     let path = path.canonicalize().unwrap_or(path);
@@ -368,10 +376,10 @@ pub async fn run() {
 
     {
         let pool = pool.clone();
-        let github_interval = config.github_metadata_min_interval_secs;
+        let cfg = config.clone();
         tokio::spawn(async move {
             db::run_migrations_with_transient_retries(&pool).await;
-            github_metadata::spawn_github_metadata_worker(pool, github_interval);
+            job_queue::spawn_job_queue_worker(pool, cfg);
         });
     }
 

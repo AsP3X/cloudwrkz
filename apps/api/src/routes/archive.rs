@@ -11,8 +11,6 @@ pub fn router() -> axum::Router<AppState> {
     axum::Router::new().route("/archive", axum::routing::get(list_archive))
 }
 
-async fn list_archive(
-    AuthUser(_user): AuthUser,
-) -> Result<Json<serde_json::Value>, AppError> {
+async fn list_archive(AuthUser(_user): AuthUser) -> Result<Json<serde_json::Value>, AppError> {
     Ok(Json(serde_json::json!({ "items": [] })))
 }

@@ -4,12 +4,10 @@ use std::time::{Duration, Instant};
 
 use regex::Regex;
 use reqwest::Client;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sqlx::{PgPool, Row};
-use tracing::{error, info, warn};
+use tracing::info;
 use url::Url;
-
-use crate::id::new_cuid;
 
 const GITHUB_ACCEPT: &str = "application/vnd.github+json";
 const GITHUB_UA: &str = "Cloudwrkz-API (link metadata enrichment; public repos only)";
@@ -105,16 +103,17 @@ async fn fetch_github_enrichment(
 
     let repo_res = github_get(client, &repo_api, last_request_at, min_interval).await?;
     if !repo_res.status().is_success() {
-        return Err(format!(
-            "GitHub repo API returned {}",
-            repo_res.status()
-        ));
+        return Err(format!("GitHub repo API returned {}", repo_res.status()));
     }
     let repo_json: Value = repo_res.json().await.map_err(|e| e.to_string())?;
 
     let mut out = json!({});
 
-    if let Some(login) = repo_json.get("owner").and_then(|o| o.get("login")).and_then(|x| x.as_str()) {
+    if let Some(login) = repo_json
+        .get("owner")
+        .and_then(|o| o.get("login"))
+        .and_then(|x| x.as_str())
+    {
         out["githubOwner"] = json!(login);
     } else {
         out["githubOwner"] = json!(owner);
@@ -182,8 +181,9 @@ async fn fetch_github_enrichment(
     let br1_url = format!("{repo_api}/branches?per_page=1");
     let br1_res = github_get(client, &br1_url, last_request_at, min_interval).await?;
     if br1_res.status().is_success() {
-        if let Some(last) = parse_last_page_from_link_header(br1_res.headers().get("link").and_then(|h| h.to_str().ok()))
-        {
+        if let Some(last) = parse_last_page_from_link_header(
+            br1_res.headers().get("link").and_then(|h| h.to_str().ok()),
+        ) {
             out["githubBranchesCount"] = json!(last);
         } else {
             let arr: Value = br1_res.json().await.unwrap_or(json!([]));
@@ -196,9 +196,9 @@ async fn fetch_github_enrichment(
     let rel_url = format!("{repo_api}/releases?per_page=1");
     let rel_res = github_get(client, &rel_url, last_request_at, min_interval).await?;
     if rel_res.status().is_success() {
-        if let Some(last) =
-            parse_last_page_from_link_header(rel_res.headers().get("link").and_then(|h| h.to_str().ok()))
-        {
+        if let Some(last) = parse_last_page_from_link_header(
+            rel_res.headers().get("link").and_then(|h| h.to_str().ok()),
+        ) {
             out["githubReleasesCount"] = json!(last);
         } else {
             let arr: Value = rel_res.json().await.unwrap_or(json!([]));
@@ -222,9 +222,9 @@ async fn fetch_github_enrichment(
         .unwrap_or_else(|_| format!("{repo_api}/commits?per_page=1&sha={default_branch}"));
     let com_res = github_get(client, &commits_url, last_request_at, min_interval).await?;
     if com_res.status().is_success() {
-        if let Some(last) =
-            parse_last_page_from_link_header(com_res.headers().get("link").and_then(|h| h.to_str().ok()))
-        {
+        if let Some(last) = parse_last_page_from_link_header(
+            com_res.headers().get("link").and_then(|h| h.to_str().ok()),
+        ) {
             out["githubCommitsCount"] = json!(last);
         }
     }
@@ -232,9 +232,9 @@ async fn fetch_github_enrichment(
     Ok(out)
 }
 
-async fn mark_job_failed(pool: &PgPool, job_id: &str, msg: &str) {
+async fn mark_background_job_failed(pool: &PgPool, job_id: &str, msg: &str) {
     let _ = sqlx::query(
-        "UPDATE link_github_metadata_jobs SET status = 'failed', error_message = $2, updated_at = NOW(), completed_at = NOW() WHERE id = $1",
+        r#"UPDATE background_jobs SET status = 'failed', error_message = $2, updated_at = NOW(), completed_at = NOW() WHERE id = $1"#,
     )
     .bind(job_id)
     .bind(msg)
@@ -242,198 +242,91 @@ async fn mark_job_failed(pool: &PgPool, job_id: &str, msg: &str) {
     .await;
 }
 
-async fn process_one_job(pool: &PgPool, client: &Client, min_interval: Duration) -> bool {
-    let mut tx = match pool.begin().await {
-        Ok(t) => t,
-        Err(e) => {
-            warn!(event = "github_metadata.tx_begin", error = %e, "failed to begin job transaction");
-            return false;
-        }
-    };
-
-    let job_row = sqlx::query(
-        r#"
-        WITH cte AS (
-          SELECT id FROM link_github_metadata_jobs
-          WHERE status = 'pending'
-          ORDER BY created_at ASC
-          LIMIT 1
-          FOR UPDATE SKIP LOCKED
-        )
-        UPDATE link_github_metadata_jobs j
-        SET status = 'processing', updated_at = NOW()
-        FROM cte
-        WHERE j.id = cte.id
-        RETURNING j.id, j.link_id
-        "#,
-    )
-    .fetch_optional(&mut *tx)
-    .await;
-
-    let job_row = match job_row {
-        Ok(r) => r,
-        Err(e) => {
-            let _ = tx.rollback().await;
-            warn!(event = "github_metadata.dequeue", error = %e, "dequeue query failed");
-            return false;
-        }
-    };
-
-    let Some(job_row) = job_row else {
-        let _ = tx.commit().await;
-        return false;
-    };
-
-    let job_id: String = job_row.get("id");
-    let link_id: String = job_row.get("link_id");
-
-    let link_row = sqlx::query("SELECT url, metadata FROM links WHERE id = $1 FOR UPDATE")
-        .bind(&link_id)
-        .fetch_optional(&mut *tx)
-        .await;
-
-    let link_row = match link_row {
-        Ok(r) => r,
-        Err(e) => {
-            let _ = tx.rollback().await;
-            error!(event = "github_metadata.link_load", job_id = %job_id, error = %e, "load link failed");
-            return true;
-        }
-    };
+/// Runs GitHub enrichment for `link_id` and updates `links` + `background_jobs` (`job_id`).
+pub async fn execute_github_link_metadata_job(
+    pool: &PgPool,
+    client: &Client,
+    min_interval: Duration,
+    job_id: &str,
+    link_id: &str,
+) -> Result<(), String> {
+    let link_row = sqlx::query("SELECT url, metadata FROM links WHERE id = $1")
+        .bind(link_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?;
 
     let Some(link_row) = link_row else {
-        let _ = sqlx::query(
-            "UPDATE link_github_metadata_jobs SET status = 'failed', error_message = $2, updated_at = NOW(), completed_at = NOW() WHERE id = $1",
-        )
-        .bind(&job_id)
-        .bind("Link was deleted before the job ran.")
-        .execute(&mut *tx)
-        .await;
-        let _ = tx.commit().await;
-        return true;
+        mark_background_job_failed(pool, job_id, "Link was deleted before the job ran.").await;
+        return Err("link missing".into());
     };
 
     let url: String = link_row.get("url");
     let existing_meta: Option<Value> = link_row.get("metadata");
 
     if parse_github_owner_repo(&url).is_none() {
-        let _ = sqlx::query(
-            "UPDATE link_github_metadata_jobs SET status = 'failed', error_message = $2, updated_at = NOW(), completed_at = NOW() WHERE id = $1",
-        )
-        .bind(&job_id)
-        .bind("URL is not a GitHub repository.")
-        .execute(&mut *tx)
-        .await;
-        let _ = tx.commit().await;
-        return true;
-    }
-
-    if tx.commit().await.is_err() {
-        return true;
+        mark_background_job_failed(pool, job_id, "URL is not a GitHub repository.").await;
+        return Err("not github".into());
     }
 
     let (owner, repo) = parse_github_owner_repo(&url).unwrap();
     let mut last_req: Option<Instant> = None;
-    let enrichment = match fetch_github_enrichment(client, &owner, &repo, min_interval, &mut last_req).await {
+    let enrichment = match fetch_github_enrichment(
+        client,
+        &owner,
+        &repo,
+        min_interval,
+        &mut last_req,
+    )
+    .await
+    {
         Ok(v) => v,
         Err(e) => {
-            mark_job_failed(pool, &job_id, &e).await;
+            mark_background_job_failed(pool, job_id, &e).await;
             info!(event = "github_metadata.job_failed", job_id = %job_id, error = %e, "enrichment failed");
-            return true;
+            return Err(e);
         }
     };
 
     let merged = merge_github_metadata(existing_meta, enrichment);
 
-    let mut tx2 = match pool.begin().await {
-        Ok(t) => t,
-        Err(e) => {
-            error!(event = "github_metadata.tx2", error = %e, "begin failed");
-            mark_job_failed(pool, &job_id, "Database error saving metadata.").await;
-            return true;
-        }
-    };
-
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let update = sqlx::query(
         r#"UPDATE links SET metadata = $1, metadata_extracted_at = NOW(), updated_at = NOW() WHERE id = $2"#,
     )
     .bind(sqlx::types::Json(merged))
-    .bind(&link_id)
-    .execute(&mut *tx2)
+    .bind(link_id)
+    .execute(&mut *tx)
     .await;
 
     if let Err(e) = update {
-        let _ = tx2.rollback().await;
-        mark_job_failed(pool, &job_id, &format!("Failed to save metadata: {e}")).await;
-        return true;
+        let _ = tx.rollback().await;
+        mark_background_job_failed(pool, job_id, &format!("Failed to save metadata: {e}")).await;
+        return Err(e.to_string());
     }
 
     let _ = sqlx::query(
-        "UPDATE link_github_metadata_jobs SET status = 'completed', updated_at = NOW(), completed_at = NOW(), error_message = NULL WHERE id = $1",
+        r#"UPDATE background_jobs SET status = 'completed', error_message = NULL, updated_at = NOW(), completed_at = NOW() WHERE id = $1"#,
     )
-    .bind(&job_id)
-    .execute(&mut *tx2)
+    .bind(job_id)
+    .execute(&mut *tx)
     .await;
 
-    if tx2.commit().await.is_ok() {
-        info!(event = "github_metadata.job_ok", job_id = %job_id, link_id = %link_id, "GitHub metadata saved");
-    }
-    true
-}
-
-/// Runs forever: dequeues pending jobs and calls GitHub at most once per `min_interval` between requests.
-pub fn spawn_github_metadata_worker(pool: PgPool, min_interval_secs: u64) {
-    let min_interval = Duration::from_secs(min_interval_secs.max(1));
-    tokio::spawn(async move {
-        let client = match Client::builder().timeout(Duration::from_secs(45)).build() {
-            Ok(c) => c,
-            Err(e) => {
-                error!(event = "github_metadata.client", error = %e, "reqwest client build failed; worker not running");
-                return;
-            }
-        };
-
-        info!(
-            event = "github_metadata.worker_start",
-            min_interval_secs,
-            "GitHub metadata worker started"
-        );
-
-        loop {
-            tokio::time::sleep(Duration::from_secs(3)).await;
-            let _ = process_one_job(&pool, &client, min_interval).await;
-        }
-    });
-}
-
-/// Enqueue a job if none pending/processing for this link. Returns (job_id, already_queued).
-pub async fn enqueue_github_metadata_job(
-    pool: &PgPool,
-    link_id: &str,
-    user_id: &str,
-) -> Result<(String, bool), sqlx::Error> {
-    let pending: Option<String> = sqlx::query_scalar(
-        r#"SELECT id FROM link_github_metadata_jobs
-           WHERE link_id = $1 AND status IN ('pending', 'processing')
-           ORDER BY created_at ASC LIMIT 1"#,
-    )
-    .bind(link_id)
-    .fetch_optional(pool)
-    .await?;
-
-    if let Some(existing_id) = pending {
-        return Ok((existing_id, true));
+    if let Err(e) = tx.commit().await {
+        mark_background_job_failed(
+            pool,
+            job_id,
+            &format!("Failed to commit metadata update: {e}"),
+        )
+        .await;
+        return Err(e.to_string());
     }
 
-    let id = new_cuid();
-    sqlx::query(
-        r#"INSERT INTO link_github_metadata_jobs (id, link_id, user_id, status, created_at, updated_at)
-           VALUES ($1, $2, $3, 'pending', NOW(), NOW())"#,
-    )
-    .bind(&id)
-    .bind(link_id)
-    .bind(user_id)
-    .execute(pool)
-    .await?;
-    Ok((id, false))
+    info!(
+        event = "github_metadata.job_ok",
+        job_id = %job_id,
+        link_id = %link_id,
+        "GitHub metadata saved"
+    );
+    Ok(())
 }

@@ -1,14 +1,17 @@
 // Stub routes for filter preferences until full backend is implemented.
 // Frontend falls back to localStorage when these return empty data.
 
-use axum::{extract::Path, Json};
+use axum::{Json, extract::Path};
 
 use crate::auth::extractors::AuthUser;
 use crate::error::AppError;
 
 pub fn router() -> axum::Router<crate::routes::AppState> {
     axum::Router::new()
-        .route("/filter-preferences/{module}", axum::routing::get(get_preferences))
+        .route(
+            "/filter-preferences/{module}",
+            axum::routing::get(get_preferences),
+        )
         .route(
             "/filter-preferences/{module}/presets",
             axum::routing::get(get_presets),

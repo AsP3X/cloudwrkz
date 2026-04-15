@@ -2,9 +2,9 @@ pub mod admin;
 pub mod archive;
 pub mod auth;
 pub mod collections;
-pub mod filter_preferences;
 pub mod contact;
 pub mod favicons;
+pub mod filter_preferences;
 pub mod health;
 pub mod helpers;
 pub mod links;
@@ -44,9 +44,7 @@ pub fn v1_router(pool: PgPool, config: AppConfig, api_started_at: std::time::Ins
     );
     Router::new()
         .merge(health::v1_router())
-        .merge(
-            auth::router().layer(crate::auth_governor::auth_rate_limit_layer(&config)),
-        )
+        .merge(auth::router().layer(crate::auth_governor::auth_rate_limit_layer(&config)))
         .merge(me::router())
         .merge(mutation_jobs::router())
         .merge(tickets::router())
@@ -74,8 +72,7 @@ pub fn v1_router(pool: PgPool, config: AppConfig, api_started_at: std::time::Ins
         })
 }
 
-pub type SearchCoalesceCache =
-    Arc<Mutex<HashMap<String, Arc<Mutex<Option<serde_json::Value>>>>>>;
+pub type SearchCoalesceCache = Arc<Mutex<HashMap<String, Arc<Mutex<Option<serde_json::Value>>>>>>;
 
 #[derive(Clone)]
 pub struct AppState {

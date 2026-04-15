@@ -11,9 +11,9 @@ use std::time::Instant;
 use tower::ServiceExt;
 use uuid::Uuid;
 
+use cloudwrkz_api::AppConfig;
 use cloudwrkz_api::auth::password;
 use cloudwrkz_api::build_http_app;
-use cloudwrkz_api::AppConfig;
 
 fn test_config(database_url: String) -> AppConfig {
     AppConfig {
@@ -37,6 +37,8 @@ fn test_config(database_url: String) -> AppConfig {
         idempotency_max_entries: 4096,
         idempotency_ttl_secs: 86_400,
         github_metadata_min_interval_secs: 60,
+        job_queue_github_max_concurrent: 1,
+        job_queue_github_min_start_interval_secs: None,
     }
 }
 
@@ -59,7 +61,11 @@ fn req_get_bearer(uri: &str, token: &str) -> Request<Body> {
         .unwrap()
 }
 
-fn req_post_tickets_json(token: &str, json_body: &str, idempotency_key: Option<&str>) -> Request<Body> {
+fn req_post_tickets_json(
+    token: &str,
+    json_body: &str,
+    idempotency_key: Option<&str>,
+) -> Request<Body> {
     let mut b = Request::builder()
         .method("POST")
         .uri("/api/v1/tickets")
@@ -106,11 +112,10 @@ async fn seed_user_with_session(
 }
 
 async fn grant_permission(pool: &PgPool, user_id: &str, perm_key: &str) -> Result<(), sqlx::Error> {
-    let perm_id: String =
-        sqlx::query_scalar("SELECT id FROM permissions WHERE key = $1")
-            .bind(perm_key)
-            .fetch_one(pool)
-            .await?;
+    let perm_id: String = sqlx::query_scalar("SELECT id FROM permissions WHERE key = $1")
+        .bind(perm_key)
+        .fetch_one(pool)
+        .await?;
     let up_id = Uuid::new_v4().to_string();
     sqlx::query(
         r#"INSERT INTO user_permissions (id, user_id, permission_id, created_at)

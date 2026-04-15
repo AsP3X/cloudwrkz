@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::HeaderMap,
     response::Response,
     routing::{get, post},
-    Json, Router,
 };
 use chrono::Utc;
 use serde::Deserialize;
@@ -13,13 +13,13 @@ use sqlx::{Postgres, Row};
 
 use crate::auth::extractors::AuthUser;
 use crate::command_queue::{
-    apply_mutation_tx_settings, mutation_response, run_mutation_defer,
-    JsonMutationResult, MutationRunContext,
+    JsonMutationResult, MutationRunContext, apply_mutation_tx_settings, mutation_response,
+    run_mutation_defer,
 };
 use crate::error::AppError;
 use crate::models::time_entry::*;
-use crate::routes::helpers::{hash_json_for_idempotency, idempotency_key_from_headers};
 use crate::routes::AppState;
+use crate::routes::helpers::{hash_json_for_idempotency, idempotency_key_from_headers};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -32,9 +32,7 @@ pub fn router() -> Router<AppState> {
         .route("/time-tracking/bulk-delete", post(bulk_delete_entries))
         .route(
             "/time-tracking/{id}",
-            get(get_entry)
-                .patch(update_entry)
-                .delete(delete_entry),
+            get(get_entry).patch(update_entry).delete(delete_entry),
         )
         .route("/time-tracking/{id}/stop", post(stop_entry))
         .route("/time-tracking/{id}/pause", post(pause_entry))
@@ -337,16 +335,7 @@ async fn create_entry(
             }
         }
     }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        shard,
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
-    )
-    .await?;
+    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
     Ok(mutation_response(out))
 }
 
@@ -426,16 +415,7 @@ async fn add_manual_entry(
             }
         }
     }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        shard,
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
-    )
-    .await?;
+    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
     Ok(mutation_response(out))
 }
 
@@ -479,11 +459,13 @@ async fn update_entry(
                 let existing = fetch_owned_locked(&mut tx, &id, &user_id).await?;
 
                 if let Some(ref name) = body.name {
-                    sqlx::query("UPDATE time_entries SET name = $1, updated_at = NOW() WHERE id = $2")
-                        .bind(name)
-                        .bind(&id)
-                        .execute(&mut *tx)
-                        .await?;
+                    sqlx::query(
+                        "UPDATE time_entries SET name = $1, updated_at = NOW() WHERE id = $2",
+                    )
+                    .bind(name)
+                    .bind(&id)
+                    .execute(&mut *tx)
+                    .await?;
                 }
                 if let Some(ref desc) = body.description {
                     sqlx::query(
@@ -495,11 +477,13 @@ async fn update_entry(
                     .await?;
                 }
                 if let Some(ref tags) = body.tags {
-                    sqlx::query("UPDATE time_entries SET tags = $1, updated_at = NOW() WHERE id = $2")
-                        .bind(tags)
-                        .bind(&id)
-                        .execute(&mut *tx)
-                        .await?;
+                    sqlx::query(
+                        "UPDATE time_entries SET tags = $1, updated_at = NOW() WHERE id = $2",
+                    )
+                    .bind(tags)
+                    .bind(&id)
+                    .execute(&mut *tx)
+                    .await?;
                 }
                 if let Some(ref loc) = body.location {
                     sqlx::query(
@@ -612,20 +596,13 @@ async fn update_entry(
                 }
 
                 tx.commit().await.map_err(AppError::from)?;
-                Ok(JsonMutationResult::ok(serde_json::json!({ "success": true })))
+                Ok(JsonMutationResult::ok(
+                    serde_json::json!({ "success": true }),
+                ))
             }
         }
     }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        shard,
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
-    )
-    .await?;
+    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
     Ok(mutation_response(out))
 }
 
@@ -666,20 +643,13 @@ async fn delete_entry(
                     .execute(&mut *tx)
                     .await?;
                 tx.commit().await.map_err(AppError::from)?;
-                Ok(JsonMutationResult::ok(serde_json::json!({ "success": true })))
+                Ok(JsonMutationResult::ok(
+                    serde_json::json!({ "success": true }),
+                ))
             }
         }
     }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        shard,
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
-    )
-    .await?;
+    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
     Ok(mutation_response(out))
 }
 
@@ -736,20 +706,13 @@ async fn stop_entry(
                 .execute(&mut *tx)
                 .await?;
                 tx.commit().await.map_err(AppError::from)?;
-                Ok(JsonMutationResult::ok(serde_json::json!({ "success": true })))
+                Ok(JsonMutationResult::ok(
+                    serde_json::json!({ "success": true }),
+                ))
             }
         }
     }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        shard,
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
-    )
-    .await?;
+    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
     Ok(mutation_response(out))
 }
 
@@ -802,20 +765,13 @@ async fn pause_entry(
                 .execute(&mut *tx)
                 .await?;
                 tx.commit().await.map_err(AppError::from)?;
-                Ok(JsonMutationResult::ok(serde_json::json!({ "success": true })))
+                Ok(JsonMutationResult::ok(
+                    serde_json::json!({ "success": true }),
+                ))
             }
         }
     }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        shard,
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
-    )
-    .await?;
+    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
     Ok(mutation_response(out))
 }
 
@@ -863,20 +819,13 @@ async fn resume_entry(
                 .execute(&mut *tx)
                 .await?;
                 tx.commit().await.map_err(AppError::from)?;
-                Ok(JsonMutationResult::ok(serde_json::json!({ "success": true })))
+                Ok(JsonMutationResult::ok(
+                    serde_json::json!({ "success": true }),
+                ))
             }
         }
     }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        shard,
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
-    )
-    .await?;
+    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
     Ok(mutation_response(out))
 }
 
@@ -924,20 +873,13 @@ async fn complete_entry(
                 .execute(&mut *tx)
                 .await?;
                 tx.commit().await.map_err(AppError::from)?;
-                Ok(JsonMutationResult::ok(serde_json::json!({ "success": true })))
+                Ok(JsonMutationResult::ok(
+                    serde_json::json!({ "success": true }),
+                ))
             }
         }
     }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        shard,
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
-    )
-    .await?;
+    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
     Ok(mutation_response(out))
 }
 
@@ -986,12 +928,9 @@ async fn add_break(
                         chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.fZ").ok()
                     })
                     .unwrap_or_else(|| Utc::now().naive_utc());
-                let ended_at = body
-                    .ended_at
-                    .as_deref()
-                    .and_then(|s| {
-                        chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.fZ").ok()
-                    });
+                let ended_at = body.ended_at.as_deref().and_then(|s| {
+                    chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.fZ").ok()
+                });
                 let duration = ended_at
                     .map(|e| (e - started_at).num_seconds() as i32)
                     .unwrap_or(0);
@@ -1008,20 +947,13 @@ async fn add_break(
                 .execute(&mut *tx)
                 .await?;
                 tx.commit().await.map_err(AppError::from)?;
-                Ok(JsonMutationResult::created(serde_json::json!({ "id": break_id })))
+                Ok(JsonMutationResult::created(
+                    serde_json::json!({ "id": break_id }),
+                ))
             }
         }
     }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        shard,
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
-    )
-    .await?;
+    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
     Ok(mutation_response(out))
 }
 
@@ -1068,9 +1000,8 @@ async fn update_break(
                 lock_time_entry(&mut tx, &id, &user_id).await?;
 
                 if let Some(ref raw) = body.started_at {
-                    let parsed = parse_iso_datetime_utc_naive(raw).ok_or_else(|| {
-                        AppError::bad_request("Invalid started_at timestamp")
-                    })?;
+                    let parsed = parse_iso_datetime_utc_naive(raw)
+                        .ok_or_else(|| AppError::bad_request("Invalid started_at timestamp"))?;
                     sqlx::query(
                         "UPDATE time_entry_breaks SET started_at = $1, updated_at = NOW() WHERE id = $2 AND time_entry_id = $3",
                     )
@@ -1092,12 +1023,11 @@ async fn update_break(
                         .await?;
                     }
                     Some(value) => {
-                        let raw = value.as_str().ok_or_else(|| {
-                            AppError::bad_request("Invalid ended_at value")
-                        })?;
-                        let parsed = parse_iso_datetime_utc_naive(raw).ok_or_else(|| {
-                            AppError::bad_request("Invalid ended_at timestamp")
-                        })?;
+                        let raw = value
+                            .as_str()
+                            .ok_or_else(|| AppError::bad_request("Invalid ended_at value"))?;
+                        let parsed = parse_iso_datetime_utc_naive(raw)
+                            .ok_or_else(|| AppError::bad_request("Invalid ended_at timestamp"))?;
                         let row = sqlx::query(
                             "SELECT started_at FROM time_entry_breaks WHERE id = $1 AND time_entry_id = $2",
                         )
@@ -1132,20 +1062,13 @@ async fn update_break(
                 }
 
                 tx.commit().await.map_err(AppError::from)?;
-                Ok(JsonMutationResult::ok(serde_json::json!({ "success": true })))
+                Ok(JsonMutationResult::ok(
+                    serde_json::json!({ "success": true }),
+                ))
             }
         }
     }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        shard,
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
-    )
-    .await?;
+    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
     Ok(mutation_response(out))
 }
 
@@ -1190,20 +1113,13 @@ async fn delete_break(
                     .execute(&mut *tx)
                     .await?;
                 tx.commit().await.map_err(AppError::from)?;
-                Ok(JsonMutationResult::ok(serde_json::json!({ "success": true })))
+                Ok(JsonMutationResult::ok(
+                    serde_json::json!({ "success": true }),
+                ))
             }
         }
     }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        shard,
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
-    )
-    .await?;
+    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
     Ok(mutation_response(out))
 }
 
@@ -1270,20 +1186,13 @@ async fn bulk_update_entries(
                     }
                 }
                 tx.commit().await.map_err(AppError::from)?;
-                Ok(JsonMutationResult::ok(serde_json::json!({ "success": true })))
+                Ok(JsonMutationResult::ok(
+                    serde_json::json!({ "success": true }),
+                ))
             }
         }
     }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        shard,
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
-    )
-    .await?;
+    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
     Ok(mutation_response(out))
 }
 
@@ -1332,20 +1241,13 @@ async fn bulk_archive_entries(
                     }
                 }
                 tx.commit().await.map_err(AppError::from)?;
-                Ok(JsonMutationResult::ok(serde_json::json!({ "success": true })))
+                Ok(JsonMutationResult::ok(
+                    serde_json::json!({ "success": true }),
+                ))
             }
         }
     }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        shard,
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
-    )
-    .await?;
+    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
     Ok(mutation_response(out))
 }
 
@@ -1384,28 +1286,22 @@ async fn bulk_delete_entries(
                     .map_err(AppError::from)?;
                 for id in sorted_ids {
                     if lock_time_entry(&mut tx, &id, &user_id).await.is_ok() {
-                        let _ = sqlx::query("DELETE FROM time_entries WHERE id = $1 AND user_id = $2")
-                            .bind(&id)
-                            .bind(&user_id)
-                            .execute(&mut *tx)
-                            .await;
+                        let _ =
+                            sqlx::query("DELETE FROM time_entries WHERE id = $1 AND user_id = $2")
+                                .bind(&id)
+                                .bind(&user_id)
+                                .execute(&mut *tx)
+                                .await;
                     }
                 }
                 tx.commit().await.map_err(AppError::from)?;
-                Ok(JsonMutationResult::ok(serde_json::json!({ "success": true })))
+                Ok(JsonMutationResult::ok(
+                    serde_json::json!({ "success": true }),
+                ))
             }
         }
     }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        shard,
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
-    )
-    .await?;
+    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
     Ok(mutation_response(out))
 }
 
