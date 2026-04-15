@@ -10,7 +10,14 @@ import { Button } from "@/components/ui/Button";
 import Link from "next/link";
 import { cn } from "@/lib/utils/cn";
 import { formatDateTimeInTimezone } from "@/lib/utils/date";
-import { extractDomain, isYouTubeUrl, extractYouTubeVideoId, isGitHubUrl, parseGitHubUrl } from "@/lib/utils/links";
+import {
+  extractDomain,
+  isYouTubeUrl,
+  extractYouTubeVideoId,
+  isGitHubUrl,
+  parseGitHubUrl,
+  getLinkDetailHeadlineTitle,
+} from "@/lib/utils/links";
 import { LinkMetadataDisplay } from "@/components/features/links/LinkMetadataDisplay";
 import { RichTextDisplay } from "@/components/features/tickets/RichTextDisplay";
 import { Dialog } from "@/components/ui/Dialog";
@@ -577,11 +584,20 @@ export const LinkDetailContent = ({
     );
   }
 
+  const viewHeadlineTitle = getLinkDetailHeadlineTitle({
+    title: link.title,
+    url: link.url,
+    description: link.description,
+    metadata: link.metadata && typeof link.metadata === "object" && !Array.isArray(link.metadata)
+      ? (link.metadata as Record<string, unknown>)
+      : null,
+  });
+
   return (
     <div className="space-y-6">
       <LinkDetailHeader
         linkId={link.id}
-        linkTitle={link.title}
+        linkTitle={viewHeadlineTitle}
         linkUrl={link.url}
         createdAt={link.createdAt}
         canEdit={canEdit}

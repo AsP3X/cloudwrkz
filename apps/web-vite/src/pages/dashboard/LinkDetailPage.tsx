@@ -9,7 +9,7 @@ import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { AccessIssueTicketDialog } from "@/components/features/tickets/AccessIssueTicketDialog";
 import { YouTubeEmbed } from "@/components/features/links/YouTubeEmbed";
 import { GitHubLinkInfo } from "@/components/features/links/GitHubLinkInfo";
-import { isGitHubUrl } from "@/lib/utils/links";
+import { getLinkDetailHeadlineTitle, isGitHubUrl } from "@/lib/utils/links";
 import {
   LinkDetailLayout,
   LinkDetailSidebarProvider,
@@ -157,11 +157,18 @@ export default function LinkDetailPage() {
   const notesText =
     link.notes && link.notes.replace(/<[^>]*>/g, "").trim().length > 0 ? link.notes : null;
 
+  const headlineTitle = getLinkDetailHeadlineTitle({
+    title: link.title,
+    url: link.url,
+    description: link.description,
+    metadata: link.metadata,
+  });
+
   return (
     <LinkDetailSidebarProvider defaultOpen={true}>
       <LinkDetailPageHeader
         linkId={link.id}
-        linkTitle={link.title}
+        linkTitle={headlineTitle}
         linkUrl={link.url}
         createdAt={link.created_at}
         favicon={link.favicon}

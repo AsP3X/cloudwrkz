@@ -213,3 +213,86 @@ export function extractDomain(url: string): string {
     return url.split("/")[0].replace(/^www\./, "");
   }
 }
+
+function readMetadataString(meta: Record<string, unknown> | null, key: string): string {
+  if (!meta) return "";
+  const v = meta[key];
+  return typeof v === "string" ? v.trim() : "";
+}
+
+function normalizeDetailNewlines(s: string): string {
+  return s.replace(/\r\n/g, "\n");
+}
+
+function stripHtmlToPlainOneLine(html: string): string {
+  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * GitHub repo (and similar) HTML titles are often `GitHub - owner/repo: <repository tagline>`.
+ * Show only `owner/repo` in the detail headline when that pattern matches the link URL.
+ */
+function githubRepoPageHeadlineTitle(stored: string, url: string): string | null {
+  if (!isGitHubUrl(url)) return null;
+  const parsed = parseGitHubUrl(url);
+  if (!parsed?.repo) return null;
+  const slug = `${parsed.owner}/${parsed.repo}`;
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(
+    `^GitHub\\s*[-–—]\\s*${esc(parsed.owner)}/${esc(parsed.repo)}\\s*(:\\s*.+)?$`,
+    "i",
+  );
+  if (re.test(stored.trim())) {
+    return slug;
+  }
+  return null;
+}
+
+/**
+ * Heading for the link detail page: avoid showing a stored title that concatenates
+ * the page title and description when metadata (or the saved description) still holds them separately.
+ */
+export function getLinkDetailHeadlineTitle(link: {
+  title: string;
+  url: string;
+  description: string | null;
+  metadata: Record<string, unknown> | null;
+}): string {
+  let stored = link.title?.trim() ?? "";
+  if (!stored) return stored;
+  stored = normalizeDetailNewlines(stored);
+
+  const ghHeadline = githubRepoPageHeadlineTitle(stored, link.url);
+  if (ghHeadline) return ghHeadline;
+
+  const metaTitle = readMetadataString(link.metadata, "title");
+  const metaDesc = readMetadataString(link.metadata, "description");
+
+  if (metaTitle.length > 0 && metaDesc.length > 0) {
+    const mTitle = normalizeDetailNewlines(metaTitle);
+    const mDesc = normalizeDetailNewlines(metaDesc);
+    const separators = ["\n\n", "\n", " — ", " – ", " | ", " · ", " - "];
+    for (const sep of separators) {
+      if (stored === `${mTitle}${sep}${mDesc}`) {
+        return mTitle.trim();
+      }
+    }
+    if (stored === `${mTitle}${mDesc}`) {
+      return mTitle.trim();
+    }
+  }
+
+  const descRaw = link.description?.trim();
+  if (descRaw && descRaw.length >= 24) {
+    const plain = stripHtmlToPlainOneLine(descRaw);
+    if (plain.length >= 24 && stored.endsWith(plain)) {
+      let head = stored.slice(0, stored.length - plain.length).trimEnd();
+      head = head.replace(/(?:[\s\u2014\u2013·|])+$/u, "").trimEnd();
+      if (head.length > 0) {
+        return head;
+      }
+    }
+  }
+
+  return stored.trim();
+}

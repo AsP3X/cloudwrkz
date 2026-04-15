@@ -75,6 +75,15 @@ async fn github_get(
     min_interval: Duration,
 ) -> Result<reqwest::Response, String> {
     github_throttle_wait(last_request_at, min_interval).await;
+    github_get_after_throttle(client, url, last_request_at).await
+}
+
+/// One GitHub GET (headers only); updates `last_request_at` when the response is returned.
+async fn github_get_after_throttle(
+    client: &Client,
+    url: &str,
+    last_request_at: &mut Option<Instant>,
+) -> Result<reqwest::Response, String> {
     let res = client
         .get(url)
         .header(reqwest::header::ACCEPT, GITHUB_ACCEPT)
@@ -84,6 +93,33 @@ async fn github_get(
         .map_err(|e| e.to_string())?;
     *last_request_at = Some(Instant::now());
     Ok(res)
+}
+
+/// Waits once, then issues two GETs in parallel (counts as two requests against GitHub quota).
+async fn github_get_parallel_pair(
+    client: &Client,
+    url_a: &str,
+    url_b: &str,
+    last_request_at: &mut Option<Instant>,
+    min_interval: Duration,
+) -> Result<(reqwest::Response, reqwest::Response), String> {
+    github_throttle_wait(last_request_at, min_interval).await;
+    let (ra, rb) = tokio::join!(
+        client
+            .get(url_a)
+            .header(reqwest::header::ACCEPT, GITHUB_ACCEPT)
+            .header(reqwest::header::USER_AGENT, GITHUB_UA)
+            .send(),
+        client
+            .get(url_b)
+            .header(reqwest::header::ACCEPT, GITHUB_ACCEPT)
+            .header(reqwest::header::USER_AGENT, GITHUB_UA)
+            .send(),
+    );
+    let ra = ra.map_err(|e| e.to_string())?;
+    let rb = rb.map_err(|e| e.to_string())?;
+    *last_request_at = Some(Instant::now());
+    Ok((ra, rb))
 }
 
 fn merge_github_metadata(existing: Option<Value>, mut github_fields: Value) -> Value {
@@ -109,6 +145,62 @@ fn merge_github_metadata(existing: Option<Value>, mut github_fields: Value) -> V
 
 fn repo_api_url(owner: &str, repo: &str) -> String {
     format!("https://api.github.com/repos/{owner}/{repo}")
+}
+
+/// List branches (up to `BRANCH_LIST_PER_PAGE` names) and total branch count using at most two requests.
+const BRANCH_LIST_PER_PAGE: i64 = 100;
+
+async fn fetch_branches_metadata(
+    client: &Client,
+    repo_api: &str,
+    last_request_at: &mut Option<Instant>,
+    min_interval: Duration,
+) -> Result<(Option<Value>, Option<Value>), String> {
+    let url1 = format!("{repo_api}/branches?per_page={BRANCH_LIST_PER_PAGE}");
+    let br_res = github_get(client, &url1, last_request_at, min_interval).await?;
+    if !br_res.status().is_success() {
+        return Ok((None, None));
+    }
+    let link = br_res
+        .headers()
+        .get("link")
+        .and_then(|h| h.to_str().ok())
+        .map(str::to_owned);
+    let branches_json: Value = br_res.json().await.unwrap_or(json!([]));
+
+    let names: Vec<String> = branches_json
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|b| b.get("name").and_then(|n| n.as_str()).map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let last_page = parse_last_page_from_link_header(link.as_deref());
+
+    let count = match last_page {
+        None | Some(1) => {
+            let n = names.len() as i64;
+            (n > 0).then_some(n)
+        }
+        Some(lp) if lp > 1 => {
+            let url2 = format!("{repo_api}/branches?per_page={BRANCH_LIST_PER_PAGE}&page={lp}");
+            let br2 = github_get(client, &url2, last_request_at, min_interval).await?;
+            if !br2.status().is_success() {
+                None
+            } else {
+                let arr2: Value = br2.json().await.unwrap_or(json!([]));
+                let last_len = arr2.as_array().map(|a| a.len() as i64).unwrap_or(0);
+                Some((lp - 1) * BRANCH_LIST_PER_PAGE + last_len)
+            }
+        }
+        _ => None,
+    };
+
+    let names_json = (!names.is_empty()).then(|| json!(names));
+    let count_json = count.map(|n| json!(n));
+    Ok((names_json, count_json))
 }
 
 async fn fetch_github_enrichment(
@@ -182,49 +274,13 @@ async fn fetch_github_enrichment(
         out["githubLastPushedAt"] = json!(pushed);
     }
 
-    let branches_url = format!("{repo_api}/branches?per_page=10");
-    let br_res = github_get(client, &branches_url, last_request_at, min_interval).await?;
-    if br_res.status().is_success() {
-        let branches_json: Value = br_res.json().await.unwrap_or(json!([]));
-        if let Some(arr) = branches_json.as_array() {
-            let names: Vec<String> = arr
-                .iter()
-                .filter_map(|b| b.get("name").and_then(|n| n.as_str()).map(String::from))
-                .collect();
-            if !names.is_empty() {
-                out["githubBranches"] = json!(names);
-            }
-        }
+    let (branch_names, branch_count) =
+        fetch_branches_metadata(client, &repo_api, last_request_at, min_interval).await?;
+    if let Some(v) = branch_names {
+        out["githubBranches"] = v;
     }
-
-    let br1_url = format!("{repo_api}/branches?per_page=1");
-    let br1_res = github_get(client, &br1_url, last_request_at, min_interval).await?;
-    if br1_res.status().is_success() {
-        if let Some(last) = parse_last_page_from_link_header(
-            br1_res.headers().get("link").and_then(|h| h.to_str().ok()),
-        ) {
-            out["githubBranchesCount"] = json!(last);
-        } else {
-            let arr: Value = br1_res.json().await.unwrap_or(json!([]));
-            if let Some(a) = arr.as_array() {
-                out["githubBranchesCount"] = json!(a.len() as i64);
-            }
-        }
-    }
-
-    let rel_url = format!("{repo_api}/releases?per_page=1");
-    let rel_res = github_get(client, &rel_url, last_request_at, min_interval).await?;
-    if rel_res.status().is_success() {
-        if let Some(last) = parse_last_page_from_link_header(
-            rel_res.headers().get("link").and_then(|h| h.to_str().ok()),
-        ) {
-            out["githubReleasesCount"] = json!(last);
-        } else {
-            let arr: Value = rel_res.json().await.unwrap_or(json!([]));
-            if let Some(a) = arr.as_array() {
-                out["githubReleasesCount"] = json!(a.len() as i64);
-            }
-        }
+    if let Some(v) = branch_count {
+        out["githubBranchesCount"] = v;
     }
 
     let default_branch = repo_json
@@ -239,7 +295,25 @@ async fn fetch_github_enrichment(
             u.to_string()
         })
         .unwrap_or_else(|_| format!("{repo_api}/commits?per_page=1&sha={default_branch}"));
-    let com_res = github_get(client, &commits_url, last_request_at, min_interval).await?;
+    let rel_url = format!("{repo_api}/releases?per_page=1");
+
+    let (rel_res, com_res) =
+        github_get_parallel_pair(client, &rel_url, &commits_url, last_request_at, min_interval)
+            .await?;
+
+    if rel_res.status().is_success() {
+        if let Some(last) = parse_last_page_from_link_header(
+            rel_res.headers().get("link").and_then(|h| h.to_str().ok()),
+        ) {
+            out["githubReleasesCount"] = json!(last);
+        } else {
+            let arr: Value = rel_res.json().await.unwrap_or(json!([]));
+            if let Some(a) = arr.as_array() {
+                out["githubReleasesCount"] = json!(a.len() as i64);
+            }
+        }
+    }
+
     if com_res.status().is_success() {
         if let Some(last) = parse_last_page_from_link_header(
             com_res.headers().get("link").and_then(|h| h.to_str().ok()),
