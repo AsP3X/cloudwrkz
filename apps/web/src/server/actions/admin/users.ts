@@ -33,6 +33,7 @@ const updateUserSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters").optional(),
   role: z.enum(["USER", "AGENT", "ADMIN", "MODERATOR"]).optional(),
   status: z.enum(["ACTIVE", "PENDING", "SUSPENDED", "BANNED", "DELETED"]).optional(),
+  emailVerified: z.boolean().optional(),
 });
 
 const banUserSchema = z.object({
@@ -442,12 +443,18 @@ export async function updateUserAdmin(
 
     if (validationResult.data.status !== undefined) {
       data.status = validationResult.data.status;
-      // Auto-verify email if status is ACTIVE
       if (validationResult.data.status === "ACTIVE") {
-        data.emailVerified = true;
-        // Clear ban fields when unbanning (changing status to ACTIVE)
+        // Clear ban fields when activating (including unban via edit)
         data.bannedAt = null;
         data.banReason = null;
+      }
+    }
+
+    if (validationResult.data.emailVerified !== undefined) {
+      data.emailVerified = validationResult.data.emailVerified;
+      if (validationResult.data.emailVerified) {
+        data.emailVerificationToken = null;
+        data.emailVerificationExpires = null;
       }
     }
 

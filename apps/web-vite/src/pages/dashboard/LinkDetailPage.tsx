@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { api } from "@/api/client";
@@ -7,6 +7,18 @@ import { Button } from "@/components/ui/Button";
 import type { Link as LinkType } from "@/lib/types";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { AccessIssueTicketDialog } from "@/components/features/tickets/AccessIssueTicketDialog";
+import { YouTubeEmbed } from "@/components/features/links/YouTubeEmbed";
+import { GitHubLinkInfo } from "@/components/features/links/GitHubLinkInfo";
+import { isGitHubUrl } from "@/lib/utils/links";
+import {
+  LinkDetailLayout,
+  LinkDetailSidebarProvider,
+} from "@/components/features/links/LinkDetailLayout";
+import { LinkInformationSidebar } from "@/components/features/links/LinkInformationSidebar";
+import { LinkDetailPageHeader } from "@/components/features/links/LinkDetailPageHeader";
+import { RichTextDisplay } from "@/components/features/tickets/RichTextDisplay";
+import { Dialog } from "@/components/ui/Dialog";
+import { LinkMetadataDisplay } from "@/components/features/links/LinkMetadataDisplay";
 
 export default function LinkDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -14,35 +26,84 @@ export default function LinkDetailPage() {
   const [link, setLink] = useState<LinkType | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [showMetadataDialog, setShowMetadataDialog] = useState(false);
+  const [githubRefreshBusy, setGithubRefreshBusy] = useState(false);
+  const [githubRefreshMessage, setGithubRefreshMessage] = useState<string | null>(null);
+  const githubPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const canViewLinks = can("modules.links.view");
-  const canEdit = can("links.update") || user?.role === "ADMIN" || user?.role === "AGENT" || user?.role === "MODERATOR";
+  const canEditBase =
+    can("links.update") || user?.role === "ADMIN" || user?.role === "AGENT" || user?.role === "MODERATOR";
+  const canDeleteBase =
+    can("links.delete") || user?.role === "ADMIN" || user?.role === "AGENT" || user?.role === "MODERATOR";
 
-  useEffect(() => {
+  const loadLink = useCallback(() => {
     if (!id || id === "undefined") {
       setNotFound(true);
-      setLoading(false);
-      return;
+      setLink(null);
+      return Promise.resolve();
     }
-    let cancelled = false;
-    api
+    return api
       .get<{ link: LinkType }>(`/links/${id}`)
       .then((data) => {
-        if (!cancelled) setLink(data.link);
+        setLink(data.link);
+        setNotFound(false);
       })
       .catch(() => {
-        if (!cancelled) {
-          setLink(null);
-          setNotFound(true);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+        setLink(null);
+        setNotFound(true);
       });
+  }, [id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    void loadLink().finally(() => {
+      if (!cancelled) setLoading(false);
+    });
     return () => {
       cancelled = true;
     };
+  }, [loadLink]);
+
+  useEffect(() => {
+    setGithubRefreshMessage(null);
+    if (githubPollRef.current) {
+      clearInterval(githubPollRef.current);
+      githubPollRef.current = null;
+    }
   }, [id]);
+
+  useEffect(() => {
+    return () => {
+      if (githubPollRef.current) clearInterval(githubPollRef.current);
+    };
+  }, []);
+
+  const queueGithubMetadataRefresh = useCallback(async () => {
+    if (!link || !isGitHubUrl(link.url)) return;
+    setGithubRefreshBusy(true);
+    setGithubRefreshMessage(null);
+    try {
+      const r = await api.post<{ jobId: string; alreadyQueued: boolean }>(
+        `/links/${link.id}/github-metadata/refresh`,
+        {},
+      );
+      setGithubRefreshMessage(
+        r.alreadyQueued
+          ? "A refresh is already queued or running. This page will update when the server finishes."
+          : "Queued. The server calls GitHub slowly (about one request per minute); this page will refresh when new data is saved.",
+      );
+      if (githubPollRef.current) clearInterval(githubPollRef.current);
+      githubPollRef.current = setInterval(() => {
+        void loadLink();
+      }, 45_000);
+    } catch {
+      setGithubRefreshMessage("Could not queue a refresh. Try again later.");
+    } finally {
+      setGithubRefreshBusy(false);
+    }
+  }, [link, loadLink]);
 
   if (!canViewLinks) {
     return (
@@ -78,7 +139,9 @@ export default function LinkDetailPage() {
     return (
       <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8 text-center">
         <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Link not found</h2>
-        <p className="text-neutral-600 dark:text-neutral-400 mb-4">The link you&apos;re looking for doesn&apos;t exist or may have been removed.</p>
+        <p className="text-neutral-600 dark:text-neutral-400 mb-4">
+          The link you&apos;re looking for doesn&apos;t exist or may have been removed.
+        </p>
         <Link to={ROUTES.LINKS}>
           <Button variant="primary">Back to Links</Button>
         </Link>
@@ -87,56 +150,82 @@ export default function LinkDetailPage() {
   }
 
   const isOwner = link.user_id === user?.id;
+  const canEdit = canEditBase && isOwner;
+  const canDelete = canDeleteBase && isOwner;
+  const userTimezone = user?.timezone?.trim() || "UTC";
+
+  const notesText =
+    link.notes && link.notes.replace(/<[^>]*>/g, "").trim().length > 0 ? link.notes : null;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-3">
-        <Link to={ROUTES.LINKS}>
-          <Button variant="outline" size="sm">
-            <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            Back to Links
-          </Button>
-        </Link>
-        {canEdit && isOwner && (
-          <Link to={`${ROUTES.DASHBOARD}/links/${link.id}/edit`}>
-            <Button variant="primary" size="sm">
-              Edit
-            </Button>
-          </Link>
-        )}
-      </div>
+    <LinkDetailSidebarProvider defaultOpen={true}>
+      <LinkDetailPageHeader
+        linkId={link.id}
+        linkTitle={link.title}
+        linkUrl={link.url}
+        createdAt={link.created_at}
+        favicon={link.favicon}
+        isFavorite={link.is_favorite}
+        rating={link.rating}
+        canEdit={canEdit}
+        canDelete={canDelete}
+        userTimezone={userTimezone}
+        archivedAt={link.archived_at}
+        onLinkUpdated={loadLink}
+      />
 
-      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
-        <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">{link.title}</h1>
-        <a
-          href={link.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-primary-600 dark:text-primary-400 hover:underline break-all"
+      <LinkDetailLayout
+        sidebar={
+          <LinkInformationSidebar
+            link={link}
+            userTimezone={userTimezone}
+            onViewMetadata={() => setShowMetadataDialog(true)}
+            onQueueGithubMetadataRefresh={queueGithubMetadataRefresh}
+            githubMetadataRefreshBusy={githubRefreshBusy}
+            githubMetadataRefreshMessage={githubRefreshMessage}
+          />
+        }
+      >
+        <div className="space-y-6">
+          {link.description && (
+            <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
+              <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">Description</h2>
+              <div className="w-full break-words">
+                <RichTextDisplay content={link.description} />
+              </div>
+            </div>
+          )}
+
+          <YouTubeEmbed url={link.url} />
+
+          {isGitHubUrl(link.url) && <GitHubLinkInfo url={link.url} metadata={link.metadata} />}
+
+          {notesText && (
+            <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
+              <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">Personal Notes</h2>
+              <div className="bg-neutral-50 dark:bg-neutral-800 rounded-md p-4">
+                <RichTextDisplay content={notesText} />
+              </div>
+            </div>
+          )}
+        </div>
+      </LinkDetailLayout>
+
+      {link.metadata && typeof link.metadata === "object" && Object.keys(link.metadata).length > 0 && (
+        <Dialog
+          open={showMetadataDialog}
+          onOpenChange={setShowMetadataDialog}
+          title="Extracted Metadata"
+          description="Metadata automatically extracted from the link"
+          className="sm:max-w-4xl"
         >
-          {link.url}
-        </a>
-        {link.description && (
-          <div className="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-800">
-            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Description</h2>
-            <p className="text-neutral-600 dark:text-neutral-400 whitespace-pre-wrap">{link.description}</p>
+          <div className="p-6">
+            <div className="bg-neutral-50 dark:bg-neutral-800 rounded-lg p-6 max-h-[70vh] overflow-y-auto">
+              <LinkMetadataDisplay metadata={link.metadata} />
+            </div>
           </div>
-        )}
-        {link.tags && link.tags.length > 0 && (
-          <div className="mt-4 flex flex-wrap gap-2">
-            {link.tags.map((tag) => (
-              <span
-                key={tag}
-                className="inline-block px-2 py-1 rounded-md text-sm bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+        </Dialog>
+      )}
+    </LinkDetailSidebarProvider>
   );
 }

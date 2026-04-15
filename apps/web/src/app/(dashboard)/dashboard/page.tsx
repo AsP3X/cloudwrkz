@@ -638,16 +638,11 @@ export default async function DashboardPage() {
           />
         )}
         <DashboardStatCard
-          title="Account status"
-          value={user.status.toLowerCase()}
-          icon={<IconCheck />}
-          accent="success"
-        />
-        <DashboardStatCard
-          title="Email"
-          value={user.emailVerified ? "Verified" : "Pending"}
+          title="Account & email"
+          value={`${user.status.charAt(0)}${user.status.slice(1).toLowerCase()}`}
+          subtitle={user.emailVerified ? "Email verified" : "Email not verified yet"}
           icon={<IconMail />}
-          accent="secondary"
+          accent={user.emailVerified ? "success" : "warning"}
         />
       </div>
 

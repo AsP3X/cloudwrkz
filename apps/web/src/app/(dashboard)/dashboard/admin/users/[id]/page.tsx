@@ -35,6 +35,15 @@ export default async function AdminUserDetailPage({
   }
 
   const canManagePermissions = await hasPermission(user.id, "admin.permissions.manage");
+  const canManageGroups = await hasPermission(user.id, "admin.groups.manage");
+  const canUpdateUser = await hasPermission(user.id, "admin.users.update");
 
-  return <UserDetailPage user={userDetail} canManagePermissions={canManagePermissions} />;
+  return (
+    <UserDetailPage
+      user={userDetail}
+      canManagePermissions={canManagePermissions}
+      canManageGroups={canManageGroups}
+      canUpdateUser={canUpdateUser}
+    />
+  );
 }

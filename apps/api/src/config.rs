@@ -44,6 +44,8 @@ pub struct AppConfig {
     pub mutation_queue_capacity: usize,
     pub idempotency_max_entries: usize,
     pub idempotency_ttl_secs: u64,
+    /// Minimum seconds between consecutive GitHub API requests in the link metadata worker (anonymous limit ~60/hour).
+    pub github_metadata_min_interval_secs: u64,
 }
 
 impl AppConfig {
@@ -114,6 +116,11 @@ impl AppConfig {
             idempotency_max_entries: env_u64_compat("IDEMPOTENCY_MAX_ENTRIES", 4096)
                 .clamp(64, 1_000_000) as usize,
             idempotency_ttl_secs: env_u64_compat("IDEMPOTENCY_TTL_SECS", 86_400).clamp(60, 604_800),
+            github_metadata_min_interval_secs: env_u64_compat(
+                "GITHUB_METADATA_MIN_INTERVAL_SECS",
+                60,
+            )
+            .clamp(1, 3_600),
         }
     }
 

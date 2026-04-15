@@ -62,6 +62,11 @@ pub fn router() -> Router<AppState> {
             "/admin/groups/{id}/permissions/{key}",
             axum::routing::delete(revoke_group_permission),
         )
+        .route("/admin/groups/{id}/members", post(add_group_member))
+        .route(
+            "/admin/groups/{id}/members/{user_id}",
+            axum::routing::delete(remove_group_member),
+        )
         .route("/admin/modules", get(list_modules))
         .route("/admin/modules/{id}", patch(toggle_module))
         .route("/admin/sessions", get(list_sessions))
@@ -1205,11 +1210,13 @@ async fn reset_user_password(
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct UpdateUserRequest {
     name: Option<String>,
     role: Option<String>,
     status: Option<String>,
     password: Option<String>,
+    email_verified: Option<bool>,
 }
 
 async fn update_user(
@@ -1259,6 +1266,23 @@ async fn update_user(
             .bind(&id)
             .execute(&state.pool)
             .await?;
+    }
+
+    if let Some(email_verified) = body.email_verified {
+        if email_verified {
+            sqlx::query(
+                r#"UPDATE users SET email_verified = true, email_verification_token = NULL,
+                   email_verification_expires = NULL, updated_at = NOW() WHERE id = $1"#,
+            )
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
+        } else {
+            sqlx::query("UPDATE users SET email_verified = false, updated_at = NOW() WHERE id = $1")
+                .bind(&id)
+                .execute(&state.pool)
+                .await?;
+        }
     }
 
     Ok(Json(serde_json::json!({ "success": true })))
@@ -1555,6 +1579,10 @@ async fn revoke_group_permission(
     Ok(Json(serde_json::json!({ "success": true })))
 }
 
+async fn can_manage_group_memberships(pool: &sqlx::PgPool, user: &crate::models::user::CurrentUser) -> bool {
+    user.role == "ADMIN" || check_permission(pool, &user.id, "admin.groups.manage").await
+}
+
 async fn list_groups(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -1653,6 +1681,8 @@ async fn get_group(
         })
         .collect();
 
+    let member_count = member_list.len() as i64;
+
     Ok(Json(serde_json::json!({
         "group": {
             "id": r.get::<String, _>("id"),
@@ -1660,9 +1690,122 @@ async fn get_group(
             "description": r.get::<Option<String>, _>("description"),
             "createdAt": r.get::<chrono::NaiveDateTime, _>("created_at"),
             "updatedAt": r.get::<chrono::NaiveDateTime, _>("updated_at"),
+            "memberCount": member_count,
             "members": member_list,
         }
     })))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AddGroupMemberRequest {
+    user_id: String,
+}
+
+async fn add_group_member(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(group_id): Path<String>,
+    Json(body): Json<AddGroupMemberRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if !can_manage_group_memberships(&state.pool, &user).await {
+        return Err(AppError::forbidden(
+            "Permission required: admin role or admin.groups.manage",
+        ));
+    }
+
+    let group_exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM groups WHERE id = $1)")
+        .bind(&group_id)
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(false);
+    if !group_exists {
+        return Err(AppError::not_found("Group not found"));
+    }
+
+    let target_status: Option<String> = sqlx::query_scalar(r#"SELECT status::text FROM users WHERE id = $1"#)
+        .bind(&body.user_id)
+        .fetch_optional(&state.pool)
+        .await?;
+    let target_status = target_status.ok_or_else(|| AppError::not_found("User not found"))?;
+    if target_status != "ACTIVE" {
+        return Err(AppError::bad_request("Cannot add inactive users to groups"));
+    }
+
+    let already: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM group_memberships WHERE group_id = $1 AND user_id = $2)",
+    )
+    .bind(&group_id)
+    .bind(&body.user_id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(false);
+    if already {
+        return Err(AppError::bad_request("User is already a member of this group"));
+    }
+
+    let membership_id = crate::id::new_cuid();
+    sqlx::query(
+        r#"INSERT INTO group_memberships (id, user_id, group_id, created_at)
+           VALUES ($1, $2, $3, NOW())"#,
+    )
+    .bind(&membership_id)
+    .bind(&body.user_id)
+    .bind(&group_id)
+    .execute(&state.pool)
+    .await?;
+
+    audit::write_audit_log(
+        &state.pool,
+        WriteAuditParams {
+            user_id: Some(user.id),
+            action: "admin.groups.member_add".into(),
+            resource_type: Some("group".into()),
+            resource_id: Some(group_id.clone()),
+            context: Some(serde_json::json!({ "targetUserId": body.user_id })),
+            ip_address: None,
+            user_agent: None,
+        },
+    );
+
+    Ok(Json(serde_json::json!({ "success": true, "membershipId": membership_id })))
+}
+
+async fn remove_group_member(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path((group_id, target_user_id)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if !can_manage_group_memberships(&state.pool, &user).await {
+        return Err(AppError::forbidden(
+            "Permission required: admin role or admin.groups.manage",
+        ));
+    }
+
+    let res = sqlx::query("DELETE FROM group_memberships WHERE group_id = $1 AND user_id = $2")
+        .bind(&group_id)
+        .bind(&target_user_id)
+        .execute(&state.pool)
+        .await?;
+
+    if res.rows_affected() == 0 {
+        return Err(AppError::not_found("Membership not found"));
+    }
+
+    audit::write_audit_log(
+        &state.pool,
+        WriteAuditParams {
+            user_id: Some(user.id),
+            action: "admin.groups.member_remove".into(),
+            resource_type: Some("group".into()),
+            resource_id: Some(group_id.clone()),
+            context: Some(serde_json::json!({ "targetUserId": target_user_id })),
+            ip_address: None,
+            user_agent: None,
+        },
+    );
+
+    Ok(Json(serde_json::json!({ "success": true })))
 }
 
 #[derive(Deserialize)]

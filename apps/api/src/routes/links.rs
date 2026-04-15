@@ -11,6 +11,7 @@ use serde::Deserialize;
 use sqlx::Row;
 
 use crate::auth::extractors::AuthUser;
+use crate::github_metadata;
 use crate::command_queue::{
     apply_mutation_tx_settings, mutation_response, run_mutation_defer, JsonMutationResult,
     MutationHandlerOutput, MutationRunContext,
@@ -28,6 +29,10 @@ pub fn router() -> Router<AppState> {
         // Backwards compatible alias used by the Vite frontend.
         .route("/links/extract-metadata", post(extract_metadata))
         .route("/links/tag-suggestions", get(tag_suggestions))
+        .route(
+            "/links/{id}/github-metadata/refresh",
+            post(enqueue_github_metadata_refresh),
+        )
 }
 
 async fn list_links(
@@ -286,6 +291,32 @@ async fn get_link(
     };
 
     Ok(Json(serde_json::json!({ "link": link })))
+}
+
+async fn enqueue_github_metadata_refresh(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let owns: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM links WHERE id = $1 AND user_id = $2)",
+    )
+    .bind(&id)
+    .bind(&user.id)
+    .fetch_one(&state.pool)
+    .await?;
+
+    if !owns {
+        return Err(AppError::not_found("Link not found"));
+    }
+
+    let (job_id, already_queued) =
+        github_metadata::enqueue_github_metadata_job(&state.pool, &id, &user.id).await?;
+
+    Ok(Json(serde_json::json!({
+        "jobId": job_id,
+        "alreadyQueued": already_queued,
+    })))
 }
 
 async fn create_link(

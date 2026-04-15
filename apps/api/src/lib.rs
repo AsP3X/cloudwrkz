@@ -10,6 +10,7 @@ mod diagnostics_token;
 mod error;
 pub mod id;
 mod models;
+mod github_metadata;
 pub mod routes;
 
 pub use config::AppConfig;
@@ -66,6 +67,7 @@ Environment: LOG_VERBOSITY (debug|prod), LOG_FORMAT (json), RUST_LOG, DATABASE_U
              (Deferred mutations: GET /api/v1/mutation-jobs/{job_id} after HTTP 202 when DB was transient.)
              DATABASE_POOL_ACQUIRE_TIMEOUT_SECS, DATABASE_POOL_MAX_CONNECTIONS,
              DATABASE_MIGRATE_RETRY_MAX_SECS, etc.
+             GITHUB_METADATA_MIN_INTERVAL_SECS (default 60): minimum delay between GitHub HTTP calls in the metadata worker.
 "#;
 
 /// Parse `-v` / `-v debug` / `-v prod` and `-h` from env::args(). CLI overrides LOG_VERBOSITY env.
@@ -366,8 +368,10 @@ pub async fn run() {
 
     {
         let pool = pool.clone();
+        let github_interval = config.github_metadata_min_interval_secs;
         tokio::spawn(async move {
             db::run_migrations_with_transient_retries(&pool).await;
+            github_metadata::spawn_github_metadata_worker(pool, github_interval);
         });
     }
 
