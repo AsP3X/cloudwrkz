@@ -84,12 +84,17 @@ function cloudwrkzLogPlugin() {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
+  // Docker Compose: proxy from inside the Vite container to the API service (not passed to the client).
+  const dockerApiProxy = process.env.DOCKER_API_PROXY_TARGET?.trim();
+
   // Prefer 127.0.0.1 over "localhost" to avoid IPv6/IPv4 mismatch (ECONNRESET) on Windows.
   let apiProxyTarget = "http://127.0.0.1:8080";
   const configuredApiUrl = env.VITE_API_URL;
 
-  // If VITE_API_URL is absolute (e.g. http://localhost:8081/api/v1), use its origin for dev proxy.
-  if (configuredApiUrl && /^https?:\/\//i.test(configuredApiUrl)) {
+  if (dockerApiProxy) {
+    apiProxyTarget = dockerApiProxy;
+  } else if (configuredApiUrl && /^https?:\/\//i.test(configuredApiUrl)) {
+    // If VITE_API_URL is absolute (e.g. http://localhost:8081/api/v1), use its origin for dev proxy.
     try {
       const parsed = new URL(configuredApiUrl);
       if (parsed.hostname === "localhost") {

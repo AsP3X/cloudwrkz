@@ -27,6 +27,29 @@ services:
     networks:
       - cloudwrkz-network
 
+  web-vite:
+    build:
+      context: .
+      dockerfile: apps/web-vite/Dockerfile
+    image: cloudwrkz-web-vite:local
+    container_name: cloudwrkz-web-vite
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    ports:
+      - "5173:5173"
+    environment:
+      # Dev proxy only (see apps/web-vite/vite.config.ts). Do not use VITE_API_URL=http://api:… — the browser cannot resolve Docker service names.
+      DOCKER_API_PROXY_TARGET: "http://api:8080"
+      # Global fuzzy search uses /next-api → Next.js; add a `web` service or run apps/web on the host if you need search in this stack.
+    command: >
+      sh -c "corepack enable && corepack prepare pnpm@9 --activate && cd /workspace && pnpm install && pnpm --filter web-vite dev"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - cloudwrkz-network
+
   postgres:
     image: postgres:16-alpine
     container_name: cloudwrkz-postgres

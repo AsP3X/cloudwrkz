@@ -62,9 +62,16 @@ This starts:
 
 - **PostgreSQL** on port `5432` (user `cloudwrkz`, database `cloudwrkz`, default password `cloudwrkz_dev_password` unless you set `POSTGRES_PASSWORD`)
 - **Rust API** on port `8080` (applies SQLx migrations on startup)
+- **Vite dev server** on port `5173` (custom image: Node + bundled **`cloudwrkz-cli`** on `PATH`; repo mounted at `/workspace`)
 - **pgAdmin** on port `5050` (default login `admin@cloudwrkz.test` / `admin`)
 
 Check API health: [http://localhost:8080/api/health](http://localhost:8080/api/health).
+
+**`cloudwrkz-cli` inside the Vite container** (after `docker compose up -d`), e.g. first admin bootstrap — use `postgres` as the DB host:
+
+```bash
+docker compose exec -e CLOUDWRKZ_BOOTSTRAP_SECRET=local-dev -e DATABASE_URL="postgresql://cloudwrkz:cloudwrkz_dev_password@postgres:5432/cloudwrkz" web-vite cloudwrkz-cli admin create-admin you@example.com "YourPassword" "Your Name"
+```
 
 To stop: `docker compose down`. To remove data volumes: `docker compose down -v`.
 
@@ -88,13 +95,17 @@ Ensure Postgres is reachable at the `DATABASE_URL` in that file (e.g. after `doc
 
 ### 5. First admin account (bootstrap)
 
-With the database up, build the CLI from the repo root and create the first admin (requires a bootstrap secret — see [apps/cli/README.md](apps/cli/README.md)):
+With the database up, create the first admin (requires a bootstrap secret — see [apps/cli/README.md](apps/cli/README.md)).
+
+**From the host** (after `cargo build --release -p cloudwrkz-cli`):
 
 ```bash
 cargo build --release -p cloudwrkz-cli
 export CLOUDWRKZ_BOOTSTRAP_SECRET=local-dev
 ./target/release/cloudwrkz-cli admin create-admin you@example.com "YourPassword" "Your Name"
 ```
+
+**Or entirely in Docker** (use the bundled CLI in the `web-vite` service — see the `docker compose exec …` example in the Docker Compose list in **§3** above).
 
 On **Windows** (PowerShell), after `cargo build`:
 
