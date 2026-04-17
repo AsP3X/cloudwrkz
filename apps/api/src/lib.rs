@@ -16,12 +16,12 @@ mod models;
 pub mod routes;
 
 pub use config::AppConfig;
+pub use routes::AppState;
 
 use axum::Router;
 use axum::body::Body;
 use axum::http::Method;
 use axum::http::header::{self, HeaderName, HeaderValue};
-use sqlx::PgPool;
 use std::net::SocketAddr;
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -127,8 +127,8 @@ fn init_logging() {
         LogVerbosity::Debug => "info,jobs=debug",
         LogVerbosity::Prod => "info",
     };
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(default_directive));
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_directive));
     let use_json = std::env::var("LOG_FORMAT").as_deref() == Ok("json");
     let timer = UtcTime::rfc_3339();
     let fmt = tracing_subscriber::fmt()
@@ -237,22 +237,18 @@ fn build_cors(config: &AppConfig) -> CorsLayer {
 }
 
 /// Full HTTP stack (v1 + legacy health, security headers, CORS, trace, body limit) — used in production and tests.
-pub fn build_http_app(
-    pool: PgPool,
-    config: AppConfig,
-    api_started_at: std::time::Instant,
-) -> Router {
-    let cors = build_cors(&config);
-    let v1 = routes::v1_router(pool.clone(), config.clone(), api_started_at);
+pub fn build_http_app(state: AppState) -> Router<AppState> {
+    let cors = build_cors(&state.config);
+    let max_body = state.config.max_body_size;
     Router::new()
-        .nest("/api/v1", v1)
-        .merge(routes::health::router(
-            pool,
-            api_started_at,
-            config.api_nodes_available,
-            config.api_region.clone(),
-            config.diagnostics_health_token.clone(),
-        ))
+        .merge(routes::health::router())
+        .nest("/api/v1", routes::v1_router(&state.config))
+        .nest(
+            "/api/auth/qr-login",
+            routes::auth_qr_login::scoped_router()
+                .layer(crate::auth_governor::auth_rate_limit_layer(&state.config)),
+        )
+        .with_state(state)
         .layer(SetResponseHeaderLayer::if_not_present(
             header::X_CONTENT_TYPE_OPTIONS,
             HeaderValue::from_static("nosniff"),
@@ -273,9 +269,7 @@ pub fn build_http_app(
                 .make_span_with(make_request_span)
                 .on_response(ApiOnResponse),
         )
-        .layer(tower_http::limit::RequestBodyLimitLayer::new(
-            config.max_body_size,
-        ))
+        .layer(tower_http::limit::RequestBodyLimitLayer::new(max_body))
 }
 
 async fn shutdown_signal() {
@@ -382,6 +376,9 @@ pub async fn run() {
     let pool = db::create_pool_lazy(&config.database_url)
         .expect("Invalid DATABASE_URL (cannot parse connection string)");
 
+    let api_started_at = std::time::Instant::now();
+    let state = routes::AppState::new(pool.clone(), config.clone(), api_started_at);
+
     {
         let pool = pool.clone();
         let cfg = config.clone();
@@ -391,8 +388,7 @@ pub async fn run() {
         });
     }
 
-    let api_started_at = std::time::Instant::now();
-    let app = build_http_app(pool.clone(), config.clone(), api_started_at);
+    let app = build_http_app(state);
 
     let addr: SocketAddr = config.bind_addr().parse().expect("Invalid bind address");
     let listener = tokio::net::TcpListener::bind(addr)
@@ -401,11 +397,8 @@ pub async fn run() {
 
     tracing::info!(event = "listen", addr = %addr, "Listening");
 
-    axum::serve(
-        listener,
-        app.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .with_graceful_shutdown(shutdown_signal())
-    .await
-    .expect("Server error");
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .expect("Server error");
 }

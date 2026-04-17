@@ -55,7 +55,10 @@ impl GithubRestRateLimit {
 
         loop {
             let wait: Option<Duration> = {
-                let mut guard = self.window.lock().expect("github rate limit mutex poisoned");
+                let mut guard = self
+                    .window
+                    .lock()
+                    .expect("github rate limit mutex poisoned");
                 let now = Instant::now();
                 while guard
                     .front()

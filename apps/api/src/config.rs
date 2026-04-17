@@ -52,6 +52,8 @@ pub struct AppConfig {
     pub job_queue_github_max_concurrent: u32,
     /// Optional minimum seconds between *starting* two `github_link_metadata` jobs (pacing on top of concurrency).
     pub job_queue_github_min_start_interval_secs: Option<u64>,
+    /// Public web app origin for QR payloads (e.g. `https://app.example.com`). If unset, `Host` / `X-Forwarded-*` from the API request is used (may point at the API host).
+    pub public_web_app_url: Option<String>,
 }
 
 impl AppConfig {
@@ -127,11 +129,13 @@ impl AppConfig {
                 .ok()
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty()),
-            github_anonymous_max_requests_per_hour: env::var("GITHUB_ANONYMOUS_MAX_REQUESTS_PER_HOUR")
-                .ok()
-                .and_then(|s| s.parse::<u32>().ok())
-                .unwrap_or(60)
-                .clamp(1, 100_000),
+            github_anonymous_max_requests_per_hour: env::var(
+                "GITHUB_ANONYMOUS_MAX_REQUESTS_PER_HOUR",
+            )
+            .ok()
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(60)
+            .clamp(1, 100_000),
             job_queue_github_max_concurrent: std::env::var("JOB_QUEUE_GITHUB_MAX_CONCURRENT")
                 .ok()
                 .and_then(|s| s.parse::<u32>().ok())
@@ -150,6 +154,10 @@ impl AppConfig {
                 }
             })
             .map(|secs| secs.clamp(1, 86_400)),
+            public_web_app_url: env::var("PUBLIC_WEB_APP_URL")
+                .ok()
+                .map(|s| s.trim().trim_end_matches('/').to_string())
+                .filter(|s| !s.is_empty()),
         }
     }
 

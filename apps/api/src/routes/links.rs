@@ -478,7 +478,8 @@ async fn create_link(
                 if github_metadata::parse_github_owner_repo(&body.url).is_some()
                     && !github_metadata::link_github_enrichment_matches_repo(&metadata, &body.url)
                 {
-                    if let Err(e) = job_queue::enqueue_github_link_metadata_job(&pool, &id, &user_id).await
+                    if let Err(e) =
+                        job_queue::enqueue_github_link_metadata_job(&pool, &id, &user_id).await
                     {
                         tracing::warn!(
                             event = "link.create.github_metadata_enqueue_failed",

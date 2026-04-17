@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod archive;
 pub mod auth;
+pub mod auth_qr_login;
 pub mod collections;
 pub mod contact;
 pub mod favicons;
@@ -30,21 +31,40 @@ use crate::auth::register_queue::RegisterJobs;
 use crate::command_queue::{IdempotencyStore, MutationBroker, MutationJobs};
 use crate::config::AppConfig;
 
-pub fn v1_router(pool: PgPool, config: AppConfig, api_started_at: std::time::Instant) -> Router {
-    let idempotency = IdempotencyStore::new(
-        config.idempotency_max_entries,
-        Duration::from_secs(config.idempotency_ttl_secs),
-    );
-    let mutation_broker = MutationBroker::new(
-        idempotency,
-        config.mutation_tx_max_ms,
-        config.mutation_lock_timeout_ms,
-        config.mutation_statement_timeout_ms,
-        config.mutation_queue_capacity,
-    );
+impl AppState {
+    pub fn new(pool: PgPool, config: AppConfig, api_started_at: std::time::Instant) -> Self {
+        let idempotency = IdempotencyStore::new(
+            config.idempotency_max_entries,
+            Duration::from_secs(config.idempotency_ttl_secs),
+        );
+        let mutation_broker = MutationBroker::new(
+            idempotency,
+            config.mutation_tx_max_ms,
+            config.mutation_lock_timeout_ms,
+            config.mutation_statement_timeout_ms,
+            config.mutation_queue_capacity,
+        );
+        Self {
+            pool,
+            config,
+            api_started_at,
+            register_jobs: RegisterJobs::default(),
+            login_jobs: LoginJobs::default(),
+            mutation_broker,
+            mutation_jobs: MutationJobs::default(),
+            search_coalesce: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+}
+
+pub fn v1_router(config: &AppConfig) -> Router<AppState> {
     Router::new()
         .merge(health::v1_router())
-        .merge(auth::router().layer(crate::auth_governor::auth_rate_limit_layer(&config)))
+        .merge(
+            auth::router()
+                .nest("/auth/qr-login", auth_qr_login::scoped_router())
+                .layer(crate::auth_governor::auth_rate_limit_layer(config)),
+        )
         .merge(me::router())
         .merge(mutation_jobs::router())
         .merge(tickets::router())
@@ -60,16 +80,6 @@ pub fn v1_router(pool: PgPool, config: AppConfig, api_started_at: std::time::Ins
         .merge(filter_preferences::router())
         .merge(favicons::router())
         .merge(location_history::router())
-        .with_state(AppState {
-            pool,
-            config,
-            api_started_at,
-            register_jobs: RegisterJobs::default(),
-            login_jobs: LoginJobs::default(),
-            mutation_broker,
-            mutation_jobs: MutationJobs::default(),
-            search_coalesce: Arc::new(Mutex::new(HashMap::new())),
-        })
 }
 
 pub type SearchCoalesceCache = Arc<Mutex<HashMap<String, Arc<Mutex<Option<serde_json::Value>>>>>>;

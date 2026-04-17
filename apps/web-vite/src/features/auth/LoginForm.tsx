@@ -8,6 +8,7 @@ import { ROUTES } from "@/lib/constants/routes";
 import { loginSchema, type LoginInput } from "@/lib/validations/auth";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { LoginQueuedBanner } from "@/features/auth/LoginQueuedBanner";
+import { QrLoginPanel } from "@/features/auth/QrLoginPanel";
 
 type LoginFormProps = {
   initialError?: string;
@@ -37,6 +38,7 @@ export function LoginForm({ initialError, disabled = false }: LoginFormProps) {
     getInitialErrorMessage(initialError),
   );
   const [queuedSuccessInfo, setQueuedSuccessInfo] = React.useState<string | null>(null);
+  const [showQrPanel, setShowQrPanel] = React.useState(false);
 
   const {
     register,
@@ -203,6 +205,23 @@ export function LoginForm({ initialError, disabled = false }: LoginFormProps) {
           Sign up
         </Link>
       </p>
+
+      <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4">
+        {!showQrPanel ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="md"
+            className="w-full"
+            onClick={() => setShowQrPanel(true)}
+            disabled={isSubmitting || disabled || Boolean(loginQueuedUi)}
+          >
+            Sign in with QR code
+          </Button>
+        ) : (
+          <QrLoginPanel onClose={() => setShowQrPanel(false)} />
+        )}
+      </div>
     </form>
   );
 }

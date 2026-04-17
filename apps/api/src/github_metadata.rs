@@ -72,10 +72,7 @@ async fn github_get(
         .get(url)
         .header(reqwest::header::ACCEPT, GITHUB_ACCEPT)
         .header(reqwest::header::USER_AGENT, GITHUB_UA);
-    rate.apply_auth(req)
-        .send()
-        .await
-        .map_err(|e| e.to_string())
+    rate.apply_auth(req).send().await.map_err(|e| e.to_string())
 }
 
 /// Two parallel GETs after reserving two slots in the anonymous hourly window.
@@ -279,8 +276,7 @@ async fn fetch_github_enrichment(
         .unwrap_or_else(|_| format!("{repo_api}/commits?per_page=1&sha={default_branch}"));
     let rel_url = format!("{repo_api}/releases?per_page=1");
 
-    let (rel_res, com_res) =
-        github_get_parallel_pair(client, &rel_url, &commits_url, rate).await?;
+    let (rel_res, com_res) = github_get_parallel_pair(client, &rel_url, &commits_url, rate).await?;
 
     if rel_res.status().is_success() {
         if let Some(last) = parse_last_page_from_link_header(
@@ -344,8 +340,7 @@ pub async fn execute_github_link_metadata_job(
     }
 
     let (owner, repo) = parse_github_owner_repo(&url).unwrap();
-    let enrichment = match fetch_github_enrichment(client, &owner, &repo, rate).await
-    {
+    let enrichment = match fetch_github_enrichment(client, &owner, &repo, rate).await {
         Ok(v) => v,
         Err(e) => {
             mark_background_job_failed(pool, job_id, &e).await;

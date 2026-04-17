@@ -31,6 +31,8 @@ use crate::github_rate_limit::GithubRestRateLimit;
 use crate::id::new_cuid;
 
 pub const JOB_TYPE_GITHUB_LINK_METADATA: &str = "github_link_metadata";
+pub const JOB_TYPE_QR_LOGIN_APPROVE: &str = "qr_login_approve";
+pub const JOB_TYPE_QR_LOGIN_FINALIZE: &str = "qr_login_finalize";
 
 /// Policies applied before a job of this type is marked `processing` (concurrency + optional pacing).
 #[derive(Clone, Debug)]
@@ -55,6 +57,20 @@ fn policies_from_config(config: &AppConfig) -> HashMap<String, JobTypePolicy> {
         JOB_TYPE_GITHUB_LINK_METADATA.to_string(),
         JobTypePolicy {
             max_concurrent: config.job_queue_github_max_concurrent.max(1),
+            min_interval_between_starts: None,
+        },
+    );
+    m.insert(
+        JOB_TYPE_QR_LOGIN_APPROVE.to_string(),
+        JobTypePolicy {
+            max_concurrent: 32,
+            min_interval_between_starts: None,
+        },
+    );
+    m.insert(
+        JOB_TYPE_QR_LOGIN_FINALIZE.to_string(),
+        JobTypePolicy {
+            max_concurrent: 32,
             min_interval_between_starts: None,
         },
     );
@@ -118,6 +134,7 @@ async fn run_one_job(
     job_id: String,
     job_type: String,
     payload: serde_json::Value,
+    created_by_user_id: Option<String>,
 ) {
     match job_type.as_str() {
         JOB_TYPE_GITHUB_LINK_METADATA => {
@@ -134,6 +151,19 @@ async fn run_one_job(
                 mark_job_failed(&pool, &job_id, "Missing payload.link_id").await;
             }
         }
+        JOB_TYPE_QR_LOGIN_APPROVE => {
+            crate::auth::qr_login_execute::execute_qr_login_approve_job(
+                pool,
+                &job_id,
+                &payload,
+                created_by_user_id.as_deref(),
+            )
+            .await;
+        }
+        JOB_TYPE_QR_LOGIN_FINALIZE => {
+            crate::auth::qr_finalize_queue::execute_qr_login_finalize_job(pool, &job_id, &payload)
+                .await;
+        }
         other => {
             mark_job_failed(
                 &pool,
@@ -145,53 +175,63 @@ async fn run_one_job(
     }
 }
 
+/// Atomically claims the next eligible row using `FOR UPDATE SKIP LOCKED` so concurrent workers
+/// never block waiting on another transaction's lock; if the per-type budget rejects the job,
+/// the row is returned to `pending` with a short `run_after` deferral so the same worker does not
+/// spin on an ineligible head-of-queue row.
 async fn try_claim_next(
     pool: &PgPool,
     budgets: &TypeBudgets,
-) -> Option<(String, String, serde_json::Value)> {
-    let rows: Vec<(String, String, serde_json::Value)> = sqlx::query(
-        r#"SELECT id, job_type, payload FROM background_jobs
-           WHERE status = 'pending'
-             AND (run_after IS NULL OR run_after <= clock_timestamp())
-           ORDER BY priority DESC, created_at ASC
-           LIMIT 32"#,
-    )
-    .map(|row: sqlx::postgres::PgRow| {
-        (
-            row.get::<String, _>("id"),
-            row.get::<String, _>("job_type"),
-            row.get::<serde_json::Value, _>("payload"),
-        )
-    })
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default();
-
-    for (id, job_type, payload) in rows {
-        if !budgets.try_acquire(&job_type) {
-            continue;
-        }
-
-        let claimed = sqlx::query_scalar::<_, String>(
-            r#"UPDATE background_jobs
+) -> Option<(String, String, serde_json::Value, Option<String>)> {
+    const MAX_TRIES: u32 = 48;
+    for _ in 0..MAX_TRIES {
+        let row = sqlx::query(
+            r#"UPDATE background_jobs AS b
                SET status = 'processing',
                    started_at = clock_timestamp(),
                    updated_at = clock_timestamp()
-               WHERE id = $1 AND status = 'pending'
-                 AND (run_after IS NULL OR run_after <= clock_timestamp())
-               RETURNING id"#,
+               FROM (
+                 SELECT bi.id
+                 FROM background_jobs bi
+                 WHERE bi.status = 'pending'
+                   AND (bi.run_after IS NULL OR bi.run_after <= clock_timestamp())
+                 ORDER BY bi.priority DESC, bi.created_at ASC
+                 FOR UPDATE SKIP LOCKED
+                 LIMIT 1
+               ) AS picked
+               WHERE b.id = picked.id
+                 AND b.status = 'pending'
+                 AND (b.run_after IS NULL OR b.run_after <= clock_timestamp())
+               RETURNING b.id, b.job_type, b.payload, b.created_by_user_id"#,
         )
-        .bind(&id)
         .fetch_optional(pool)
         .await
-        .ok()
-        .flatten();
+        .ok()??;
 
-        if claimed.is_none() {
-            budgets.release(&job_type);
+        let id: String = row.get("id");
+        let job_type: String = row.get("job_type");
+        let payload: serde_json::Value = row.get("payload");
+        let created_by: Option<String> = row
+            .try_get::<Option<String>, _>("created_by_user_id")
+            .ok()
+            .flatten();
+
+        if !budgets.try_acquire(&job_type) {
+            let _ = sqlx::query(
+                r#"UPDATE background_jobs
+                   SET status = 'pending',
+                       started_at = NULL,
+                       run_after = clock_timestamp() + interval '75 milliseconds',
+                       updated_at = clock_timestamp()
+                   WHERE id = $1 AND status = 'processing'"#,
+            )
+            .bind(&id)
+            .execute(pool)
+            .await;
             continue;
         }
-        return Some((id, job_type, payload));
+
+        return Some((id, job_type, payload, created_by));
     }
     None
 }
@@ -227,7 +267,9 @@ pub fn spawn_job_queue_worker(pool: PgPool, config: AppConfig) {
             tokio::time::sleep(Duration::from_millis(400)).await;
             let mut claimed_this_wake = 0u32;
             while claimed_this_wake < MAX_CLAIMS_PER_WAKE {
-                let Some((job_id, job_type, payload)) = try_claim_next(&pool, &budgets).await else {
+                let Some((job_id, job_type, payload, created_by_user_id)) =
+                    try_claim_next(&pool, &budgets).await
+                else {
                     break;
                 };
                 claimed_this_wake += 1;
@@ -247,7 +289,16 @@ pub fn spawn_job_queue_worker(pool: PgPool, config: AppConfig) {
                         job_type = %job_type_for_log,
                         "background job processing started"
                     );
-                    run_one_job(&pool, &client, gh_rate, job_id, job_type, payload).await;
+                    run_one_job(
+                        &pool,
+                        &client,
+                        gh_rate,
+                        job_id,
+                        job_type,
+                        payload,
+                        created_by_user_id,
+                    )
+                    .await;
                     debug!(
                         target: "jobs",
                         event = "jobs.job_done",
@@ -269,4 +320,3 @@ pub fn spawn_job_queue_worker(pool: PgPool, config: AppConfig) {
         }
     });
 }
-

@@ -12,8 +12,17 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 use cloudwrkz_api::AppConfig;
+use cloudwrkz_api::AppState;
 use cloudwrkz_api::auth::password;
 use cloudwrkz_api::build_http_app;
+
+fn test_app_state(pool: PgPool) -> AppState {
+    AppState::new(
+        pool,
+        test_config(std::env::var("DATABASE_URL").expect("DATABASE_URL set by sqlx::test")),
+        Instant::now(),
+    )
+}
 
 fn test_config(database_url: String) -> AppConfig {
     AppConfig {
@@ -40,6 +49,7 @@ fn test_config(database_url: String) -> AppConfig {
         github_anonymous_max_requests_per_hour: 60,
         job_queue_github_max_concurrent: 1,
         job_queue_github_min_start_interval_secs: None,
+        public_web_app_url: None,
     }
 }
 
@@ -132,22 +142,14 @@ async fn grant_permission(pool: &PgPool, user_id: &str, perm_key: &str) -> Resul
 
 #[sqlx::test(migrations = "./migrations")]
 async fn me_without_token_returns_401(pool: PgPool) {
-    let app = build_http_app(
-        pool.clone(),
-        test_config(std::env::var("DATABASE_URL").expect("DATABASE_URL set by sqlx::test")),
-        Instant::now(),
-    );
+    let app = build_http_app(test_app_state(pool.clone()));
     let res = app.oneshot(req_get("/api/v1/me")).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[sqlx::test(migrations = "./migrations")]
 async fn admin_statistics_without_token_returns_401(pool: PgPool) {
-    let app = build_http_app(
-        pool.clone(),
-        test_config(std::env::var("DATABASE_URL").expect("DATABASE_URL set by sqlx::test")),
-        Instant::now(),
-    );
+    let app = build_http_app(test_app_state(pool.clone()));
     let res = app
         .oneshot(req_get("/api/v1/admin/statistics"))
         .await
@@ -160,11 +162,7 @@ async fn me_with_valid_session_returns_200(pool: PgPool) {
     let token = seed_user_with_session(&pool, "me-test@example.com", "USER")
         .await
         .expect("seed");
-    let app = build_http_app(
-        pool.clone(),
-        test_config(std::env::var("DATABASE_URL").expect("DATABASE_URL set by sqlx::test")),
-        Instant::now(),
-    );
+    let app = build_http_app(test_app_state(pool.clone()));
     let res = app
         .oneshot(req_get_bearer("/api/v1/me", &token))
         .await
@@ -180,11 +178,7 @@ async fn admin_statistics_for_non_admin_returns_403(pool: PgPool) {
     let token = seed_user_with_session(&pool, "user-only@example.com", "USER")
         .await
         .expect("seed");
-    let app = build_http_app(
-        pool.clone(),
-        test_config(std::env::var("DATABASE_URL").expect("DATABASE_URL set by sqlx::test")),
-        Instant::now(),
-    );
+    let app = build_http_app(test_app_state(pool.clone()));
     let res = app
         .oneshot(req_get_bearer("/api/v1/admin/statistics", &token))
         .await
@@ -208,11 +202,7 @@ async fn list_permissions_with_explicit_grant_succeeds(pool: PgPool) {
         .await
         .expect("grant");
 
-    let app = build_http_app(
-        pool.clone(),
-        test_config(std::env::var("DATABASE_URL").expect("DATABASE_URL set by sqlx::test")),
-        Instant::now(),
-    );
+    let app = build_http_app(test_app_state(pool.clone()));
     let res = app
         .oneshot(req_get_bearer("/api/v1/admin/permissions", &token))
         .await
@@ -228,11 +218,7 @@ async fn ticket_create_idempotent_returns_same_ticket(pool: PgPool) {
     let token = seed_user_with_session(&pool, "idem-ticket@example.com", "USER")
         .await
         .expect("seed");
-    let app = build_http_app(
-        pool.clone(),
-        test_config(std::env::var("DATABASE_URL").expect("DATABASE_URL set by sqlx::test")),
-        Instant::now(),
-    );
+    let app = build_http_app(test_app_state(pool.clone()));
     let body = r#"{"title":"Idempotent ticket"}"#;
     let res1 = app
         .clone()
@@ -260,11 +246,7 @@ async fn concurrent_ticket_creates_get_distinct_numbers(pool: PgPool) {
     let token = seed_user_with_session(&pool, "conc-ticket@example.com", "USER")
         .await
         .expect("seed");
-    let app = Arc::new(build_http_app(
-        pool.clone(),
-        test_config(std::env::var("DATABASE_URL").expect("DATABASE_URL set by sqlx::test")),
-        Instant::now(),
-    ));
+    let app = Arc::new(build_http_app(test_app_state(pool.clone())));
     let t1 = token.clone();
     let app1 = app.clone();
     let h1 = tokio::spawn(async move {
@@ -295,11 +277,7 @@ async fn concurrent_ticket_creates_get_distinct_numbers(pool: PgPool) {
 
 #[sqlx::test(migrations = "./migrations")]
 async fn baseline_security_headers_on_responses(pool: PgPool) {
-    let app = build_http_app(
-        pool.clone(),
-        test_config(std::env::var("DATABASE_URL").expect("DATABASE_URL set by sqlx::test")),
-        Instant::now(),
-    );
+    let app = build_http_app(test_app_state(pool.clone()));
     let res = app.oneshot(req_get("/api/v1/ping")).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(

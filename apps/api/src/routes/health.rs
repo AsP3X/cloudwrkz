@@ -1,6 +1,6 @@
 use axum::{
     Json, Router,
-    extract::State,
+    extract::{FromRef, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::get,
@@ -18,34 +18,33 @@ const API_NAME: &str = "cloudwrkz-api";
 const API_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Unversioned health routes mounted at /api/ (outside v1 prefix).
-pub fn router(
-    pool: PgPool,
-    api_started_at: Instant,
-    api_nodes_available: u32,
-    api_region: Option<String>,
-    diagnostics_health_token: Option<String>,
-) -> Router {
+pub fn router() -> Router<super::AppState> {
     Router::new()
         .route("/api/health", get(health_check_legacy))
         .route("/api/health/detailed", get(health_detailed_legacy))
         .route("/api/ping", get(ping))
         .route("/api/ready", get(readiness))
-        .with_state(HealthRouterState {
-            pool,
-            api_started_at,
-            api_nodes_available,
-            api_region,
-            diagnostics_health_token,
-        })
 }
 
 #[derive(Clone)]
-struct HealthRouterState {
+pub(super) struct HealthRouterState {
     pool: PgPool,
     api_started_at: Instant,
     api_nodes_available: u32,
     api_region: Option<String>,
     diagnostics_health_token: Option<String>,
+}
+
+impl FromRef<super::AppState> for HealthRouterState {
+    fn from_ref(app: &super::AppState) -> Self {
+        Self {
+            pool: app.pool.clone(),
+            api_started_at: app.api_started_at,
+            api_nodes_available: app.config.api_nodes_available,
+            api_region: app.config.api_region.clone(),
+            diagnostics_health_token: app.config.diagnostics_health_token.clone(),
+        }
+    }
 }
 
 /// Health routes available under the v1 prefix for web client convenience.
