@@ -5,7 +5,11 @@ const STORAGE_KEY = "cloudwrkz:offline-mutation-queue";
 const MAX_QUEUED = 100;
 
 /** Same exclusions as server-side mutation polling: auth flows have their own UX. */
-const OFFLINE_QUEUE_EXCLUDED_PATHS = new Set(["/auth/login", "/auth/register"]);
+const OFFLINE_QUEUE_EXCLUDED_PATHS = new Set([
+  "/auth/login",
+  "/auth/register",
+  "/auth/qr-login/finalize",
+]);
 
 export type OfflineQueuedMutation = {
   id: string;

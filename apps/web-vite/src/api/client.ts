@@ -44,8 +44,17 @@ export class ApiError extends Error {
  * status URLs (`/auth/login/status/...`, `/auth/register/status/...`). They must not go
  * through mutation-job polling (GET /mutation-jobs/:id), or AuthProvider never gets the
  * 202 JSON and the login form cannot show the queued sign-in banner.
+ *
+ * POST /auth/qr-login/finalize is the same shape while the browser has no session yet;
+ * `QrLoginPanel` polls GET /auth/qr-login/finalize/status/{job_id} with `X-QR-Browser-Token`.
+ * Mutation-job polling would send GET /mutation-jobs/:id without a Bearer token and fail
+ * with 401, leaving the website stuck after the app approves the QR flow.
  */
-const MUTATION_JOB_POLL_EXCLUDED_PATHS = new Set(["/auth/login", "/auth/register"]);
+const MUTATION_JOB_POLL_EXCLUDED_PATHS = new Set([
+  "/auth/login",
+  "/auth/register",
+  "/auth/qr-login/finalize",
+]);
 
 /** API returned 202 when Postgres was briefly unreachable; same pattern as login/register. */
 interface MutationQueuedPayload {
