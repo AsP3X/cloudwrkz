@@ -16,12 +16,11 @@ struct LocationAutocompleteFieldView: View {
     @State private var suggestions: [LocationSuggestion] = []
     @State private var isLoading = false
     @State private var showSuggestions = false
-    @State private var task: Task<Void, Never>?
     private let debounceNanoseconds: UInt64 = 400_000_000
     private let minQueryLength = 3
 
     private var trimmedQuery: String {
-        text.trimmingCharacters(in: .whitespaces)
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     var body: some View {
@@ -34,9 +33,6 @@ struct LocationAutocompleteFieldView: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: 16, weight: .regular))
                     .foregroundStyle(CloudwrkzColors.neutral100)
-                    .onChange(of: text) { _, newValue in
-                        runDebounced(query: newValue)
-                    }
                 if isLoading {
                     CloudwrkzSpinner(tint: CloudwrkzColors.neutral500)
                         .scaleEffect(0.7)
@@ -47,7 +43,7 @@ struct LocationAutocompleteFieldView: View {
 
             if showSuggestions, !suggestions.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(suggestions) { suggestion in
+                    ForEach(Array(suggestions.enumerated()), id: \.offset) { _, suggestion in
                         Button {
                             select(suggestion)
                         } label: {
@@ -71,20 +67,17 @@ struct LocationAutocompleteFieldView: View {
                 .padding(.top, 4)
             }
         }
-    }
-
-    private func runDebounced(query: String) {
-        task?.cancel()
-        let t = query.trimmingCharacters(in: .whitespaces)
-        if t.count < minQueryLength {
-            suggestions = []
-            showSuggestions = false
-            return
-        }
-        task = Task {
+        .zIndex(showSuggestions && !suggestions.isEmpty ? 50 : 0)
+        .task(id: text) {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.count < minQueryLength {
+                suggestions = []
+                showSuggestions = false
+                return
+            }
             try? await Task.sleep(nanoseconds: debounceNanoseconds)
             guard !Task.isCancelled else { return }
-            await loadSuggestions(query: t)
+            await loadSuggestions(query: trimmed)
         }
     }
 
@@ -100,6 +93,7 @@ struct LocationAutocompleteFieldView: View {
             includeThirdPartySuggestions: includeThirdPartySuggestions
         )
         guard !Task.isCancelled else { return }
+        guard text.trimmingCharacters(in: .whitespacesAndNewlines) == query else { return }
         suggestions = result
         showSuggestions = !result.isEmpty
     }

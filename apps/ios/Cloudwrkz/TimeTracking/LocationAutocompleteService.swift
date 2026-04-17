@@ -13,14 +13,50 @@ struct LocationSuggestion: Identifiable {
     let displayLabel: String
 }
 
-/// Nominatim API response item (subset we use). Address decoded as dict for flexible keys.
-private struct NominatimItem: Decodable {
-    let place_id: Int
-    let display_name: String?
-    let address: [String: String]?
+/// Dynamic keys for Nominatim `address` object (mixed string/int values).
+private struct NominatimAddressKey: CodingKey {
+    var stringValue: String
+    init?(stringValue: String) { self.stringValue = stringValue }
+    var intValue: Int? { nil }
+    init?(intValue: Int) { nil }
 }
 
-/// Location history API response item (same shape as web).
+/// Nominatim API response item (subset we use). Address values may be strings or numbers in JSON.
+private struct NominatimItem: Decodable {
+    let place_id: Int64?
+    let display_name: String?
+    let address: [String: String]?
+
+    enum CodingKeys: String, CodingKey {
+        case place_id, display_name, address
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        place_id = try c.decodeIfPresent(Int64.self, forKey: .place_id)
+        display_name = try c.decodeIfPresent(String.self, forKey: .display_name)
+        if let nested = try? c.nestedContainer(keyedBy: NominatimAddressKey.self, forKey: .address) {
+            var out: [String: String] = [:]
+            for key in nested.allKeys {
+                if let s = try? nested.decode(String.self, forKey: key) {
+                    out[key.stringValue] = s
+                } else if let i = try? nested.decode(Int.self, forKey: key) {
+                    out[key.stringValue] = String(i)
+                }
+            }
+            address = out.isEmpty ? nil : out
+        } else {
+            address = nil
+        }
+    }
+}
+
+/// Rust API + web-vite: `GET .../location-history?q=` returns this envelope.
+private struct LocationHistoryEnvelope: Decodable {
+    let locations: [String]
+}
+
+/// Next.js `/api/location-history`: JSON array of suggestion-shaped rows.
 private struct HistoryItem: Decodable {
     let place_id: Int
     let display_name: String?
@@ -48,8 +84,8 @@ enum LocationAutocompleteService {
     }
 
     private static func get(_ address: [String: String], _ key: String) -> String? {
-        guard let v = address[key], !v.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
-        return v.trimmingCharacters(in: .whitespaces)
+        guard let v = address[key], !v.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return v.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Build display label from Nominatim address parts (matches web buildSuggestionLabel).
@@ -69,7 +105,7 @@ enum LocationAutocompleteService {
 
     /// Fetch combined suggestions: optional Nominatim + location history (Bearer). Deduplicated by display label.
     static func fetchSuggestions(config: ServerConfig, query: String, includeThirdPartySuggestions: Bool) async -> [LocationSuggestion] {
-        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count >= minQueryLength else { return [] }
 
         async let history = fetchLocationHistory(config: config, query: trimmed)
@@ -93,10 +129,11 @@ enum LocationAutocompleteService {
     }
 
     private static func fetchNominatim(query: String) async -> [LocationSuggestion] {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard var components = URLComponents(string: nominatimBase + "/search") else { return [] }
         components.queryItems = [
             URLQueryItem(name: "format", value: "json"),
-            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "q", value: trimmedQuery),
             URLQueryItem(name: "addressdetails", value: "1"),
             URLQueryItem(name: "limit", value: "10"),
             URLQueryItem(name: "dedupe", value: "1"),
@@ -106,10 +143,15 @@ enum LocationAutocompleteService {
         request.httpMethod = "GET"
         request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("Cloudwrkz iOS", forHTTPHeaderField: "User-Agent")
+        // OSM policy: identify the app (contact URL is acceptable for public Nominatim).
+        request.setValue(
+            "Cloudwrkz-iOS/1.0 (+https://github.com/AsP3X/cloudwrkz)",
+            forHTTPHeaderField: "User-Agent"
+        )
 
         do {
-            let (data, _) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return [] }
             let items = try JSONDecoder().decode([NominatimItem].self, from: data)
             return items.map { item in
                 let label = labelFromNominatim(displayName: item.display_name, address: item.address)
@@ -140,6 +182,9 @@ enum LocationAutocompleteService {
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return [] }
+            if let envelope = try? JSONDecoder().decode(LocationHistoryEnvelope.self, from: data) {
+                return envelope.locations.map { LocationSuggestion(displayLabel: $0) }
+            }
             let items = try JSONDecoder().decode([HistoryItem].self, from: data)
             return items.compactMap { item in
                 let name = item.display_name?.trimmingCharacters(in: .whitespaces) ?? ""

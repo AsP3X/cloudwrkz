@@ -87,6 +87,7 @@ struct EditTimeEntrySheet: View {
                     .padding(.top, 8)
                     .padding(.bottom, 40)
                 }
+                .scrollClipDisabled(true)
                 .overlay {
                     if isSaving {
                         savingOverlay
@@ -325,6 +326,7 @@ struct EditTimeEntrySheet: View {
             sectionLabel("Location")
             LocationAutocompleteFieldView(text: $location, placeholder: "e.g. Office, Remote, Home")
         }
+        .zIndex(8)
     }
 
     // MARK: - Tags

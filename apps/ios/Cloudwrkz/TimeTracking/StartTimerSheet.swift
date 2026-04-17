@@ -44,6 +44,7 @@ struct StartTimerSheet: View {
                     .padding(20)
                     .padding(.bottom, 32)
                 }
+                .scrollClipDisabled(true)
                 .scrollContentBackground(.hidden)
             }
             .navigationTitle("Start Timer")
