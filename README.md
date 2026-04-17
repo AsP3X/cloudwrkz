@@ -59,7 +59,7 @@ cp docker-compose.yml.example docker-compose.yml
 docker compose up -d
 ```
 
-Alternatively, use the example file directly: `docker compose -f docker-compose.yml.example up -d` (no `cp` needed).
+Alternatively, use the example file directly: `docker compose -f docker-compose.yml.example up -d` (no `cp` needed). The compose file must sit in the **clone root** (next to `apps/`). If you keep it in another directory, set `CLOUDWRKZ_REPO_ROOT` in `.env` to the absolute path of the clone.
 
 This starts:
 

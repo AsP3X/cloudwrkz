@@ -51,7 +51,7 @@ git clone <your-repo-url> Cloudwrkz
 cd Cloudwrkz
 ```
 
-**Docker Compose file:** the repo ships `docker-compose.yml.example`. From the repository root, either copy it once (`cp docker-compose.yml.example docker-compose.yml`) so plain `docker compose …` commands work, or pass `-f docker-compose.yml.example` on every command below.
+**Docker Compose file:** the repo ships `docker-compose.yml.example`. From the repository root, either copy it once (`cp docker-compose.yml.example docker-compose.yml`) so plain `docker compose …` commands work, or pass `-f docker-compose.yml.example` on every command below. Builds expect that directory to contain `apps/` and the rest of the monorepo; if the compose file lives elsewhere, set `CLOUDWRKZ_REPO_ROOT` in `.env` to the absolute path of the clone.
 
 ### Step 2.2 — Set up the database (PostgreSQL)
 

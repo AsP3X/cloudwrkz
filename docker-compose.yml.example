@@ -1,12 +1,16 @@
 # Example stack (API + Postgres + web-vite + pgAdmin). Usage:
 #   cp docker-compose.yml.example docker-compose.yml   # then: docker compose up -d
 # or: docker compose -f docker-compose.yml.example up -d
+#
+# This file is written for the monorepo root (directory that contains `apps/`, `Cargo.toml`,
+# `pnpm-workspace.yaml`). If you keep compose elsewhere, set CLOUDWRKZ_REPO_ROOT in `.env` to the
+# absolute path of that clone (e.g. CLOUDWRKZ_REPO_ROOT=/home/you/src/cloudwrkz).
 
 services:
   api:
     build:
-      context: apps/api
-      dockerfile: Dockerfile
+      context: ${CLOUDWRKZ_REPO_ROOT:-.}
+      dockerfile: apps/api/Dockerfile
     container_name: cloudwrkz-api
     restart: unless-stopped
     environment:
@@ -33,7 +37,7 @@ services:
 
   web-vite:
     build:
-      context: .
+      context: ${CLOUDWRKZ_REPO_ROOT:-.}
       dockerfile: apps/web-vite/Dockerfile
     image: cloudwrkz-web-vite:local
     container_name: cloudwrkz-web-vite
