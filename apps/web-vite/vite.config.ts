@@ -14,15 +14,16 @@ function parseAllowedHostList(raw: string | undefined): string[] {
 
 /**
  * Hostnames for `server.allowedHosts` (Vite 6+ DNS rebinding guard).
- * Prefer **`CLOUD_WRKZ_DEV_ALLOWED_HOSTS`** in Docker / `.env` — it is not `VITE_`-prefixed, so Vite’s
- * config pre-bundle does not strip or inline it the way it can for `process.env.VITE_*`.
- * `VITE_DEV_ALLOWED_HOSTS` is still read via `loadEnv` + bracket `process.env` as a legacy alias.
+ * Prefer **`CLOUD_WRKZ_DEV_ALLOWED_HOSTS`** in Docker / `.env` (comma-separated hosts). Uses bracket
+ * `process.env[...]` reads so the config bundle does not freeze values at image build time.
+ * `VITE_DEV_ALLOWED_HOSTS` remains a legacy alias via `loadEnv` + `process.env`.
  */
 function devAllowedHostsFromEnv(loadedEnv: Record<string, string>): string[] {
+  // Bracket keys so esbuild does not replace `process.env.FOO` while bundling vite.config.
   const pairs: [string | undefined, string | undefined][] = [
-    [process.env.CLOUD_WRKZ_DEV_ALLOWED_HOSTS, loadedEnv.CLOUD_WRKZ_DEV_ALLOWED_HOSTS],
+    [process.env["CLOUD_WRKZ_DEV_ALLOWED_HOSTS"], loadedEnv.CLOUD_WRKZ_DEV_ALLOWED_HOSTS],
     [process.env["VITE_DEV_ALLOWED_HOSTS"], loadedEnv.VITE_DEV_ALLOWED_HOSTS],
-    [process.env.__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS, loadedEnv.__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS],
+    [process.env["__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS"], loadedEnv.__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS],
   ];
   for (const [fromProcess, fromFile] of pairs) {
     const list = parseAllowedHostList(fromProcess ?? fromFile);
@@ -64,7 +65,7 @@ function attachProxyErrorHandler(proxy: any, routePrefix: string, upstreamName: 
 }
 
 /** Startup log + middleware so browser can send logs to the Vite terminal. */
-function cloudwrkzLogPlugin() {
+function cloudwrkzLogPlugin(allowedHostsFromEnv: string[]) {
   return {
     name: "cloudwrkz-log",
     configureServer(server: { middlewares: { use: (fn: (req: any, res: any, next: () => void) => void) => void } }) {
@@ -101,6 +102,16 @@ function cloudwrkzLogPlugin() {
       });
       return () => {
         const ts = new Date().toISOString();
+        const rawCloud = process.env["CLOUD_WRKZ_DEV_ALLOWED_HOSTS"]?.trim();
+        if (allowedHostsFromEnv.length > 0) {
+          console.log(
+            `${ts}  INFO  [web-vite] server.allowedHosts (from env): ${allowedHostsFromEnv.join(", ")}`
+          );
+        } else {
+          console.log(
+            `${ts}  INFO  [web-vite] server.allowedHosts (from env): (none) — Vite default host guard only; set CLOUD_WRKZ_DEV_ALLOWED_HOSTS for a public Host (raw CLOUD_WRKZ_DEV_ALLOWED_HOSTS=${rawCloud ? JSON.stringify(rawCloud) : "unset"})`
+          );
+        }
         console.log(
           `${ts}  INFO  [web-vite] CloudWrkz dev server ready — client errors will also appear here (POST ${DEV_LOG_PATH})`
         );
@@ -136,7 +147,7 @@ export default defineConfig(({ mode }) => {
   const extraAllowedHosts = devAllowedHostsFromEnv(env);
 
   return {
-    plugins: [react(), cloudwrkzLogPlugin()],
+    plugins: [react(), cloudwrkzLogPlugin(extraAllowedHosts)],
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),
@@ -145,7 +156,8 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       host: "0.0.0.0",
-      ...(extraAllowedHosts.length > 0 ? { allowedHosts: extraAllowedHosts } : {}),
+      // Always an array: Vite only appends `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS` when this is an array.
+      allowedHosts: [...extraAllowedHosts],
       proxy: {
         "/api": {
           target: apiProxyTarget,
