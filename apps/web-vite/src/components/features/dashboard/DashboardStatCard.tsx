@@ -57,7 +57,7 @@ export function DashboardStatCard({
 }: DashboardStatCardProps) {
   const styles = accentStyles[accent];
   const cardClass = cn(
-    "rounded-xl border bg-white/90 dark:bg-neutral-900/90 backdrop-blur-sm p-5 sm:p-6 transition-all duration-200",
+    "rounded-xl border border-white/25 bg-white/82 p-5 backdrop-blur-md transition-all duration-200 dark:border-white/10 dark:bg-neutral-950/55 sm:p-6",
     "hover:shadow-md",
     href && "cursor-pointer",
     className

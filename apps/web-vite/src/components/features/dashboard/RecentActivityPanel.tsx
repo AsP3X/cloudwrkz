@@ -30,16 +30,16 @@ export function RecentActivityPanel({
   return (
     <aside
       className={cn(
-        "rounded-2xl border border-neutral-200/60 dark:border-neutral-800/60 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-sm shadow-sm overflow-hidden",
+        "overflow-hidden rounded-2xl border border-white/25 bg-white/82 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-neutral-950/55",
         className
       )}
     >
-      <div className="p-4 sm:p-5 border-b border-neutral-200/60 dark:border-neutral-800/60">
+      <div className="border-b border-white/15 p-4 sm:p-5 dark:border-white/10">
         <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
           {title}
         </h2>
       </div>
-      <div className="divide-y divide-neutral-200/60 dark:divide-neutral-800/60">
+      <div className="divide-y divide-white/15 dark:divide-white/10">
         {sections.map((section) => (
           <div key={section.title} className="p-4 sm:p-5">
             <div className="flex items-center justify-between mb-3">

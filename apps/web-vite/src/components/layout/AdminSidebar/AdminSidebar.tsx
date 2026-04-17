@@ -109,7 +109,7 @@ export function AdminSidebar({
   canViewBackgroundJobs,
 }: AdminSidebarProps) {
   const pathname = useLocation().pathname;
-  const { isMobileOpen, setIsMobileOpen } = useSidebar();
+  const { isMobileOpen, setIsMobileOpen, toolbarCompact } = useSidebar();
   const enabledSet = new Set(enabledModuleKeys);
 
   const workItems = [
@@ -172,7 +172,7 @@ export function AdminSidebar({
     <>
       <aside
         className={cn(
-          "fixed top-0 left-0 z-40 h-screen w-64 bg-white dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800 transition-transform duration-300 ease-in-out",
+          "fixed top-0 left-0 z-40 h-screen w-64 bg-white/92 backdrop-blur-md transition-transform duration-300 ease-in-out dark:bg-neutral-950/90",
           "lg:translate-x-0",
           isMobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
@@ -180,7 +180,7 @@ export function AdminSidebar({
         {isMobileOpen && (
           <button
             onClick={() => setIsMobileOpen(false)}
-            className="lg:hidden fixed top-4 z-50 p-2 rounded-lg bg-white dark:bg-neutral-900 shadow-lg border border-neutral-200 dark:border-neutral-800"
+            className="lg:hidden fixed top-4 z-50 rounded-lg border border-white/20 bg-white/92 p-2 shadow-lg backdrop-blur-md dark:border-white/10 dark:bg-neutral-950/90"
             aria-label="Close sidebar"
             style={{ left: "calc(16rem + 1rem)" }}
           >
@@ -190,16 +190,33 @@ export function AdminSidebar({
           </button>
         )}
         <div className="flex flex-col h-full">
-          <div className="flex items-center h-16 px-6 border-b border-neutral-200 dark:border-neutral-800 gap-2">
-            <Link to={ROUTES.DASHBOARD} className="text-xl font-bold bg-gradient-to-r from-primary-600 to-secondary-600 bg-clip-text text-transparent">
+          <div
+            className={cn(
+              "flex items-center gap-2 border-b border-white/15 px-6 transition-[height,gap,padding] duration-300 ease-out dark:border-white/10",
+              toolbarCompact ? "h-12 gap-1.5 px-5" : "h-16 px-6",
+            )}
+          >
+            <Link
+              to={ROUTES.DASHBOARD}
+              className={cn(
+                "min-w-0 truncate font-bold bg-gradient-to-r from-primary-600 to-secondary-600 bg-clip-text text-transparent transition-[font-size] duration-300 ease-out",
+                toolbarCompact ? "text-lg" : "text-xl",
+              )}
+            >
               {APP_CONFIG.name}
             </Link>
-            <span className="px-2 py-0.5 text-xs font-medium rounded bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300">
+            <span
+              className={cn(
+                "shrink-0 rounded bg-primary-100 font-medium text-primary-700 transition-[font-size,padding] duration-300 ease-out dark:bg-primary-900 dark:text-primary-300",
+                toolbarCompact ? "px-1.5 py-0.5 text-[0.625rem]" : "px-2 py-0.5 text-xs",
+              )}
+            >
               Admin
             </span>
           </div>
 
-          <nav className="flex-1 px-4 py-6 space-y-4 overflow-y-auto scrollbar-sidebar">
+          <div className="flex min-h-0 flex-1 flex-col border-r border-white/20 dark:border-white/10">
+          <nav className="flex-1 space-y-4 overflow-y-auto px-4 py-6 scrollbar-sidebar">
             <Link
               to={ROUTES.DASHBOARD}
               onClick={() => setIsMobileOpen(false)}
@@ -247,7 +264,7 @@ export function AdminSidebar({
             )}
           </nav>
 
-          <div className="px-4 py-4 border-t border-neutral-200 dark:border-neutral-800">
+          <div className="border-t border-white/15 px-4 py-4 dark:border-white/10">
             <Link
               to={ROUTES.HOME}
               className="flex items-center gap-2 px-4 py-2 text-sm text-neutral-600 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
@@ -257,6 +274,7 @@ export function AdminSidebar({
               </svg>
               Back to Home
             </Link>
+          </div>
           </div>
         </div>
       </aside>

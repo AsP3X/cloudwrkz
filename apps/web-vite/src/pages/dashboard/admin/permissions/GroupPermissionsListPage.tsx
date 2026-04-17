@@ -74,7 +74,7 @@ export default function GroupPermissionsListPage() {
         </div>
       )}
 
-      <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50">
+      <div className="overflow-hidden rounded-xl border border-neutral-200/50 bg-white/80 shadow-soft-lg backdrop-blur-sm dark:border-neutral-800/50 dark:bg-neutral-900/80">
         <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex-1 w-full sm:max-w-md">

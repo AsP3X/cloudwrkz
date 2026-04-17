@@ -26,7 +26,7 @@ export type AdminStats = {
 };
 
 const cardBase =
-  "bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50";
+  "rounded-xl border border-white/25 bg-white/82 shadow-soft-lg backdrop-blur-md dark:border-white/10 dark:bg-neutral-950/55";
 
 export function AdminDashboard({ displayName }: { displayName: string }) {
   const { can } = useAuth();

@@ -21,7 +21,7 @@ export function MouseSpotlightSurface({ children, className, variant = "default"
   const isAbout = variant === "about";
 
   return (
-    <div className={cn("relative isolate min-h-0 overflow-hidden", className)}>
+    <div className={cn("relative isolate min-h-0", className)}>
       <OrganicNetworkCanvas variant={isContent ? "content" : "default"} />
       <div
         className={cn(
