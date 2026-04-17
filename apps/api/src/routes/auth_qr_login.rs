@@ -89,7 +89,15 @@ struct QrFinalizeBody {
 
 async fn qr_login_rate_limit_per_minute(pool: &sqlx::PgPool) -> i32 {
     let v: Option<i32> = sqlx::query_scalar(
-        r#"SELECT (value#>>'{}')::int FROM system_settings WHERE key = 'qr_login_requests_per_minute' LIMIT 1"#,
+        r#"SELECT CASE
+              WHEN jsonb_typeof(value) = 'number' THEN (value #>> '{}')::int
+              WHEN jsonb_typeof(value) = 'string' AND (value #>> '{}') ~ '^[0-9]+$'
+                THEN (value #>> '{}')::int
+              ELSE NULL
+            END
+            FROM system_settings
+            WHERE key = 'qr_login_requests_per_minute'
+            LIMIT 1"#,
     )
     .fetch_optional(pool)
     .await

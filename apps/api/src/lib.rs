@@ -237,7 +237,7 @@ fn build_cors(config: &AppConfig) -> CorsLayer {
 }
 
 /// Full HTTP stack (v1 + legacy health, security headers, CORS, trace, body limit) — used in production and tests.
-pub fn build_http_app(state: AppState) -> Router<AppState> {
+pub fn build_http_app(state: AppState) -> Router {
     let cors = build_cors(&state.config);
     let max_body = state.config.max_body_size;
     Router::new()
@@ -397,7 +397,10 @@ pub async fn run() {
 
     tracing::info!(event = "listen", addr = %addr, "Listening");
 
-    axum::serve(listener, app)
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
         .with_graceful_shutdown(shutdown_signal())
         .await
         .expect("Server error");

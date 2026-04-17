@@ -184,16 +184,39 @@ export function LoginForm({ initialError, disabled = false }: LoginFormProps) {
       {loginQueuedUi ? (
         <LoginQueuedBanner state={loginQueuedUi} className="mb-0 w-full min-h-[3rem]" />
       ) : (
-        <Button
-          type="submit"
-          variant="primary"
-          size="lg"
-          className="w-full"
-          loading={isSubmitting}
-          disabled={isSubmitting || disabled}
-        >
-          Sign In
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="submit"
+            variant="primary"
+            size="lg"
+            className="flex-1"
+            loading={isSubmitting}
+            disabled={isSubmitting || disabled}
+          >
+            Sign In
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            className="h-11 w-11 p-0"
+            onClick={() => setShowQrPanel((v) => !v)}
+            disabled={isSubmitting || disabled}
+            aria-label="Sign in with QR code"
+            title="Sign in with QR code"
+          >
+            <svg
+              className="h-5 w-5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              aria-hidden
+            >
+              <path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 14h2v2h-2zM14 18h2v2h-2zM18 18h2v2h-2z" />
+            </svg>
+          </Button>
+        </div>
       )}
 
       <p className="text-center text-sm text-neutral-600 dark:text-neutral-400">
@@ -206,22 +229,11 @@ export function LoginForm({ initialError, disabled = false }: LoginFormProps) {
         </Link>
       </p>
 
-      <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4">
-        {!showQrPanel ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="md"
-            className="w-full"
-            onClick={() => setShowQrPanel(true)}
-            disabled={isSubmitting || disabled || Boolean(loginQueuedUi)}
-          >
-            Sign in with QR code
-          </Button>
-        ) : (
+      {showQrPanel ? (
+        <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4">
           <QrLoginPanel onClose={() => setShowQrPanel(false)} />
-        )}
-      </div>
+        </div>
+      ) : null}
     </form>
   );
 }
