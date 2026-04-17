@@ -28,7 +28,7 @@ pub fn router() -> Router<AppState> {
         .route("/admin/db-tables", get(db_tables))
         .route("/admin/db-row", post(db_row_update).delete(db_row_delete))
         .route("/admin/purge-deleted-accounts", post(purge_deleted))
-        .route("/admin/users", get(list_users))
+        .route("/admin/users", get(list_users).post(create_user))
         .route(
             "/admin/users/{id}",
             get(get_user).patch(update_user).delete(delete_user),
@@ -1013,6 +1013,127 @@ async fn list_users(
         .collect();
 
     Ok(Json(serde_json::json!({ "users": users, "total": total })))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateUserRequest {
+    email: String,
+    name: Option<String>,
+    password: String,
+    role: String,
+    status: String,
+}
+
+async fn create_user(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    headers: HeaderMap,
+    Json(body): Json<CreateUserRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if user.role != "ADMIN" && user.role != "MODERATOR" {
+        return Err(AppError::forbidden("Admin access required"));
+    }
+    if user.role != "ADMIN"
+        && !check_permission(&state.pool, &user.id, "admin.users.create").await
+    {
+        return Err(AppError::forbidden("You do not have permission to create users"));
+    }
+
+    let email = body.email.trim().to_lowercase();
+    if email.is_empty() || !email.contains('@') {
+        return Err(AppError::bad_request("Invalid email address"));
+    }
+
+    let password = body.password.trim();
+    if password.len() < 8 {
+        return Err(AppError::bad_request(
+            "Password must be at least 8 characters",
+        ));
+    }
+
+    let role = body.role.to_uppercase();
+    if !matches!(
+        role.as_str(),
+        "USER" | "AGENT" | "ADMIN" | "MODERATOR"
+    ) {
+        return Err(AppError::bad_request("Invalid role"));
+    }
+
+    let status = body.status.to_uppercase();
+    if !matches!(
+        status.as_str(),
+        "ACTIVE" | "PENDING" | "SUSPENDED" | "BANNED"
+    ) {
+        return Err(AppError::bad_request("Invalid status"));
+    }
+
+    let existing: Option<String> = sqlx::query_scalar(
+        "SELECT id FROM users WHERE lower(email) = lower($1)",
+    )
+    .bind(&email)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    if existing.is_some() {
+        return Err(AppError::bad_request(
+            "User with this email already exists",
+        ));
+    }
+
+    let name_trimmed = body
+        .name
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let email_verified = status == "ACTIVE";
+    let hash = password::hash_password(password).map_err(|e| AppError::internal(e.to_string()))?;
+    let user_id = crate::id::new_cuid();
+
+    sqlx::query(
+        r#"INSERT INTO users (id, email, name, password, role, status, email_verified,
+              timezone, theme, locale, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5::"Role", $6::"UserStatus", $7, 'UTC', 'system', 'en', NOW(), NOW())"#,
+    )
+    .bind(&user_id)
+    .bind(&email)
+    .bind(name_trimmed.as_ref())
+    .bind(&hash)
+    .bind(&role)
+    .bind(&status)
+    .bind(email_verified)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| {
+        if let sqlx::Error::Database(ref db) = e {
+            if db.code().as_deref() == Some("23505") {
+                return AppError::bad_request("User with this email already exists");
+            }
+        }
+        e.into()
+    })?;
+
+    audit::write_audit_log(
+        &state.pool,
+        WriteAuditParams {
+            user_id: Some(user.id),
+            action: "admin.users.create".into(),
+            resource_type: Some("user".into()),
+            resource_id: Some(user_id.clone()),
+            context: Some(serde_json::json!({
+                "email": email,
+                "role": role,
+                "status": status,
+            })),
+            ip_address: audit::client_ip_from_headers(&headers),
+            user_agent: headers
+                .get(axum::http::header::USER_AGENT)
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string()),
+        },
+    );
+
+    Ok(Json(serde_json::json!({ "id": user_id, "success": true })))
 }
 
 async fn get_user(

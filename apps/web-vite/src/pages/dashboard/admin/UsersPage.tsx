@@ -50,6 +50,7 @@ export default function UsersPage() {
   const [roleFilter, setRoleFilter] = useState(searchParams.get("role") || "");
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createUserError, setCreateUserError] = useState<string | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [banDialogOpen, setBanDialogOpen] = useState(false);
@@ -137,12 +138,18 @@ export default function UsersPage() {
 
   const handleCreate = async (data: { email: string; name?: string; password: string; role: string; status: string }) => {
     setIsLoading(true);
+    setCreateUserError(null);
     try {
       await api.post("/admin/users", data);
       setCreateDialogOpen(false);
       fetchUsers();
-    } catch { /* ignore */ }
-    setIsLoading(false);
+    } catch (e) {
+      setCreateUserError(
+        e instanceof ApiError ? e.message : "Could not create user. Try again.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleEdit = async (
@@ -286,7 +293,13 @@ export default function UsersPage() {
             Manage all system users ({total} total)
           </p>
         </div>
-        <Button variant="primary" onClick={() => setCreateDialogOpen(true)}>
+        <Button
+          variant="primary"
+          onClick={() => {
+            setCreateUserError(null);
+            setCreateDialogOpen(true);
+          }}
+        >
           Create User
         </Button>
       </div>
@@ -467,9 +480,13 @@ export default function UsersPage() {
 
       <UserCreateDialog
         open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
+        onOpenChange={(open) => {
+          setCreateDialogOpen(open);
+          if (!open) setCreateUserError(null);
+        }}
         onSubmit={handleCreate}
         isLoading={isLoading}
+        submitError={createUserError}
       />
       {selectedUser && (
         <>
@@ -516,11 +533,12 @@ export default function UsersPage() {
   );
 }
 
-function UserCreateDialog({ open, onOpenChange, onSubmit, isLoading }: {
+function UserCreateDialog({ open, onOpenChange, onSubmit, isLoading, submitError }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (data: { email: string; name?: string; password: string; role: string; status: string }) => void;
+  onSubmit: (data: { email: string; name?: string; password: string; role: string; status: string }) => void | Promise<void>;
   isLoading: boolean;
+  submitError: string | null;
 }) {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -530,12 +548,17 @@ function UserCreateDialog({ open, onOpenChange, onSubmit, isLoading }: {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({ email, name: name || undefined, password, role, status });
+    void onSubmit({ email, name: name || undefined, password, role, status });
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange} title="Create User" description="Create a new system user">
       <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        {submitError ? (
+          <div className="p-3 rounded-lg bg-error-50 dark:bg-error-950/80 border border-error-200/80 dark:border-error-800/80 text-error-700 dark:text-error-300 text-sm">
+            {submitError}
+          </div>
+        ) : null}
         <Input label="Email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
         <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} />
         <Input label="Password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
@@ -550,7 +573,7 @@ function UserCreateDialog({ open, onOpenChange, onSubmit, isLoading }: {
           { value: "PENDING", label: "Pending" },
         ]} value={status} onChange={(e) => setStatus(e.target.value)} />
         <div className="flex items-center justify-end gap-3 pt-4 border-t border-neutral-200 dark:border-neutral-800">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>Cancel</Button>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>Cancel</Button>
           <Button type="submit" variant="primary" loading={isLoading}>Create User</Button>
         </div>
       </form>
