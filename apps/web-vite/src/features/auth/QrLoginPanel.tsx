@@ -4,6 +4,7 @@ import { api, ApiError } from "@/api/client";
 import { ROUTES } from "@/lib/constants/routes";
 
 const POLL_INTERVAL_MS = 1200;
+const QR_VALIDITY_MS = 5 * 60 * 1000;
 
 type QrLoginPanelProps = {
   onClose?: () => void;
@@ -41,7 +42,12 @@ export function QrLoginPanel({ onClose }: QrLoginPanelProps) {
   const [qrPayload, setQrPayload] = React.useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = React.useState<string | null>(null);
   const [isDarkMode, setIsDarkMode] = React.useState(false);
+  const [entered, setEntered] = React.useState(false);
+  const [scanAnimating, setScanAnimating] = React.useState(false);
+  const [isClosing, setIsClosing] = React.useState(false);
+  const [reloadKey, setReloadKey] = React.useState(0);
   const [expiresAt, setExpiresAt] = React.useState<number | null>(null);
+  const [remainingMs, setRemainingMs] = React.useState<number>(QR_VALIDITY_MS);
   const pollTimer = React.useRef<number | null>(null);
   const finalizeTimer = React.useRef<number | null>(null);
 
@@ -55,6 +61,20 @@ export function QrLoginPanel({ onClose }: QrLoginPanelProps) {
       finalizeTimer.current = null;
     }
   }, []);
+
+  React.useEffect(() => {
+    const raf = window.requestAnimationFrame(() => setEntered(true));
+    return () => window.cancelAnimationFrame(raf);
+  }, []);
+
+  const handleClose = React.useCallback(() => {
+    if (!onClose || isClosing) return;
+    setIsClosing(true);
+    setEntered(false);
+    window.setTimeout(() => {
+      onClose();
+    }, 280);
+  }, [isClosing, onClose]);
 
   React.useEffect(() => {
     const root = document.documentElement;
@@ -93,6 +113,13 @@ export function QrLoginPanel({ onClose }: QrLoginPanelProps) {
       cancelled = true;
     };
   }, [isDarkMode, qrPayload]);
+
+  React.useEffect(() => {
+    if (!qrDataUrl || status !== "scanning") return;
+    setScanAnimating(true);
+    const timeout = window.setTimeout(() => setScanAnimating(false), 1700);
+    return () => window.clearTimeout(timeout);
+  }, [qrDataUrl, status]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -181,10 +208,13 @@ export function QrLoginPanel({ onClose }: QrLoginPanelProps) {
       cancelled = true;
       clearTimers();
     };
-  }, [clearTimers]);
+  }, [clearTimers, reloadKey]);
 
   React.useEffect(() => {
     if (!expiresAt || status !== "scanning") return;
+    const tick = () => setRemainingMs(Math.max(0, expiresAt - Date.now()));
+    tick();
+    const interval = window.setInterval(tick, 1000);
     const msLeft = expiresAt - Date.now();
     if (msLeft <= 0) {
       clearTimers();
@@ -195,7 +225,10 @@ export function QrLoginPanel({ onClose }: QrLoginPanelProps) {
       clearTimers();
       setStatus("expired");
     }, msLeft);
-    return () => window.clearTimeout(timeout);
+    return () => {
+      window.clearInterval(interval);
+      window.clearTimeout(timeout);
+    };
   }, [clearTimers, expiresAt, status]);
 
   let content: React.ReactNode;
@@ -213,10 +246,23 @@ export function QrLoginPanel({ onClose }: QrLoginPanelProps) {
     );
   } else if (status === "expired") {
     content = (
-      <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950 p-4">
-        <p className="text-sm text-neutral-700 dark:text-neutral-300">
-          This QR code has expired. Close this panel and request a new one.
-        </p>
+      <div className="flex min-h-[220px] items-center justify-center">
+        <button
+          type="button"
+          onClick={() => {
+            clearTimers();
+            setErrorMessage(null);
+            setQrPayload(null);
+            setQrDataUrl(null);
+            setExpiresAt(null);
+            setRemainingMs(QR_VALIDITY_MS);
+            setStatus("loading");
+            setReloadKey((k) => k + 1);
+          }}
+          className="inline-flex items-center justify-center rounded-md bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600"
+        >
+          Refresh QR code
+        </button>
       </div>
     );
   } else if (status === "success") {
@@ -228,23 +274,66 @@ export function QrLoginPanel({ onClose }: QrLoginPanelProps) {
       </div>
     );
   } else {
+    const remainingSeconds = Math.ceil(remainingMs / 1000);
+    const mm = Math.floor(remainingSeconds / 60)
+      .toString()
+      .padStart(2, "0");
+    const ss = (remainingSeconds % 60).toString().padStart(2, "0");
+    const progressRatio = Math.min(1, Math.max(0, remainingMs / QR_VALIDITY_MS));
+    const lowTime = remainingSeconds <= 60;
     content = (
       <div className="space-y-3">
         <p className="text-xs text-neutral-600 dark:text-neutral-400">
           Scan this QR code with the Cloudwrkz app (Profile menu -&gt; Login with QR code).
         </p>
         {qrPayload && qrDataUrl ? (
-          <div className="rounded-lg border border-neutral-300 dark:border-neutral-700 p-3">
+          <div className="relative overflow-hidden rounded-lg border border-neutral-300 dark:border-neutral-700 p-3">
             <img src={qrDataUrl} alt="QR code sign in" className="mx-auto h-52 w-52" />
+            {scanAnimating ? (
+              <div className="pointer-events-none absolute inset-3 overflow-hidden rounded">
+                <div className="qr-scan-line absolute left-0 right-0 h-10" />
+              </div>
+            ) : null}
           </div>
         ) : null}
+        <div className="space-y-2">
+          <div className="relative h-8 w-full overflow-hidden rounded-full border border-neutral-300 bg-neutral-200 dark:border-neutral-700 dark:bg-neutral-800">
+            <div
+              className={`h-full rounded-full transition-[width] duration-1000 ease-linear ${
+                lowTime ? "bg-amber-500" : "bg-primary-500"
+              }`}
+              style={{ width: `${progressRatio * 100}%` }}
+            />
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <p
+                className={`text-xs font-semibold tabular-nums tracking-wide ${
+                  lowTime
+                    ? "text-amber-900 dark:text-amber-200 animate-pulse"
+                    : "text-neutral-800 dark:text-neutral-100"
+                }`}
+              >
+                QR code expires in {mm}:{ss}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
-      <div className="w-full max-w-md rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 shadow-xl">
+    <div
+      className={`fixed inset-0 z-50 flex items-center justify-center px-4 backdrop-blur-sm transition-all duration-300 ease-out ${
+        entered ? "bg-black/40 opacity-100" : "bg-black/0 opacity-0"
+      }`}
+    >
+      <div
+        className={`w-full max-w-md rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 shadow-xl transition-all duration-300 ease-out ${
+          entered
+            ? "translate-y-0 scale-100 rotate-0 opacity-100"
+            : "translate-y-4 scale-90 -rotate-1 opacity-0"
+        }`}
+      >
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
             Sign in with QR code
@@ -252,7 +341,7 @@ export function QrLoginPanel({ onClose }: QrLoginPanelProps) {
           {onClose ? (
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="rounded-md p-1 text-neutral-500 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
               aria-label="Close QR dialog"
             >
@@ -269,6 +358,53 @@ export function QrLoginPanel({ onClose }: QrLoginPanelProps) {
           ) : null}
         </div>
         {content}
+        <style>{`
+          @keyframes qr-scan-pass {
+            0% {
+              transform: translateY(-48px);
+              opacity: 0;
+            }
+            8% {
+              opacity: 1;
+            }
+            92% {
+              opacity: 1;
+            }
+            100% {
+              transform: translateY(230px);
+              opacity: 0;
+            }
+          }
+          .qr-scan-line {
+            animation: qr-scan-pass 1.7s ease-in-out forwards;
+            background:
+              linear-gradient(
+                to bottom,
+                rgba(255, 255, 255, 0) 0%,
+                rgba(255, 255, 255, 0.45) 32%,
+                rgba(255, 255, 255, 0.95) 50%,
+                rgba(255, 255, 255, 0.45) 68%,
+                rgba(255, 255, 255, 0) 100%
+              );
+            box-shadow:
+              0 0 18px rgba(255, 255, 255, 0.55),
+              0 0 2px rgba(255, 255, 255, 0.95);
+          }
+          .dark .qr-scan-line {
+            background:
+              linear-gradient(
+                to bottom,
+                rgba(147, 197, 253, 0) 0%,
+                rgba(147, 197, 253, 0.35) 32%,
+                rgba(191, 219, 254, 0.95) 50%,
+                rgba(147, 197, 253, 0.35) 68%,
+                rgba(147, 197, 253, 0) 100%
+              );
+            box-shadow:
+              0 0 20px rgba(147, 197, 253, 0.45),
+              0 0 3px rgba(191, 219, 254, 0.85);
+          }
+        `}</style>
       </div>
     </div>
   );
