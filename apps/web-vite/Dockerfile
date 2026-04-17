@@ -1,8 +1,9 @@
 # Dev image: Node (Vite) + bundled `cloudwrkz-cli` (same container as the web dev server).
 # Build from repository root: `docker build -f apps/web-vite/Dockerfile .`
 #
-# Compose mounts the repo at /workspace and runs `pnpm --filter web-vite dev`. Run the CLI with:
-#   docker compose exec web-vite cloudwrkz-cli --help
+# `pnpm install --frozen-lockfile` runs at image build time. Compose should not bind-mount `.` over
+# `/workspace` or it will replace `node_modules` from the image. Rebuild after lockfile or dependency changes.
+# Run the CLI with: `docker compose exec web-vite cloudwrkz-cli --help`
 # Use DATABASE_URL=postgresql://cloudwrkz:...@postgres:5432/cloudwrkz (service hostname `postgres`).
 
 FROM rust:1.88-slim-bookworm AS rust-builder
@@ -28,7 +29,12 @@ COPY --from=rust-builder /build/target/release/cloudwrkz-cli /usr/local/bin/clou
 
 WORKDIR /workspace
 
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/web apps/web
+COPY apps/web-vite apps/web-vite
+
+RUN pnpm install --frozen-lockfile
+
 EXPOSE 5173
 
-# Compose overrides with the same command; keeps `docker run` usable without a compose file.
-CMD ["sh", "-c", "cd /workspace && pnpm install && pnpm --filter web-vite dev"]
+CMD ["pnpm", "--filter", "web-vite", "dev"]
