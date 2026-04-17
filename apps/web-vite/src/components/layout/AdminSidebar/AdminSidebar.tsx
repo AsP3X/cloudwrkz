@@ -141,6 +141,12 @@ export function AdminSidebar({
     canViewBackgroundJobs && { name: "Jobs", href: ROUTES.ADMIN_BACKGROUND_JOBS, icon: QueueIcon },
   ].filter(Boolean) as { name: string; href: string; icon: () => JSX.Element }[];
 
+  const hrefIsActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+
+  const userMgmtHasActive = userMgmtItems.some((item) => hrefIsActive(item.href));
+  const permissionsHasActive = permissionsItems.some((item) => hrefIsActive(item.href));
+  const systemHasActive = systemItems.some((item) => hrefIsActive(item.href));
+
   const NavLink = ({ item, icon: Icon }: { item: { name: string; href: string }; icon: () => JSX.Element }) => {
     const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
     return (
@@ -217,7 +223,7 @@ export function AdminSidebar({
             )}
 
             {userMgmtItems.length > 0 && (
-              <CollapsibleNavSection title="User Management" icon={<UsersIcon />} defaultExpanded>
+              <CollapsibleNavSection title="User Management" icon={<UsersIcon />} defaultExpanded={userMgmtHasActive}>
                 {userMgmtItems.map((item) => (
                   <NavLink key={item.href} item={item} icon={item.icon} />
                 ))}
@@ -225,7 +231,7 @@ export function AdminSidebar({
             )}
 
             {permissionsItems.length > 0 && (
-              <CollapsibleNavSection title="Permissions" icon={<SettingsIcon />} defaultExpanded={false}>
+              <CollapsibleNavSection title="Permissions" icon={<SettingsIcon />} defaultExpanded={permissionsHasActive}>
                 {permissionsItems.map((item) => (
                   <NavLink key={item.href} item={item} icon={item.icon} />
                 ))}
@@ -233,7 +239,7 @@ export function AdminSidebar({
             )}
 
             {systemItems.length > 0 && (
-              <CollapsibleNavSection title="System" icon={<CubeIcon />} defaultExpanded={pathname.startsWith("/dashboard/admin")}>
+              <CollapsibleNavSection title="System" icon={<CubeIcon />} defaultExpanded={systemHasActive}>
                 {systemItems.map((item) => (
                   <NavLink key={item.href} item={item} icon={item.icon} />
                 ))}

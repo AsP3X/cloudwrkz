@@ -120,14 +120,12 @@ type NavSection = {
   readonly title: string;
   readonly icon: () => JSX.Element;
   readonly items: ReadonlyArray<NavItem>;
-  readonly defaultExpanded?: boolean;
 };
 
 const NAV_SECTIONS = Object.freeze([
   Object.freeze({
     title: "Work",
     icon: TicketsIcon,
-    defaultExpanded: true,
     items: Object.freeze([
       Object.freeze({
         name: "Tickets",
@@ -148,7 +146,6 @@ const NAV_SECTIONS = Object.freeze([
   Object.freeze({
     title: "Time tracking",
     icon: TimeTrackingIcon,
-    defaultExpanded: true,
     items: Object.freeze([
       Object.freeze({
         name: "My time",
@@ -161,7 +158,6 @@ const NAV_SECTIONS = Object.freeze([
   Object.freeze({
     title: "Personal",
     icon: SettingsIcon,
-    defaultExpanded: true,
     items: Object.freeze([
       Object.freeze({
         name: "My statistics",
@@ -309,7 +305,7 @@ export const DashboardSidebar = ({
                   key={`section-${sectionIndex}-${section.title}`}
                   title={section.title}
                   icon={<SectionIcon />}
-                  defaultExpanded={section.defaultExpanded ?? hasActiveItem}
+                  defaultExpanded={section.title === "Work" || hasActiveItem}
                 >
                   {section.items.map((item, itemIndex) => {
                     const isActive =
