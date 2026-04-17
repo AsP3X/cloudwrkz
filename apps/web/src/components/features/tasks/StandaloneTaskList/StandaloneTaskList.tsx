@@ -125,7 +125,7 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, showBulkSelect 
     setMounted(true);
   }, []);
 
-  const handleToggleComplete = async (task: StandaloneTask) => {
+  const handleToggleComplete = React.useCallback(async (task: StandaloneTask) => {
     const nextStatus = task.status === "COMPLETED" ? "IN_PROGRESS" : "COMPLETED";
     try {
       await updateTodo(task.id, {
@@ -135,7 +135,7 @@ export const StandaloneTaskList = ({ tasks, viewMode, canManage, showBulkSelect 
     } catch (error) {
       // Errors are logged server-side; we keep UI simple here
     }
-  };
+  }, [router]);
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>, taskId: string) => {
     setDraggedTaskId(taskId);

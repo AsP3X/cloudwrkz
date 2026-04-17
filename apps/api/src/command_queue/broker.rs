@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use axum::http::StatusCode;
 use sqlx::PgPool;
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{Mutex, mpsc, oneshot};
 
 use crate::error::AppError;
 
@@ -147,10 +147,7 @@ impl MutationBroker {
                 res
             });
 
-        let job = Job {
-            fut,
-            done: done_tx,
-        };
+        let job = Job { fut, done: done_tx };
 
         let sender = self.sender_for_shard(shard).await?;
         sender
@@ -167,13 +164,7 @@ impl MutationBroker {
                 if let Some(ref ik) = ctx.idempotency_key {
                     if !ik.trim().is_empty() {
                         self.idempotency
-                            .put(
-                                &ctx.user_id,
-                                ik,
-                                &ctx.route,
-                                ctx.body_hash,
-                                ok.clone(),
-                            )
+                            .put(&ctx.user_id, ik, &ctx.route, ctx.body_hash, ok.clone())
                             .await;
                     }
                 }

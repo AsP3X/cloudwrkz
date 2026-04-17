@@ -62,6 +62,7 @@ function DashboardLayoutContent() {
           canViewAuditLog={can("audit.view")}
           canViewDbConsole={can("admin.db.view")}
           canManageSettings={can("admin.settings.manage")}
+          canViewBackgroundJobs={can("admin.jobs.view")}
         />
         <DashboardHeader user={user} />
       </>

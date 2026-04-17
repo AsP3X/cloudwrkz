@@ -30,14 +30,13 @@ pub fn generate_raw_token() -> String {
 }
 
 pub async fn fetch_stored_hash(pool: &PgPool) -> Option<String> {
-    let row: Option<String> = sqlx::query_scalar(
-        r#"SELECT value #>> '{}' FROM system_settings WHERE key = $1 LIMIT 1"#,
-    )
-    .bind(SETTINGS_KEY)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten();
+    let row: Option<String> =
+        sqlx::query_scalar(r#"SELECT value #>> '{}' FROM system_settings WHERE key = $1 LIMIT 1"#)
+            .bind(SETTINGS_KEY)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
     row.filter(|s| !s.is_empty())
 }
 

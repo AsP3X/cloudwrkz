@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { api } from "@/api/client";
 import { formatDate } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
+import { isYouTubeUrl } from "@/lib/utils/links";
 
 function validateUrl(url: string): boolean {
   if (!url || typeof url !== "string") return false;
@@ -28,11 +29,6 @@ function formatLinkUrl(url: string): string {
   const trimmed = url.trim();
   if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
   return `https://${trimmed}`;
-}
-
-function isYouTubeUrl(url: string): boolean {
-  if (!url) return false;
-  return /(youtube\.com|youtu\.be)/i.test(url.toLowerCase());
 }
 
 interface AddLinkDialogProps {

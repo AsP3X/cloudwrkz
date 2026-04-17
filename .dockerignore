@@ -1,0 +1,15 @@
+# Build context is usually the repository root (e.g. `apps/web-vite` dev image + CLI).
+# Does not apply to `docker compose` builds that use `context: apps/api` (API image).
+
+.git/
+.github/
+.cursor/
+
+**/target/
+**/node_modules/
+
+apps/web/.next/
+apps/web/out/
+apps/web-vite/dist/
+
+apps/ios/

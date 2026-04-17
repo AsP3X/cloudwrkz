@@ -26,6 +26,7 @@ scraper = "0.22"
 url = "2"
 sysinfo = { version = "0.32", default-features = false, features = ["system", "disk"] }
 hostname = "0.4"
+regex = "1"
 
 [dev-dependencies]
 http-body-util = "0.1"

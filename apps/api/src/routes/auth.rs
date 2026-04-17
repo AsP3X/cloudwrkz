@@ -1,22 +1,22 @@
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{get, post},
-    Json, Router,
 };
 use chrono::Utc;
 use sqlx::Row;
 use tracing::{info, warn};
 
 use crate::audit::{self, WriteAuditParams};
-use crate::auth::extractors::{extract_token_from_headers, AuthUser};
-use crate::auth::login_queue::{spawn_login_retry, LoginJobStatusResponse, PendingLoginPayload};
+use crate::auth::extractors::{AuthUser, extract_token_from_headers};
+use crate::auth::login_queue::{LoginJobStatusResponse, PendingLoginPayload, spawn_login_retry};
 use crate::auth::password::{hash_password, verify_password};
-use crate::auth::session::generate_token;
 use crate::auth::register_queue::{
-    new_job_id, spawn_register_retry, PendingRegisterPayload, RegisterJobStatusResponse,
+    PendingRegisterPayload, RegisterJobStatusResponse, new_job_id, spawn_register_retry,
 };
+use crate::auth::session::generate_token;
 use crate::error::AppError;
 use crate::models::user::*;
 use crate::routes::AppState;
@@ -32,16 +32,17 @@ pub fn router() -> Router<AppState> {
         .route("/auth/extend-session", post(extend_session))
 }
 
-fn audit_ip_and_agent(headers: &HeaderMap, body_user_agent: &Option<String>) -> (Option<String>, Option<String>) {
+fn audit_ip_and_agent(
+    headers: &HeaderMap,
+    body_user_agent: &Option<String>,
+) -> (Option<String>, Option<String>) {
     let ip = audit::client_ip_from_headers(headers);
-    let ua = body_user_agent
-        .clone()
-        .or_else(|| {
-            headers
-                .get("user-agent")
-                .and_then(|v| v.to_str().ok())
-                .map(String::from)
-        });
+    let ua = body_user_agent.clone().or_else(|| {
+        headers
+            .get("user-agent")
+            .and_then(|v| v.to_str().ok())
+            .map(String::from)
+    });
     (ip, ua)
 }
 
@@ -54,7 +55,11 @@ async fn login(
     let email = body.email.to_lowercase().trim().to_string();
     info!(event = "auth.login", path = "/auth/login", email = %email, "auth request");
     if email.is_empty() || body.password.is_empty() {
-        warn!(event = "auth.login.fail", path = "/auth/login", "invalid email or password (empty)");
+        warn!(
+            event = "auth.login.fail",
+            path = "/auth/login",
+            "invalid email or password (empty)"
+        );
         audit::write_audit_log(
             &state.pool,
             WriteAuditParams {
@@ -210,10 +215,11 @@ async fn logout(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let (ip, user_agent) = audit_ip_and_agent(&headers, &None::<String>);
     if let Some(token) = crate::auth::extractors::extract_token_from_headers(&headers) {
-        let user_id: Option<String> = sqlx::query_scalar("SELECT user_id FROM sessions WHERE token = $1")
-            .bind(&token)
-            .fetch_optional(&state.pool)
-            .await?;
+        let user_id: Option<String> =
+            sqlx::query_scalar("SELECT user_id FROM sessions WHERE token = $1")
+                .bind(&token)
+                .fetch_optional(&state.pool)
+                .await?;
         let _ = sqlx::query("DELETE FROM sessions WHERE token = $1")
             .bind(&token)
             .execute(&state.pool)
@@ -286,12 +292,22 @@ async fn change_password(
     let (device_name, device_type, device_os, device_browser, user_agent, ip_address) =
         if let Some(ref row) = prev {
             (
-                row.try_get::<Option<String>, _>("device_name").ok().flatten(),
-                row.try_get::<Option<String>, _>("device_type").ok().flatten(),
+                row.try_get::<Option<String>, _>("device_name")
+                    .ok()
+                    .flatten(),
+                row.try_get::<Option<String>, _>("device_type")
+                    .ok()
+                    .flatten(),
                 row.try_get::<Option<String>, _>("device_os").ok().flatten(),
-                row.try_get::<Option<String>, _>("device_browser").ok().flatten(),
-                row.try_get::<Option<String>, _>("user_agent").ok().flatten(),
-                row.try_get::<Option<String>, _>("ip_address").ok().flatten(),
+                row.try_get::<Option<String>, _>("device_browser")
+                    .ok()
+                    .flatten(),
+                row.try_get::<Option<String>, _>("user_agent")
+                    .ok()
+                    .flatten(),
+                row.try_get::<Option<String>, _>("ip_address")
+                    .ok()
+                    .flatten(),
             )
         } else {
             (None, None, None, None, None, None)
@@ -327,8 +343,8 @@ async fn change_password(
 
     let new_token = generate_token();
     let session_id = crate::id::new_cuid();
-    let expires_at = Utc::now().naive_utc()
-        + chrono::Duration::seconds(state.config.session_max_age_secs);
+    let expires_at =
+        Utc::now().naive_utc() + chrono::Duration::seconds(state.config.session_max_age_secs);
 
     sqlx::query(
         r#"INSERT INTO sessions (id, token, user_id, expires_at, created_at, updated_at,

@@ -1,11 +1,11 @@
-use axum::{extract::State, routing::get, Json, Router};
+use axum::{Json, Router, extract::State, routing::get};
 use sqlx::Row;
 
 use crate::auth::extractors::AuthUser;
 use crate::error::AppError;
 use crate::models::user::MeResponse;
-use crate::routes::helpers::get_user_permission_keys;
 use crate::routes::AppState;
+use crate::routes::helpers::get_user_permission_keys;
 
 /// Map module key (DB) to the permission key required to view that module.
 const MODULE_VIEW_PERMISSION: &[(&str, &str)] = &[
@@ -66,14 +66,12 @@ async fn me(
         }
     }
 
-    let row = sqlx::query(
-        "SELECT created_at, bio, last_login_at FROM users WHERE id = $1",
-    )
-    .bind(&user.id)
-    .fetch_optional(&state.pool)
-    .await
-    .ok()
-    .flatten();
+    let row = sqlx::query("SELECT created_at, bio, last_login_at FROM users WHERE id = $1")
+        .bind(&user.id)
+        .fetch_optional(&state.pool)
+        .await
+        .ok()
+        .flatten();
 
     let (created_at, bio, last_login_at) = match row {
         Some(r) => {

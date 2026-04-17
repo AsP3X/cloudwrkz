@@ -1,38 +1,36 @@
 use std::sync::Arc;
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::HeaderMap,
     response::Response,
     routing::get,
-    Json, Router,
 };
 use sqlx::Row;
 
 use crate::auth::extractors::AuthUser;
 use crate::command_queue::{
-    apply_mutation_tx_settings, mutation_response, run_mutation_defer, JsonMutationResult,
-    MutationRunContext,
+    JsonMutationResult, MutationRunContext, apply_mutation_tx_settings, mutation_response,
+    run_mutation_defer,
 };
 use crate::db::numbering::next_todo_number;
 use crate::error::AppError;
 use crate::models::todo::{
-    CreateTodoRequest, TodoDependsOnSummary, TodoDependencyItem, TodoListItem, TodoListParams,
+    CreateTodoRequest, TodoDependencyItem, TodoDependsOnSummary, TodoListItem, TodoListParams,
     TodoParentSummary, TodoRow, TodoTicketSummary, UpdateTodoRequest,
 };
+use crate::routes::AppState;
 use crate::routes::helpers::{
     check_permission, fetch_user_summary, hash_json_for_idempotency, idempotency_key_from_headers,
 };
-use crate::routes::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/todos", get(list_todos).post(create_todo))
         .route(
             "/todos/{id}",
-            get(get_todo)
-                .patch(update_todo)
-                .delete(delete_todo),
+            get(get_todo).patch(update_todo).delete(delete_todo),
         )
 }
 
@@ -280,12 +278,11 @@ async fn get_todo(
     todo.subtodos = subtodos;
 
     if let Some(ref pid) = todo.parent_todo_id {
-        if let Some(parent_row) = sqlx::query_as::<_, (String, String)>(
-            "SELECT id, title FROM todos WHERE id = $1",
-        )
-        .bind(pid)
-        .fetch_optional(&state.pool)
-        .await?
+        if let Some(parent_row) =
+            sqlx::query_as::<_, (String, String)>("SELECT id, title FROM todos WHERE id = $1")
+                .bind(pid)
+                .fetch_optional(&state.pool)
+                .await?
         {
             todo.parent_todo = Some(TodoParentSummary {
                 id: parent_row.0,
@@ -354,30 +351,33 @@ async fn create_todo(
     // When creating a subtask, ensure the user can view the parent task.
     if let Some(ref parent_id) = body.parent_todo_id {
         let can_view_all = check_permission(&state.pool, &user.id, "tickets.view_all").await;
-        let parent_row: Option<(Option<String>, Option<String>)> = sqlx::query_as(
-            "SELECT assigned_to_id, ticket_id FROM todos WHERE id = $1",
-        )
-        .bind(parent_id)
-        .fetch_optional(&state.pool)
-        .await?;
-        let (owner, ticket_id) = parent_row.ok_or_else(|| AppError::not_found("Parent task not found"))?;
+        let parent_row: Option<(Option<String>, Option<String>)> =
+            sqlx::query_as("SELECT assigned_to_id, ticket_id FROM todos WHERE id = $1")
+                .bind(parent_id)
+                .fetch_optional(&state.pool)
+                .await?;
+        let (owner, ticket_id) =
+            parent_row.ok_or_else(|| AppError::not_found("Parent task not found"))?;
         let mut can_access = can_view_all || owner.as_deref() == Some(&user.id);
         if !can_access {
             if let Some(ref tid) = ticket_id {
-                let t = sqlx::query("SELECT created_by_id, assigned_to_id FROM tickets WHERE id = $1")
-                    .bind(tid)
-                    .fetch_optional(&state.pool)
-                    .await?;
+                let t =
+                    sqlx::query("SELECT created_by_id, assigned_to_id FROM tickets WHERE id = $1")
+                        .bind(tid)
+                        .fetch_optional(&state.pool)
+                        .await?;
                 if let Some(tr) = t {
                     let created: Option<String> = tr.get("created_by_id");
                     let assigned: Option<String> = tr.get("assigned_to_id");
-                    can_access =
-                        created.as_deref() == Some(&user.id) || assigned.as_deref() == Some(&user.id);
+                    can_access = created.as_deref() == Some(&user.id)
+                        || assigned.as_deref() == Some(&user.id);
                 }
             }
         }
         if !can_access {
-            return Err(AppError::forbidden("Not allowed to add subtasks to this task"));
+            return Err(AppError::forbidden(
+                "Not allowed to add subtasks to this task",
+            ));
         }
     }
 
@@ -460,16 +460,7 @@ async fn create_todo(
             }
         }
     }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        shard,
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
-    )
-    .await?;
+    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
     Ok(mutation_response(out))
 }
 
@@ -511,13 +502,12 @@ async fn update_todo(
                     .await
                     .map_err(AppError::from)?;
 
-                let existing = sqlx::query(
-                    "SELECT id, assigned_to_id FROM todos WHERE id = $1 FOR UPDATE",
-                )
-                .bind(&id)
-                .fetch_optional(&mut *tx)
-                .await?
-                .ok_or_else(|| AppError::not_found("Todo not found"))?;
+                let existing =
+                    sqlx::query("SELECT id, assigned_to_id FROM todos WHERE id = $1 FOR UPDATE")
+                        .bind(&id)
+                        .fetch_optional(&mut *tx)
+                        .await?
+                        .ok_or_else(|| AppError::not_found("Todo not found"))?;
 
                 let owner: Option<String> = existing.get("assigned_to_id");
                 if owner.as_deref() != Some(&user_id) {
@@ -532,11 +522,13 @@ async fn update_todo(
                         .await?;
                 }
                 if let Some(ref desc) = body.description {
-                    sqlx::query("UPDATE todos SET description = $1, updated_at = NOW() WHERE id = $2")
-                        .bind(desc)
-                        .bind(&id)
-                        .execute(&mut *tx)
-                        .await?;
+                    sqlx::query(
+                        "UPDATE todos SET description = $1, updated_at = NOW() WHERE id = $2",
+                    )
+                    .bind(desc)
+                    .bind(&id)
+                    .execute(&mut *tx)
+                    .await?;
                 }
                 if let Some(ref desc_html) = body.description_html {
                     sqlx::query(
@@ -548,8 +540,10 @@ async fn update_todo(
                     .await?;
                 }
                 if let Some(ref aid) = body.assigned_to_id {
-                    let s: Option<String> =
-                        aid.as_str().map(|s| s.to_string()).filter(|s| !s.is_empty());
+                    let s: Option<String> = aid
+                        .as_str()
+                        .map(|s| s.to_string())
+                        .filter(|s| !s.is_empty());
                     sqlx::query(
                         "UPDATE todos SET assigned_to_id = $1, updated_at = NOW() WHERE id = $2",
                     )
@@ -582,11 +576,13 @@ async fn update_todo(
                         .as_ref()
                         .and_then(|v| v.as_str())
                         .and_then(|s| s.parse::<chrono::NaiveDateTime>().ok());
-                    sqlx::query("UPDATE todos SET start_date = $1, updated_at = NOW() WHERE id = $2")
-                        .bind(&v)
-                        .bind(&id)
-                        .execute(&mut *tx)
-                        .await?;
+                    sqlx::query(
+                        "UPDATE todos SET start_date = $1, updated_at = NOW() WHERE id = $2",
+                    )
+                    .bind(&v)
+                    .bind(&id)
+                    .execute(&mut *tx)
+                    .await?;
                 }
                 if body.due_date.is_some() {
                     let v = body
@@ -606,11 +602,13 @@ async fn update_todo(
                         .as_ref()
                         .and_then(|v| v.as_str())
                         .filter(|s| !s.is_empty());
-                    sqlx::query("UPDATE todos SET ticket_id = $1, updated_at = NOW() WHERE id = $2")
-                        .bind(v)
-                        .bind(&id)
-                        .execute(&mut *tx)
-                        .await?;
+                    sqlx::query(
+                        "UPDATE todos SET ticket_id = $1, updated_at = NOW() WHERE id = $2",
+                    )
+                    .bind(v)
+                    .bind(&id)
+                    .execute(&mut *tx)
+                    .await?;
                 }
                 if let Some(ref status) = body.status {
                     let completed_date = if status == "COMPLETED" {
@@ -676,16 +674,7 @@ async fn update_todo(
             }
         }
     }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        shard,
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
-    )
-    .await?;
+    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
     Ok(mutation_response(out))
 }
 
@@ -721,13 +710,12 @@ async fn delete_todo(
                     .await
                     .map_err(AppError::from)?;
 
-                let existing = sqlx::query(
-                    "SELECT id, assigned_to_id FROM todos WHERE id = $1 FOR UPDATE",
-                )
-                .bind(&id)
-                .fetch_optional(&mut *tx)
-                .await?
-                .ok_or_else(|| AppError::not_found("Todo not found"))?;
+                let existing =
+                    sqlx::query("SELECT id, assigned_to_id FROM todos WHERE id = $1 FOR UPDATE")
+                        .bind(&id)
+                        .fetch_optional(&mut *tx)
+                        .await?
+                        .ok_or_else(|| AppError::not_found("Todo not found"))?;
 
                 let owner: Option<String> = existing.get("assigned_to_id");
                 if owner.as_deref() != Some(&user_id) {
@@ -750,15 +738,6 @@ async fn delete_todo(
             }
         }
     }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        shard,
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
-    )
-    .await?;
+    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
     Ok(mutation_response(out))
 }

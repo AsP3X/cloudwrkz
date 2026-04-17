@@ -1,7 +1,7 @@
 use axum::{
+    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 use serde::Serialize;
 
@@ -138,9 +138,19 @@ impl From<sqlx::Error> for AppError {
         use crate::db::is_transient_sqlx;
         let transient = is_transient_sqlx(&err);
         if transient {
-            tracing::warn!(event = "error", error_type = "database_transient", "Transient database error: {:?}", err);
+            tracing::warn!(
+                event = "error",
+                error_type = "database_transient",
+                "Transient database error: {:?}",
+                err
+            );
         } else {
-            tracing::error!(event = "error", error_type = "database", "Database error: {:?}", err);
+            tracing::error!(
+                event = "error",
+                error_type = "database",
+                "Database error: {:?}",
+                err
+            );
         }
         Self {
             status: if transient {

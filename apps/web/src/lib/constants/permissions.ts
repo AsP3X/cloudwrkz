@@ -55,6 +55,8 @@ export type PermissionKey =
   | "admin.permissions.view"
   | "admin.permissions.manage"
   | "admin.settings.manage"
+  | "admin.jobs.view"
+  | "search.jobs.view"
   | "admin.modules.manage"
   | "admin.sessions.view"
   | "admin.statistics.view"
@@ -353,6 +355,18 @@ export const PERMISSIONS: PermissionDefinition[] = [
     category: "admin",
   },
   {
+    key: "admin.jobs.view",
+    name: "View Background Jobs",
+    description: "View the background job queue and job details in admin",
+    category: "admin",
+  },
+  {
+    key: "search.jobs.view",
+    name: "Search Background Jobs",
+    description: "Include background jobs in global fuzzy search (when implemented)",
+    category: "search",
+  },
+  {
     key: "admin.modules.manage",
     name: "Manage Modules",
     description: "Enable/disable modules",
@@ -568,6 +582,9 @@ export function getPermissionsByCategory(category: string): PermissionDefinition
 export function getPermissionCategories(): string[] {
   return Array.from(new Set(PERMISSIONS.map((p) => p.category)));
 }
+
+/** Gate global fuzzy search results for background jobs when that feature is implemented (`search.ts`). */
+export const SEARCH_JOBS_PERMISSION_KEY: PermissionKey = "search.jobs.view";
 
 export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
   // Roles are purely categorical; no default permissions are granted by role.

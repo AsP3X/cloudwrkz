@@ -84,7 +84,10 @@ fn map_sqlx_login(err: sqlx::Error) -> LoginAttemptError {
     if is_transient_sqlx(&err) {
         return LoginAttemptError::Transient;
     }
-    warn!(event = "auth.login.db_error", "non-transient sqlx error: {:?}", err);
+    warn!(
+        event = "auth.login.db_error",
+        "non-transient sqlx error: {:?}", err
+    );
     LoginAttemptError::Final(AppError::internal("A database error occurred"))
 }
 
@@ -166,7 +169,9 @@ pub async fn attempt_login(
     let valid = tokio::task::spawn_blocking(move || verify_password(&password, &hash))
         .await
         .map_err(|_| LoginAttemptError::Final(AppError::internal("Password verification failed")))?
-        .map_err(|_| LoginAttemptError::Final(AppError::internal("Password verification failed")))?;
+        .map_err(|_| {
+            LoginAttemptError::Final(AppError::internal("Password verification failed"))
+        })?;
 
     if !valid {
         audit::write_audit_log(

@@ -4,13 +4,15 @@ Monorepo for the Cloudwrkz product: **Vite + Rust API** stack, **Next.js** app, 
 
 ## Structure
 
-| Component | Path | Description |
-|-----------|------|-------------|
-| **Web (Vite)** | [apps/web-vite](apps/web-vite) | React SPA, Tailwind; talks to the Rust API |
-| **API** | [apps/api](apps/api) | Rust (Axum, SQLx, PostgreSQL) |
-| **CLI** | [apps/cli](apps/cli) | Rust CLI for DB tasks, bootstrap admin, API-backed menus |
-| **Web (Next.js)** | [apps/web](apps/web) | Next.js 16 app (Prisma, dashboard, Docker); legacy/alternate UI |
-| **iOS** | [apps/ios](apps/ios) | Native iOS app (Swift, Xcode) |
+
+| Component         | Path                           | Description                                                     |
+| ----------------- | ------------------------------ | --------------------------------------------------------------- |
+| **Web (Vite)**    | [apps/web-vite](apps/web-vite) | React SPA, Tailwind; talks to the Rust API                      |
+| **API**           | [apps/api](apps/api)           | Rust (Axum, SQLx, PostgreSQL); see [apps/api/README.md](apps/api/README.md) and [docs/background-jobs-and-github.md](docs/background-jobs-and-github.md) |
+| **CLI**           | [apps/cli](apps/cli)           | Rust CLI for DB tasks, bootstrap admin, API-backed menus        |
+| **Web (Next.js)** | [apps/web](apps/web)           | Next.js 16 app (Prisma, dashboard, Docker); legacy/alternate UI |
+| **iOS**           | [apps/ios](apps/ios)           | Native iOS app (Swift, Xcode)                                   |
+
 
 ## Prerequisites
 
@@ -39,12 +41,14 @@ This installs the pnpm workspace packages under [apps/web](apps/web) and [apps/w
 
 ### 2. Environment files
 
-| App | Action |
-|-----|--------|
-| **API** | Copy [apps/api/.env.example](apps/api/.env.example) to `apps/api/.env` and adjust if needed. Defaults match the root Compose Postgres credentials. |
-| **Vite** | Copy [apps/web-vite/.env.example](apps/web-vite/.env.example) to `apps/web-vite/.env`. Defaults proxy `/api/v1` to the API on port 8080. |
-| **Next.js** | Copy `apps/web/.env.example` to `apps/web/.env.local` — see [apps/web/README.md](apps/web/README.md). |
-| **CLI** | Optional: copy [apps/cli/.env.example](apps/cli/.env.example) to `apps/cli/.env` for tokens and local overrides. |
+
+| App         | Action                                                                                                                                             |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **API**     | Copy [apps/api/.env.example](apps/api/.env.example) to `apps/api/.env` and adjust if needed. Defaults match the root Compose Postgres credentials. |
+| **Vite**    | Copy [apps/web-vite/.env.example](apps/web-vite/.env.example) to `apps/web-vite/.env`. Defaults proxy `/api/v1` to the API on port 8080.           |
+| **Next.js** | Copy `apps/web/.env.example` to `apps/web/.env.local` — see [apps/web/README.md](apps/web/README.md).                                              |
+| **CLI**     | Optional: copy [apps/cli/.env.example](apps/cli/.env.example) to `apps/cli/.env` for tokens and local overrides.                                   |
+
 
 ### 3. Database and API (recommended: Docker Compose from repo root)
 
@@ -58,9 +62,16 @@ This starts:
 
 - **PostgreSQL** on port `5432` (user `cloudwrkz`, database `cloudwrkz`, default password `cloudwrkz_dev_password` unless you set `POSTGRES_PASSWORD`)
 - **Rust API** on port `8080` (applies SQLx migrations on startup)
+- **Vite dev server** on port `5173` (custom image: Node + bundled **`cloudwrkz-cli`** on `PATH`; repo mounted at `/workspace`)
 - **pgAdmin** on port `5050` (default login `admin@cloudwrkz.test` / `admin`)
 
 Check API health: [http://localhost:8080/api/health](http://localhost:8080/api/health).
+
+**`cloudwrkz-cli` inside the Vite container** (after `docker compose up -d`), e.g. first admin bootstrap — use `postgres` as the DB host:
+
+```bash
+docker compose exec -e CLOUDWRKZ_BOOTSTRAP_SECRET=local-dev -e DATABASE_URL="postgresql://cloudwrkz:cloudwrkz_dev_password@postgres:5432/cloudwrkz" web-vite cloudwrkz-cli admin create-admin you@example.com "YourPassword" "Your Name"
+```
 
 To stop: `docker compose down`. To remove data volumes: `docker compose down -v`.
 
@@ -84,13 +95,17 @@ Ensure Postgres is reachable at the `DATABASE_URL` in that file (e.g. after `doc
 
 ### 5. First admin account (bootstrap)
 
-With the database up, build the CLI from the repo root and create the first admin (requires a bootstrap secret — see [apps/cli/README.md](apps/cli/README.md)):
+With the database up, create the first admin (requires a bootstrap secret — see [apps/cli/README.md](apps/cli/README.md)).
+
+**From the host** (after `cargo build --release -p cloudwrkz-cli`):
 
 ```bash
 cargo build --release -p cloudwrkz-cli
 export CLOUDWRKZ_BOOTSTRAP_SECRET=local-dev
 ./target/release/cloudwrkz-cli admin create-admin you@example.com "YourPassword" "Your Name"
 ```
+
+**Or entirely in Docker** (use the bundled CLI in the `web-vite` service — see the `docker compose exec …` example in the Docker Compose list in **§3** above).
 
 On **Windows** (PowerShell), after `cargo build`:
 
@@ -117,15 +132,25 @@ Open [apps/ios/Cloudwrkz.xcodeproj](apps/ios/Cloudwrkz.xcodeproj) in Xcode and b
 
 ## Quick reference (repo root)
 
-| Command | Description |
-|---------|-------------|
-| `pnpm dev` | Next.js dev server (`apps/web`) |
-| `pnpm dev:vite` | Vite dev server (`apps/web-vite`) |
-| `pnpm build` / `pnpm build:vite` | Production builds |
-| `pnpm db:*` | Prisma commands for `apps/web` (generate, push, migrate, studio, …) |
-| `docker compose up -d` | Postgres + API + pgAdmin |
-| `cargo run -p cloudwrkz-api` | Run API locally |
-| `cargo build --release -p cloudwrkz-cli` | Build CLI binary |
+
+| Command                                  | Description                                                         |
+| ---------------------------------------- | ------------------------------------------------------------------- |
+| `pnpm dev`                               | Next.js dev server (`apps/web`)                                     |
+| `pnpm dev:vite`                          | Vite dev server (`apps/web-vite`)                                   |
+| `pnpm build` / `pnpm build:vite`         | Production builds                                                   |
+| `pnpm db:*`                              | Prisma commands for `apps/web` (generate, push, migrate, studio, …) |
+| `docker compose up -d`                   | Postgres + API + pgAdmin                                            |
+| `cargo run -p cloudwrkz-api`             | Run API locally                                                     |
+| `cargo build --release -p cloudwrkz-cli` | Build CLI binary                                                    |
+
+
+## Documentation
+
+Index: **[docs/README.md](docs/README.md)**
+
+- **[Background jobs and GitHub metadata](docs/background-jobs-and-github.md)** — job queue, `github_link_metadata`, rate limits, `jobs` tracing.
+- **[Link detail headlines](docs/link-detail-headlines.md)** — how link titles are shown on detail pages (Vite + Next.js).
+- **API** — [apps/api/README.md](apps/api/README.md) (run, env overview, links to the docs above).
 
 ## Tooling
 

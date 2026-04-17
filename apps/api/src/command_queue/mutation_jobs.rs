@@ -160,10 +160,7 @@ where
         let mut g = make_arc.lock().await;
         g()
     };
-    match broker
-        .run(shard.clone(), &pool, ctx.clone(), f)
-        .await
-    {
+    match broker.run(shard.clone(), &pool, ctx.clone(), f).await {
         Ok(jr) => Ok(MutationHandlerOutput::Ready(jr)),
         Err(e) if e.transient_database => {
             let job_id = new_job_id();

@@ -1,0 +1,50 @@
+---
+description: >-
+  HTTP error JSON, logging vs client messages, and tracing/request correlation
+  for apps/api and API-facing TypeScript (Vite client; Next only if explicitly
+  requested)
+alwaysApply: true
+---
+
+# API responses, errors, and logging
+
+This project’s HTTP API contract and observability patterns are **fixed by convention**. Follow them for **`apps/api`** (Rust / Axum), for **`apps/web-vite/src/api/**`** when parsing or surfacing API failures, and—**only when the user explicitly asks to edit `apps/web/`**—for Next.js **`route.ts`**, handlers under **`apps/web/src/app/api/`**, and **`apps/web/src/server/`** server actions so they do not fight the Rust API or the Vite client.
+
+## Canonical error JSON (Rust `/api/v1` and anything mirroring it)
+
+- **Error HTTP bodies** must be JSON matching the envelope produced by **`AppError`** in `apps/api/src/error.rs`:  
+  `{ "error": { "code": string, "message": string, "fields"?: object } }`  
+  Status code comes from the same error type (`IntoResponse` on `AppError`).
+- **Handlers** should return **`Result<..., AppError>`** (or `Result<Json<...>, AppError>`) and build failures with **`AppError::{unauthorized, forbidden, not_found, bad_request, validation, ...}`** (or `?` into `AppError` where `From` is implemented). **Do not** introduce alternate error shapes (plain text bodies, ad-hoc `{ "message": "..." }` only, random key names) for the same API surface unless the user explicitly approves a breaking contract change—and then **update** the Vite client’s error parsing in the same work.
+- **Validation**: use **`AppError::validation(..., fields)`** so `fields` is populated consistently when the client should show field-level detail.
+
+## What clients see vs what logs contain
+
+- **Responses**: `message` (and `code`) must stay **safe for end users and logs that leave the server**—no stack traces, SQL fragments, internal hostnames, tokens, or secrets in JSON bodies.
+- **Server logs**: use **`tracing`** with enough detail to debug (`error!` / `warn!` / `info!` as appropriate). For database and infrastructure failures, **log the real error** (for example `{:?}` on the source error) in tracing events; map to **generic** `AppError` text for the HTTP body (same pattern as `From<sqlx::Error> for AppError` in `error.rs`: transient vs non-transient, safe user-facing copy).
+- **Do not** log credentials, session tokens, magic links, diagnostics tokens, or full third-party error payloads unless scrubbed.
+
+## Request correlation and structured logs
+
+- The stack already builds a **per-request span** from **`x-request-id`** (or a generated UUID) and logs **`request_id`**, method, and URI (see `make_request_span` in `apps/api/src/lib.rs`). **Preserve** this behavior when changing middleware or tracing setup.
+- Prefer **structured fields** on tracing events (key/value pairs) over unstructured prose-only messages, especially for errors and request completion, so JSON log pipelines remain queryable.
+- **`LOG_FORMAT=json`** and **`LOG_VERBOSITY`** control verbosity; do not bypass env-driven logging choices with ad-hoc `println!` in request paths.
+
+## Success and non-JSON edge cases
+
+- **Success JSON** remains whatever the route already returns (`Json(serde_json::Value)` or typed `Json<T>`); do not silently change shapes without a deliberate migration.
+- For responses that are not JSON errors (redirects, `204`, file streams), keep behavior explicit and documented at the handler—still avoid leaking internals in headers or HTML.
+
+## Vite client alignment
+
+- **`apps/web-vite/src/api/client.ts`** uses **`getErrorMessage`** assuming the **`error.message`** (and optional **`error.code`**) envelope. If you change the Rust error schema, **update `getErrorMessage` and `ApiError` consumers** in the same change set.
+
+## Deprecated Next app (`apps/web`)
+
+- **Default**: do not edit `apps/web` (see the deprecation rule). If the user **explicitly** requests changes there, **prefer** the same **`{ error: { code, message, fields? } }`** shape for JSON error responses on routes that are part of the product API or that the Vite app might call, so behavior stays consistent with **`cloudwrkz-api`**.
+
+## Anti-patterns
+
+- Mixing **JSON error envelope** with **plain-text** error bodies on the same base path or version prefix.
+- Returning **500** with detailed internal causes in the JSON **`message`** field.
+- Logging **PII** (full email, raw contact form spam samples) at **error** level in hot paths; use **info**/redaction where product requirements need it.

@@ -44,13 +44,22 @@ pub struct AppConfig {
     pub mutation_queue_capacity: usize,
     pub idempotency_max_entries: usize,
     pub idempotency_ttl_secs: u64,
+    /// Optional `GITHUB_TOKEN` / `GITHUB_API_TOKEN` for GitHub REST (higher rate limits; no in-process hourly cap).
+    pub github_api_token: Option<String>,
+    /// Max anonymous GitHub REST requests per rolling hour for this process (GitHub allows 60/hour per IP without auth).
+    pub github_anonymous_max_requests_per_hour: u32,
+    /// Max concurrent `github_link_metadata` jobs the global worker will run (each job still rate-limits HTTP internally).
+    pub job_queue_github_max_concurrent: u32,
+    /// Optional minimum seconds between *starting* two `github_link_metadata` jobs (pacing on top of concurrency).
+    pub job_queue_github_min_start_interval_secs: Option<u64>,
+    /// Public web app origin for QR payloads (e.g. `https://app.example.com`). If unset, `Host` / `X-Forwarded-*` from the API request is used (may point at the API host).
+    pub public_web_app_url: Option<String>,
 }
 
 impl AppConfig {
     pub fn from_env() -> Self {
         Self {
-            database_url: env::var("DATABASE_URL")
-                .expect("DATABASE_URL must be set"),
+            database_url: env::var("DATABASE_URL").expect("DATABASE_URL must be set"),
             api_host: env::var("API_HOST").unwrap_or_else(|_| "0.0.0.0".into()),
             api_port: env::var("API_PORT")
                 .ok()
@@ -101,7 +110,8 @@ impl AppConfig {
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(30)
                 .clamp(1, 300),
-            mutation_tx_max_ms: env_u64_compat("COMMAND_DB_TX_MAX_MS", 30_000).clamp(1_000, 600_000),
+            mutation_tx_max_ms: env_u64_compat("COMMAND_DB_TX_MAX_MS", 30_000)
+                .clamp(1_000, 600_000),
             mutation_lock_timeout_ms: env_u64_compat("COMMAND_DB_LOCK_TIMEOUT_MS", 8_000)
                 .clamp(100, 120_000),
             mutation_statement_timeout_ms: env_u64_compat(
@@ -114,6 +124,40 @@ impl AppConfig {
             idempotency_max_entries: env_u64_compat("IDEMPOTENCY_MAX_ENTRIES", 4096)
                 .clamp(64, 1_000_000) as usize,
             idempotency_ttl_secs: env_u64_compat("IDEMPOTENCY_TTL_SECS", 86_400).clamp(60, 604_800),
+            github_api_token: env::var("GITHUB_TOKEN")
+                .or_else(|_| env::var("GITHUB_API_TOKEN"))
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
+            github_anonymous_max_requests_per_hour: env::var(
+                "GITHUB_ANONYMOUS_MAX_REQUESTS_PER_HOUR",
+            )
+            .ok()
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(60)
+            .clamp(1, 100_000),
+            job_queue_github_max_concurrent: std::env::var("JOB_QUEUE_GITHUB_MAX_CONCURRENT")
+                .ok()
+                .and_then(|s| s.parse::<u32>().ok())
+                .unwrap_or(1)
+                .clamp(1, 32),
+            job_queue_github_min_start_interval_secs: std::env::var(
+                "JOB_QUEUE_GITHUB_MIN_START_INTERVAL_SECS",
+            )
+            .ok()
+            .and_then(|s| {
+                let t = s.trim();
+                if t.is_empty() {
+                    None
+                } else {
+                    t.parse::<u64>().ok()
+                }
+            })
+            .map(|secs| secs.clamp(1, 86_400)),
+            public_web_app_url: env::var("PUBLIC_WEB_APP_URL")
+                .ok()
+                .map(|s| s.trim().trim_end_matches('/').to_string())
+                .filter(|s| !s.is_empty()),
         }
     }
 

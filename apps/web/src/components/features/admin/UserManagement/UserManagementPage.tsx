@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
@@ -16,14 +16,24 @@ import { UserUnbanDialog } from "./UserUnbanDialog";
 import { createUserAdmin, updateUserAdmin, deleteUserAdmin, bulkUpdateUserStatusAdmin, banUserAdmin, unbanUserAdmin, type UserFilters } from "@/server/actions/admin/users";
 import type { getAllUsersAdmin } from "@/server/actions/admin/users";
 import { formatDate } from "@/lib/utils/date";
+import { OverviewContextMenu, type OverviewContextMenuItem } from "@/components/ui/OverviewContextMenu";
+import { cn } from "@/lib/utils/cn";
 
 type User = Awaited<ReturnType<typeof getAllUsersAdmin>>["users"][0];
 
-interface UserManagementPageProps {
-  initialData: Awaited<ReturnType<typeof getAllUsersAdmin>>;
+/** Row context menu actions derived from admin.users.* permissions (see admin users page). */
+export interface UserAdminRowContextCapabilities {
+  canViewDetail: boolean;
+  canUpdate: boolean;
+  canDelete: boolean;
 }
 
-export function UserManagementPage({ initialData }: UserManagementPageProps) {
+interface UserManagementPageProps {
+  initialData: Awaited<ReturnType<typeof getAllUsersAdmin>>;
+  userAdminRowContext?: UserAdminRowContextCapabilities;
+}
+
+export function UserManagementPage({ initialData, userAdminRowContext }: UserManagementPageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
@@ -34,6 +44,13 @@ export function UserManagementPage({ initialData }: UserManagementPageProps) {
   const [unbanDialogOpen, setUnbanDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; user: User } | null>(null);
+
+  const showUserRowContextMenu =
+    !!userAdminRowContext &&
+    (userAdminRowContext.canViewDetail ||
+      userAdminRowContext.canUpdate ||
+      userAdminRowContext.canDelete);
 
   const [filters, setFilters] = useState<UserFilters>({
     status: (searchParams.get("status") as any) || undefined,
@@ -65,14 +82,16 @@ export function UserManagementPage({ initialData }: UserManagementPageProps) {
 
   const handleEdit = async (userId: string, data: any) => {
     setIsLoading(true);
-    const result = await updateUserAdmin(userId, data);
-    setIsLoading(false);
-    if (result.success) {
-      setEditDialogOpen(false);
-      setSelectedUser(null);
-      router.refresh();
+    try {
+      const result = await updateUserAdmin(userId, data);
+      if (result.success) {
+        setSelectedUser(null);
+        router.refresh();
+      }
+      return result;
+    } finally {
+      setIsLoading(false);
     }
-    return result;
   };
 
   const handleDelete = async (userId: string) => {
@@ -136,7 +155,7 @@ export function UserManagementPage({ initialData }: UserManagementPageProps) {
     if (selectedUsers.size === initialData.users.length) {
       setSelectedUsers(new Set());
     } else {
-      setSelectedUsers(new Set(initialData.users.map((u) => u.id)));
+      setSelectedUsers(new Set(initialData.users.map((u: User) => u.id)));
     }
   };
 
@@ -156,6 +175,71 @@ export function UserManagementPage({ initialData }: UserManagementPageProps) {
         return "default";
     }
   };
+
+  const getUserContextMenuItems = useCallback(
+    (rowUser: User): OverviewContextMenuItem[] => {
+      if (!userAdminRowContext) return [];
+      const items: OverviewContextMenuItem[] = [];
+      if (userAdminRowContext.canViewDetail) {
+        items.push({
+          id: "view",
+          label: "View details",
+          onClick: () => {
+            setContextMenu(null);
+            router.push(`/dashboard/admin/users/${rowUser.id}`);
+          },
+        });
+      }
+      if (userAdminRowContext.canUpdate) {
+        items.push({
+          id: "edit",
+          label: "Edit",
+          onClick: () => {
+            setContextMenu(null);
+            setSelectedUser(rowUser);
+            setEditDialogOpen(true);
+          },
+        });
+        if (rowUser.status === "BANNED") {
+          items.push({
+            id: "unban",
+            label: "Unban",
+            onClick: () => {
+              setContextMenu(null);
+              setSelectedUser(rowUser);
+              setUnbanDialogOpen(true);
+            },
+          });
+        } else {
+          items.push({
+            id: "ban",
+            label: "Ban",
+            onClick: () => {
+              setContextMenu(null);
+              setSelectedUser(rowUser);
+              setBanDialogOpen(true);
+            },
+            destructive: true,
+          });
+        }
+      }
+      if (userAdminRowContext.canDelete) {
+        items.push({
+          id: "delete",
+          label: "Delete",
+          onClick: () => {
+            setContextMenu(null);
+            setSelectedUser(rowUser);
+            setDeleteDialogOpen(true);
+          },
+          destructive: true,
+          separatorAbove: items.length > 0,
+        });
+      }
+      return items;
+    },
+    [router, userAdminRowContext]
+  );
 
   const getRoleBadgeVariant = (role: string) => {
     switch (role) {
@@ -276,8 +360,21 @@ export function UserManagementPage({ initialData }: UserManagementPageProps) {
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-              {initialData.users.map((user) => (
-                <tr key={user.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800">
+              {initialData.users.map((user: User) => (
+                <tr
+                  key={user.id}
+                  className={cn(
+                    "hover:bg-neutral-50 dark:hover:bg-neutral-800",
+                    showUserRowContextMenu && "cursor-context-menu"
+                  )}
+                  onContextMenu={(e) => {
+                    if (!showUserRowContextMenu) return;
+                    const items = getUserContextMenuItems(user);
+                    if (items.length === 0) return;
+                    e.preventDefault();
+                    setContextMenu({ x: e.clientX, y: e.clientY, user });
+                  }}
+                >
                   <td className="px-4 py-3">
                     <input
                       type="checkbox"
@@ -405,6 +502,14 @@ export function UserManagementPage({ initialData }: UserManagementPageProps) {
         onSubmit={handleCreate}
         isLoading={isLoading}
       />
+      <OverviewContextMenu
+        open={!!contextMenu}
+        x={contextMenu?.x ?? 0}
+        y={contextMenu?.y ?? 0}
+        onClose={() => setContextMenu(null)}
+        items={contextMenu ? getUserContextMenuItems(contextMenu.user) : []}
+      />
+
       {selectedUser && (
         <>
           <UserEditDialog

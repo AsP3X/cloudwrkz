@@ -2,31 +2,34 @@
 
 mod audit;
 pub mod auth;
-mod command_queue;
 mod auth_governor;
+mod command_queue;
 mod config;
 pub mod db;
 mod diagnostics_token;
 mod error;
+mod github_metadata;
+mod github_rate_limit;
 pub mod id;
+mod job_queue;
 mod models;
 pub mod routes;
 
 pub use config::AppConfig;
+pub use routes::AppState;
 
-use axum::body::Body;
-use axum::http::header::{self, HeaderName, HeaderValue};
-use axum::http::Method;
 use axum::Router;
-use sqlx::PgPool;
+use axum::body::Body;
+use axum::http::Method;
+use axum::http::header::{self, HeaderName, HeaderValue};
+use std::net::SocketAddr;
 use std::sync::OnceLock;
 use std::time::Duration;
-use std::net::SocketAddr;
 use tower_http::cors::{AllowHeaders, AllowMethods, CorsLayer};
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::{OnResponse, TraceLayer};
-use tracing_subscriber::fmt::time::UtcTime;
 use tracing_subscriber::EnvFilter;
+use tracing_subscriber::fmt::time::UtcTime;
 
 use config::parse_deployment_cli_from_args;
 
@@ -59,6 +62,8 @@ Commands:
                                Requires DATABASE_URL; runs migrations. Use with GET /api/v1/health/detailed.
 
 Environment: LOG_VERBOSITY (debug|prod), LOG_FORMAT (json), RUST_LOG, DATABASE_URL,
+             With LOG_VERBOSITY=debug the default filter includes jobs=debug (dispatcher + per-job tracing on target `jobs`).
+             With LOG_VERBOSITY=prod you can still set RUST_LOG=info,jobs=debug to log only the background job queue.
              API_REGION, API_NODES_AVAILABLE, DIAGNOSTICS_HEALTH_TOKEN (optional plaintext override for detailed health),
              AUTH_RATE_LIMIT_PER_MINUTE, AUTH_RATE_LIMIT_BURST,
              COMMAND_DB_TX_MAX_MS, COMMAND_DB_LOCK_TIMEOUT_MS, COMMAND_DB_STATEMENT_TIMEOUT_MS,
@@ -66,6 +71,11 @@ Environment: LOG_VERBOSITY (debug|prod), LOG_FORMAT (json), RUST_LOG, DATABASE_U
              (Deferred mutations: GET /api/v1/mutation-jobs/{job_id} after HTTP 202 when DB was transient.)
              DATABASE_POOL_ACQUIRE_TIMEOUT_SECS, DATABASE_POOL_MAX_CONNECTIONS,
              DATABASE_MIGRATE_RETRY_MAX_SECS, etc.
+             GITHUB_TOKEN or GITHUB_API_TOKEN (optional): authenticated GitHub REST (higher rate limits; no in-process hourly cap).
+             GITHUB_ANONYMOUS_MAX_REQUESTS_PER_HOUR (default 60): rolling-hour cap on GitHub REST GETs for this process when no token is set (GitHub allows 60/hour per IP unauthenticated). Jobs may wait inside a run until slots free; no fixed spacing between requests.
+             GitHub metadata jobs: dispatcher polls ~400ms and runs jobs concurrently up to JOB_QUEUE_GITHUB_MAX_CONCURRENT.
+             JOB_QUEUE_GITHUB_MAX_CONCURRENT (default 1): max concurrent github_link_metadata jobs.
+             JOB_QUEUE_GITHUB_MIN_START_INTERVAL_SECS: optional pacing between job starts (per job type policy; not used for github_link_metadata today).
 "#;
 
 /// Parse `-v` / `-v debug` / `-v prod` and `-h` from env::args(). CLI overrides LOG_VERBOSITY env.
@@ -103,12 +113,7 @@ impl<B> OnResponse<B> for ApiOnResponse {
                     .get(axum::http::header::CONTENT_LENGTH)
                     .and_then(|v| v.to_str().ok())
                     .unwrap_or("-");
-                tracing::info!(
-                    status,
-                    latency_ms,
-                    content_length,
-                    "request completed"
-                );
+                tracing::info!(status, latency_ms, content_length, "request completed");
             }
             LogVerbosity::Prod => {
                 tracing::info!(status, latency_ms, "request completed");
@@ -118,8 +123,12 @@ impl<B> OnResponse<B> for ApiOnResponse {
 }
 
 fn init_logging() {
+    let default_directive = match log_verbosity() {
+        LogVerbosity::Debug => "info,jobs=debug",
+        LogVerbosity::Prod => "info",
+    };
     let filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_directive));
     let use_json = std::env::var("LOG_FORMAT").as_deref() == Ok("json");
     let timer = UtcTime::rfc_3339();
     let fmt = tracing_subscriber::fmt()
@@ -228,18 +237,18 @@ fn build_cors(config: &AppConfig) -> CorsLayer {
 }
 
 /// Full HTTP stack (v1 + legacy health, security headers, CORS, trace, body limit) — used in production and tests.
-pub fn build_http_app(pool: PgPool, config: AppConfig, api_started_at: std::time::Instant) -> Router {
-    let cors = build_cors(&config);
-    let v1 = routes::v1_router(pool.clone(), config.clone(), api_started_at);
+pub fn build_http_app(state: AppState) -> Router {
+    let cors = build_cors(&state.config);
+    let max_body = state.config.max_body_size;
     Router::new()
-        .nest("/api/v1", v1)
-        .merge(routes::health::router(
-            pool,
-            api_started_at,
-            config.api_nodes_available,
-            config.api_region.clone(),
-            config.diagnostics_health_token.clone(),
-        ))
+        .merge(routes::health::router())
+        .nest("/api/v1", routes::v1_router(&state.config))
+        .nest(
+            "/api/auth/qr-login",
+            routes::auth_qr_login::scoped_router()
+                .layer(crate::auth_governor::auth_rate_limit_layer(&state.config)),
+        )
+        .with_state(state)
         .layer(SetResponseHeaderLayer::if_not_present(
             header::X_CONTENT_TYPE_OPTIONS,
             HeaderValue::from_static("nosniff"),
@@ -260,9 +269,7 @@ pub fn build_http_app(pool: PgPool, config: AppConfig, api_started_at: std::time
                 .make_span_with(make_request_span)
                 .on_response(ApiOnResponse),
         )
-        .layer(tower_http::limit::RequestBodyLimitLayer::new(
-            config.max_body_size,
-        ))
+        .layer(tower_http::limit::RequestBodyLimitLayer::new(max_body))
 }
 
 async fn shutdown_signal() {
@@ -303,7 +310,12 @@ pub async fn run() {
         if let Ok(exe) = std::env::current_exe() {
             if let Some(exe_dir) = exe.parent() {
                 for path in [
-                    exe_dir.join("..").join("..").join("apps").join("api").join(".env"),
+                    exe_dir
+                        .join("..")
+                        .join("..")
+                        .join("apps")
+                        .join("api")
+                        .join(".env"),
                     exe_dir.join("..").join("..").join(".env"),
                 ] {
                     let path = path.canonicalize().unwrap_or(path);
@@ -364,15 +376,19 @@ pub async fn run() {
     let pool = db::create_pool_lazy(&config.database_url)
         .expect("Invalid DATABASE_URL (cannot parse connection string)");
 
+    let api_started_at = std::time::Instant::now();
+    let state = routes::AppState::new(pool.clone(), config.clone(), api_started_at);
+
     {
         let pool = pool.clone();
+        let cfg = config.clone();
         tokio::spawn(async move {
             db::run_migrations_with_transient_retries(&pool).await;
+            job_queue::spawn_job_queue_worker(pool, cfg);
         });
     }
 
-    let api_started_at = std::time::Instant::now();
-    let app = build_http_app(pool.clone(), config.clone(), api_started_at);
+    let app = build_http_app(state);
 
     let addr: SocketAddr = config.bind_addr().parse().expect("Invalid bind address");
     let listener = tokio::net::TcpListener::bind(addr)
@@ -385,7 +401,7 @@ pub async fn run() {
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
-    .with_graceful_shutdown(shutdown_signal())
-    .await
-    .expect("Server error");
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .expect("Server error");
 }

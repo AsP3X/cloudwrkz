@@ -1,9 +1,10 @@
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     routing::{get, patch, post},
-    Json, Router,
 };
+use rand::Rng;
 use serde::Deserialize;
 use sqlx::Row;
 
@@ -14,8 +15,8 @@ use crate::diagnostics_token;
 use crate::error::AppError;
 use crate::models::audit_log::AuditLogRow;
 use crate::models::notification::NotificationRow;
-use crate::routes::helpers::{check_permission, get_user_permission_keys};
 use crate::routes::AppState;
+use crate::routes::helpers::{check_permission, get_user_permission_keys};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -39,6 +40,10 @@ pub fn router() -> Router<AppState> {
         .route("/admin/users/{id}/ban", post(ban_user))
         .route("/admin/users/{id}/unban", post(unban_user))
         .route(
+            "/admin/users/{id}/reset-password",
+            post(reset_user_password),
+        )
+        .route(
             "/admin/users/{id}/permissions",
             get(list_user_permissions).post(grant_user_permission),
         )
@@ -60,16 +65,35 @@ pub fn router() -> Router<AppState> {
             "/admin/groups/{id}/permissions/{key}",
             axum::routing::delete(revoke_group_permission),
         )
+        .route("/admin/groups/{id}/members", post(add_group_member))
+        .route(
+            "/admin/groups/{id}/members/{user_id}",
+            axum::routing::delete(remove_group_member),
+        )
         .route("/admin/modules", get(list_modules))
         .route("/admin/modules/{id}", patch(toggle_module))
         .route("/admin/sessions", get(list_sessions))
-        .route("/admin/sessions/{id}", axum::routing::delete(revoke_session))
-        .route("/admin/statistics/analytics", get(admin_statistics_analytics))
+        .route(
+            "/admin/sessions/{id}",
+            axum::routing::delete(revoke_session),
+        )
+        .route(
+            "/admin/statistics/analytics",
+            get(admin_statistics_analytics),
+        )
         .route("/admin/statistics", get(admin_statistics))
         .route("/admin/dashboard-stats", get(admin_dashboard_stats))
+        .route("/admin/background-jobs", get(list_background_jobs))
+        .route("/admin/background-jobs/{id}", get(get_background_job))
         .route("/admin/settings", get(admin_settings))
-        .route("/admin/settings/links-page-size", axum::routing::patch(update_links_page_size))
-        .route("/admin/settings/qr-login-rate-limit", axum::routing::patch(update_qr_login_rate_limit))
+        .route(
+            "/admin/settings/links-page-size",
+            axum::routing::patch(update_links_page_size),
+        )
+        .route(
+            "/admin/settings/qr-login-rate-limit",
+            axum::routing::patch(update_qr_login_rate_limit),
+        )
         .route(
             "/admin/settings/diagnostics-health-token",
             post(rotate_diagnostics_health_token),
@@ -292,9 +316,10 @@ async fn audit_actions(
     if !check_permission(&state.pool, &user.id, "audit.view").await && user.role != "ADMIN" {
         return Err(AppError::forbidden("Insufficient permissions"));
     }
-    let rows: Vec<(String,)> = sqlx::query_as("SELECT DISTINCT action FROM audit_logs ORDER BY action")
-        .fetch_all(&state.pool)
-        .await?;
+    let rows: Vec<(String,)> =
+        sqlx::query_as("SELECT DISTINCT action FROM audit_logs ORDER BY action")
+            .fetch_all(&state.pool)
+            .await?;
     let actions: Vec<String> = rows.into_iter().map(|r| r.0).collect();
     Ok(Json(serde_json::json!({ "actions": actions })))
 }
@@ -551,15 +576,15 @@ async fn db_row_update(
     }
 
     let table = sanitize_identifier(body.table.trim())?;
-    let id_column = body
-        .id_column
-        .as_deref()
-        .unwrap_or("id")
-        .trim();
+    let id_column = body.id_column.as_deref().unwrap_or("id").trim();
     let id_column = sanitize_identifier(id_column)?;
     let data = match &body.data {
         serde_json::Value::Object(m) if !m.is_empty() => m,
-        _ => return Err(AppError::bad_request("data object with at least one field is required")),
+        _ => {
+            return Err(AppError::bad_request(
+                "data object with at least one field is required",
+            ));
+        }
     };
 
     let mut set_clauses = Vec::with_capacity(data.len());
@@ -610,16 +635,10 @@ async fn db_row_delete(
     }
 
     let table = sanitize_identifier(body.table.trim())?;
-    let id_column = body
-        .id_column
-        .as_deref()
-        .unwrap_or("id")
-        .trim();
+    let id_column = body.id_column.as_deref().unwrap_or("id").trim();
     let id_column = sanitize_identifier(id_column)?;
     let where_value = format_sql_value(&body.id_value);
-    let query = format!(
-        r#"DELETE FROM "public"."{table}" WHERE "{id_column}" = {where_value}"#
-    );
+    let query = format!(r#"DELETE FROM "public"."{table}" WHERE "{id_column}" = {where_value}"#);
 
     let result = sqlx::query(&query).execute(&state.pool).await?;
     let deleted_count = result.rows_affected();
@@ -675,6 +694,14 @@ async fn require_admin_settings(pool: &sqlx::PgPool, user_id: &str) -> Result<()
     Ok(())
 }
 
+/// List/detail background jobs: requires `admin.jobs.view` only.
+async fn require_admin_jobs_view(pool: &sqlx::PgPool, user_id: &str) -> Result<(), AppError> {
+    if check_permission(pool, user_id, "admin.jobs.view").await {
+        return Ok(());
+    }
+    Err(AppError::forbidden("admin.jobs.view required"))
+}
+
 async fn admin_settings(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -697,14 +724,16 @@ async fn admin_settings(
         .fetch_one(&state.pool)
         .await
         .unwrap_or(0);
-    let enabled_modules: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM modules WHERE enabled = true")
-        .fetch_one(&state.pool)
-        .await
-        .unwrap_or(0);
-    let active_sessions: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sessions WHERE expires_at > NOW()")
-        .fetch_one(&state.pool)
-        .await
-        .unwrap_or(0);
+    let enabled_modules: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM modules WHERE enabled = true")
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0);
+    let active_sessions: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM sessions WHERE expires_at > NOW()")
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0);
 
     let db_users: i64 = total_users;
     let db_sessions: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sessions")
@@ -760,7 +789,15 @@ async fn admin_settings(
     };
 
     let qr_requests_per_minute: i64 = sqlx::query_scalar(
-        r#"SELECT (value#>>'{}')::int FROM system_settings WHERE key = 'qr_login_requests_per_minute' LIMIT 1"#,
+        r#"SELECT CASE
+              WHEN jsonb_typeof(value) = 'number' THEN (value #>> '{}')::int
+              WHEN jsonb_typeof(value) = 'string' AND (value #>> '{}') ~ '^[0-9]+$'
+                THEN (value #>> '{}')::int
+              ELSE NULL
+            END
+            FROM system_settings
+            WHERE key = 'qr_login_requests_per_minute'
+            LIMIT 1"#,
     )
     .fetch_optional(&state.pool)
     .await
@@ -866,9 +903,8 @@ async fn rotate_diagnostics_health_token(
     require_admin_settings(&state.pool, &user.id).await?;
 
     let raw = diagnostics_token::generate_raw_token();
-    let hash = password::hash_password(&raw).map_err(|e| {
-        AppError::internal(format!("Could not hash diagnostics token: {e}"))
-    })?;
+    let hash = password::hash_password(&raw)
+        .map_err(|e| AppError::internal(format!("Could not hash diagnostics token: {e}")))?;
     diagnostics_token::set_stored_hash(&state.pool, &hash)
         .await
         .map_err(|e| AppError::internal(format!("Could not store diagnostics token: {e}")))?;
@@ -999,26 +1035,30 @@ async fn get_user(
     .await?
     .ok_or_else(|| AppError::not_found("User not found"))?;
 
-    let created_tickets: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tickets WHERE created_by_id = $1")
-        .bind(&id)
-        .fetch_one(&state.pool)
-        .await
-        .unwrap_or(0);
-    let assigned_tickets: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tickets WHERE assigned_to_id = $1")
-        .bind(&id)
-        .fetch_one(&state.pool)
-        .await
-        .unwrap_or(0);
-    let ticket_comments: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM ticket_comments WHERE user_id = $1")
-        .bind(&id)
-        .fetch_one(&state.pool)
-        .await
-        .unwrap_or(0);
-    let group_memberships_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM group_memberships WHERE user_id = $1")
-        .bind(&id)
-        .fetch_one(&state.pool)
-        .await
-        .unwrap_or(0);
+    let created_tickets: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM tickets WHERE created_by_id = $1")
+            .bind(&id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0);
+    let assigned_tickets: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM tickets WHERE assigned_to_id = $1")
+            .bind(&id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0);
+    let ticket_comments: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM ticket_comments WHERE user_id = $1")
+            .bind(&id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0);
+    let group_memberships_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM group_memberships WHERE user_id = $1")
+            .bind(&id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0);
 
     let group_rows = sqlx::query(
         r#"SELECT gm.id as membership_id, g.id, g.name, g.description FROM group_memberships gm
@@ -1145,7 +1185,10 @@ async fn unban_user(
             action: "admin.users.unban".into(),
             resource_type: Some("user".into()),
             resource_id: Some(id),
-            context: body.reason.as_ref().map(|r| serde_json::json!({ "reason": r })),
+            context: body
+                .reason
+                .as_ref()
+                .map(|r| serde_json::json!({ "reason": r })),
             ip_address: None,
             user_agent: None,
         },
@@ -1153,11 +1196,63 @@ async fn unban_user(
     Ok(Json(serde_json::json!({ "success": true })))
 }
 
+fn generate_secure_temp_password() -> String {
+    const CHARSET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz0123456789";
+    let mut rng = rand::rng();
+    (0..22)
+        .map(|_| {
+            let i = (rng.random::<u32>() as usize) % CHARSET.len();
+            CHARSET[i] as char
+        })
+        .collect()
+}
+
+async fn reset_user_password(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if user.role != "ADMIN" && user.role != "MODERATOR" {
+        return Err(AppError::forbidden("Admin access required"));
+    }
+    let plain = generate_secure_temp_password();
+    let hash = password::hash_password(&plain).map_err(|e| AppError::internal(e.to_string()))?;
+    let n = sqlx::query("UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2")
+        .bind(&hash)
+        .bind(&id)
+        .execute(&state.pool)
+        .await?
+        .rows_affected();
+    if n == 0 {
+        return Err(AppError::not_found("User not found"));
+    }
+    sqlx::query("DELETE FROM sessions WHERE user_id = $1")
+        .bind(&id)
+        .execute(&state.pool)
+        .await?;
+    audit::write_audit_log(
+        &state.pool,
+        WriteAuditParams {
+            user_id: Some(user.id),
+            action: "admin.users.password_reset".into(),
+            resource_type: Some("user".into()),
+            resource_id: Some(id.clone()),
+            context: None,
+            ip_address: None,
+            user_agent: None,
+        },
+    );
+    Ok(Json(serde_json::json!({ "plainPassword": plain })))
+}
+
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct UpdateUserRequest {
     name: Option<String>,
     role: Option<String>,
     status: Option<String>,
+    password: Option<String>,
+    email_verified: Option<bool>,
 }
 
 async fn update_user(
@@ -1170,19 +1265,40 @@ async fn update_user(
         return Err(AppError::forbidden("Admin only"));
     }
 
+    if let Some(ref raw_pw) = body.password {
+        let pw = raw_pw.trim();
+        if pw.len() < 8 {
+            return Err(AppError::bad_request(
+                "Password must be at least 8 characters",
+            ));
+        }
+        let hash = password::hash_password(pw).map_err(|e| AppError::internal(e.to_string()))?;
+        sqlx::query("UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2")
+            .bind(&hash)
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
+        sqlx::query("DELETE FROM sessions WHERE user_id = $1")
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
+    }
+
     if let Some(ref role) = body.role {
-        sqlx::query("UPDATE users SET role = $1::\"UserRole\", updated_at = NOW() WHERE id = $2")
+        sqlx::query("UPDATE users SET role = $1::\"Role\", updated_at = NOW() WHERE id = $2")
             .bind(role)
             .bind(&id)
             .execute(&state.pool)
             .await?;
     }
     if let Some(ref status) = body.status {
-        sqlx::query("UPDATE users SET status = $1::\"UserStatus\", updated_at = NOW() WHERE id = $2")
-            .bind(status)
-            .bind(&id)
-            .execute(&state.pool)
-            .await?;
+        sqlx::query(
+            "UPDATE users SET status = $1::\"UserStatus\", updated_at = NOW() WHERE id = $2",
+        )
+        .bind(status)
+        .bind(&id)
+        .execute(&state.pool)
+        .await?;
     }
     if let Some(ref name) = body.name {
         sqlx::query("UPDATE users SET name = $1, updated_at = NOW() WHERE id = $2")
@@ -1190,6 +1306,25 @@ async fn update_user(
             .bind(&id)
             .execute(&state.pool)
             .await?;
+    }
+
+    if let Some(email_verified) = body.email_verified {
+        if email_verified {
+            sqlx::query(
+                r#"UPDATE users SET email_verified = true, email_verification_token = NULL,
+                   email_verification_expires = NULL, updated_at = NOW() WHERE id = $1"#,
+            )
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
+        } else {
+            sqlx::query(
+                "UPDATE users SET email_verified = false, updated_at = NOW() WHERE id = $1",
+            )
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
+        }
     }
 
     Ok(Json(serde_json::json!({ "success": true })))
@@ -1224,7 +1359,9 @@ async fn list_permissions(
         || check_permission(&state.pool, &user.id, "admin.permissions.view").await
         || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
     if !can_view {
-        return Err(AppError::forbidden("Permission required: admin.permissions.view or admin.permissions.manage"));
+        return Err(AppError::forbidden(
+            "Permission required: admin.permissions.view or admin.permissions.manage",
+        ));
     }
     let rows = sqlx::query(
         r#"SELECT id, key, name, description, category, module, created_at, updated_at
@@ -1260,7 +1397,9 @@ async fn list_user_permissions(
         || check_permission(&state.pool, &user.id, "admin.permissions.view").await
         || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
     if !can_view {
-        return Err(AppError::forbidden("Permission required: admin.permissions.view or admin.permissions.manage"));
+        return Err(AppError::forbidden(
+            "Permission required: admin.permissions.view or admin.permissions.manage",
+        ));
     }
     let rows = sqlx::query(
         r#"SELECT p.id, p.key, p.name, p.category FROM user_permissions up
@@ -1295,9 +1434,12 @@ async fn grant_user_permission(
     Path(id): Path<String>,
     Json(body): Json<GrantPermissionRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let can_manage = user.role == "ADMIN" || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
+    let can_manage = user.role == "ADMIN"
+        || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
     if !can_manage {
-        return Err(AppError::forbidden("Permission required: admin.permissions.manage"));
+        return Err(AppError::forbidden(
+            "Permission required: admin.permissions.manage",
+        ));
     }
     let key = body.key.trim();
     if key.is_empty() {
@@ -1339,9 +1481,12 @@ async fn revoke_user_permission(
     AuthUser(user): AuthUser,
     Path((id, key)): Path<(String, String)>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let can_manage = user.role == "ADMIN" || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
+    let can_manage = user.role == "ADMIN"
+        || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
     if !can_manage {
-        return Err(AppError::forbidden("Permission required: admin.permissions.manage"));
+        return Err(AppError::forbidden(
+            "Permission required: admin.permissions.manage",
+        ));
     }
     let perm_id: Option<String> = sqlx::query_scalar("SELECT id FROM permissions WHERE key = $1")
         .bind(key.trim())
@@ -1378,7 +1523,9 @@ async fn list_group_permissions(
         || check_permission(&state.pool, &user.id, "admin.permissions.view").await
         || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
     if !can_view {
-        return Err(AppError::forbidden("Permission required: admin.permissions.view or admin.permissions.manage"));
+        return Err(AppError::forbidden(
+            "Permission required: admin.permissions.view or admin.permissions.manage",
+        ));
     }
     let rows = sqlx::query(
         r#"SELECT p.id, p.key, p.name, p.category FROM group_permissions gp
@@ -1413,9 +1560,12 @@ async fn grant_group_permission(
     Path(id): Path<String>,
     Json(body): Json<GrantGroupPermissionRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let can_manage = user.role == "ADMIN" || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
+    let can_manage = user.role == "ADMIN"
+        || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
     if !can_manage {
-        return Err(AppError::forbidden("Permission required: admin.permissions.manage"));
+        return Err(AppError::forbidden(
+            "Permission required: admin.permissions.manage",
+        ));
     }
     let key = body.key.trim();
     if key.is_empty() {
@@ -1457,9 +1607,12 @@ async fn revoke_group_permission(
     AuthUser(user): AuthUser,
     Path((id, key)): Path<(String, String)>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let can_manage = user.role == "ADMIN" || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
+    let can_manage = user.role == "ADMIN"
+        || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
     if !can_manage {
-        return Err(AppError::forbidden("Permission required: admin.permissions.manage"));
+        return Err(AppError::forbidden(
+            "Permission required: admin.permissions.manage",
+        ));
     }
     let perm_id: Option<String> = sqlx::query_scalar("SELECT id FROM permissions WHERE key = $1")
         .bind(key.trim())
@@ -1484,6 +1637,13 @@ async fn revoke_group_permission(
         },
     );
     Ok(Json(serde_json::json!({ "success": true })))
+}
+
+async fn can_manage_group_memberships(
+    pool: &sqlx::PgPool,
+    user: &crate::models::user::CurrentUser,
+) -> bool {
+    user.role == "ADMIN" || check_permission(pool, &user.id, "admin.groups.manage").await
 }
 
 async fn list_groups(
@@ -1556,11 +1716,13 @@ async fn get_group(
         return Err(AppError::forbidden("Admin access required"));
     }
 
-    let r = sqlx::query("SELECT id, name, description, created_at, updated_at FROM groups WHERE id = $1")
-        .bind(&id)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or_else(|| AppError::not_found("Group not found"))?;
+    let r = sqlx::query(
+        "SELECT id, name, description, created_at, updated_at FROM groups WHERE id = $1",
+    )
+    .bind(&id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::not_found("Group not found"))?;
 
     let members = sqlx::query(
         r#"SELECT u.id, u.name, u.email, u.role::text as role
@@ -1584,6 +1746,8 @@ async fn get_group(
         })
         .collect();
 
+    let member_count = member_list.len() as i64;
+
     Ok(Json(serde_json::json!({
         "group": {
             "id": r.get::<String, _>("id"),
@@ -1591,9 +1755,128 @@ async fn get_group(
             "description": r.get::<Option<String>, _>("description"),
             "createdAt": r.get::<chrono::NaiveDateTime, _>("created_at"),
             "updatedAt": r.get::<chrono::NaiveDateTime, _>("updated_at"),
+            "memberCount": member_count,
             "members": member_list,
         }
     })))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AddGroupMemberRequest {
+    user_id: String,
+}
+
+async fn add_group_member(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(group_id): Path<String>,
+    Json(body): Json<AddGroupMemberRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if !can_manage_group_memberships(&state.pool, &user).await {
+        return Err(AppError::forbidden(
+            "Permission required: admin role or admin.groups.manage",
+        ));
+    }
+
+    let group_exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM groups WHERE id = $1)")
+            .bind(&group_id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(false);
+    if !group_exists {
+        return Err(AppError::not_found("Group not found"));
+    }
+
+    let target_status: Option<String> =
+        sqlx::query_scalar(r#"SELECT status::text FROM users WHERE id = $1"#)
+            .bind(&body.user_id)
+            .fetch_optional(&state.pool)
+            .await?;
+    let target_status = target_status.ok_or_else(|| AppError::not_found("User not found"))?;
+    if target_status != "ACTIVE" {
+        return Err(AppError::bad_request("Cannot add inactive users to groups"));
+    }
+
+    let already: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM group_memberships WHERE group_id = $1 AND user_id = $2)",
+    )
+    .bind(&group_id)
+    .bind(&body.user_id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(false);
+    if already {
+        return Err(AppError::bad_request(
+            "User is already a member of this group",
+        ));
+    }
+
+    let membership_id = crate::id::new_cuid();
+    sqlx::query(
+        r#"INSERT INTO group_memberships (id, user_id, group_id, created_at)
+           VALUES ($1, $2, $3, NOW())"#,
+    )
+    .bind(&membership_id)
+    .bind(&body.user_id)
+    .bind(&group_id)
+    .execute(&state.pool)
+    .await?;
+
+    audit::write_audit_log(
+        &state.pool,
+        WriteAuditParams {
+            user_id: Some(user.id),
+            action: "admin.groups.member_add".into(),
+            resource_type: Some("group".into()),
+            resource_id: Some(group_id.clone()),
+            context: Some(serde_json::json!({ "targetUserId": body.user_id })),
+            ip_address: None,
+            user_agent: None,
+        },
+    );
+
+    Ok(Json(
+        serde_json::json!({ "success": true, "membershipId": membership_id }),
+    ))
+}
+
+async fn remove_group_member(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path((group_id, target_user_id)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if !can_manage_group_memberships(&state.pool, &user).await {
+        return Err(AppError::forbidden(
+            "Permission required: admin role or admin.groups.manage",
+        ));
+    }
+
+    let res = sqlx::query("DELETE FROM group_memberships WHERE group_id = $1 AND user_id = $2")
+        .bind(&group_id)
+        .bind(&target_user_id)
+        .execute(&state.pool)
+        .await?;
+
+    if res.rows_affected() == 0 {
+        return Err(AppError::not_found("Membership not found"));
+    }
+
+    audit::write_audit_log(
+        &state.pool,
+        WriteAuditParams {
+            user_id: Some(user.id),
+            action: "admin.groups.member_remove".into(),
+            resource_type: Some("group".into()),
+            resource_id: Some(group_id.clone()),
+            context: Some(serde_json::json!({ "targetUserId": target_user_id })),
+            ip_address: None,
+            user_agent: None,
+        },
+    );
+
+    Ok(Json(serde_json::json!({ "success": true })))
 }
 
 #[derive(Deserialize)]
@@ -1663,9 +1946,11 @@ async fn list_modules(
         return Err(AppError::forbidden("Admin only"));
     }
 
-    let rows = sqlx::query("SELECT id, key, name, description, enabled, created_at FROM modules ORDER BY name ASC")
-        .fetch_all(&state.pool)
-        .await?;
+    let rows = sqlx::query(
+        "SELECT id, key, name, description, enabled, created_at FROM modules ORDER BY name ASC",
+    )
+    .fetch_all(&state.pool)
+    .await?;
 
     let modules: Vec<serde_json::Value> = rows
         .iter()
@@ -1844,6 +2129,210 @@ async fn admin_statistics(
     })))
 }
 
+#[derive(Deserialize)]
+struct BackgroundJobsQuery {
+    limit: Option<i64>,
+    /// When true, returns recent completed/failed jobs too (newest first).
+    include_completed: Option<bool>,
+}
+
+async fn list_background_jobs(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Query(q): Query<BackgroundJobsQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_admin_jobs_view(&state.pool, &user.id).await?;
+    let limit = q.limit.unwrap_or(120).clamp(1, 500);
+    let include_completed = q.include_completed.unwrap_or(false);
+
+    let rows = if include_completed {
+        sqlx::query(
+            r#"SELECT b.id, b.job_type, b.status, b.payload, b.error_message, b.dedupe_key, b.created_by_user_id,
+                      b.priority, b.created_at, b.updated_at, b.started_at, b.completed_at,
+                      u.email AS created_by_email, u.name AS created_by_name
+               FROM background_jobs b
+               LEFT JOIN users u ON u.id = b.created_by_user_id
+               ORDER BY b.created_at DESC
+               LIMIT $1"#,
+        )
+        .bind(limit)
+        .fetch_all(&state.pool)
+        .await
+    } else {
+        sqlx::query(
+            r#"SELECT b.id, b.job_type, b.status, b.payload, b.error_message, b.dedupe_key, b.created_by_user_id,
+                      b.priority, b.created_at, b.updated_at, b.started_at, b.completed_at,
+                      u.email AS created_by_email, u.name AS created_by_name
+               FROM background_jobs b
+               LEFT JOIN users u ON u.id = b.created_by_user_id
+               WHERE b.status IN ('pending', 'processing')
+               ORDER BY
+                 CASE b.status WHEN 'processing' THEN 0 ELSE 1 END,
+                 b.priority DESC,
+                 b.created_at ASC
+               LIMIT $1"#,
+        )
+        .bind(limit)
+        .fetch_all(&state.pool)
+        .await
+    }
+    .map_err(|e| AppError::internal(format!("background jobs: {e}")))?;
+
+    let jobs: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|row| {
+            let created_by_id = row
+                .try_get::<Option<String>, _>("created_by_user_id")
+                .ok()
+                .flatten();
+            let created_by_email = row
+                .try_get::<Option<String>, _>("created_by_email")
+                .ok()
+                .flatten();
+            let created_by_name = row
+                .try_get::<Option<String>, _>("created_by_name")
+                .ok()
+                .flatten();
+            let created_by = match (created_by_id.clone(), created_by_email, created_by_name) {
+                (Some(id), email, name) => Some(serde_json::json!({
+                    "id": id,
+                    "email": email.unwrap_or_default(),
+                    "name": name,
+                })),
+                _ => None,
+            };
+            serde_json::json!({
+                "id": row.get::<String, _>("id"),
+                "jobType": row.get::<String, _>("job_type"),
+                "status": row.get::<String, _>("status"),
+                "payload": row.get::<serde_json::Value, _>("payload"),
+                "errorMessage": row.try_get::<Option<String>, _>("error_message").ok().flatten(),
+                "dedupeKey": row.try_get::<Option<String>, _>("dedupe_key").ok().flatten(),
+                "createdByUserId": created_by_id,
+                "createdBy": created_by,
+                "priority": row.get::<i16, _>("priority"),
+                "createdAt": row.get::<chrono::DateTime<chrono::Utc>, _>("created_at").to_rfc3339(),
+                "updatedAt": row.get::<chrono::DateTime<chrono::Utc>, _>("updated_at").to_rfc3339(),
+                "startedAt": row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("started_at").ok().flatten().map(|t| t.to_rfc3339()),
+                "completedAt": row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("completed_at").ok().flatten().map(|t| t.to_rfc3339()),
+            })
+        })
+        .collect();
+
+    let cfg = &state.config;
+    Ok(Json(serde_json::json!({
+        "jobs": jobs,
+        "typePolicies": {
+            "github_link_metadata": {
+                "maxConcurrent": cfg.job_queue_github_max_concurrent,
+                "minStartIntervalSecs": serde_json::Value::Null,
+                "githubUtcMinuteStartSlot": false,
+                "githubAnonymousMaxRequestsPerHour": cfg.github_anonymous_max_requests_per_hour,
+                "githubApiTokenConfigured": cfg.github_api_token.as_ref().is_some_and(|s| !s.trim().is_empty()),
+            }
+        }
+    })))
+}
+
+async fn get_background_job(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_admin_jobs_view(&state.pool, &user.id).await?;
+
+    let row = sqlx::query(
+        r#"SELECT b.id, b.job_type, b.status, b.payload, b.error_message, b.dedupe_key, b.created_by_user_id,
+                  b.priority, b.created_at, b.updated_at, b.started_at, b.completed_at,
+                  u.email AS created_by_email, u.name AS created_by_name
+           FROM background_jobs b
+           LEFT JOIN users u ON u.id = b.created_by_user_id
+           WHERE b.id = $1"#,
+    )
+    .bind(&id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| AppError::internal(format!("background job: {e}")))?;
+
+    let Some(row) = row else {
+        return Err(AppError::not_found("Job not found"));
+    };
+
+    let job_type: String = row.get("job_type");
+    let status: String = row.get("status");
+    let payload: serde_json::Value = row.get("payload");
+
+    let created_by_id = row
+        .try_get::<Option<String>, _>("created_by_user_id")
+        .ok()
+        .flatten();
+    let created_by_email = row
+        .try_get::<Option<String>, _>("created_by_email")
+        .ok()
+        .flatten();
+    let created_by_name = row
+        .try_get::<Option<String>, _>("created_by_name")
+        .ok()
+        .flatten();
+    let created_by = match (created_by_id.clone(), created_by_email, created_by_name) {
+        (Some(uid), email, name) => Some(serde_json::json!({
+            "id": uid,
+            "email": email.unwrap_or_default(),
+            "name": name,
+        })),
+        _ => None,
+    };
+
+    let mut result: Option<serde_json::Value> = None;
+    if job_type == crate::job_queue::JOB_TYPE_GITHUB_LINK_METADATA {
+        if let Some(link_id) = payload.get("link_id").and_then(|v| v.as_str()) {
+            if let Ok(Some(link)) = sqlx::query(
+                r#"SELECT id, title, url, metadata, metadata_extracted_at
+                   FROM links WHERE id = $1"#,
+            )
+            .bind(link_id)
+            .fetch_optional(&state.pool)
+            .await
+            {
+                let meta_extract: Option<chrono::DateTime<chrono::Utc>> =
+                    link.try_get("metadata_extracted_at").ok();
+                result = Some(serde_json::json!({
+                    "kind": "github_link_metadata",
+                    "link": {
+                        "id": link.get::<String, _>("id"),
+                        "title": link.try_get::<Option<String>, _>("title").ok().flatten(),
+                        "url": link.get::<String, _>("url"),
+                        "metadata": link.get::<serde_json::Value, _>("metadata"),
+                        "metadataExtractedAt": meta_extract.map(|t| t.to_rfc3339()),
+                    },
+                    "note": "For completed jobs, metadata is the saved link record after enrichment. Failed or in-flight jobs show the link as it exists now (may be unchanged)."
+                }));
+            }
+        }
+    }
+
+    let success = status == "completed";
+    let job = serde_json::json!({
+        "id": row.get::<String, _>("id"),
+        "jobType": job_type,
+        "status": status,
+        "success": success,
+        "payload": payload,
+        "errorMessage": row.try_get::<Option<String>, _>("error_message").ok().flatten(),
+        "dedupeKey": row.try_get::<Option<String>, _>("dedupe_key").ok().flatten(),
+        "createdByUserId": created_by_id,
+        "createdBy": created_by,
+        "priority": row.get::<i16, _>("priority"),
+        "createdAt": row.get::<chrono::DateTime<chrono::Utc>, _>("created_at").to_rfc3339(),
+        "updatedAt": row.get::<chrono::DateTime<chrono::Utc>, _>("updated_at").to_rfc3339(),
+        "startedAt": row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("started_at").ok().flatten().map(|t| t.to_rfc3339()),
+        "completedAt": row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("completed_at").ok().flatten().map(|t| t.to_rfc3339()),
+        "result": result,
+    });
+
+    Ok(Json(serde_json::json!({ "job": job })))
+}
+
 async fn admin_dashboard_stats(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -1857,12 +2346,11 @@ async fn admin_dashboard_stats(
         .await
         .unwrap_or(0);
 
-    let user_status_rows = sqlx::query(
-        "SELECT status::text as status, COUNT(*) as cnt FROM users GROUP BY status",
-    )
-    .fetch_all(&state.pool)
-    .await
-    .unwrap_or_default();
+    let user_status_rows =
+        sqlx::query("SELECT status::text as status, COUNT(*) as cnt FROM users GROUP BY status")
+            .fetch_all(&state.pool)
+            .await
+            .unwrap_or_default();
 
     let mut users_by_status = serde_json::json!({
         "ACTIVE": 0,
@@ -1884,12 +2372,11 @@ async fn admin_dashboard_stats(
         .await
         .unwrap_or(0);
 
-    let ticket_status_rows = sqlx::query(
-        "SELECT status::text as status, COUNT(*) as cnt FROM tickets GROUP BY status",
-    )
-    .fetch_all(&state.pool)
-    .await
-    .unwrap_or_default();
+    let ticket_status_rows =
+        sqlx::query("SELECT status::text as status, COUNT(*) as cnt FROM tickets GROUP BY status")
+            .fetch_all(&state.pool)
+            .await
+            .unwrap_or_default();
 
     let mut tickets_by_status = serde_json::json!({
         "OPEN": 0,
@@ -1908,15 +2395,17 @@ async fn admin_dashboard_stats(
         }
     }
 
-    let active_sessions: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sessions WHERE expires_at > NOW()")
-        .fetch_one(&state.pool)
-        .await
-        .unwrap_or(0);
+    let active_sessions: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM sessions WHERE expires_at > NOW()")
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0);
 
-    let enabled_modules: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM modules WHERE enabled = true")
-        .fetch_one(&state.pool)
-        .await
-        .unwrap_or(0);
+    let enabled_modules: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM modules WHERE enabled = true")
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0);
 
     let total_modules: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM modules")
         .fetch_one(&state.pool)
@@ -1929,21 +2418,19 @@ async fn admin_dashboard_stats(
         .unwrap_or(0);
 
     let seven_days_ago = chrono::Utc::now().naive_utc() - chrono::Duration::days(7);
-    let recent_registrations: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM users WHERE created_at >= $1",
-    )
-    .bind(seven_days_ago)
-    .fetch_one(&state.pool)
-    .await
-    .unwrap_or(0);
+    let recent_registrations: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE created_at >= $1")
+            .bind(seven_days_ago)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0);
 
-    let recent_tickets: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM tickets WHERE created_at >= $1",
-    )
-    .bind(seven_days_ago)
-    .fetch_one(&state.pool)
-    .await
-    .unwrap_or(0);
+    let recent_tickets: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM tickets WHERE created_at >= $1")
+            .bind(seven_days_ago)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0);
 
     let total_todos: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM todos")
         .fetch_one(&state.pool)
@@ -1954,6 +2441,18 @@ async fn admin_dashboard_stats(
         .fetch_one(&state.pool)
         .await
         .unwrap_or(0);
+
+    let bg_pending: i64 =
+        sqlx::query_scalar("SELECT COUNT(*)::bigint FROM background_jobs WHERE status = 'pending'")
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0);
+    let bg_processing: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM background_jobs WHERE status = 'processing'",
+    )
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(0);
 
     Ok(Json(serde_json::json!({
         "totalUsers": total_users,
@@ -1968,6 +2467,7 @@ async fn admin_dashboard_stats(
         "totalGroups": total_groups,
         "recentRegistrations": recent_registrations,
         "recentTickets": recent_tickets,
+        "backgroundJobs": { "pending": bg_pending, "processing": bg_processing },
     })))
 }
 

@@ -8,8 +8,10 @@ import { Badge } from "@/components/ui/Badge";
 import { Dialog } from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { updateUserAdmin, deleteUserAdmin, unbanUserAdmin, getUserEffectivePermissions } from "@/server/actions/admin/users";
 import type { getUserByIdAdmin } from "@/server/actions/admin/users";
+import { getGroups, addUserToGroup, removeUserFromGroup } from "@/server/actions/groups";
 import { formatDateTimeFull } from "@/lib/utils/date";
 import { UserUnbanDialog } from "./UserUnbanDialog";
 
@@ -18,9 +20,16 @@ type User = NonNullable<Awaited<ReturnType<typeof getUserByIdAdmin>>>;
 interface UserDetailPageProps {
   user: User;
   canManagePermissions?: boolean;
+  canManageGroups?: boolean;
+  canUpdateUser?: boolean;
 }
 
-export function UserDetailPage({ user: initialUser, canManagePermissions = false }: UserDetailPageProps) {
+export function UserDetailPage({
+  user: initialUser,
+  canManagePermissions = false,
+  canManageGroups = false,
+  canUpdateUser = false,
+}: UserDetailPageProps) {
   const router = useRouter();
   const [user, setUser] = useState(initialUser);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -39,6 +48,18 @@ export function UserDetailPage({ user: initialUser, canManagePermissions = false
   const [effectivePermissions, setEffectivePermissions] = useState<string[]>([]);
   const [loadingPermissions, setLoadingPermissions] = useState(false);
   const [permissionSearch, setPermissionSearch] = useState("");
+  const [addToGroupOpen, setAddToGroupOpen] = useState(false);
+  const [allGroups, setAllGroups] = useState<Awaited<ReturnType<typeof getGroups>>>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState("");
+  const [groupSearch, setGroupSearch] = useState("");
+  const [groupActionLoading, setGroupActionLoading] = useState(false);
+  const [groupActionError, setGroupActionError] = useState<string | null>(null);
+  const [verifySaving, setVerifySaving] = useState(false);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    setUser(initialUser);
+  }, [initialUser]);
 
   React.useEffect(() => {
     if (editDialogOpen) {
@@ -68,6 +89,91 @@ export function UserDetailPage({ user: initialUser, canManagePermissions = false
     }
     loadPermissions();
   }, [user.id]);
+
+  React.useEffect(() => {
+    if (!addToGroupOpen || !canManageGroups) return;
+    let cancelled = false;
+    getGroups().then((g) => {
+      if (!cancelled) setAllGroups(g);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [addToGroupOpen, canManageGroups]);
+
+  const groupsNotJoined = useMemo(() => {
+    const joined = new Set((user.groupMemberships ?? []).map((m) => m.group.id));
+    return allGroups.filter((g) => !joined.has(g.id));
+  }, [allGroups, user.groupMemberships]);
+
+  const filteredGroupsForAdd = useMemo(() => {
+    if (!groupSearch.trim()) return groupsNotJoined;
+    const q = groupSearch.toLowerCase();
+    return groupsNotJoined.filter(
+      (g) =>
+        g.name.toLowerCase().includes(q) ||
+        (g.description ?? "").toLowerCase().includes(q)
+    );
+  }, [groupsNotJoined, groupSearch]);
+
+  const handleAddToGroup = async () => {
+    if (!selectedGroupId) return;
+    setGroupActionError(null);
+    setGroupActionLoading(true);
+    const result = await addUserToGroup(selectedGroupId, user.id);
+    setGroupActionLoading(false);
+    if (result.success) {
+      setSelectedGroupId("");
+      setGroupSearch("");
+      setAddToGroupOpen(false);
+      router.refresh();
+    } else {
+      setGroupActionError(result.error);
+    }
+  };
+
+  const handleRemoveFromGroup = async (groupId: string) => {
+    setGroupActionError(null);
+    setGroupActionLoading(true);
+    const result = await removeUserFromGroup(groupId, user.id);
+    setGroupActionLoading(false);
+    if (result.success) {
+      router.refresh();
+    } else {
+      setGroupActionError(result.error);
+    }
+  };
+
+  const accountStatusToggleEnabled =
+    user.status === "ACTIVE" || user.status === "PENDING";
+
+  const handleEmailVerifiedChange = async (checked: boolean) => {
+    if (!canUpdateUser || checked === user.emailVerified) return;
+    setVerifyError(null);
+    setVerifySaving(true);
+    const result = await updateUserAdmin(user.id, { emailVerified: checked });
+    setVerifySaving(false);
+    if (result.success) {
+      router.refresh();
+    } else {
+      setVerifyError(result.error);
+    }
+  };
+
+  const handleAccountActiveChange = async (checked: boolean) => {
+    if (!canUpdateUser || !accountStatusToggleEnabled) return;
+    const nextStatus = checked ? "ACTIVE" : "PENDING";
+    if (nextStatus === user.status) return;
+    setVerifyError(null);
+    setVerifySaving(true);
+    const result = await updateUserAdmin(user.id, { status: nextStatus });
+    setVerifySaving(false);
+    if (result.success) {
+      router.refresh();
+    } else {
+      setVerifyError(result.error);
+    }
+  };
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -239,12 +345,6 @@ export function UserDetailPage({ user: initialUser, canManagePermissions = false
             <p className="text-base text-neutral-900 dark:text-neutral-100 mt-1">{user.name || "-"}</p>
           </div>
           <div>
-            <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Email Verified</p>
-            <Badge variant={user.emailVerified ? "success" : "warning"} size="sm" className="mt-1">
-              {user.emailVerified ? "Verified" : "Not Verified"}
-            </Badge>
-          </div>
-          <div>
             <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Created At</p>
             <p className="text-base text-neutral-900 dark:text-neutral-100 mt-1">
               {formatDateTimeFull(user.createdAt)}
@@ -259,17 +359,98 @@ export function UserDetailPage({ user: initialUser, canManagePermissions = false
             </div>
           )}
         </div>
+
+        <div className="mt-6 pt-6 border-t border-neutral-200 dark:border-neutral-800">
+          <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-3">
+            Account & verification
+          </h3>
+          <div className="flex flex-col lg:flex-row lg:items-start gap-6">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-neutral-600 dark:text-neutral-400">Account status</span>
+                <Badge variant={getStatusBadgeVariant(user.status)} size="sm">
+                  {user.status}
+                </Badge>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-neutral-600 dark:text-neutral-400">Email</span>
+                <Badge variant={user.emailVerified ? "success" : "warning"} size="sm">
+                  {user.emailVerified ? "Verified" : "Not verified"}
+                </Badge>
+              </div>
+            </div>
+            {canUpdateUser && (
+              <div className="flex-1 min-w-0 lg:pl-6 lg:border-l lg:border-neutral-200 lg:dark:border-neutral-800 space-y-3">
+                {verifyError && (
+                  <div className="p-3 bg-error-50 dark:bg-error-950 border border-error-200 dark:border-error-800 rounded-lg text-error-700 dark:text-error-300 text-sm">
+                    {verifyError}
+                  </div>
+                )}
+                <div className="flex flex-col sm:flex-row sm:flex-wrap gap-4 sm:gap-x-8 sm:gap-y-3">
+                  <div className="flex items-start gap-3 min-w-[200px]">
+                    <Checkbox
+                      checked={user.emailVerified}
+                      onChange={(e) => handleEmailVerifiedChange(e.target.checked)}
+                      disabled={verifySaving}
+                      aria-label="Email verified"
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <span className="font-medium text-neutral-900 dark:text-neutral-100 text-sm">Email verified</span>
+                      <span className="block text-xs text-neutral-600 dark:text-neutral-400 mt-0.5">
+                        Mark verified without sending a link.
+                      </span>
+                    </div>
+                  </div>
+                  <div
+                    className={`flex items-start gap-3 min-w-[200px] ${
+                      accountStatusToggleEnabled ? "" : "opacity-60"
+                    }`}
+                  >
+                    <Checkbox
+                      checked={user.status === "ACTIVE"}
+                      onChange={(e) => handleAccountActiveChange(e.target.checked)}
+                      disabled={verifySaving || !accountStatusToggleEnabled}
+                      aria-label="Active account"
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <span className="font-medium text-neutral-900 dark:text-neutral-100 text-sm">Active account</span>
+                      <span className="block text-xs text-neutral-600 dark:text-neutral-400 mt-0.5">
+                        {accountStatusToggleEnabled
+                          ? "Active or Pending only. Use Edit User for other statuses."
+                          : `Toggle available for Active or Pending (now ${user.status}).`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Group Memberships */}
-      {user.groupMemberships && user.groupMemberships.length > 0 && (
-        <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
-          <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">Group Memberships</h2>
+      <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+          <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">Group Memberships</h2>
+          {canManageGroups && (
+            <Button variant="primary" size="sm" onClick={() => setAddToGroupOpen(true)} disabled={groupActionLoading}>
+              Add to Group
+            </Button>
+          )}
+        </div>
+        {groupActionError && (
+          <div className="mb-4 p-3 bg-error-50 dark:bg-error-950 border border-error-200 dark:border-error-800 rounded-lg text-error-700 dark:text-error-300 text-sm">
+            {groupActionError}
+          </div>
+        )}
+        {user.groupMemberships && user.groupMemberships.length > 0 ? (
           <div className="space-y-3">
             {user.groupMemberships.map((membership) => (
               <div
                 key={membership.id}
-                className="flex items-center justify-between p-3 border border-neutral-200 dark:border-neutral-800 rounded-lg"
+                className="flex items-center justify-between gap-3 p-3 border border-neutral-200 dark:border-neutral-800 rounded-lg"
               >
                 <div>
                   <Link
@@ -284,11 +465,25 @@ export function UserDetailPage({ user: initialUser, canManagePermissions = false
                     </p>
                   )}
                 </div>
+                {canManageGroups && (
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => handleRemoveFromGroup(membership.group.id)}
+                    disabled={groupActionLoading}
+                  >
+                    Remove
+                  </Button>
+                )}
               </div>
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <p className="text-neutral-600 dark:text-neutral-400">
+            This user is not in any groups{canManageGroups ? ". Use Add to Group to assign one." : "."}
+          </p>
+        )}
+      </div>
 
       {/* Effective Permissions */}
       <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50">
@@ -573,6 +768,90 @@ export function UserDetailPage({ user: initialUser, canManagePermissions = false
         onConfirm={handleUnban}
         isLoading={isLoading}
       />
+
+      <Dialog
+        open={addToGroupOpen}
+        onOpenChange={(open) => {
+          setAddToGroupOpen(open);
+          if (!open) {
+            setGroupSearch("");
+            setSelectedGroupId("");
+            setGroupActionError(null);
+          }
+        }}
+        title="Add user to group"
+        description={`Add ${user.email} to a group`}
+      >
+        <div className="p-6 space-y-4">
+          {groupActionError && (
+            <div className="p-3 bg-error-50 dark:bg-error-950 border border-error-200 dark:border-error-800 rounded-lg text-error-700 dark:text-error-300 text-sm">
+              {groupActionError}
+            </div>
+          )}
+          {groupsNotJoined.length === 0 ? (
+            <p className="text-neutral-600 dark:text-neutral-400">
+              This user is already a member of every available group, or there are no groups yet.
+            </p>
+          ) : (
+            <>
+              <Input
+                label="Search groups"
+                placeholder="Search by name or description..."
+                value={groupSearch}
+                onChange={(e) => {
+                  setGroupSearch(e.target.value);
+                  setSelectedGroupId("");
+                }}
+              />
+              <div className="max-h-[300px] overflow-y-auto border border-neutral-200 dark:border-neutral-800 rounded-lg">
+                {filteredGroupsForAdd.length === 0 ? (
+                  <div className="p-4 text-center text-neutral-600 dark:text-neutral-400">
+                    No groups match your search.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-neutral-200 dark:divide-neutral-800">
+                    {filteredGroupsForAdd.map((g) => {
+                      const isSelected = selectedGroupId === g.id;
+                      return (
+                        <button
+                          key={g.id}
+                          type="button"
+                          onClick={() => setSelectedGroupId(g.id)}
+                          className={`w-full p-3 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors ${
+                            isSelected ? "bg-primary-50 dark:bg-primary-900/50 border-l-4 border-primary-600" : ""
+                          }`}
+                        >
+                          <div className="font-medium text-neutral-900 dark:text-neutral-100">{g.name}</div>
+                          {g.description && (
+                            <div className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">{g.description}</div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-neutral-200 dark:border-neutral-800">
+            <Button
+              variant="outline"
+              onClick={() => setAddToGroupOpen(false)}
+              disabled={groupActionLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleAddToGroup}
+              disabled={!selectedGroupId || groupActionLoading}
+              loading={groupActionLoading}
+            >
+              Add to Group
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }

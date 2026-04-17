@@ -2,9 +2,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::{
+    Json, Router,
     extract::{Query, State},
     routing::get,
-    Json, Router,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -132,9 +132,8 @@ async fn global_search(
     {
         let g = slot.lock().await;
         if let Some(v) = g.as_ref() {
-            let sr: SearchResponse = serde_json::from_value(v.clone()).map_err(|_| {
-                AppError::internal("Search coalesce decode failed")
-            })?;
+            let sr: SearchResponse = serde_json::from_value(v.clone())
+                .map_err(|_| AppError::internal("Search coalesce decode failed"))?;
             return Ok(Json(sr));
         }
     }
@@ -282,10 +281,7 @@ async fn advanced_search(
     }
 
     let limit = params.limit.unwrap_or(100).min(200).max(1);
-    let type_filter = params
-        .type_filter
-        .as_deref()
-        .map(|s| s.to_lowercase());
+    let type_filter = params.type_filter.as_deref().map(|s| s.to_lowercase());
 
     let coalesce_key = format!(
         "adv:{}:{}:{}:{:?}",
@@ -306,9 +302,8 @@ async fn advanced_search(
     {
         let g = slot.lock().await;
         if let Some(v) = g.as_ref() {
-            let sr: SearchResponse = serde_json::from_value(v.clone()).map_err(|_| {
-                AppError::internal("Search coalesce decode failed")
-            })?;
+            let sr: SearchResponse = serde_json::from_value(v.clone())
+                .map_err(|_| AppError::internal("Search coalesce decode failed"))?;
             return Ok(Json(sr));
         }
     }

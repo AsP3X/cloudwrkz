@@ -1,0 +1,20 @@
+---
+description: >-
+  apps/web (Next.js) is deprecated—no edits unless the user explicitly requests
+  work in that directory; reference-only by default
+alwaysApply: true
+---
+
+# Deprecated: `apps/web` (Next.js)
+
+The Next.js application under **`apps/web/`** is **deprecated**. It remains in the tree **only as reference** for prior behavior, patterns, or copy—not as a target for ongoing development.
+
+## Requirements for agents
+
+- **Do not** add, change, remove, or refactor any file under **`apps/web/`** unless the user **explicitly** asks for work in that directory (for example: "change `apps/web`", "fix Next in `apps/web`", or "update this file in `apps/web`: …").
+- For generic web work ("add a page", "fix the dashboard", "update the web client"), treat **`apps/web-vite/`** (and shared packages) as the place to implement unless the user names another app.
+- If the user says they want **reference only** from `apps/web` (read/compare/port text), you may **read** those files; still **do not edit** `apps/web/` unless they clearly request edits there.
+
+## Rationale
+
+Prevents duplicate effort and accidental investment in a stack the repo is not extending by default.
