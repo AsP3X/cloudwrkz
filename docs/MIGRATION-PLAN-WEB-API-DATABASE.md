@@ -189,7 +189,7 @@ Cloudwrkz/
 ├── docs/
 │   └── MIGRATION-PLAN-WEB-API-DATABASE.md
 ├── pnpm-workspace.yaml   # add apps/web-vite; optionally packages/api-types
-└── docker-compose.yml   # optional: api + postgres (+ web static served by nginx for local)
+└── docker-compose.yml.example   # optional: api + postgres (+ web static served by nginx for local); copy to docker-compose.yml
 ```
 
 - **pnpm workspace**: Include `apps/web-vite` (and `packages/api-types` if you add it). iOS stays outside pnpm.

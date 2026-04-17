@@ -52,17 +52,20 @@ This installs the pnpm workspace packages under [apps/web](apps/web) and [apps/w
 
 ### 3. Database and API (recommended: Docker Compose from repo root)
 
-From the **repository root**:
+From the **repository root**, create a local Compose file (gitignored) from the example, then start the stack:
 
 ```bash
+cp docker-compose.yml.example docker-compose.yml
 docker compose up -d
 ```
+
+Alternatively, use the example file directly: `docker compose -f docker-compose.yml.example up -d` (no `cp` needed).
 
 This starts:
 
 - **PostgreSQL** on port `5432` (user `cloudwrkz`, database `cloudwrkz`, default password `cloudwrkz_dev_password` unless you set `POSTGRES_PASSWORD`)
 - **Rust API** on port `8080` (applies SQLx migrations on startup)
-- **Vite dev server** on port `5173` (custom image: Node + bundled **`cloudwrkz-cli`** on `PATH`; repo mounted at `/workspace`)
+- **Vite dev server** on port `5173` (custom image: Node + bundled **`cloudwrkz-cli`** on `PATH`; dependencies baked in the image — rebuild after changing app deps)
 - **pgAdmin** on port `5050` (default login `admin@cloudwrkz.test` / `admin`)
 
 Check API health: [http://localhost:8080/api/health](http://localhost:8080/api/health).
@@ -139,7 +142,7 @@ Open [apps/ios/Cloudwrkz.xcodeproj](apps/ios/Cloudwrkz.xcodeproj) in Xcode and b
 | `pnpm dev:vite`                          | Vite dev server (`apps/web-vite`)                                   |
 | `pnpm build` / `pnpm build:vite`         | Production builds                                                   |
 | `pnpm db:*`                              | Prisma commands for `apps/web` (generate, push, migrate, studio, …) |
-| `docker compose up -d`                   | Postgres + API + pgAdmin                                            |
+| `cp docker-compose.yml.example docker-compose.yml` then `docker compose up -d` | Postgres + API + pgAdmin (see §3)                                   |
 | `cargo run -p cloudwrkz-api`             | Run API locally                                                     |
 | `cargo build --release -p cloudwrkz-cli` | Build CLI binary                                                    |
 

@@ -17,6 +17,9 @@
 # Rust (workspace and crates)
 /target/
 
+# Docker Compose (copy docker-compose.yml.example → docker-compose.yml locally)
+/docker-compose.yml
+
 # Misc
 .DS_Store
 *.pem

@@ -51,6 +51,8 @@ git clone <your-repo-url> Cloudwrkz
 cd Cloudwrkz
 ```
 
+**Docker Compose file:** the repo ships `docker-compose.yml.example`. From the repository root, either copy it once (`cp docker-compose.yml.example docker-compose.yml`) so plain `docker compose …` commands work, or pass `-f docker-compose.yml.example` on every command below.
+
 ### Step 2.2 — Set up the database (PostgreSQL)
 
 **Option A: Docker Compose (recommended)**

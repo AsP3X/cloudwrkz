@@ -1,3 +1,7 @@
+# Example stack (API + Postgres + web-vite + pgAdmin). Usage:
+#   cp docker-compose.yml.example docker-compose.yml   # then: docker compose up -d
+# or: docker compose -f docker-compose.yml.example up -d
+
 services:
   api:
     build:
