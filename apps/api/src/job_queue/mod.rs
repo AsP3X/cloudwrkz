@@ -14,6 +14,7 @@
 //! `LOG_VERBOSITY=debug` (default filter includes `jobs=debug`) or `RUST_LOG=info,jobs=debug`.
 
 mod budget;
+mod time_entry_mutations;
 pub mod entity_creates;
 
 use std::collections::HashMap;
@@ -92,6 +93,18 @@ fn policies_from_config(config: &AppConfig) -> HashMap<String, JobTypePolicy> {
         entity_creates::JOB_TYPE_TODO_DELETE,
         entity_creates::JOB_TYPE_TIME_ENTRY_CREATE_TIMER,
         entity_creates::JOB_TYPE_TIME_ENTRY_CREATE_MANUAL,
+        entity_creates::JOB_TYPE_TIME_ENTRY_UPDATE,
+        entity_creates::JOB_TYPE_TIME_ENTRY_DELETE,
+        entity_creates::JOB_TYPE_TIME_ENTRY_STOP,
+        entity_creates::JOB_TYPE_TIME_ENTRY_PAUSE,
+        entity_creates::JOB_TYPE_TIME_ENTRY_RESUME,
+        entity_creates::JOB_TYPE_TIME_ENTRY_COMPLETE,
+        entity_creates::JOB_TYPE_TIME_ENTRY_BREAK_CREATE,
+        entity_creates::JOB_TYPE_TIME_ENTRY_BREAK_UPDATE,
+        entity_creates::JOB_TYPE_TIME_ENTRY_BREAK_DELETE,
+        entity_creates::JOB_TYPE_TIME_ENTRY_BULK_UPDATE,
+        entity_creates::JOB_TYPE_TIME_ENTRY_BULK_ARCHIVE,
+        entity_creates::JOB_TYPE_TIME_ENTRY_BULK_DELETE,
         entity_creates::JOB_TYPE_LINK_CREATE,
     ] {
         m.insert(
@@ -202,6 +215,18 @@ async fn run_one_job(
         | entity_creates::JOB_TYPE_TODO_DELETE
         | entity_creates::JOB_TYPE_TIME_ENTRY_CREATE_TIMER
         | entity_creates::JOB_TYPE_TIME_ENTRY_CREATE_MANUAL
+        | entity_creates::JOB_TYPE_TIME_ENTRY_UPDATE
+        | entity_creates::JOB_TYPE_TIME_ENTRY_DELETE
+        | entity_creates::JOB_TYPE_TIME_ENTRY_STOP
+        | entity_creates::JOB_TYPE_TIME_ENTRY_PAUSE
+        | entity_creates::JOB_TYPE_TIME_ENTRY_RESUME
+        | entity_creates::JOB_TYPE_TIME_ENTRY_COMPLETE
+        | entity_creates::JOB_TYPE_TIME_ENTRY_BREAK_CREATE
+        | entity_creates::JOB_TYPE_TIME_ENTRY_BREAK_UPDATE
+        | entity_creates::JOB_TYPE_TIME_ENTRY_BREAK_DELETE
+        | entity_creates::JOB_TYPE_TIME_ENTRY_BULK_UPDATE
+        | entity_creates::JOB_TYPE_TIME_ENTRY_BULK_ARCHIVE
+        | entity_creates::JOB_TYPE_TIME_ENTRY_BULK_DELETE
         | entity_creates::JOB_TYPE_LINK_CREATE => {
             entity_creates::run_entity_create_job(
                 pool,

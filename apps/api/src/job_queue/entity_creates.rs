@@ -1,4 +1,4 @@
-//! Persisted `background_jobs` workers for ticket / todo / time entry / link mutations (creates, ticket/todo updates and deletes, ticket comments).
+//! Persisted `background_jobs` workers for ticket / todo / time entry / link mutations (creates, updates, deletes, ticket comments, time breaks and bulk time ops).
 //! HTTP handlers enqueue and return HTTP 202; clients poll `GET /mutation-jobs/{id}` (see `routes/mutation_jobs.rs`).
 
 use axum::http::StatusCode;
@@ -36,6 +36,18 @@ pub const JOB_TYPE_TODO_UPDATE: &str = "todo_update";
 pub const JOB_TYPE_TODO_DELETE: &str = "todo_delete";
 pub const JOB_TYPE_TIME_ENTRY_CREATE_TIMER: &str = "time_entry_create_timer";
 pub const JOB_TYPE_TIME_ENTRY_CREATE_MANUAL: &str = "time_entry_create_manual";
+pub const JOB_TYPE_TIME_ENTRY_UPDATE: &str = "time_entry_update";
+pub const JOB_TYPE_TIME_ENTRY_DELETE: &str = "time_entry_delete";
+pub const JOB_TYPE_TIME_ENTRY_STOP: &str = "time_entry_stop";
+pub const JOB_TYPE_TIME_ENTRY_PAUSE: &str = "time_entry_pause";
+pub const JOB_TYPE_TIME_ENTRY_RESUME: &str = "time_entry_resume";
+pub const JOB_TYPE_TIME_ENTRY_COMPLETE: &str = "time_entry_complete";
+pub const JOB_TYPE_TIME_ENTRY_BREAK_CREATE: &str = "time_entry_break_create";
+pub const JOB_TYPE_TIME_ENTRY_BREAK_UPDATE: &str = "time_entry_break_update";
+pub const JOB_TYPE_TIME_ENTRY_BREAK_DELETE: &str = "time_entry_break_delete";
+pub const JOB_TYPE_TIME_ENTRY_BULK_UPDATE: &str = "time_entry_bulk_update";
+pub const JOB_TYPE_TIME_ENTRY_BULK_ARCHIVE: &str = "time_entry_bulk_archive";
+pub const JOB_TYPE_TIME_ENTRY_BULK_DELETE: &str = "time_entry_bulk_delete";
 pub const JOB_TYPE_LINK_CREATE: &str = "link_create";
 
 pub const ENTITY_CREATE_POLL_DEADLINE_SECS: u32 = 120;
@@ -52,6 +64,18 @@ pub fn is_entity_create_job_type(job_type: &str) -> bool {
             | JOB_TYPE_TODO_DELETE
             | JOB_TYPE_TIME_ENTRY_CREATE_TIMER
             | JOB_TYPE_TIME_ENTRY_CREATE_MANUAL
+            | JOB_TYPE_TIME_ENTRY_UPDATE
+            | JOB_TYPE_TIME_ENTRY_DELETE
+            | JOB_TYPE_TIME_ENTRY_STOP
+            | JOB_TYPE_TIME_ENTRY_PAUSE
+            | JOB_TYPE_TIME_ENTRY_RESUME
+            | JOB_TYPE_TIME_ENTRY_COMPLETE
+            | JOB_TYPE_TIME_ENTRY_BREAK_CREATE
+            | JOB_TYPE_TIME_ENTRY_BREAK_UPDATE
+            | JOB_TYPE_TIME_ENTRY_BREAK_DELETE
+            | JOB_TYPE_TIME_ENTRY_BULK_UPDATE
+            | JOB_TYPE_TIME_ENTRY_BULK_ARCHIVE
+            | JOB_TYPE_TIME_ENTRY_BULK_DELETE
             | JOB_TYPE_LINK_CREATE
     )
 }
@@ -157,7 +181,7 @@ pub async fn try_entity_create_job_status_for_user(
     Ok(Some(out))
 }
 
-enum JobExecOutcome {
+pub(super) enum JobExecOutcome {
     Ok(JsonMutationResult),
     Fail(AppError),
     TransientDb,
@@ -265,6 +289,48 @@ pub async fn run_entity_create_job(
         JOB_TYPE_TIME_ENTRY_CREATE_MANUAL => {
             exec_time_entry_manual_create(pool, lock_ms, stmt_ms, payload).await
         }
+        JOB_TYPE_TIME_ENTRY_UPDATE => {
+            super::time_entry_mutations::exec_time_entry_update(pool, lock_ms, stmt_ms, payload).await
+        }
+        JOB_TYPE_TIME_ENTRY_DELETE => {
+            super::time_entry_mutations::exec_time_entry_delete(pool, lock_ms, stmt_ms, payload).await
+        }
+        JOB_TYPE_TIME_ENTRY_STOP => {
+            super::time_entry_mutations::exec_time_entry_stop(pool, lock_ms, stmt_ms, payload).await
+        }
+        JOB_TYPE_TIME_ENTRY_PAUSE => {
+            super::time_entry_mutations::exec_time_entry_pause(pool, lock_ms, stmt_ms, payload).await
+        }
+        JOB_TYPE_TIME_ENTRY_RESUME => {
+            super::time_entry_mutations::exec_time_entry_resume(pool, lock_ms, stmt_ms, payload).await
+        }
+        JOB_TYPE_TIME_ENTRY_COMPLETE => {
+            super::time_entry_mutations::exec_time_entry_complete(pool, lock_ms, stmt_ms, payload).await
+        }
+        JOB_TYPE_TIME_ENTRY_BREAK_CREATE => {
+            super::time_entry_mutations::exec_time_entry_break_create(pool, lock_ms, stmt_ms, payload)
+                .await
+        }
+        JOB_TYPE_TIME_ENTRY_BREAK_UPDATE => {
+            super::time_entry_mutations::exec_time_entry_break_update(pool, lock_ms, stmt_ms, payload)
+                .await
+        }
+        JOB_TYPE_TIME_ENTRY_BREAK_DELETE => {
+            super::time_entry_mutations::exec_time_entry_break_delete(pool, lock_ms, stmt_ms, payload)
+                .await
+        }
+        JOB_TYPE_TIME_ENTRY_BULK_UPDATE => {
+            super::time_entry_mutations::exec_time_entry_bulk_update(pool, lock_ms, stmt_ms, payload)
+                .await
+        }
+        JOB_TYPE_TIME_ENTRY_BULK_ARCHIVE => {
+            super::time_entry_mutations::exec_time_entry_bulk_archive(pool, lock_ms, stmt_ms, payload)
+                .await
+        }
+        JOB_TYPE_TIME_ENTRY_BULK_DELETE => {
+            super::time_entry_mutations::exec_time_entry_bulk_delete(pool, lock_ms, stmt_ms, payload)
+                .await
+        }
         JOB_TYPE_LINK_CREATE => exec_link_create(pool, http, lock_ms, stmt_ms, payload).await,
         _ => JobExecOutcome::Fail(AppError::internal("Unknown entity create job type")),
     };
@@ -310,7 +376,7 @@ pub async fn run_entity_create_job(
     }
 }
 
-fn map_sqlx_ticket(err: sqlx::Error) -> JobExecOutcome {
+pub(super) fn map_sqlx_ticket(err: sqlx::Error) -> JobExecOutcome {
     if is_transient_sqlx(&err) {
         JobExecOutcome::TransientDb
     } else {
