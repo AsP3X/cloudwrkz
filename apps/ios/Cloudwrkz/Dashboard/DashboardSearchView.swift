@@ -44,12 +44,16 @@ struct DashboardSearchView: View {
                 searchBar
                 resultsContent
             }
+            /// Prefer the search field when this screen appears (e.g. from `fullScreenCover`).
+            .defaultFocus($isFieldFocused, true)
         }
         .contentShape(Rectangle())
         .onTapGesture {
             isFieldFocused = false
         }
-        .onAppear {
+        /// Backup for `fullScreenCover` where focus environment can settle one frame late.
+        .task {
+            await Task.yield()
             isFieldFocused = true
         }
     }

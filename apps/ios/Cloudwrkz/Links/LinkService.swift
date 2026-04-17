@@ -113,6 +113,63 @@ enum LinkService {
         }
     }
 
+    /// Build URL for a single link resource (GET/PUT/DELETE).
+    private static func linkURL(config: ServerConfig, id: String) -> URL? {
+        guard let base = config.baseURL else { return nil }
+        let pathSegments = linksPathSegments(loginPath: config.loginPath)
+        guard !pathSegments.isEmpty else { return nil }
+        var url = base
+        for segment in pathSegments {
+            url = url.appending(path: segment)
+        }
+        return url.appending(path: id)
+    }
+
+    /// GET .../links/:id — fetch a single link (e.g. opening a global search result).
+    static func fetchLink(config: ServerConfig, id: String) async -> Result<Link, LinkServiceError> {
+        guard let requestURL = linkURL(config: config, id: id) else {
+            return .failure(.noServerURL)
+        }
+        guard let token = AuthTokenStorage.getToken(), !token.isEmpty else {
+            return .failure(.noToken)
+        }
+        var request = URLRequest(url: requestURL)
+        request.httpMethod = "GET"
+        request.timeoutInterval = timeout
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        AppIdentity.apply(to: &request)
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                return .failure(.serverError(message: "Invalid response"))
+            }
+            switch http.statusCode {
+            case 200:
+                struct SingleLinkResponse: Decodable {
+                    let link: Link
+                }
+                let decoded = try dateDecoder.decode(SingleLinkResponse.self, from: data)
+                return .success(decoded.link)
+            case 401:
+                SessionExpiredNotifier.notify()
+                return .failure(.unauthorized)
+            case 404:
+                return .failure(.serverError(message: "Link not found"))
+            case 400...599:
+                let message = (try? JSONDecoder().decode(MessageResponse.self, from: data))?.message
+                    ?? "Server error (\(http.statusCode))"
+                return .failure(.serverError(message: message))
+            default:
+                return .failure(.serverError(message: "Unexpected status \(http.statusCode)"))
+            }
+        } catch {
+            let description = (error as? URLError)?.localizedDescription ?? error.localizedDescription
+            return .failure(.networkError(description: description))
+        }
+    }
+
     /// POST /api/links — create a link. Returns the new link id on success.
     /// Pass favicon when available (e.g. from fetchMetadata) so the server can cache and store it like the website.
     static func createLink(
@@ -210,21 +267,12 @@ enum LinkService {
         collectionIds: [String]? = nil,
         extractMetadata: Bool? = nil
     ) async -> Result<String, LinkServiceError> {
-        guard let base = config.baseURL else {
+        guard let requestURL = linkURL(config: config, id: id) else {
             return .failure(.noServerURL)
         }
         guard let token = AuthTokenStorage.getToken(), !token.isEmpty else {
             return .failure(.noToken)
         }
-        let pathSegments = linksPathSegments(loginPath: config.loginPath)
-        guard !pathSegments.isEmpty else {
-            return .failure(.noServerURL)
-        }
-        var requestURL = base
-        for segment in pathSegments {
-            requestURL = requestURL.appending(path: segment)
-        }
-        requestURL = requestURL.appending(path: id)
 
         var request = URLRequest(url: requestURL)
         request.httpMethod = "PUT"
@@ -309,13 +357,8 @@ enum LinkService {
 
     /// Unarchive a link (PUT with archivedAt: null).
     static func unarchiveLink(config: ServerConfig, id: String) async -> Result<Void, LinkServiceError> {
-        guard let base = config.baseURL else { return .failure(.noServerURL) }
+        guard let requestURL = linkURL(config: config, id: id) else { return .failure(.noServerURL) }
         guard let token = AuthTokenStorage.getToken(), !token.isEmpty else { return .failure(.noToken) }
-        let pathSegments = linksPathSegments(loginPath: config.loginPath)
-        guard !pathSegments.isEmpty else { return .failure(.noServerURL) }
-        var requestURL = base
-        for segment in pathSegments { requestURL = requestURL.appending(path: segment) }
-        requestURL = requestURL.appending(path: id)
         var request = URLRequest(url: requestURL)
         request.httpMethod = "PUT"
         request.timeoutInterval = timeout
@@ -344,13 +387,8 @@ enum LinkService {
 
     /// DELETE .../[id] — delete a single link.
     static func deleteLink(config: ServerConfig, id: String) async -> Result<Void, LinkServiceError> {
-        guard let base = config.baseURL else { return .failure(.noServerURL) }
+        guard let requestURL = linkURL(config: config, id: id) else { return .failure(.noServerURL) }
         guard let token = AuthTokenStorage.getToken(), !token.isEmpty else { return .failure(.noToken) }
-        let pathSegments = linksPathSegments(loginPath: config.loginPath)
-        guard !pathSegments.isEmpty else { return .failure(.noServerURL) }
-        var requestURL = base
-        for segment in pathSegments { requestURL = requestURL.appending(path: segment) }
-        requestURL = requestURL.appending(path: id)
 
         var request = URLRequest(url: requestURL)
         request.httpMethod = "DELETE"
