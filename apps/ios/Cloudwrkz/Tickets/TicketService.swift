@@ -38,12 +38,11 @@ enum TicketService {
         d.dateDecodingStrategy = .custom { decoder in
             let c = try decoder.singleValueContainer()
             let s = try c.decode(String.self)
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            if let date = formatter.date(from: s) { return date }
-            formatter.formatOptions = [.withInternetDateTime]
-            if let date = formatter.date(from: s) { return date }
-            throw DecodingError.dataCorruptedError(in: c, debugDescription: "Invalid date: \(s)")
+            do {
+                return try ApiTimestampParsing.decode(s)
+            } catch {
+                throw DecodingError.dataCorruptedError(in: c, debugDescription: "Invalid date: \(s)")
+            }
         }
         return d
     }

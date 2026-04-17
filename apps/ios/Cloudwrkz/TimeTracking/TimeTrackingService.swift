@@ -44,41 +44,6 @@ enum TimeTrackingService {
         return url
     }
 
-    /// Parses timestamps from the Rust API: `chrono::DateTime<Utc>` (RFC3339 with `Z`) and
-    /// `NaiveDateTime` (no timezone, as returned for many `time_entries` columns).
-    private static func decodeApiTimestamp(_ raw: String) throws -> Date {
-        let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if s.isEmpty {
-            throw NSError(domain: "TimeTrackingService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Empty date string"])
-        }
-
-        let iso = ISO8601DateFormatter()
-        iso.timeZone = TimeZone(secondsFromGMT: 0)
-        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = iso.date(from: s) { return d }
-        iso.formatOptions = [.withInternetDateTime]
-        if let d = iso.date(from: s) { return d }
-
-        // Naive timestamps from Postgres/chrono (no `Z` / offset): treat as UTC.
-        let df = DateFormatter()
-        df.locale = Locale(identifier: "en_US_POSIX")
-        df.timeZone = TimeZone(secondsFromGMT: 0)
-        for pattern in [
-            "yyyy-MM-dd'T'HH:mm:ss.SSSSSSSSS",
-            "yyyy-MM-dd'T'HH:mm:ss.SSSSSS",
-            "yyyy-MM-dd'T'HH:mm:ss.SSS",
-            "yyyy-MM-dd'T'HH:mm:ss",
-            "yyyy-MM-dd HH:mm:ss.SSSSSS",
-            "yyyy-MM-dd HH:mm:ss.SSS",
-            "yyyy-MM-dd HH:mm:ss",
-        ] {
-            df.dateFormat = pattern
-            if let d = df.date(from: s) { return d }
-        }
-
-        throw NSError(domain: "TimeTrackingService", code: 2, userInfo: [NSLocalizedDescriptionKey: "Unrecognized date: \(s)"])
-    }
-
     private static var dateDecoder: JSONDecoder {
         let d = JSONDecoder()
         d.keyDecodingStrategy = .convertFromSnakeCase
@@ -86,7 +51,7 @@ enum TimeTrackingService {
             let c = try decoder.singleValueContainer()
             let s = try c.decode(String.self)
             do {
-                return try decodeApiTimestamp(s)
+                return try ApiTimestampParsing.decode(s)
             } catch {
                 throw DecodingError.dataCorruptedError(in: c, debugDescription: "Invalid date: \(s)")
             }
