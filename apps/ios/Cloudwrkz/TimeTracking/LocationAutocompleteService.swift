@@ -36,9 +36,14 @@ enum LocationAutocompleteService {
     /// Build path for location-history. When login path contains "auth" use api/auth/location-history (Bearer); else api/location-history.
     private static func locationHistoryPathSegments(loginPath: String) -> [String] {
         let path = loginPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        let locationPath = path.isEmpty
-            ? "api/location-history"
-            : path.replacingOccurrences(of: "login", with: "location-history", options: .caseInsensitive)
+        let locationPath: String
+        if path.isEmpty {
+            locationPath = "api/v1/location-history"
+        } else if path.lowercased().hasSuffix("/auth/login") {
+            locationPath = String(path.dropLast("/auth/login".count)) + "/location-history"
+        } else {
+            locationPath = path.replacingOccurrences(of: "login", with: "location-history", options: .caseInsensitive)
+        }
         return locationPath.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
     }
 

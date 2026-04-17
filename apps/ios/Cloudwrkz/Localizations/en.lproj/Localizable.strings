@@ -927,9 +927,9 @@
 
 "server_config.login_path" = "Login API path";
 
-"server_config.login_path_hint" = "If login returns 404, set this to the path your website uses (e.g. api/login).";
+"server_config.login_path_hint" = "If login returns 404, set this to the path your API uses (e.g. api/v1/auth/login).";
 
-"server_config.login_path_placeholder" = "api/login";
+"server_config.login_path_placeholder" = "api/v1/auth/login";
 
 "server_config.path_no_slash" = "Path (no leading slash)";
 

@@ -37,7 +37,7 @@ enum ServerHealthDetail {
     /// Fetches full health from config.baseURL/api/health. Returns nil on failure.
     static func fetch(config: ServerConfig) async -> ServerHealthResponse? {
         guard let base = config.baseURL else { return nil }
-        let url = base.appending(path: "api").appending(path: "health")
+        let url = base.appending(path: "api").appending(path: "v1").appending(path: "health")
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"

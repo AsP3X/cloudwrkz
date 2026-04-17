@@ -22,7 +22,7 @@ private struct UploadAvatarResponse: Decodable {
 
 enum ProfileService {
     private static let timeout: TimeInterval = 30
-    private static let uploadPathSegments = ["api", "profile", "upload-avatar"]
+    private static let uploadPathSegments = ["api", "v1", "profile", "upload-avatar"]
 
     /// POST /api/profile/upload-avatar with multipart form "file" (image data, should be < 1MB).
     /// Returns the avatar URL on success.
@@ -89,7 +89,7 @@ enum ProfileService {
 
     // MARK: - User preferences (e.g. display language)
 
-    private static let preferencesPathSegments = ["api", "profile", "preferences"]
+    private static let preferencesPathSegments = ["api", "v1", "profile", "preferences"]
 
     /// PATCH /api/profile/preferences with { "locale": "en" } to save display language on the server.
     /// Server may return 200/204 on success; 404 if endpoint not yet implemented.

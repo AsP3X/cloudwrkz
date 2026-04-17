@@ -21,7 +21,14 @@ enum TicketService {
     /// Path for GET tickets: derived from login path (api/auth/login → api/auth/tickets, api/login → api/tickets).
     private static func ticketsPathSegments(loginPath: String) -> [String] {
         let path = loginPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        let ticketsPath = path.isEmpty ? "api/tickets" : path.replacingOccurrences(of: "login", with: "tickets", options: .caseInsensitive)
+        let ticketsPath: String
+        if path.isEmpty {
+            ticketsPath = "api/v1/tickets"
+        } else if path.lowercased().hasSuffix("/auth/login") {
+            ticketsPath = String(path.dropLast("/auth/login".count)) + "/tickets"
+        } else {
+            ticketsPath = path.replacingOccurrences(of: "login", with: "tickets", options: .caseInsensitive)
+        }
         return ticketsPath.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
     }
 

@@ -21,7 +21,14 @@ enum LinkService {
     /// Path for GET links: derived from login path (api/auth/login → api/auth/links, api/login → api/links).
     private static func linksPathSegments(loginPath: String) -> [String] {
         let path = loginPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        let linksPath = path.isEmpty ? "api/links" : path.replacingOccurrences(of: "login", with: "links", options: .caseInsensitive)
+        let linksPath: String
+        if path.isEmpty {
+            linksPath = "api/v1/links"
+        } else if path.lowercased().hasSuffix("/auth/login") {
+            linksPath = String(path.dropLast("/auth/login".count)) + "/links"
+        } else {
+            linksPath = path.replacingOccurrences(of: "login", with: "links", options: .caseInsensitive)
+        }
         return linksPath.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
     }
 

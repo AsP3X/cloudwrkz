@@ -25,10 +25,10 @@ struct ServerConfig: Equatable {
     var serverPort: Int?
     /// When true use https, when false use http (e.g. for local deployments).
     var useHTTPS: Bool
-    /// Path relative to base URL for login (e.g. "api/auth/login" or "api/login"). No leading slash.
+    /// Path relative to base URL for login (e.g. "api/v1/auth/login"). No leading slash.
     var loginPath: String
 
-    static let defaultLoginPath = "api/login"
+    static let defaultLoginPath = "api/v1/auth/login"
 
     static let defaults = ServerConfig(
         tenant: .official,

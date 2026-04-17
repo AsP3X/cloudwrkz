@@ -16,7 +16,7 @@ enum DataRightsService {
         guard let base = config.baseURL else { return false }
         guard let token = AuthTokenStorage.getToken() else { return false }
 
-        let url = base.appendingPathComponent("api/account/export-data")
+        let url = base.appendingPathComponent("api/v1/account/export-data")
         var request = URLRequest(url: url, timeoutInterval: 30)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -39,7 +39,7 @@ enum DataRightsService {
         guard let base = config.baseURL else { return false }
         guard let token = AuthTokenStorage.getToken() else { return false }
 
-        let url = base.appendingPathComponent("api/account/request-deletion")
+        let url = base.appendingPathComponent("api/v1/account/request-deletion")
         var request = URLRequest(url: url, timeoutInterval: 30)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

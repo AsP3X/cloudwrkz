@@ -30,7 +30,7 @@ enum TenantHealthChecker {
         guard let base = config.baseURL else {
             return .unreachable(message: "No server URL")
         }
-        let url = base.appending(path: "api").appending(path: "health")
+        let url = base.appending(path: "api").appending(path: "v1").appending(path: "health")
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"

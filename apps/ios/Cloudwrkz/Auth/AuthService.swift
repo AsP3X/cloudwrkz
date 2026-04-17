@@ -5,8 +5,8 @@
 //  Login API client. Matches References/cloudwrkz when available.
 //
 //  API contract:
-//  - Login: POST {baseURL}/{loginPath} body { email, password }, 200 { token, user?: { name, email } }
-//  - Register: POST {baseURL}/api/register body { name, email, password, confirmPassword }, 201 { message }
+//  - Login: POST {baseURL}/{loginPath} (default: /api/v1/auth/login), 202 queued + poll /auth/login/status/{job_id}
+//  - Register: POST {baseURL}/api/v1/auth/register
 //
 
 import Foundation
@@ -46,6 +46,25 @@ private struct LoginSuccessResponse: Decodable {
     var storedToken: String? {
         token ?? accessToken
     }
+}
+
+private struct LoginQueuedResponse: Decodable {
+    let queued: Bool?
+    let jobId: String?
+    let job_id: String?
+
+    var resolvedJobId: String? { jobId ?? job_id }
+}
+
+private struct LoginJobStatusResponse: Decodable {
+    let status: String
+    let message: String?
+    let token: String?
+    let user: LoginUserInfo?
+    let clientHint: String?
+    let client_hint: String?
+
+    var resolvedClientHint: String? { clientHint ?? client_hint }
 }
 
 /// User object returned by cloudwrkz login API (user.name, user.email).
@@ -114,6 +133,36 @@ private struct MeResponse: Decodable {
 
 enum AuthService {
     private static let timeout: TimeInterval = 15
+    private static let loginPollIntervalNanoseconds: UInt64 = 500_000_000
+    private static let loginPollMaxAttempts = 70
+
+    private static func loginPathSegments(loginPath: String) -> [String] {
+        let path = loginPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pathToUse = path.isEmpty ? ServerConfig.defaultLoginPath : path
+        return pathToUse.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+    }
+
+    private static func authPathSegments(loginPath: String, endpoint: String) -> [String] {
+        let path = loginPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = path.isEmpty ? ServerConfig.defaultLoginPath : path
+        if normalized.lowercased().hasSuffix("/auth/login") {
+            let prefix = String(normalized.dropLast("/auth/login".count))
+            return (prefix + "/auth/" + endpoint).split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+        }
+        return normalized.replacingOccurrences(of: "login", with: endpoint, options: .caseInsensitive)
+            .split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+    }
+
+    private static func apiPathSegments(loginPath: String, endpoint: String) -> [String] {
+        let path = loginPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = path.isEmpty ? ServerConfig.defaultLoginPath : path
+        if normalized.lowercased().hasSuffix("/auth/login") {
+            let prefix = String(normalized.dropLast("/auth/login".count))
+            return (prefix + "/" + endpoint).split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+        }
+        return normalized.replacingOccurrences(of: "login", with: endpoint, options: .caseInsensitive)
+            .split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+    }
 
     /// Performs POST baseURL/{config.loginPath}. Does not store the token; caller must use AuthTokenStorage.
     /// On success returns (token, user) where user contains name and email from the API when available.
@@ -121,11 +170,7 @@ enum AuthService {
         guard let base = config.baseURL else {
             return .failure(.noServerURL)
         }
-        let path = config.loginPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        let pathToUse = path.isEmpty ? ServerConfig.defaultLoginPath : path
-        let pathSegments = pathToUse
-            .split(separator: "/", omittingEmptySubsequences: true)
-            .map(String.init)
+        let pathSegments = loginPathSegments(loginPath: config.loginPath)
         guard !pathSegments.isEmpty else {
             return .failure(.noServerURL)
         }
@@ -164,7 +209,7 @@ enum AuthService {
             }
 
             switch http.statusCode {
-            case 200...299:
+            case 200:
                 if isHTMLData(data) {
                     return .failure(.serverError(message: "Server returned a web page instead of a response. The login endpoint may not be available. No route at: \(request.url?.absoluteString ?? "")"))
                 }
@@ -174,6 +219,12 @@ enum AuthService {
                 }
                 let user: (name: String?, email: String?)? = decoded.user.map { u in (name: u.name, email: u.email) }
                 return .success((token: token, user: user))
+            case 202:
+                guard let queued = try? JSONDecoder().decode(LoginQueuedResponse.self, from: data),
+                      let jobId = queued.resolvedJobId, !jobId.isEmpty else {
+                    return .failure(.serverError(message: "Login was queued but no job id was returned"))
+                }
+                return await pollLoginStatus(base: base, loginPath: config.loginPath, jobId: jobId)
             case 401:
                 return .failure(.invalidCredentials)
             case 400...599:
@@ -190,9 +241,7 @@ enum AuthService {
 
     /// Path for change password: derived from login path (api/login → api/change-password, api/auth/login → api/auth/change-password).
     private static func changePasswordPathSegments(loginPath: String) -> [String] {
-        let path = loginPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        let changePath = path.isEmpty ? "api/change-password" : path.replacingOccurrences(of: "login", with: "change-password", options: .caseInsensitive)
-        return changePath.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+        authPathSegments(loginPath: loginPath, endpoint: "change-password")
     }
 
     /// POST change-password with Bearer token. Body: currentPassword, newPassword, confirmPassword.
@@ -258,7 +307,9 @@ enum AuthService {
         }
     }
 
-    private static let registerPathSegments = ["api", "register"]
+    private static func registerPathSegments(loginPath: String) -> [String] {
+        authPathSegments(loginPath: loginPath, endpoint: "register")
+    }
 
     /// GET current user with Bearer token. Path derived from login path (api/login → api/me, api/auth/login → api/auth/me).
     /// Returns name, email, and optional modules (allowed module IDs). When modules is nil or empty from API, caller may treat as "all modules allowed".
@@ -269,9 +320,7 @@ enum AuthService {
         guard let token = AuthTokenStorage.getToken(), !token.isEmpty else {
             return .failure(.noToken)
         }
-        let path = config.loginPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        let mePath = path.isEmpty ? "api/me" : path.replacingOccurrences(of: "login", with: "me", options: .caseInsensitive)
-        let pathSegments = mePath.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+        let pathSegments = apiPathSegments(loginPath: config.loginPath, endpoint: "me")
         guard !pathSegments.isEmpty else {
             return .failure(.noServerURL)
         }
@@ -316,9 +365,7 @@ enum AuthService {
     static func extendSession(config: ServerConfig) async -> Result<Void, AuthMeFailure> {
         guard let base = config.baseURL else { return .failure(.noServerURL) }
         guard let token = AuthTokenStorage.getToken(), !token.isEmpty else { return .failure(.noToken) }
-        let path = config.loginPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        let extendPath = path.isEmpty ? "api/extend-session" : path.replacingOccurrences(of: "login", with: "extend-session", options: .caseInsensitive)
-        let pathSegments = extendPath.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+        let pathSegments = authPathSegments(loginPath: config.loginPath, endpoint: "extend-session")
         guard !pathSegments.isEmpty else { return .failure(.noServerURL) }
         var url = base
         for segment in pathSegments { url = url.appending(path: segment) }
@@ -349,7 +396,7 @@ enum AuthService {
             return .failure(.noServerURL)
         }
         var url = base
-        for segment in registerPathSegments {
+        for segment in registerPathSegments(loginPath: config.loginPath) {
             url = url.appending(path: segment)
         }
 
@@ -390,6 +437,64 @@ enum AuthService {
             let description = (error as? URLError)?.localizedDescription ?? error.localizedDescription
             return .failure(.networkError(description: description))
         }
+    }
+
+    private static func pollLoginStatus(base: URL, loginPath: String, jobId: String) async -> Result<(token: String, user: (name: String?, email: String?)?), AuthLoginFailure> {
+        var statusSegments = authPathSegments(loginPath: loginPath, endpoint: "login/status")
+        statusSegments.append(jobId)
+        for _ in 0..<loginPollMaxAttempts {
+            var url = base
+            for segment in statusSegments {
+                url = url.appending(path: segment)
+            }
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.timeoutInterval = timeout
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            AppIdentity.apply(to: &request)
+
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse else {
+                    return .failure(.serverError(message: "Invalid login status response"))
+                }
+                switch http.statusCode {
+                case 200:
+                    let decoded = try JSONDecoder().decode(LoginJobStatusResponse.self, from: data)
+                    switch decoded.status.lowercased() {
+                    case "completed":
+                        guard let token = decoded.token, !token.isEmpty else {
+                            return .failure(.serverError(message: "Login completed without a token"))
+                        }
+                        let user: (name: String?, email: String?)? = decoded.user.map { u in (name: u.name, email: u.email) }
+                        return .success((token: token, user: user))
+                    case "failed":
+                        let message = decoded.message ?? "Login failed"
+                        if message.lowercased().contains("invalid email or password") {
+                            return .failure(.invalidCredentials)
+                        }
+                        if decoded.resolvedClientHint == "BANNED" || decoded.resolvedClientHint == "SUSPENDED" {
+                            return .failure(.serverError(message: message))
+                        }
+                        return .failure(.serverError(message: message))
+                    default:
+                        try? await Task.sleep(nanoseconds: loginPollIntervalNanoseconds)
+                        continue
+                    }
+                case 401:
+                    return .failure(.invalidCredentials)
+                case 400...599:
+                    let message = extractServerErrorMessage(data: data, statusCode: http.statusCode, requestURL: request.url)
+                    return .failure(.serverError(message: message))
+                default:
+                    return .failure(.serverError(message: "Unexpected login status \(http.statusCode)"))
+                }
+            } catch {
+                let description = (error as? URLError)?.localizedDescription ?? error.localizedDescription
+                return .failure(.networkError(description: description))
+            }
+        }
+        return .failure(.serverError(message: "Login timed out. Please try again."))
     }
 
     private static func isHTMLData(_ data: Data) -> Bool {

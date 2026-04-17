@@ -21,9 +21,14 @@ enum CollectionService {
     /// Path for GET collections: derived from login path (api/auth/login → api/auth/collections).
     private static func collectionsPathSegments(loginPath: String) -> [String] {
         let path = loginPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        let collectionsPath = path.isEmpty
-            ? "api/collections"
-            : path.replacingOccurrences(of: "login", with: "collections", options: .caseInsensitive)
+        let collectionsPath: String
+        if path.isEmpty {
+            collectionsPath = "api/v1/collections"
+        } else if path.lowercased().hasSuffix("/auth/login") {
+            collectionsPath = String(path.dropLast("/auth/login".count)) + "/collections"
+        } else {
+            collectionsPath = path.replacingOccurrences(of: "login", with: "collections", options: .caseInsensitive)
+        }
         return collectionsPath.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
     }
 

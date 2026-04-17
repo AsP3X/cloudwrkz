@@ -532,9 +532,9 @@
 
 "server_config.login_path" = "Login-API-Pfad";
 
-"server_config.login_path_hint" = "Wenn der Login 404 zur?ckgibt, setze dies auf den Pfad deiner Website (z. B. api/login).";
+"server_config.login_path_hint" = "Wenn der Login 404 zur?ckgibt, setze dies auf den API-Pfad (z. B. api/v1/auth/login).";
 
-"server_config.login_path_placeholder" = "api/login";
+"server_config.login_path_placeholder" = "api/v1/auth/login";
 
 "server_config.path_no_slash" = "Pfad (ohne f?hrenden Schr?gstrich)";
 

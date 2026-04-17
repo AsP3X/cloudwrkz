@@ -413,8 +413,8 @@
 "server_config.domain_placeholder" = "напр. mycompany.com";
 "server_config.environment" = "Среда";
 "server_config.login_path" = "Путь API входа";
-"server_config.login_path_hint" = "Если при входе возвращается 404, укажите путь вашего сайта (напр. api/login).";
-"server_config.login_path_placeholder" = "api/login";
+"server_config.login_path_hint" = "Если при входе возвращается 404, укажите путь API (например, api/v1/auth/login).";
+"server_config.login_path_placeholder" = "api/v1/auth/login";
 "server_config.path_no_slash" = "Путь (без начального слэша)";
 "server_config.port_optional" = "Порт (необязательно)";
 "server_config.port_placeholder" = "напр. 8443";

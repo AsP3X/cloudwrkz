@@ -21,7 +21,7 @@ enum QrLoginApproveFailure: Equatable, Error {
 
 enum QrLoginService {
     private static let timeout: TimeInterval = 15
-    private static let approvePathSegments = ["api", "auth", "qr-login", "approve"]
+    private static let approvePathSegments = ["api", "v1", "auth", "qr-login", "approve"]
 
     /// Approve a QR login request (browser will then receive the session). Caller must be logged in.
     static func approve(requestId: String, config: ServerConfig) async -> Result<Void, QrLoginApproveFailure> {
@@ -66,7 +66,7 @@ enum QrLoginService {
             }
 
             switch http.statusCode {
-            case 200:
+            case 200, 202:
                 return .success(())
             case 401:
                 SessionExpiredNotifier.notify()

@@ -23,7 +23,10 @@ enum TimeTrackingService {
 
     private static func timeTrackingPath(loginPath: String) -> String {
         let path = loginPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        if path.isEmpty { return "api/time-tracking" }
+        if path.isEmpty { return "api/v1/time-tracking" }
+        if path.lowercased().hasSuffix("/auth/login") {
+            return String(path.dropLast("/auth/login".count)) + "/time-tracking"
+        }
         return path.replacingOccurrences(of: "login", with: "time-tracking", options: .caseInsensitive)
     }
 

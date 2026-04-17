@@ -28,7 +28,14 @@ enum SearchService {
 
     private static func searchPathSegments(loginPath: String) -> [String] {
         let path = loginPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        let searchPath = path.isEmpty ? "api/search" : path.replacingOccurrences(of: "login", with: "search", options: .caseInsensitive)
+        let searchPath: String
+        if path.isEmpty {
+            searchPath = "api/v1/search"
+        } else if path.lowercased().hasSuffix("/auth/login") {
+            searchPath = String(path.dropLast("/auth/login".count)) + "/search"
+        } else {
+            searchPath = path.replacingOccurrences(of: "login", with: "search", options: .caseInsensitive)
+        }
         return searchPath.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
     }
 

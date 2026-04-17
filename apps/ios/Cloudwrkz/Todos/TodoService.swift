@@ -21,7 +21,14 @@ enum TodoService {
     /// Path for GET todos: derived from login path (api/auth/login → api/auth/todos, api/login → api/todos).
     private static func todosPathSegments(loginPath: String) -> [String] {
         let path = loginPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        let todosPath = path.isEmpty ? "api/todos" : path.replacingOccurrences(of: "login", with: "todos", options: .caseInsensitive)
+        let todosPath: String
+        if path.isEmpty {
+            todosPath = "api/v1/todos"
+        } else if path.lowercased().hasSuffix("/auth/login") {
+            todosPath = String(path.dropLast("/auth/login".count)) + "/todos"
+        } else {
+            todosPath = path.replacingOccurrences(of: "login", with: "todos", options: .caseInsensitive)
+        }
         return todosPath.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
     }
 
