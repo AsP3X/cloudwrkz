@@ -61,6 +61,19 @@ private enum Keys {
 }
 
 extension ServerConfig {
+    /// Rust API exposes `POST …/api/v1/auth/login`, not `…/api/v1/login`. Fix a common stored typo once.
+    private static func migrateDeprecatedLoginPath(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        var normalized = trimmed
+        while normalized.hasPrefix("/") {
+            normalized.removeFirst()
+        }
+        if normalized.lowercased() == "api/v1/login" {
+            return ServerConfig.defaultLoginPath
+        }
+        return trimmed.isEmpty ? ServerConfig.defaultLoginPath : trimmed
+    }
+
     static func load() -> ServerConfig {
         let raw = UserDefaults.standard.string(forKey: Keys.tenant)
         let tenant: TenantType = {
@@ -75,7 +88,11 @@ extension ServerConfig {
             if let n = v as? NSNumber { return n.intValue }
             return nil
         }()
-        let path = UserDefaults.standard.string(forKey: Keys.loginPath) ?? ServerConfig.defaultLoginPath
+        let storedPath = UserDefaults.standard.string(forKey: Keys.loginPath) ?? ServerConfig.defaultLoginPath
+        let path = migrateDeprecatedLoginPath(storedPath)
+        if path != storedPath {
+            UserDefaults.standard.set(path, forKey: Keys.loginPath)
+        }
         let https: Bool
         if UserDefaults.standard.object(forKey: Keys.useHTTPS) != nil {
             https = UserDefaults.standard.bool(forKey: Keys.useHTTPS)
