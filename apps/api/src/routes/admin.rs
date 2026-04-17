@@ -7,6 +7,7 @@ use axum::{
 use rand::Rng;
 use serde::Deserialize;
 use sqlx::Row;
+use std::collections::HashSet;
 
 use crate::audit::{self, WriteAuditParams};
 use crate::auth::extractors::AuthUser;
@@ -45,7 +46,9 @@ pub fn router() -> Router<AppState> {
         )
         .route(
             "/admin/users/{id}/permissions",
-            get(list_user_permissions).post(grant_user_permission),
+            get(list_user_permissions)
+                .post(grant_user_permission)
+                .put(replace_user_permissions),
         )
         .route(
             "/admin/users/{id}/permissions/{key}",
@@ -59,7 +62,9 @@ pub fn router() -> Router<AppState> {
         )
         .route(
             "/admin/groups/{id}/permissions",
-            get(list_group_permissions).post(grant_group_permission),
+            get(list_group_permissions)
+                .post(grant_group_permission)
+                .put(replace_group_permissions),
         )
         .route(
             "/admin/groups/{id}/permissions/{key}",
@@ -1634,6 +1639,111 @@ async fn revoke_user_permission(
     Ok(Json(serde_json::json!({ "success": true })))
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReplaceDirectPermissionsBody {
+    keys: Vec<String>,
+}
+
+async fn replace_user_permissions(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+    Json(body): Json<ReplaceDirectPermissionsBody>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let can_manage = user.role == "ADMIN"
+        || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
+    if !can_manage {
+        return Err(AppError::forbidden(
+            "Permission required: admin.permissions.manage",
+        ));
+    }
+
+    let new_keys: HashSet<String> = body
+        .keys
+        .iter()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let unique_keys: Vec<String> = new_keys.iter().cloned().collect();
+
+    let old_keys: Vec<String> = sqlx::query_scalar(
+        r#"SELECT p.key FROM user_permissions up
+           JOIN permissions p ON up.permission_id = p.id
+           WHERE up.user_id = $1"#,
+    )
+    .bind(&id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let perm_rows: Vec<(String, String)> = if unique_keys.is_empty() {
+        Vec::new()
+    } else {
+        sqlx::query_as(
+            r#"SELECT id, key FROM permissions WHERE key = ANY($1)"#,
+        )
+        .bind(&unique_keys)
+        .fetch_all(&state.pool)
+        .await?
+    };
+
+    let found: HashSet<String> = perm_rows.iter().map(|(_, k)| k.clone()).collect();
+    let missing: Vec<String> = unique_keys
+        .iter()
+        .filter(|k| !found.contains(*k))
+        .cloned()
+        .collect();
+    if !missing.is_empty() {
+        return Err(AppError::bad_request(format!(
+            "Unknown permission keys: {}",
+            missing.join(", ")
+        )));
+    }
+
+    let old_set: HashSet<String> = old_keys.into_iter().collect();
+    let added_count = new_keys.difference(&old_set).count() as i64;
+    let removed_count = old_set.difference(&new_keys).count() as i64;
+
+    let mut tx = state.pool.begin().await?;
+    sqlx::query("DELETE FROM user_permissions WHERE user_id = $1")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    for (perm_id, _) in &perm_rows {
+        let up_id = crate::id::new_cuid();
+        sqlx::query(
+            r#"INSERT INTO user_permissions (id, user_id, permission_id, created_at)
+               VALUES ($1, $2, $3, NOW())
+               ON CONFLICT (user_id, permission_id) DO NOTHING"#,
+        )
+        .bind(&up_id)
+        .bind(&id)
+        .bind(perm_id)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+
+    audit::write_audit_log(
+        &state.pool,
+        WriteAuditParams {
+            user_id: Some(user.id),
+            action: "admin.permissions.replace".into(),
+            resource_type: Some("user".into()),
+            resource_id: Some(id),
+            context: Some(serde_json::json!({
+                "addedCount": added_count,
+                "removedCount": removed_count,
+                "totalKeys": perm_rows.len(),
+            })),
+            ip_address: None,
+            user_agent: None,
+        },
+    );
+
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
 async fn list_group_permissions(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -1757,6 +1867,105 @@ async fn revoke_group_permission(
             user_agent: None,
         },
     );
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
+async fn replace_group_permissions(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+    Json(body): Json<ReplaceDirectPermissionsBody>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let can_manage = user.role == "ADMIN"
+        || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
+    if !can_manage {
+        return Err(AppError::forbidden(
+            "Permission required: admin.permissions.manage",
+        ));
+    }
+
+    let new_keys: HashSet<String> = body
+        .keys
+        .iter()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let unique_keys: Vec<String> = new_keys.iter().cloned().collect();
+
+    let old_keys: Vec<String> = sqlx::query_scalar(
+        r#"SELECT p.key FROM group_permissions gp
+           JOIN permissions p ON gp.permission_id = p.id
+           WHERE gp.group_id = $1"#,
+    )
+    .bind(&id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let perm_rows: Vec<(String, String)> = if unique_keys.is_empty() {
+        Vec::new()
+    } else {
+        sqlx::query_as(
+            r#"SELECT id, key FROM permissions WHERE key = ANY($1)"#,
+        )
+        .bind(&unique_keys)
+        .fetch_all(&state.pool)
+        .await?
+    };
+
+    let found: HashSet<String> = perm_rows.iter().map(|(_, k)| k.clone()).collect();
+    let missing: Vec<String> = unique_keys
+        .iter()
+        .filter(|k| !found.contains(*k))
+        .cloned()
+        .collect();
+    if !missing.is_empty() {
+        return Err(AppError::bad_request(format!(
+            "Unknown permission keys: {}",
+            missing.join(", ")
+        )));
+    }
+
+    let old_set: HashSet<String> = old_keys.into_iter().collect();
+    let added_count = new_keys.difference(&old_set).count() as i64;
+    let removed_count = old_set.difference(&new_keys).count() as i64;
+
+    let mut tx = state.pool.begin().await?;
+    sqlx::query("DELETE FROM group_permissions WHERE group_id = $1")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    for (perm_id, _) in &perm_rows {
+        let gp_id = crate::id::new_cuid();
+        sqlx::query(
+            r#"INSERT INTO group_permissions (id, group_id, permission_id, created_at)
+               VALUES ($1, $2, $3, NOW())
+               ON CONFLICT (group_id, permission_id) DO NOTHING"#,
+        )
+        .bind(&gp_id)
+        .bind(&id)
+        .bind(perm_id)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+
+    audit::write_audit_log(
+        &state.pool,
+        WriteAuditParams {
+            user_id: Some(user.id),
+            action: "admin.permissions.replace".into(),
+            resource_type: Some("group".into()),
+            resource_id: Some(id),
+            context: Some(serde_json::json!({
+                "addedCount": added_count,
+                "removedCount": removed_count,
+                "totalKeys": perm_rows.len(),
+            })),
+            ip_address: None,
+            user_agent: None,
+        },
+    );
+
     Ok(Json(serde_json::json!({ "success": true })))
 }
 

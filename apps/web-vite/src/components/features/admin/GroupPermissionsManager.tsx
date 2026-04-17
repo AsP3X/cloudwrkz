@@ -27,7 +27,6 @@ export function GroupPermissionsManager({
 }: GroupPermissionsManagerProps) {
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(initialPermissionIds));
-  const [baseIds, setBaseIds] = useState<Set<string>>(new Set(initialPermissionIds));
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -49,7 +48,6 @@ export function GroupPermissionsManager({
         setPermissions(all);
         const ids = new Set((groupRes.permissions ?? []).map((p) => p.id));
         setSelectedIds(ids);
-        setBaseIds(ids);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load permissions");
       } finally {
@@ -130,17 +128,10 @@ export function GroupPermissionsManager({
     setSuccess(null);
     try {
       const idToKey = new Map(permissions.map((p) => [p.id, p.key]));
-      const currentKeys = new Set(Array.from(selectedIds).map((id) => idToKey.get(id)).filter(Boolean) as string[]);
-      const initialKeys = new Set(Array.from(baseIds).map((id) => idToKey.get(id)).filter(Boolean) as string[]);
-      const toAdd = [...currentKeys].filter((k) => !initialKeys.has(k));
-      const toRemove = [...initialKeys].filter((k) => !currentKeys.has(k));
-      for (const key of toAdd) {
-        await api.post(`/admin/groups/${groupId}/permissions`, { key });
-      }
-      for (const key of toRemove) {
-        await api.delete(`/admin/groups/${groupId}/permissions/${encodeURIComponent(key)}`);
-      }
-      setBaseIds(new Set(selectedIds));
+      const keys = Array.from(selectedIds)
+        .map((id) => idToKey.get(id))
+        .filter((k): k is string => Boolean(k));
+      await api.put(`/admin/groups/${groupId}/permissions`, { keys });
       setSuccess("Permissions updated successfully");
       setTimeout(() => setSuccess(null), 3000);
       onSave?.();
