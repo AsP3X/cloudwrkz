@@ -8,6 +8,12 @@ alwaysApply: true
 
 # Git commits
 
+## Enforcement (strict)
+
+- This rule is **mandatory** for all agent-authored git actions in this repository.
+- If a git command would violate any section below, **do not run it**. Stop, explain the exact rule conflict, and ask for explicit user confirmation or clarification.
+- When multiple instructions exist, prefer the **most restrictive** interpretation that keeps history safe and intentional.
+
 ## When commits are allowed
 
 - **Create a git commit only when the user explicitly asks** (e.g. “commit this”, “make a commit”, “git commit”). Phrases like “save my work” or “checkpoint” count as explicit only if they clearly mean a **git commit**—when in doubt, **ask** before committing.
