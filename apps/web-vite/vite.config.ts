@@ -4,6 +4,18 @@ import path from "path";
 
 const DEV_LOG_PATH = "/__dev-log";
 
+/** Comma-separated hostnames for `server.allowedHosts` (Vite 6+ DNS rebinding guard). Set via Docker, e.g. `VITE_DEV_ALLOWED_HOSTS=cloudwrkz.example.com`. */
+function devAllowedHostsFromEnv(): string[] {
+  const raw =
+    process.env.VITE_DEV_ALLOWED_HOSTS?.trim() ||
+    process.env.__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS?.trim();
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((h) => h.trim())
+    .filter(Boolean);
+}
+
 function attachProxyErrorHandler(proxy: any, routePrefix: string, upstreamName: string) {
   proxy.on("error", (err: Error & { code?: string }, req: any, res: any) => {
     const ts = new Date().toISOString();
@@ -106,6 +118,8 @@ export default defineConfig(({ mode }) => {
     }
   }
 
+  const extraAllowedHosts = devAllowedHostsFromEnv();
+
   return {
     plugins: [react(), cloudwrkzLogPlugin()],
     resolve: {
@@ -116,6 +130,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       host: "0.0.0.0",
+      ...(extraAllowedHosts.length > 0 ? { allowedHosts: extraAllowedHosts } : {}),
       proxy: {
         "/api": {
           target: apiProxyTarget,
