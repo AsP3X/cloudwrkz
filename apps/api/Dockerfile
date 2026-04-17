@@ -1,14 +1,18 @@
+# Build context must be the monorepo root (directory that contains `apps/api/`), e.g.:
+#   docker build -f apps/api/Dockerfile .
+# Compose uses the same layout via `context: ${CLOUDWRKZ_REPO_ROOT:-.}`.
+
 FROM rust:1.88-slim-bookworm AS builder
 
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 
-COPY Cargo.toml Cargo.lock* ./
+COPY apps/api/Cargo.toml apps/api/Cargo.lock* ./
 RUN mkdir src && echo "fn main() {}" > src/main.rs && cargo build --release && rm -rf src
 
-COPY src/ src/
-COPY migrations/ migrations/
+COPY apps/api/src/ src/
+COPY apps/api/migrations/ migrations/
 RUN touch src/main.rs && cargo build --release
 
 FROM debian:bookworm-slim

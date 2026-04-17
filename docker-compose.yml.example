@@ -5,6 +5,7 @@
 # This file is written for the monorepo root (directory that contains `apps/`, `Cargo.toml`,
 # `pnpm-workspace.yaml`). If you keep compose elsewhere, set CLOUDWRKZ_REPO_ROOT in `.env` to the
 # absolute path of that clone (e.g. CLOUDWRKZ_REPO_ROOT=/home/you/src/cloudwrkz).
+# API and web-vite images build from the repo root; Dockerfiles use `apps/...` paths.
 
 services:
   api:
