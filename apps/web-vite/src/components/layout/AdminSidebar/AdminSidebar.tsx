@@ -199,7 +199,7 @@ export function AdminSidebar({
             </span>
           </div>
 
-          <nav className="flex-1 px-4 py-6 space-y-4 overflow-y-auto">
+          <nav className="flex-1 px-4 py-6 space-y-4 overflow-y-auto scrollbar-sidebar">
             <Link
               to={ROUTES.DASHBOARD}
               onClick={() => setIsMobileOpen(false)}

@@ -263,7 +263,7 @@ export const DashboardSidebar = ({
             </Link>
           </div>
 
-          <nav className="flex-1 px-4 py-6 space-y-4 overflow-y-auto">
+          <nav className="flex-1 px-4 py-6 space-y-4 overflow-y-auto scrollbar-sidebar">
             {filteredStandalone.map((item) => {
               const isActive =
                 item.href === ROUTES.DASHBOARD
