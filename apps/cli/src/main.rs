@@ -1084,8 +1084,6 @@ async fn run_interactive() -> Result<(), Box<dyn std::error::Error + Send + Sync
     let mut search_active = false;
     let mut search_query = String::new();
     let mut search_filter: Option<String> = None;
-    let mut sidebar_orig_indices: Vec<usize> = vec![];
-    let mut content_orig_indices: Vec<usize> = vec![];
 
     loop {
         let screen = stack.last().expect("screen stack empty").clone();
@@ -1095,17 +1093,19 @@ async fn run_interactive() -> Result<(), Box<dyn std::error::Error + Send + Sync
 
         let base_content = panel_content(&screen, sidebar_index, has_token);
 
-        let (display_sidebar, display_content) = if let Some(ref q) = search_filter {
-            let (fs, si) = filter_by_search(&sidebar_items, q);
-            let (fc, ci) = filter_by_search(&base_content, q);
-            sidebar_orig_indices = si;
-            content_orig_indices = ci;
-            (fs, fc)
-        } else {
-            sidebar_orig_indices = (0..sidebar_items.len()).collect();
-            content_orig_indices = (0..base_content.len()).collect();
-            (sidebar_items.clone(), base_content.clone())
-        };
+        let (display_sidebar, display_content, sidebar_orig_indices, content_orig_indices) =
+            if let Some(ref q) = search_filter {
+                let (fs, si) = filter_by_search(&sidebar_items, q);
+                let (fc, ci) = filter_by_search(&base_content, q);
+                (fs, fc, si, ci)
+            } else {
+                (
+                    sidebar_items.clone(),
+                    base_content.clone(),
+                    (0..sidebar_items.len()).collect(),
+                    (0..base_content.len()).collect(),
+                )
+            };
 
         // While search filters the panel, keep content static; otherwise sidebar arrows refresh the right column.
         let mut content_callback: Option<Box<dyn FnMut(usize) -> Vec<String>>> = None;
