@@ -88,13 +88,13 @@ export const Header = () => {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-8">
-            <a
-              href="#features"
+            <Link
+              to={`${ROUTES.HOME}#features`}
               className="text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors duration-200"
               aria-label="View features section"
             >
               Features
-            </a>
+            </Link>
             <Link
               to={ROUTES.ABOUT}
               className="text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors duration-200"
@@ -227,14 +227,14 @@ export const Header = () => {
               />
               <div className="relative h-full overflow-y-auto z-10">
                 <div className="container mx-auto px-4 py-6 space-y-4 min-h-full w-full">
-                  <a
-                    href="#features"
+                  <Link
+                    to={`${ROUTES.HOME}#features`}
                     className="block py-3 px-4 text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md transition-colors"
                     onClick={handleNavClick}
                     aria-label="View features section"
                   >
                     Features
-                  </a>
+                  </Link>
                   <Link
                     to={ROUTES.ABOUT}
                     className="block py-3 px-4 text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md transition-colors"

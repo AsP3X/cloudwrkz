@@ -84,7 +84,7 @@ export function ContactForm() {
 
   return (
     <>
-      <div className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-12">
             <Link
@@ -103,7 +103,7 @@ export function ContactForm() {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-1">
-              <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
+              <div className="rounded-xl border border-neutral-200/90 bg-white/95 p-6 shadow-soft-xl ring-1 ring-neutral-900/[0.04] backdrop-blur-sm dark:border-neutral-700 dark:bg-neutral-900/95 dark:ring-white/[0.06]">
                 <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-6">
                   Get in Touch
                 </h2>
@@ -164,7 +164,7 @@ export function ContactForm() {
             </div>
 
             <div className="lg:col-span-2">
-              <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8 sm:p-12">
+              <div className="rounded-xl border border-neutral-200/90 bg-white/95 p-8 shadow-soft-xl ring-1 ring-neutral-900/[0.04] backdrop-blur-sm sm:p-12 dark:border-neutral-700 dark:bg-neutral-900/95 dark:ring-white/[0.06]">
                 <form onSubmit={handleSubmit} className="space-y-6">
                   {submitStatus.type === "success" && (
                     <div className="rounded-lg bg-success-50 dark:bg-success-950 border-2 border-success-200 dark:border-success-800 p-4">

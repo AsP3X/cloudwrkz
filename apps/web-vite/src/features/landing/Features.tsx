@@ -67,21 +67,17 @@ const features: Feature[] = [
 
 export const Features = () => {
   return (
-    <section
-      id="features"
-      className="py-20 bg-white dark:bg-neutral-900"
-      aria-label="Features section"
-    >
+    <section id="features" className="py-20 sm:py-24" aria-label="Features section">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
-          <h2 className="text-4xl sm:text-5xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">
+          <h2 className="mb-4 text-4xl font-bold text-neutral-950 dark:text-neutral-50 sm:text-5xl">
             Everything You Need to
             <br />
-            <span className="bg-gradient-to-r from-primary-600 to-secondary-600 dark:from-primary-400 dark:to-secondary-400 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-primary-600 to-secondary-600 bg-clip-text text-transparent dark:from-primary-300 dark:to-secondary-300">
               Succeed
             </span>
           </h2>
-          <p className="text-xl text-neutral-600 dark:text-neutral-400 max-w-2xl mx-auto">
+          <p className="mx-auto max-w-2xl text-xl text-neutral-700 dark:text-neutral-300">
             Powerful features designed to help you build, deploy, and scale
             your applications with confidence.
           </p>
@@ -97,9 +93,8 @@ export const Features = () => {
             >
               <article
                 className={cn(
-                  "p-8 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
-                  "hover:shadow-soft-lg hover:border-primary-200 dark:hover:border-primary-800",
-                  "transition-all duration-300 group"
+                  "group rounded-xl border border-white/25 bg-white/82 p-8 shadow-sm backdrop-blur-sm transition-all duration-300 dark:border-white/10 dark:bg-neutral-950/50",
+                  "hover:border-primary-300/60 hover:shadow-soft-lg dark:hover:border-primary-500/35",
                 )}
                 role="listitem"
               >
@@ -109,10 +104,8 @@ export const Features = () => {
                 >
                   {feature.icon}
                 </div>
-                <h3 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-3">
-                  {feature.title}
-                </h3>
-                <p className="text-neutral-600 dark:text-neutral-400 leading-relaxed">
+                <h3 className="mb-3 text-xl font-semibold text-neutral-950 dark:text-neutral-100">{feature.title}</h3>
+                <p className="leading-relaxed text-neutral-700 dark:text-neutral-300">
                   {feature.description}
                 </p>
               </article>

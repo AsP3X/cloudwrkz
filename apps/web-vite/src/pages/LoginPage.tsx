@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
+import { MouseSpotlightSurface } from "@/components/ui/MouseSpotlightSurface";
 import { LoginForm } from "@/features/auth/LoginForm";
 import { RegistrationQueuedPanel } from "@/features/auth/RegistrationQueuedPanel";
 import { APP_CONFIG } from "@/lib/constants/config";
@@ -14,13 +15,12 @@ export default function LoginPage() {
   return (
     <>
       <Header />
-      <main className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-secondary-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950 pt-16 pb-20 relative">
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-20 left-10 w-72 h-72 bg-primary-200 dark:bg-primary-900 rounded-full mix-blend-multiply filter blur-xl opacity-20 dark:opacity-5" />
-          <div className="absolute bottom-20 right-10 w-72 h-72 bg-secondary-200 dark:bg-secondary-900 rounded-full mix-blend-multiply filter blur-xl opacity-20 dark:opacity-5" />
-        </div>
-
-        <div className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <main>
+        <MouseSpotlightSurface
+          variant="content"
+          className="min-h-screen bg-gradient-to-br from-neutral-200/90 via-neutral-100 to-neutral-50 pt-16 pb-20 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950"
+        >
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="max-w-md mx-auto">
             <div className="text-center mb-8">
               <Link
@@ -37,7 +37,7 @@ export default function LoginPage() {
               </p>
             </div>
 
-            <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-8">
+            <div className="rounded-xl border border-neutral-200/90 bg-white/95 p-8 shadow-soft-xl ring-1 ring-neutral-900/[0.04] backdrop-blur-sm dark:border-neutral-700 dark:bg-neutral-900/95 dark:ring-white/[0.06]">
               <RegistrationQueuedPanel mode="resume" />
               <LoginForm initialError={error} />
             </div>
@@ -96,6 +96,7 @@ export default function LoginPage() {
             </div>
           </div>
         </div>
+        </MouseSpotlightSurface>
       </main>
       <Footer />
     </>
