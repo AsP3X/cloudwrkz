@@ -792,7 +792,7 @@ function AdminBackgroundJobsPageContent() {
         <SectionShell
           icon={IconHistory}
           title="History"
-          subtitle="Completed, failed, and cancelled jobs in this window (newest first). Ticket/todo/time/link work appears as ticket_create, ticket_update, ticket_delete, ticket_comment_create, todo_create, time_entry_create_*, link_create."
+          subtitle="Completed, failed, and cancelled jobs in this window (newest first). Ticket/todo/time/link work appears as ticket_create, ticket_update, ticket_delete, ticket_comment_create, todo_create, todo_update, todo_delete, time_entry_create_*, link_create."
           flush
         >
           {loading ? (

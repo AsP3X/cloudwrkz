@@ -88,6 +88,8 @@ fn policies_from_config(config: &AppConfig) -> HashMap<String, JobTypePolicy> {
         entity_creates::JOB_TYPE_TICKET_DELETE,
         entity_creates::JOB_TYPE_TICKET_COMMENT_CREATE,
         entity_creates::JOB_TYPE_TODO_CREATE,
+        entity_creates::JOB_TYPE_TODO_UPDATE,
+        entity_creates::JOB_TYPE_TODO_DELETE,
         entity_creates::JOB_TYPE_TIME_ENTRY_CREATE_TIMER,
         entity_creates::JOB_TYPE_TIME_ENTRY_CREATE_MANUAL,
         entity_creates::JOB_TYPE_LINK_CREATE,
@@ -196,6 +198,8 @@ async fn run_one_job(
         | entity_creates::JOB_TYPE_TICKET_DELETE
         | entity_creates::JOB_TYPE_TICKET_COMMENT_CREATE
         | entity_creates::JOB_TYPE_TODO_CREATE
+        | entity_creates::JOB_TYPE_TODO_UPDATE
+        | entity_creates::JOB_TYPE_TODO_DELETE
         | entity_creates::JOB_TYPE_TIME_ENTRY_CREATE_TIMER
         | entity_creates::JOB_TYPE_TIME_ENTRY_CREATE_MANUAL
         | entity_creates::JOB_TYPE_LINK_CREATE => {

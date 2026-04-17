@@ -62,7 +62,7 @@ interface MutationQueuedPayload {
   job_id?: string;
   retry_deadline_secs?: number;
   message?: string;
-  /** Present for ticket/todo/time/link creates: matches `background_jobs.job_type`. */
+  /** Present for ticket/todo/time/link persisted jobs: matches `background_jobs.job_type`. */
   job_type?: string;
 }
 

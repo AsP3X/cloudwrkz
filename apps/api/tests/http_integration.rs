@@ -100,6 +100,28 @@ fn req_post_tickets_json(
     b.body(Body::from(json_body.to_string())).unwrap()
 }
 
+fn req_post_todos_json(token: &str, json_body: &str) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri("/api/v1/todos")
+        .header("x-forwarded-for", "203.0.113.42")
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .body(Body::from(json_body.to_string()))
+        .unwrap()
+}
+
+fn req_patch_todo_json(token: &str, todo_id: &str, json_body: &str) -> Request<Body> {
+    Request::builder()
+        .method("PATCH")
+        .uri(format!("/api/v1/todos/{todo_id}"))
+        .header("x-forwarded-for", "203.0.113.42")
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .body(Body::from(json_body.to_string()))
+        .unwrap()
+}
+
 async fn seed_user_with_session(
     pool: &PgPool,
     email: &str,
@@ -454,6 +476,73 @@ async fn patch_ticket_enqueues_ticket_update_background_job(pool: PgPool) {
         .await
         .expect("background_jobs row");
     assert_eq!(jt, "ticket_update");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn patch_todo_enqueues_todo_update_background_job(pool: PgPool) {
+    let token = seed_user_with_session(&pool, "todo-patch-bg@example.com", "USER")
+        .await
+        .expect("seed");
+    let app = build_http_app(test_app_state(pool.clone()));
+
+    let res = app
+        .clone()
+        .oneshot(req_post_todos_json(
+            &token,
+            r#"{"title":"Task for patch job row"}"#,
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::ACCEPTED);
+    let b = res.into_body().collect().await.unwrap().to_bytes();
+    let q: serde_json::Value = serde_json::from_slice(&b).expect("json");
+    assert_eq!(q["job_type"], "todo_create");
+    let create_job = q["job_id"].as_str().expect("job_id").to_string();
+    let uri = format!("/api/v1/mutation-jobs/{create_job}");
+    let mut todo_id: Option<String> = None;
+    for _ in 0..100 {
+        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+        let res = app
+            .clone()
+            .oneshot(req_get_bearer(&uri, &token))
+            .await
+            .expect("poll");
+        if res.status() != StatusCode::OK {
+            continue;
+        }
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        let v: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        match v["status"].as_str() {
+            Some("completed") => {
+                todo_id = v["body"]["id"].as_str().map(String::from);
+                break;
+            }
+            Some("failed") => panic!("mutation job failed: {v:?}"),
+            _ => {}
+        }
+    }
+    let todo_id = todo_id.expect("create job did not complete in time");
+
+    let res = app
+        .oneshot(req_patch_todo_json(
+            &token,
+            &todo_id,
+            r#"{"title":"Updated todo via background job"}"#,
+        ))
+        .await
+        .expect("patch");
+    assert_eq!(res.status(), StatusCode::ACCEPTED);
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    let q: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    assert_eq!(q["job_type"], "todo_update");
+    let job_id = q["job_id"].as_str().expect("job_id");
+
+    let jt: String = sqlx::query_scalar("SELECT job_type FROM background_jobs WHERE id = $1")
+        .bind(job_id)
+        .fetch_one(&pool)
+        .await
+        .expect("background_jobs row");
+    assert_eq!(jt, "todo_update");
 }
 
 #[sqlx::test(migrations = "./migrations")]

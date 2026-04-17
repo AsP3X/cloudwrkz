@@ -1,4 +1,4 @@
-//! Persisted `background_jobs` workers for ticket / todo / time entry / link mutations (creates and ticket updates/deletes/comments).
+//! Persisted `background_jobs` workers for ticket / todo / time entry / link mutations (creates, ticket/todo updates and deletes, ticket comments).
 //! HTTP handlers enqueue and return HTTP 202; clients poll `GET /mutation-jobs/{id}` (see `routes/mutation_jobs.rs`).
 
 use axum::http::StatusCode;
@@ -23,7 +23,7 @@ use crate::models::ticket::{
 };
 use crate::routes::helpers::check_permission_mut_tx;
 use crate::models::time_entry::{AddTimeEntryRequest, CreateTimeEntryRequest};
-use crate::models::todo::CreateTodoRequest;
+use crate::models::todo::{CreateTodoRequest, UpdateTodoRequest};
 
 use super::enqueue_github_link_metadata_job;
 
@@ -32,6 +32,8 @@ pub const JOB_TYPE_TICKET_UPDATE: &str = "ticket_update";
 pub const JOB_TYPE_TICKET_DELETE: &str = "ticket_delete";
 pub const JOB_TYPE_TICKET_COMMENT_CREATE: &str = "ticket_comment_create";
 pub const JOB_TYPE_TODO_CREATE: &str = "todo_create";
+pub const JOB_TYPE_TODO_UPDATE: &str = "todo_update";
+pub const JOB_TYPE_TODO_DELETE: &str = "todo_delete";
 pub const JOB_TYPE_TIME_ENTRY_CREATE_TIMER: &str = "time_entry_create_timer";
 pub const JOB_TYPE_TIME_ENTRY_CREATE_MANUAL: &str = "time_entry_create_manual";
 pub const JOB_TYPE_LINK_CREATE: &str = "link_create";
@@ -46,6 +48,8 @@ pub fn is_entity_create_job_type(job_type: &str) -> bool {
             | JOB_TYPE_TICKET_DELETE
             | JOB_TYPE_TICKET_COMMENT_CREATE
             | JOB_TYPE_TODO_CREATE
+            | JOB_TYPE_TODO_UPDATE
+            | JOB_TYPE_TODO_DELETE
             | JOB_TYPE_TIME_ENTRY_CREATE_TIMER
             | JOB_TYPE_TIME_ENTRY_CREATE_MANUAL
             | JOB_TYPE_LINK_CREATE
@@ -253,6 +257,8 @@ pub async fn run_entity_create_job(
             exec_ticket_comment_create(pool, lock_ms, stmt_ms, payload).await
         },
         JOB_TYPE_TODO_CREATE => exec_todo_create(pool, lock_ms, stmt_ms, payload).await,
+        JOB_TYPE_TODO_UPDATE => exec_todo_update(pool, lock_ms, stmt_ms, payload).await,
+        JOB_TYPE_TODO_DELETE => exec_todo_delete(pool, lock_ms, stmt_ms, payload).await,
         JOB_TYPE_TIME_ENTRY_CREATE_TIMER => {
             exec_time_entry_timer_create(pool, lock_ms, stmt_ms, payload).await
         }
@@ -894,6 +900,354 @@ async fn exec_todo_create(
     }
 
     JobExecOutcome::Ok(JsonMutationResult::created(json!({ "id": id })))
+}
+
+async fn exec_todo_update(
+    pool: &PgPool,
+    lock_ms: u64,
+    stmt_ms: u64,
+    payload: &serde_json::Value,
+) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+    };
+    let todo_id = match payload.get("todo_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing todo_id in job payload")),
+    };
+    let body_val = match payload.get("request") {
+        Some(v) => v.clone(),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request("Missing request in job payload"))
+        }
+    };
+    let body: UpdateTodoRequest = match serde_json::from_value(body_val) {
+        Ok(b) => b,
+        Err(e) => {
+            return JobExecOutcome::Fail(AppError::bad_request(format!("Invalid todo update: {e}")))
+        }
+    };
+
+    let mut tx = match pool.begin().await {
+        Ok(t) => t,
+        Err(e) => return map_sqlx_ticket(e),
+    };
+    if let Err(e) = apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+
+    let existing = match sqlx::query("SELECT id, assigned_to_id FROM todos WHERE id = $1 FOR UPDATE")
+        .bind(&todo_id)
+        .fetch_optional(&mut *tx)
+        .await
+    {
+        Ok(Some(r)) => r,
+        Ok(None) => {
+            let _ = tx.rollback().await;
+            return JobExecOutcome::Fail(AppError::not_found("Todo not found"));
+        }
+        Err(e) => {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    };
+
+    let owner: Option<String> = existing.get("assigned_to_id");
+    if owner.as_deref() != Some(&user_id) {
+        let _ = tx.rollback().await;
+        return JobExecOutcome::Fail(AppError::forbidden("Not your todo"));
+    }
+
+    if let Some(ref title) = body.title {
+        if let Err(e) =
+            sqlx::query("UPDATE todos SET title = $1, updated_at = NOW() WHERE id = $2")
+                .bind(title)
+                .bind(&todo_id)
+                .execute(&mut *tx)
+                .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(ref desc) = body.description {
+        if let Err(e) = sqlx::query(
+            "UPDATE todos SET description = $1, updated_at = NOW() WHERE id = $2",
+        )
+        .bind(desc)
+        .bind(&todo_id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(ref desc_html) = body.description_html {
+        if let Err(e) = sqlx::query(
+            "UPDATE todos SET description_html = $1, updated_at = NOW() WHERE id = $2",
+        )
+        .bind(desc_html)
+        .bind(&todo_id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(ref aid) = body.assigned_to_id {
+        let s: Option<String> = aid
+            .as_str()
+            .map(|s| s.to_string())
+            .filter(|s| !s.is_empty());
+        if let Err(e) = sqlx::query(
+            "UPDATE todos SET assigned_to_id = $1, updated_at = NOW() WHERE id = $2",
+        )
+        .bind(&s)
+        .bind(&todo_id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(est) = body.estimated_hours {
+        if let Err(e) = sqlx::query(
+            "UPDATE todos SET estimated_hours = $1, updated_at = NOW() WHERE id = $2",
+        )
+        .bind(est)
+        .bind(&todo_id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(act) = body.actual_hours {
+        if let Err(e) = sqlx::query(
+            "UPDATE todos SET actual_hours = $1, updated_at = NOW() WHERE id = $2",
+        )
+        .bind(act)
+        .bind(&todo_id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if body.start_date.is_some() {
+        let v = body
+            .start_date
+            .as_ref()
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<chrono::NaiveDateTime>().ok());
+        if let Err(e) = sqlx::query(
+            "UPDATE todos SET start_date = $1, updated_at = NOW() WHERE id = $2",
+        )
+        .bind(&v)
+        .bind(&todo_id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if body.due_date.is_some() {
+        let v = body
+            .due_date
+            .as_ref()
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<chrono::NaiveDateTime>().ok());
+        if let Err(e) =
+            sqlx::query("UPDATE todos SET due_date = $1, updated_at = NOW() WHERE id = $2")
+                .bind(&v)
+                .bind(&todo_id)
+                .execute(&mut *tx)
+                .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if body.ticket_id.is_some() {
+        let v = body
+            .ticket_id
+            .as_ref()
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty());
+        if let Err(e) = sqlx::query(
+            "UPDATE todos SET ticket_id = $1, updated_at = NOW() WHERE id = $2",
+        )
+        .bind(v)
+        .bind(&todo_id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(ref status) = body.status {
+        let completed_date = if status == "COMPLETED" {
+            Some(chrono::Utc::now().naive_utc())
+        } else {
+            None
+        };
+        if let Err(e) = sqlx::query(
+            r#"UPDATE todos SET status = $1::"TodoStatus", completed_date = $2, updated_at = NOW() WHERE id = $3"#,
+        )
+        .bind(status)
+        .bind(completed_date)
+        .bind(&todo_id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(ref priority) = body.priority {
+        if let Err(e) = sqlx::query(
+            r#"UPDATE todos SET priority = $1::"TodoPriority", updated_at = NOW() WHERE id = $2"#,
+        )
+        .bind(priority)
+        .bind(&todo_id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if body.archived_at.is_some() {
+        let set_null = body
+            .archived_at
+            .as_ref()
+            .map(serde_json::Value::is_null)
+            .unwrap_or(false);
+        if set_null {
+            if let Err(e) = sqlx::query(
+                "UPDATE todos SET archived_at = NULL, updated_at = NOW() WHERE id = $1",
+            )
+            .bind(&todo_id)
+            .execute(&mut *tx)
+            .await
+            {
+                let _ = tx.rollback().await;
+                return map_sqlx_ticket(e);
+            }
+        } else if let Err(e) = sqlx::query(
+            "UPDATE todos SET archived_at = NOW(), updated_at = NOW() WHERE id = $1",
+        )
+        .bind(&todo_id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(order) = body.order {
+        if let Err(e) = sqlx::query(
+            "UPDATE todos SET \"order\" = $1, updated_at = NOW() WHERE id = $2",
+        )
+        .bind(order)
+        .bind(&todo_id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+
+    if let Err(e) = tx.commit().await {
+        return map_sqlx_ticket(e);
+    }
+
+    JobExecOutcome::Ok(JsonMutationResult::ok(json!({
+        "success": true,
+        "message": "Todo updated"
+    })))
+}
+
+async fn exec_todo_delete(
+    pool: &PgPool,
+    lock_ms: u64,
+    stmt_ms: u64,
+    payload: &serde_json::Value,
+) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+    };
+    let todo_id = match payload.get("todo_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing todo_id in job payload")),
+    };
+
+    let mut tx = match pool.begin().await {
+        Ok(t) => t,
+        Err(e) => return map_sqlx_ticket(e),
+    };
+    if let Err(e) = apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+
+    let existing = match sqlx::query("SELECT id, assigned_to_id FROM todos WHERE id = $1 FOR UPDATE")
+        .bind(&todo_id)
+        .fetch_optional(&mut *tx)
+        .await
+    {
+        Ok(Some(r)) => r,
+        Ok(None) => {
+            let _ = tx.rollback().await;
+            return JobExecOutcome::Fail(AppError::not_found("Todo not found"));
+        }
+        Err(e) => {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    };
+
+    let owner: Option<String> = existing.get("assigned_to_id");
+    if owner.as_deref() != Some(&user_id) {
+        let _ = tx.rollback().await;
+        return JobExecOutcome::Fail(AppError::forbidden("Not your todo"));
+    }
+
+    if let Err(e) = sqlx::query("DELETE FROM todos WHERE parent_todo_id = $1")
+        .bind(&todo_id)
+        .execute(&mut *tx)
+        .await
+    {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+    if let Err(e) = sqlx::query("DELETE FROM todos WHERE id = $1")
+        .bind(&todo_id)
+        .execute(&mut *tx)
+        .await
+    {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+    if let Err(e) = tx.commit().await {
+        return map_sqlx_ticket(e);
+    }
+
+    JobExecOutcome::Ok(JsonMutationResult::ok(json!({
+        "success": true,
+        "message": "Todo deleted"
+    })))
 }
 
 fn strip_html_plain(html: &str) -> String {
