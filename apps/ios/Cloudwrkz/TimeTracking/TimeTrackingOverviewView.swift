@@ -478,7 +478,10 @@ struct TimeTrackingOverviewView: View {
         case .unauthorized: return "Session expired. Sign in again."
         case .notFound: return "Time tracking not available."
         case .serverError(let m): return m
-        case .networkError: return "Could not reach server."
+        case .networkError(let description):
+            let trimmed = description.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { return "Could not reach server." }
+            return trimmed
         }
     }
 

@@ -112,8 +112,8 @@ struct AddLinkCollectionChooserView: View {
 #Preview {
     AddLinkCollectionChooserView(
         collections: [
-            Collection(id: "1", name: "Work", description: nil, color: "#3B82F6", _count: nil),
-            Collection(id: "2", name: "Reading", description: nil, color: "#10B981", _count: nil),
+            Collection(id: "1", name: "Work", description: nil, color: "#3B82F6", linkCount: 12),
+            Collection(id: "2", name: "Reading", description: nil, color: "#10B981", linkCount: 4),
         ],
         selectedIds: .constant(["1"])
     )

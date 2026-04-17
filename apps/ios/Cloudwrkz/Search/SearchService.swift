@@ -26,6 +26,12 @@ enum SearchServiceEnhanced {
 enum SearchService {
     private static let timeout: TimeInterval = 15
 
+    private static var responseDecoder: JSONDecoder {
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        return d
+    }
+
     private static func searchPathSegments(loginPath: String) -> [String] {
         let path = loginPath.trimmingCharacters(in: .whitespacesAndNewlines)
         let searchPath: String
@@ -83,7 +89,7 @@ enum SearchService {
             }
             switch http.statusCode {
             case 200:
-                let decoded = try JSONDecoder().decode(SearchResponse.self, from: data)
+                let decoded = try responseDecoder.decode(SearchResponse.self, from: data)
                 return .success(decoded)
             case 401:
                 SessionExpiredNotifier.notify()
@@ -141,7 +147,7 @@ enum SearchService {
             }
             switch http.statusCode {
             case 200:
-                let decoded = try JSONDecoder().decode(SearchResponse.self, from: data)
+                let decoded = try responseDecoder.decode(SearchResponse.self, from: data)
                 return .success(decoded)
             case 401:
                 SessionExpiredNotifier.notify()

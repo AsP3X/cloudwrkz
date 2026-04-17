@@ -280,13 +280,13 @@ private struct TicketInfoSidebarView: View {
                 if ticket.updatedAt != ticket.createdAt {
                     infoRow(label: String(localized: "common.last_updated"), value: Self.dateFormatter.string(from: ticket.updatedAt))
                 }
-                if (ticket._count?.comments ?? 0) > 0 {
+                if ticket.commentCount > 0 {
                     sidebarDivider
                     HStack(spacing: 6) {
                         Image(systemName: "bubble.left.and.bubble.right")
                             .font(.system(size: 12))
                             .foregroundStyle(CloudwrkzColors.neutral400)
-                        Text((ticket._count?.comments ?? 0) == 1 ? String(format: String(localized: "common.comment_count"), ticket._count?.comments ?? 0) : String(format: String(localized: "common.comments_count"), ticket._count?.comments ?? 0))
+                        Text(ticket.commentCount == 1 ? String(format: String(localized: "common.comment_count"), ticket.commentCount) : String(format: String(localized: "common.comments_count"), ticket.commentCount))
                             .font(.system(size: 13, weight: .medium))
                             .foregroundStyle(CloudwrkzColors.neutral200)
                     }
@@ -349,7 +349,7 @@ private struct TicketInfoSidebarView: View {
             createdBy: .init(id: "u1", name: "Jane Doe", email: "jane@example.com"),
             assignedTo: .init(id: "u2", name: "John Smith", email: "john@example.com"),
             assignedToGroup: nil,
-            _count: .init(comments: 3)
+            commentCount: 3
         ))
     }
 }

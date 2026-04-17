@@ -97,6 +97,11 @@ struct Todo: Identifiable, Decodable, Hashable {
     struct TodoCount: Decodable, Hashable {
         let subtodos: Int
     }
+
+    /// Rust list payloads include `subtodos` inline; legacy APIs used `_count.subtodos`.
+    var subtodosDisplayCount: Int {
+        _count?.subtodos ?? subtodos?.count ?? 0
+    }
 }
 
 // MARK: - Filter state (mirrors getAllTodos filters)

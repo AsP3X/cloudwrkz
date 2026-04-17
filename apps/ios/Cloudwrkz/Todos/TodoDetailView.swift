@@ -578,13 +578,13 @@ private struct TodoInfoSidebarView: View {
                 if let completed = todo.completedDate {
                     infoRow(label: String(localized: "common.completed"), value: Self.dateFormatter.string(from: completed))
                 }
-                if (todo._count?.subtodos ?? 0) > 0 {
+                if todo.subtodosDisplayCount > 0 {
                     sidebarDivider
                     HStack(spacing: 6) {
                         Image(systemName: "list.bullet.indent")
                             .font(.system(size: 12))
                             .foregroundStyle(CloudwrkzColors.neutral400)
-                        Text((todo._count?.subtodos ?? 0) == 1 ? String(format: String(localized: "common.subtodo_count"), todo._count?.subtodos ?? 0) : String(format: String(localized: "common.subtodos_count"), todo._count?.subtodos ?? 0))
+                        Text(todo.subtodosDisplayCount == 1 ? String(format: String(localized: "common.subtodo_count"), todo.subtodosDisplayCount) : String(format: String(localized: "common.subtodos_count"), todo.subtodosDisplayCount))
                             .font(.system(size: 13, weight: .medium))
                             .foregroundStyle(CloudwrkzColors.neutral200)
                     }

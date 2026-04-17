@@ -67,7 +67,9 @@ enum CollectionService {
             }
             switch http.statusCode {
             case 200:
-                let decoded = try JSONDecoder().decode(CollectionsResponse.self, from: data)
+                let d = JSONDecoder()
+                d.keyDecodingStrategy = .convertFromSnakeCase
+                let decoded = try d.decode(CollectionsResponse.self, from: data)
                 return .success(decoded.collections)
             case 401:
                 SessionExpiredNotifier.notify()

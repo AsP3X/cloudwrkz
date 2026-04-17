@@ -342,7 +342,9 @@ enum AuthService {
             }
             switch http.statusCode {
             case 200:
-                let decoded = try JSONDecoder().decode(MeResponse.self, from: data)
+                let meDecoder = JSONDecoder()
+                meDecoder.keyDecodingStrategy = .convertFromSnakeCase
+                let decoded = try meDecoder.decode(MeResponse.self, from: data)
                 return .success((name: decoded.name, email: decoded.email, modules: decoded.modules))
             case 401:
                 SessionExpiredNotifier.notify()

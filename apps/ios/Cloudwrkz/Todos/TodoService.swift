@@ -34,6 +34,7 @@ enum TodoService {
 
     private static var dateDecoder: JSONDecoder {
         let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
         d.dateDecodingStrategy = .custom { decoder in
             let c = try decoder.singleValueContainer()
             let s = try c.decode(String.self)

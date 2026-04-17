@@ -749,11 +749,11 @@ private struct TodoRowView: View {
                     }
                     .foregroundStyle(CloudwrkzColors.neutral200)
                 }
-                if (todo._count?.subtodos ?? 0) > 0 {
+                if todo.subtodosDisplayCount > 0 {
                     HStack(spacing: 4) {
                         Image(systemName: "list.bullet.indent")
                             .font(.system(size: 12))
-                        Text("\(todo._count?.subtodos ?? 0)")
+                        Text("\(todo.subtodosDisplayCount)")
                             .font(.system(size: 12, weight: .medium))
                     }
                     .foregroundStyle(CloudwrkzColors.neutral200)

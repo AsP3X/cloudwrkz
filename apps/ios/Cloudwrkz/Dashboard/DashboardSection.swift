@@ -35,9 +35,15 @@ enum DashboardSection: String, CaseIterable, Identifiable {
         allCases.filter { $0 != .home }
     }
 
-    /// Returns menu sections the user is allowed to see. By default all are hidden; only sections in `allowedModuleIds` are shown.
+    /// Returns menu sections the user is allowed to see.
+    /// - `nil`: modules not loaded from `/me` yet — show all sections (same as permissive web default).
+    /// - `[]`: server explicitly returned no modules — show none.
+    /// - Otherwise: filter to IDs returned by the API (`tickets`, `time_tracking`, …).
     static func visibleMenuSections(allowedModuleIds: [String]?) -> [DashboardSection] {
-        guard let ids = allowedModuleIds, !ids.isEmpty else {
+        guard let ids = allowedModuleIds else {
+            return menuSections
+        }
+        if ids.isEmpty {
             return []
         }
         let normalized = Set(ids.map { $0.lowercased().trimmingCharacters(in: .whitespaces) })

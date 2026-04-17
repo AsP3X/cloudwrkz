@@ -44,18 +44,52 @@ enum TimeTrackingService {
         return url
     }
 
+    /// Parses timestamps from the Rust API: `chrono::DateTime<Utc>` (RFC3339 with `Z`) and
+    /// `NaiveDateTime` (no timezone, as returned for many `time_entries` columns).
+    private static func decodeApiTimestamp(_ raw: String) throws -> Date {
+        let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if s.isEmpty {
+            throw NSError(domain: "TimeTrackingService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Empty date string"])
+        }
+
+        let iso = ISO8601DateFormatter()
+        iso.timeZone = TimeZone(secondsFromGMT: 0)
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = iso.date(from: s) { return d }
+        iso.formatOptions = [.withInternetDateTime]
+        if let d = iso.date(from: s) { return d }
+
+        // Naive timestamps from Postgres/chrono (no `Z` / offset): treat as UTC.
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.timeZone = TimeZone(secondsFromGMT: 0)
+        for pattern in [
+            "yyyy-MM-dd'T'HH:mm:ss.SSSSSSSSS",
+            "yyyy-MM-dd'T'HH:mm:ss.SSSSSS",
+            "yyyy-MM-dd'T'HH:mm:ss.SSS",
+            "yyyy-MM-dd'T'HH:mm:ss",
+            "yyyy-MM-dd HH:mm:ss.SSSSSS",
+            "yyyy-MM-dd HH:mm:ss.SSS",
+            "yyyy-MM-dd HH:mm:ss",
+        ] {
+            df.dateFormat = pattern
+            if let d = df.date(from: s) { return d }
+        }
+
+        throw NSError(domain: "TimeTrackingService", code: 2, userInfo: [NSLocalizedDescriptionKey: "Unrecognized date: \(s)"])
+    }
+
     private static var dateDecoder: JSONDecoder {
         let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
         d.dateDecodingStrategy = .custom { decoder in
             let c = try decoder.singleValueContainer()
             let s = try c.decode(String.self)
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            formatter.timeZone = TimeZone(identifier: "UTC")
-            if let date = formatter.date(from: s) { return date }
-            formatter.formatOptions = [.withInternetDateTime]
-            if let date = formatter.date(from: s) { return date }
-            throw DecodingError.dataCorruptedError(in: c, debugDescription: "Invalid date: \(s)")
+            do {
+                return try decodeApiTimestamp(s)
+            } catch {
+                throw DecodingError.dataCorruptedError(in: c, debugDescription: "Invalid date: \(s)")
+            }
         }
         return d
     }
@@ -407,9 +441,25 @@ enum TimeTrackingService {
             default:
                 return .failure(.serverError(message: "Unexpected status \(http.statusCode)"))
             }
+        } catch let error as DecodingError {
+            return .failure(.serverError(message: decodingErrorDescription(error)))
         } catch {
             let description = (error as? URLError)?.localizedDescription ?? error.localizedDescription
             return .failure(.networkError(description: description))
+        }
+    }
+
+    private static func decodingErrorDescription(_ error: DecodingError) -> String {
+        switch error {
+        case .typeMismatch(let ty, let ctx),
+             .valueNotFound(let ty, let ctx):
+            return "Could not read server data (\(ty)) at \(ctx.codingPath.map(\.stringValue).joined(separator: ".")): \(ctx.debugDescription)"
+        case .keyNotFound(let key, let ctx):
+            return "Missing field \(key.stringValue) at \(ctx.codingPath.map(\.stringValue).joined(separator: "."))."
+        case .dataCorrupted(let ctx):
+            return ctx.debugDescription
+        @unknown default:
+            return error.localizedDescription
         }
     }
 

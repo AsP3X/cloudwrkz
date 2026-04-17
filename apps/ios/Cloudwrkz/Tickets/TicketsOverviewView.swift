@@ -486,11 +486,11 @@ private struct TicketRowView: View {
                     labelValue(String(localized: "todo.assigned"), String(localized: "todo.unassigned"))
                 }
                 labelValue(String(localized: "todo.created"), formatted(ticket.createdAt))
-                if (ticket._count?.comments ?? 0) > 0 {
+                if ticket.commentCount > 0 {
                     HStack(spacing: 4) {
                         Image(systemName: "bubble.left.and.bubble.right")
                             .font(.system(size: 12))
-                        Text("\(ticket._count?.comments ?? 0)")
+                        Text("\(ticket.commentCount)")
                             .font(.system(size: 12, weight: .medium))
                     }
                     .foregroundStyle(CloudwrkzColors.neutral200)

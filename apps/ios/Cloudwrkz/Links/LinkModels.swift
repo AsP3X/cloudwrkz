@@ -127,11 +127,8 @@ struct Collection: Identifiable, Decodable, Hashable {
     let name: String
     let description: String?
     let color: String?
-    let _count: CollectionLinkCount?
-
-    struct CollectionLinkCount: Decodable, Hashable {
-        let links: Int
-    }
+    /// Rust `GET /collections` returns `link_count` at the top level (not `_count.links`).
+    let linkCount: Int
 }
 
 // MARK: - Filter state (for filter sheet)

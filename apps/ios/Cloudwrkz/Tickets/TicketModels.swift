@@ -27,7 +27,8 @@ struct Ticket: Identifiable, Decodable, Hashable {
     let createdBy: TicketUser?
     let assignedTo: TicketUser?
     let assignedToGroup: TicketGroup?
-    let _count: TicketCount?
+    /// Rust API sends `comment_count` on list items (not Prisma-style `_count.comments`).
+    let commentCount: Int
 
     struct TicketUser: Decodable, Hashable {
         let id: String
@@ -39,10 +40,6 @@ struct Ticket: Identifiable, Decodable, Hashable {
         let id: String
         let name: String
         let description: String?
-    }
-
-    struct TicketCount: Decodable, Hashable {
-        let comments: Int
     }
 }
 
