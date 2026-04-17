@@ -49,8 +49,8 @@ services:
     environment:
       # Dev proxy only (see apps/web-vite/vite.config.ts). Do not use VITE_API_URL=http://api:… — the browser cannot resolve Docker service names.
       DOCKER_API_PROXY_TARGET: "http://api:8080"
-      # Vite 6+ blocks unknown Host headers behind a reverse proxy. Set in .env, e.g. VITE_DEV_ALLOWED_HOSTS=cloudwrkz.example.com
-      VITE_DEV_ALLOWED_HOSTS: ${VITE_DEV_ALLOWED_HOSTS:-}
+      # Vite 6+ Host guard — use CLOUD_WRKZ_DEV_ALLOWED_HOSTS (not VITE_*): Vite can strip VITE_ vars from bundled config.
+      CLOUD_WRKZ_DEV_ALLOWED_HOSTS: ${CLOUD_WRKZ_DEV_ALLOWED_HOSTS:-}
       # Global fuzzy search uses /next-api → Next.js; add a `web` service or run apps/web on the host if you need search in this stack.
     depends_on:
       api:

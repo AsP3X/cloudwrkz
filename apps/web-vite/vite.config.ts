@@ -4,16 +4,31 @@ import path from "path";
 
 const DEV_LOG_PATH = "/__dev-log";
 
-/** Comma-separated hostnames for `server.allowedHosts` (Vite 6+ DNS rebinding guard). Set via Docker, e.g. `VITE_DEV_ALLOWED_HOSTS=cloudwrkz.example.com`. */
-function devAllowedHostsFromEnv(): string[] {
-  const raw =
-    process.env.VITE_DEV_ALLOWED_HOSTS?.trim() ||
-    process.env.__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS?.trim();
-  if (!raw) return [];
+function parseAllowedHostList(raw: string | undefined): string[] {
+  if (!raw?.trim()) return [];
   return raw
     .split(",")
     .map((h) => h.trim())
     .filter(Boolean);
+}
+
+/**
+ * Hostnames for `server.allowedHosts` (Vite 6+ DNS rebinding guard).
+ * Prefer **`CLOUD_WRKZ_DEV_ALLOWED_HOSTS`** in Docker / `.env` — it is not `VITE_`-prefixed, so Vite’s
+ * config pre-bundle does not strip or inline it the way it can for `process.env.VITE_*`.
+ * `VITE_DEV_ALLOWED_HOSTS` is still read via `loadEnv` + bracket `process.env` as a legacy alias.
+ */
+function devAllowedHostsFromEnv(loadedEnv: Record<string, string>): string[] {
+  const pairs: [string | undefined, string | undefined][] = [
+    [process.env.CLOUD_WRKZ_DEV_ALLOWED_HOSTS, loadedEnv.CLOUD_WRKZ_DEV_ALLOWED_HOSTS],
+    [process.env["VITE_DEV_ALLOWED_HOSTS"], loadedEnv.VITE_DEV_ALLOWED_HOSTS],
+    [process.env.__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS, loadedEnv.__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS],
+  ];
+  for (const [fromProcess, fromFile] of pairs) {
+    const list = parseAllowedHostList(fromProcess ?? fromFile);
+    if (list.length > 0) return list;
+  }
+  return [];
 }
 
 function attachProxyErrorHandler(proxy: any, routePrefix: string, upstreamName: string) {
@@ -118,7 +133,7 @@ export default defineConfig(({ mode }) => {
     }
   }
 
-  const extraAllowedHosts = devAllowedHostsFromEnv();
+  const extraAllowedHosts = devAllowedHostsFromEnv(env);
 
   return {
     plugins: [react(), cloudwrkzLogPlugin()],
