@@ -5,6 +5,9 @@ FROM node:25-alpine AS builder
 
 WORKDIR /app
 
+# Prisma needs OpenSSL available to detect the correct engine binary target.
+RUN apk add --no-cache openssl
+
 # Install pnpm (pinned version for reproducible builds; npm used because Alpine image has no corepack)
 RUN npm install -g pnpm@10.28.1
 
@@ -32,6 +35,9 @@ FROM node:25-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
+
+# Ensure Prisma query engine can load libssl at runtime.
+RUN apk add --no-cache openssl
 
 # Create non-root user for security
 RUN addgroup --system --gid 1001 nodejs && \
