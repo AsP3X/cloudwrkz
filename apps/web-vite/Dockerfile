@@ -19,8 +19,10 @@ RUN cargo build -p cloudwrkz-cli --release
 
 FROM node:25-bookworm
 
+# pnpm via npm (not corepack): corepack is missing from PATH in some Node images / shells.
 RUN apt-get update && apt-get install -y ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install -g pnpm@9
 
 COPY --from=rust-builder /build/target/release/cloudwrkz-cli /usr/local/bin/cloudwrkz-cli
 
@@ -29,4 +31,4 @@ WORKDIR /workspace
 EXPOSE 5173
 
 # Compose overrides with the same command; keeps `docker run` usable without a compose file.
-CMD ["sh", "-c", "corepack enable && corepack prepare pnpm@9 --activate && cd /workspace && pnpm install && pnpm --filter web-vite dev"]
+CMD ["sh", "-c", "cd /workspace && pnpm install && pnpm --filter web-vite dev"]

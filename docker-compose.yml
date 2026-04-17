@@ -43,7 +43,7 @@ services:
       DOCKER_API_PROXY_TARGET: "http://api:8080"
       # Global fuzzy search uses /next-api → Next.js; add a `web` service or run apps/web on the host if you need search in this stack.
     command: >
-      sh -c "corepack enable && corepack prepare pnpm@9 --activate && cd /workspace && pnpm install && pnpm --filter web-vite dev"
+      sh -c "cd /workspace && pnpm install && pnpm --filter web-vite dev"
     depends_on:
       api:
         condition: service_healthy
