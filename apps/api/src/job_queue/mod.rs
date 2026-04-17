@@ -84,6 +84,9 @@ fn policies_from_config(config: &AppConfig) -> HashMap<String, JobTypePolicy> {
         },
     );
     for t in [
+        entity_creates::JOB_TYPE_TICKET_UPDATE,
+        entity_creates::JOB_TYPE_TICKET_DELETE,
+        entity_creates::JOB_TYPE_TICKET_COMMENT_CREATE,
         entity_creates::JOB_TYPE_TODO_CREATE,
         entity_creates::JOB_TYPE_TIME_ENTRY_CREATE_TIMER,
         entity_creates::JOB_TYPE_TIME_ENTRY_CREATE_MANUAL,
@@ -189,6 +192,9 @@ async fn run_one_job(
                 .await;
         }
         entity_creates::JOB_TYPE_TICKET_CREATE
+        | entity_creates::JOB_TYPE_TICKET_UPDATE
+        | entity_creates::JOB_TYPE_TICKET_DELETE
+        | entity_creates::JOB_TYPE_TICKET_COMMENT_CREATE
         | entity_creates::JOB_TYPE_TODO_CREATE
         | entity_creates::JOB_TYPE_TIME_ENTRY_CREATE_TIMER
         | entity_creates::JOB_TYPE_TIME_ENTRY_CREATE_MANUAL

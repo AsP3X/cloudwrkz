@@ -72,6 +72,17 @@ fn req_get_bearer(uri: &str, token: &str) -> Request<Body> {
         .unwrap()
 }
 
+fn req_patch_ticket_json(token: &str, ticket_id: &str, json_body: &str) -> Request<Body> {
+    Request::builder()
+        .method("PATCH")
+        .uri(format!("/api/v1/tickets/{ticket_id}"))
+        .header("x-forwarded-for", "203.0.113.42")
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .body(Body::from(json_body.to_string()))
+        .unwrap()
+}
+
 fn req_post_tickets_json(
     token: &str,
     json_body: &str,
@@ -376,6 +387,73 @@ async fn post_ticket_inserts_ticket_create_background_job(pool: PgPool) {
         .await
         .expect("background_jobs row");
     assert_eq!(jt, "ticket_create");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn patch_ticket_enqueues_ticket_update_background_job(pool: PgPool) {
+    let token = seed_user_with_session(&pool, "ticket-patch-bg@example.com", "USER")
+        .await
+        .expect("seed");
+    let app = build_http_app(test_app_state(pool.clone()));
+
+    let res = app
+        .clone()
+        .oneshot(req_post_tickets_json(
+            &token,
+            r#"{"title":"Ticket for patch job row"}"#,
+            None,
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::ACCEPTED);
+    let b = res.into_body().collect().await.unwrap().to_bytes();
+    let q: serde_json::Value = serde_json::from_slice(&b).expect("json");
+    let create_job = q["job_id"].as_str().expect("job_id").to_string();
+    let uri = format!("/api/v1/mutation-jobs/{create_job}");
+    let mut ticket_id: Option<String> = None;
+    for _ in 0..100 {
+        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+        let res = app
+            .clone()
+            .oneshot(req_get_bearer(&uri, &token))
+            .await
+            .expect("poll");
+        if res.status() != StatusCode::OK {
+            continue;
+        }
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        let v: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        match v["status"].as_str() {
+            Some("completed") => {
+                ticket_id = v["body"]["id"].as_str().map(String::from);
+                break;
+            }
+            Some("failed") => panic!("mutation job failed: {v:?}"),
+            _ => {}
+        }
+    }
+    let ticket_id = ticket_id.expect("create job did not complete in time");
+
+    let res = app
+        .oneshot(req_patch_ticket_json(
+            &token,
+            &ticket_id,
+            r#"{"title":"Updated via background job"}"#,
+        ))
+        .await
+        .expect("patch");
+    assert_eq!(res.status(), StatusCode::ACCEPTED);
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    let q: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    assert_eq!(q["job_type"], "ticket_update");
+    let job_id = q["job_id"].as_str().expect("job_id");
+
+    let jt: String = sqlx::query_scalar("SELECT job_type FROM background_jobs WHERE id = $1")
+        .bind(job_id)
+        .fetch_one(&pool)
+        .await
+        .expect("background_jobs row");
+    assert_eq!(jt, "ticket_update");
 }
 
 #[sqlx::test(migrations = "./migrations")]

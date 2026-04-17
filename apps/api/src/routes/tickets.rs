@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -11,38 +9,19 @@ use serde_json::json;
 use sqlx::Row;
 
 use crate::auth::extractors::AuthUser;
-use crate::command_queue::{
-    JsonMutationResult, MutationQueuedResponse, MutationRunContext, apply_mutation_tx_settings,
-    mutation_response, run_mutation_defer,
-};
+use crate::command_queue::{MutationQueuedResponse, MutationRunContext};
 use crate::error::AppError;
 use crate::job_queue::entity_creates;
-use crate::id;
 use crate::models::ticket::{
     TicketActivityItem, TicketCommentCreateRequest, TicketCommentItem, TicketCreateRequest,
     TicketListItem, TicketListParams, TicketRow, TicketUpdateRequest,
 };
 use crate::routes::AppState;
 use crate::routes::helpers::{
-    check_permission, check_permission_mut_tx, fetch_comment_author, fetch_group_summary,
+    check_permission, fetch_comment_author, fetch_group_summary,
     fetch_user_summary, get_user_permission_keys, hash_json_for_idempotency,
     idempotency_key_from_headers,
 };
-
-/// Strip HTML tags for plain-text fallback (e.g. content_plain). Does not decode entities.
-fn strip_html_tags(html: &str) -> String {
-    let mut result = String::new();
-    let mut in_tag = false;
-    for c in html.chars() {
-        match c {
-            '<' => in_tag = true,
-            '>' => in_tag = false,
-            _ if !in_tag => result.push(c),
-            _ => {}
-        }
-    }
-    result.replace('\u{a0}', " ").trim().to_string()
-}
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -355,144 +334,47 @@ async fn update_ticket(
         idempotency_key: idempotency_key_from_headers(&headers),
         body_hash,
     };
-    let id_clone = id.clone();
-    let uid = user.id.clone();
-    let b = body.clone();
-    let shard = format!("ticket:{id}");
-    let broker = state.mutation_broker.clone();
-    let lock_ms = broker.lock_timeout_ms;
-    let stmt_ms = broker.statement_timeout_ms;
-    let pool = state.pool.clone();
-    let jobs = state.mutation_jobs.clone();
-    let make_arc = Arc::new(tokio::sync::Mutex::new({
-        let id = id_clone.clone();
-        let user_id = uid.clone();
-        let body = b.clone();
-        move || {
-            let id = id.clone();
-            let user_id = user_id.clone();
-            let body = body.clone();
-            move |pool: sqlx::PgPool| async move {
-                let mut tx = pool.begin().await.map_err(AppError::from)?;
-                apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms)
-                    .await
-                    .map_err(AppError::from)?;
-                let ticket =
-                    sqlx::query("SELECT id, created_by_id FROM tickets WHERE id = $1 FOR UPDATE")
-                        .bind(&id)
-                        .fetch_optional(&mut *tx)
-                        .await?
-                        .ok_or_else(|| AppError::not_found("Ticket not found"))?;
-
-                let created_by_id: Option<String> = ticket.get("created_by_id");
-                let can_edit_all =
-                    check_permission_mut_tx(&mut tx, &user_id, "tickets.edit_all").await;
-                if !can_edit_all && created_by_id.as_deref() != Some(&user_id) {
-                    return Err(AppError::forbidden(
-                        "You don't have permission to update this ticket",
-                    ));
-                }
-
-                if let Some(ref archived) = body.archived_at {
-                    if archived.is_null() {
-                        sqlx::query(
-                            "UPDATE tickets SET archived_at = NULL, updated_at = NOW() WHERE id = $1",
-                        )
-                        .bind(&id)
-                        .execute(&mut *tx)
-                        .await?;
-                    }
-                }
-                if let Some(ref title) = body.title {
-                    sqlx::query("UPDATE tickets SET title = $1, updated_at = NOW() WHERE id = $2")
-                        .bind(title)
-                        .bind(&id)
-                        .execute(&mut *tx)
-                        .await?;
-                }
-                if let Some(ref status) = body.status {
-                    sqlx::query(
-                        "UPDATE tickets SET status = $1::\"TicketStatus\", updated_at = NOW() WHERE id = $2",
-                    )
-                    .bind(status)
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                }
-                if let Some(ref priority) = body.priority {
-                    sqlx::query(
-                        "UPDATE tickets SET priority = $1::\"TicketPriority\", updated_at = NOW() WHERE id = $2",
-                    )
-                    .bind(priority)
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                }
-                if let Some(ref desc) = body.description {
-                    sqlx::query(
-                        "UPDATE tickets SET description = $1, updated_at = NOW() WHERE id = $2",
-                    )
-                    .bind(desc)
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                }
-                if let Some(ref t) = body.r#type {
-                    sqlx::query(
-                        "UPDATE tickets SET type = $1::\"TicketType\", updated_at = NOW() WHERE id = $2",
-                    )
-                    .bind(t)
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                }
-                if let Some(ref v) = body.assigned_to_id {
-                    let opt: Option<String> = if v.is_empty() { None } else { Some(v.clone()) };
-                    sqlx::query(
-                        "UPDATE tickets SET assigned_to_id = $1, updated_at = NOW() WHERE id = $2",
-                    )
-                    .bind(&opt)
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                }
-                if let Some(ref v) = body.assigned_to_group_id {
-                    let opt: Option<String> = if v.is_empty() { None } else { Some(v.clone()) };
-                    sqlx::query(
-                        "UPDATE tickets SET assigned_to_group_id = $1, updated_at = NOW() WHERE id = $2",
-                    )
-                    .bind(&opt)
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                }
-                if let Some(ref tags) = body.tags {
-                    sqlx::query("UPDATE tickets SET tags = $1, updated_at = NOW() WHERE id = $2")
-                        .bind(tags)
-                        .bind(&id)
-                        .execute(&mut *tx)
-                        .await?;
-                }
-                if let Some(ref due) = body.due_date {
-                    sqlx::query(
-                        "UPDATE tickets SET due_date = $1::timestamp, updated_at = NOW() WHERE id = $2",
-                    )
-                    .bind(due)
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                }
-
-                tx.commit().await.map_err(AppError::from)?;
-                Ok(JsonMutationResult::ok(serde_json::json!({
-                    "success": true,
-                    "message": "Ticket updated"
-                })))
+    if let Some(ref ik) = ctx.idempotency_key {
+        if !ik.trim().is_empty() {
+            if let Some(cached) = state
+                .mutation_broker
+                .idempotency
+                .get(&ctx.user_id, ik, &ctx.route, ctx.body_hash)
+                .await
+            {
+                return Ok((cached.status, Json(cached.body)).into_response());
             }
         }
-    }));
-    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
-    Ok(mutation_response(out))
+    }
+
+    let request_json = serde_json::to_value(&body)
+        .map_err(|e| AppError::internal(format!("serialize ticket update: {e}")))?;
+    let job_payload = json!({
+        "user_id": user.id,
+        "ticket_id": id,
+        "route": ctx.route,
+        "body_hash": ctx.body_hash,
+        "idempotency_key": ctx.idempotency_key,
+        "request": request_json,
+    });
+    let job_id = entity_creates::enqueue_entity_create_job(
+        &state.pool,
+        entity_creates::JOB_TYPE_TICKET_UPDATE,
+        &user.id,
+        job_payload,
+    )
+    .await
+    .map_err(AppError::from)?;
+
+    let q = MutationQueuedResponse {
+        message: "Ticket update is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed."
+            .into(),
+        queued: true,
+        job_id,
+        retry_deadline_secs: entity_creates::ENTITY_CREATE_POLL_DEADLINE_SECS,
+        job_type: Some(entity_creates::JOB_TYPE_TICKET_UPDATE.to_string()),
+    };
+    Ok((StatusCode::ACCEPTED, Json(q)).into_response())
 }
 
 async fn delete_ticket(
@@ -509,55 +391,44 @@ async fn delete_ticket(
         idempotency_key: idempotency_key_from_headers(&headers),
         body_hash,
     };
-    let id_clone = id.clone();
-    let uid = user.id.clone();
-    let shard = format!("ticket:{id}");
-    let broker = state.mutation_broker.clone();
-    let lock_ms = broker.lock_timeout_ms;
-    let stmt_ms = broker.statement_timeout_ms;
-    let pool = state.pool.clone();
-    let jobs = state.mutation_jobs.clone();
-    let make_arc = Arc::new(tokio::sync::Mutex::new({
-        let id = id_clone.clone();
-        let user_id = uid.clone();
-        move || {
-            let id = id.clone();
-            let user_id = user_id.clone();
-            move |pool: sqlx::PgPool| async move {
-                let mut tx = pool.begin().await.map_err(AppError::from)?;
-                apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms)
-                    .await
-                    .map_err(AppError::from)?;
-                let ticket =
-                    sqlx::query("SELECT id, created_by_id FROM tickets WHERE id = $1 FOR UPDATE")
-                        .bind(&id)
-                        .fetch_optional(&mut *tx)
-                        .await?
-                        .ok_or_else(|| AppError::not_found("Ticket not found"))?;
-
-                let created_by_id: Option<String> = ticket.get("created_by_id");
-                let can_delete_all =
-                    check_permission_mut_tx(&mut tx, &user_id, "tickets.delete_all").await;
-                if !can_delete_all && created_by_id.as_deref() != Some(&user_id) {
-                    return Err(AppError::forbidden(
-                        "You don't have permission to delete this ticket",
-                    ));
-                }
-
-                sqlx::query("DELETE FROM tickets WHERE id = $1")
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                tx.commit().await.map_err(AppError::from)?;
-                Ok(JsonMutationResult::ok(serde_json::json!({
-                    "success": true,
-                    "message": "Ticket deleted"
-                })))
+    if let Some(ref ik) = ctx.idempotency_key {
+        if !ik.trim().is_empty() {
+            if let Some(cached) = state
+                .mutation_broker
+                .idempotency
+                .get(&ctx.user_id, ik, &ctx.route, ctx.body_hash)
+                .await
+            {
+                return Ok((cached.status, Json(cached.body)).into_response());
             }
         }
-    }));
-    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
-    Ok(mutation_response(out))
+    }
+
+    let job_payload = json!({
+        "user_id": user.id,
+        "ticket_id": id,
+        "route": ctx.route,
+        "body_hash": ctx.body_hash,
+        "idempotency_key": ctx.idempotency_key,
+    });
+    let job_id = entity_creates::enqueue_entity_create_job(
+        &state.pool,
+        entity_creates::JOB_TYPE_TICKET_DELETE,
+        &user.id,
+        job_payload,
+    )
+    .await
+    .map_err(AppError::from)?;
+
+    let q = MutationQueuedResponse {
+        message: "Ticket deletion is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed."
+            .into(),
+        queued: true,
+        job_id,
+        retry_deadline_secs: entity_creates::ENTITY_CREATE_POLL_DEADLINE_SECS,
+        job_type: Some(entity_creates::JOB_TYPE_TICKET_DELETE.to_string()),
+    };
+    Ok((StatusCode::ACCEPTED, Json(q)).into_response())
 }
 
 async fn list_ticket_comments(
@@ -658,108 +529,48 @@ async fn create_ticket_comment(
         idempotency_key: idempotency_key_from_headers(&headers),
         body_hash,
     };
-    let id_clone = id.clone();
-    let uid = user.id.clone();
-    let uname = user.name.clone();
-    let b = body.clone();
-    let content_for_html = content_trimmed.clone();
-    let shard = format!("ticket:{id}");
-    let broker = state.mutation_broker.clone();
-    let lock_ms = broker.lock_timeout_ms;
-    let stmt_ms = broker.statement_timeout_ms;
-    let pool = state.pool.clone();
-    let jobs = state.mutation_jobs.clone();
-    let make_arc = Arc::new(tokio::sync::Mutex::new({
-        let ticket_id = id_clone.clone();
-        let user_id = uid.clone();
-        let user_name = uname.clone();
-        let body = b.clone();
-        let content_trimmed = content_for_html.clone();
-        move || {
-            let ticket_id = ticket_id.clone();
-            let user_id = user_id.clone();
-            let user_name = user_name.clone();
-            let body = body.clone();
-            let content_trimmed = content_trimmed.clone();
-            move |pool: sqlx::PgPool| async move {
-                let mut tx = pool.begin().await.map_err(AppError::from)?;
-                apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms)
-                    .await
-                    .map_err(AppError::from)?;
-
-                let can_view_all =
-                    check_permission_mut_tx(&mut tx, &user_id, "tickets.view_all").await;
-                let ticket = sqlx::query(
-                    "SELECT id, created_by_id, assigned_to_id FROM tickets WHERE id = $1
-         AND ($2::bool OR created_by_id = $3 OR assigned_to_id = $3) FOR UPDATE",
-                )
-                .bind(&ticket_id)
-                .bind(can_view_all)
-                .bind(&user_id)
-                .fetch_optional(&mut *tx)
-                .await?;
-
-                let _ticket = ticket.ok_or_else(|| AppError::not_found("Ticket not found"))?;
-
-                let can_comment = check_permission_mut_tx(&mut tx, &user_id, "tickets.comment")
-                    .await
-                    || check_permission_mut_tx(&mut tx, &user_id, "tickets.view").await
-                    || check_permission_mut_tx(&mut tx, &user_id, "tickets.view_all").await
-                    || check_permission_mut_tx(&mut tx, &user_id, "admin.tickets.manage").await;
-                if !can_comment {
-                    return Err(AppError::forbidden(
-                        "You don't have permission to comment on this ticket",
-                    ));
-                }
-
-                let mut content_plain = strip_html_tags(&content_trimmed);
-                if content_plain.is_empty() {
-                    content_plain = content_trimmed.clone();
-                }
-
-                let comment_id = id::new_cuid();
-                let now = chrono::Utc::now().naive_utc();
-
-                sqlx::query(
-                    r#"INSERT INTO ticket_comments (id, ticket_id, user_id, content, content_html, content_plain, is_agent_only, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)"#,
-                )
-                .bind(&comment_id)
-                .bind(&ticket_id)
-                .bind(&user_id)
-                .bind(&content_plain)
-                .bind(&content_trimmed)
-                .bind(&content_plain)
-                .bind(body.is_agent_only)
-                .bind(now)
-                .execute(&mut *tx)
-                .await?;
-
-                let activity_id = id::new_cuid();
-                sqlx::query(
-                    r#"INSERT INTO ticket_activities (id, ticket_id, activity_type, changed_by_id, changed_by_name, metadata, created_at)
-           VALUES ($1, $2, 'COMMENT_ADDED'::"TicketActivityType", $3, $4, $5, $6)"#,
-                )
-                .bind(&activity_id)
-                .bind(&ticket_id)
-                .bind(&user_id)
-                .bind(&user_name)
-                .bind(serde_json::json!({ "commentId": comment_id, "isAgentOnly": body.is_agent_only }))
-                .bind(now)
-                .execute(&mut *tx)
-                .await?;
-
-                tx.commit().await.map_err(AppError::from)?;
-                Ok(JsonMutationResult::created(serde_json::json!({
-                    "id": comment_id,
-                    "success": true,
-                    "message": "Comment added successfully"
-                })))
+    if let Some(ref ik) = ctx.idempotency_key {
+        if !ik.trim().is_empty() {
+            if let Some(cached) = state
+                .mutation_broker
+                .idempotency
+                .get(&ctx.user_id, ik, &ctx.route, ctx.body_hash)
+                .await
+            {
+                return Ok((cached.status, Json(cached.body)).into_response());
             }
         }
-    }));
-    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
-    Ok(mutation_response(out))
+    }
+
+    let request_json = serde_json::to_value(&body)
+        .map_err(|e| AppError::internal(format!("serialize ticket comment: {e}")))?;
+    let job_payload = json!({
+        "user_id": user.id,
+        "ticket_id": id,
+        "user_name": user.name,
+        "route": ctx.route,
+        "body_hash": ctx.body_hash,
+        "idempotency_key": ctx.idempotency_key,
+        "request": request_json,
+    });
+    let job_id = entity_creates::enqueue_entity_create_job(
+        &state.pool,
+        entity_creates::JOB_TYPE_TICKET_COMMENT_CREATE,
+        &user.id,
+        job_payload,
+    )
+    .await
+    .map_err(AppError::from)?;
+
+    let q = MutationQueuedResponse {
+        message: "Comment is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed."
+            .into(),
+        queued: true,
+        job_id,
+        retry_deadline_secs: entity_creates::ENTITY_CREATE_POLL_DEADLINE_SECS,
+        job_type: Some(entity_creates::JOB_TYPE_TICKET_COMMENT_CREATE.to_string()),
+    };
+    Ok((StatusCode::ACCEPTED, Json(q)).into_response())
 }
 
 async fn list_ticket_activities(

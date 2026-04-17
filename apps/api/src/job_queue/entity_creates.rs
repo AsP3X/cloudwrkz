@@ -1,4 +1,4 @@
-//! Persisted `background_jobs` workers for ticket / todo / time entry / link creation.
+//! Persisted `background_jobs` workers for ticket / todo / time entry / link mutations (creates and ticket updates/deletes/comments).
 //! HTTP handlers enqueue and return HTTP 202; clients poll `GET /mutation-jobs/{id}` (see `routes/mutation_jobs.rs`).
 
 use axum::http::StatusCode;
@@ -18,13 +18,19 @@ use crate::github_metadata;
 use crate::id::new_cuid;
 use crate::link_preview::{extract_metadata_from_url, normalize_url};
 use crate::models::link::CreateLinkRequest;
-use crate::models::ticket::TicketCreateRequest;
+use crate::models::ticket::{
+    TicketCommentCreateRequest, TicketCreateRequest, TicketUpdateRequest,
+};
+use crate::routes::helpers::check_permission_mut_tx;
 use crate::models::time_entry::{AddTimeEntryRequest, CreateTimeEntryRequest};
 use crate::models::todo::CreateTodoRequest;
 
 use super::enqueue_github_link_metadata_job;
 
 pub const JOB_TYPE_TICKET_CREATE: &str = "ticket_create";
+pub const JOB_TYPE_TICKET_UPDATE: &str = "ticket_update";
+pub const JOB_TYPE_TICKET_DELETE: &str = "ticket_delete";
+pub const JOB_TYPE_TICKET_COMMENT_CREATE: &str = "ticket_comment_create";
 pub const JOB_TYPE_TODO_CREATE: &str = "todo_create";
 pub const JOB_TYPE_TIME_ENTRY_CREATE_TIMER: &str = "time_entry_create_timer";
 pub const JOB_TYPE_TIME_ENTRY_CREATE_MANUAL: &str = "time_entry_create_manual";
@@ -36,6 +42,9 @@ pub fn is_entity_create_job_type(job_type: &str) -> bool {
     matches!(
         job_type,
         JOB_TYPE_TICKET_CREATE
+            | JOB_TYPE_TICKET_UPDATE
+            | JOB_TYPE_TICKET_DELETE
+            | JOB_TYPE_TICKET_COMMENT_CREATE
             | JOB_TYPE_TODO_CREATE
             | JOB_TYPE_TIME_ENTRY_CREATE_TIMER
             | JOB_TYPE_TIME_ENTRY_CREATE_MANUAL
@@ -103,7 +112,7 @@ pub async fn try_entity_create_job_status_for_user(
         "pending" | "processing" => MutationJobStatusResponse {
             status: MutationJobStatusKind::Pending,
             message: Some(
-                "Create request is still processing in the background job queue.".into(),
+                "Request is still processing in the background job queue.".into(),
             ),
             http_status: None,
             body: None,
@@ -238,6 +247,11 @@ pub async fn run_entity_create_job(
 
     let outcome = match job_type {
         JOB_TYPE_TICKET_CREATE => exec_ticket_create(pool, lock_ms, stmt_ms, payload).await,
+        JOB_TYPE_TICKET_UPDATE => exec_ticket_update(pool, lock_ms, stmt_ms, payload).await,
+        JOB_TYPE_TICKET_DELETE => exec_ticket_delete(pool, lock_ms, stmt_ms, payload).await,
+        JOB_TYPE_TICKET_COMMENT_CREATE => {
+            exec_ticket_comment_create(pool, lock_ms, stmt_ms, payload).await
+        },
         JOB_TYPE_TODO_CREATE => exec_todo_create(pool, lock_ms, stmt_ms, payload).await,
         JOB_TYPE_TIME_ENTRY_CREATE_TIMER => {
             exec_time_entry_timer_create(pool, lock_ms, stmt_ms, payload).await
@@ -372,6 +386,418 @@ async fn exec_ticket_create(
     JobExecOutcome::Ok(JsonMutationResult::created(json!({
         "id": id,
         "ticket_number": ticket_number
+    })))
+}
+
+async fn exec_ticket_update(
+    pool: &PgPool,
+    lock_ms: u64,
+    stmt_ms: u64,
+    payload: &serde_json::Value,
+) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+    };
+    let ticket_id = match payload.get("ticket_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request("Missing ticket_id in job payload"))
+        }
+    };
+    let body_val = match payload.get("request") {
+        Some(v) => v.clone(),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request("Missing request in job payload"))
+        }
+    };
+    let body: TicketUpdateRequest = match serde_json::from_value(body_val) {
+        Ok(b) => b,
+        Err(e) => {
+            return JobExecOutcome::Fail(AppError::bad_request(format!("Invalid ticket update: {e}")))
+        }
+    };
+
+    let mut tx = match pool.begin().await {
+        Ok(t) => t,
+        Err(e) => return map_sqlx_ticket(e),
+    };
+    if let Err(e) = apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+
+    let ticket = match sqlx::query("SELECT id, created_by_id FROM tickets WHERE id = $1 FOR UPDATE")
+        .bind(&ticket_id)
+        .fetch_optional(&mut *tx)
+        .await
+    {
+        Ok(Some(t)) => t,
+        Ok(None) => {
+            let _ = tx.rollback().await;
+            return JobExecOutcome::Fail(AppError::not_found("Ticket not found"));
+        }
+        Err(e) => {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    };
+
+    let created_by_id: Option<String> = ticket.get("created_by_id");
+    let can_edit_all = check_permission_mut_tx(&mut tx, &user_id, "tickets.edit_all").await;
+    if !can_edit_all && created_by_id.as_deref() != Some(&user_id) {
+        let _ = tx.rollback().await;
+        return JobExecOutcome::Fail(AppError::forbidden(
+            "You don't have permission to update this ticket",
+        ));
+    }
+
+    if let Some(ref archived) = body.archived_at {
+        if archived.is_null() {
+            if let Err(e) = sqlx::query(
+                "UPDATE tickets SET archived_at = NULL, updated_at = NOW() WHERE id = $1",
+            )
+            .bind(&ticket_id)
+            .execute(&mut *tx)
+            .await
+            {
+                let _ = tx.rollback().await;
+                return map_sqlx_ticket(e);
+            }
+        }
+    }
+    if let Some(ref title) = body.title {
+        if let Err(e) =
+            sqlx::query("UPDATE tickets SET title = $1, updated_at = NOW() WHERE id = $2")
+                .bind(title)
+                .bind(&ticket_id)
+                .execute(&mut *tx)
+                .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(ref status) = body.status {
+        if let Err(e) = sqlx::query(
+            "UPDATE tickets SET status = $1::\"TicketStatus\", updated_at = NOW() WHERE id = $2",
+        )
+        .bind(status)
+        .bind(&ticket_id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(ref priority) = body.priority {
+        if let Err(e) = sqlx::query(
+            "UPDATE tickets SET priority = $1::\"TicketPriority\", updated_at = NOW() WHERE id = $2",
+        )
+        .bind(priority)
+        .bind(&ticket_id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(ref desc) = body.description {
+        if let Err(e) = sqlx::query(
+            "UPDATE tickets SET description = $1, updated_at = NOW() WHERE id = $2",
+        )
+        .bind(desc)
+        .bind(&ticket_id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(ref t) = body.r#type {
+        if let Err(e) = sqlx::query(
+            "UPDATE tickets SET type = $1::\"TicketType\", updated_at = NOW() WHERE id = $2",
+        )
+        .bind(t)
+        .bind(&ticket_id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(ref v) = body.assigned_to_id {
+        let opt: Option<String> = if v.is_empty() { None } else { Some(v.clone()) };
+        if let Err(e) = sqlx::query(
+            "UPDATE tickets SET assigned_to_id = $1, updated_at = NOW() WHERE id = $2",
+        )
+        .bind(&opt)
+        .bind(&ticket_id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(ref v) = body.assigned_to_group_id {
+        let opt: Option<String> = if v.is_empty() { None } else { Some(v.clone()) };
+        if let Err(e) = sqlx::query(
+            "UPDATE tickets SET assigned_to_group_id = $1, updated_at = NOW() WHERE id = $2",
+        )
+        .bind(&opt)
+        .bind(&ticket_id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(ref tags) = body.tags {
+        if let Err(e) =
+            sqlx::query("UPDATE tickets SET tags = $1, updated_at = NOW() WHERE id = $2")
+                .bind(tags)
+                .bind(&ticket_id)
+                .execute(&mut *tx)
+                .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(ref due) = body.due_date {
+        if let Err(e) = sqlx::query(
+            "UPDATE tickets SET due_date = $1::timestamp, updated_at = NOW() WHERE id = $2",
+        )
+        .bind(due)
+        .bind(&ticket_id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+
+    if let Err(e) = tx.commit().await {
+        return map_sqlx_ticket(e);
+    }
+
+    JobExecOutcome::Ok(JsonMutationResult::ok(json!({
+        "success": true,
+        "message": "Ticket updated"
+    })))
+}
+
+async fn exec_ticket_delete(
+    pool: &PgPool,
+    lock_ms: u64,
+    stmt_ms: u64,
+    payload: &serde_json::Value,
+) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+    };
+    let ticket_id = match payload.get("ticket_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request("Missing ticket_id in job payload"))
+        }
+    };
+
+    let mut tx = match pool.begin().await {
+        Ok(t) => t,
+        Err(e) => return map_sqlx_ticket(e),
+    };
+    if let Err(e) = apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+
+    let ticket = match sqlx::query("SELECT id, created_by_id FROM tickets WHERE id = $1 FOR UPDATE")
+        .bind(&ticket_id)
+        .fetch_optional(&mut *tx)
+        .await
+    {
+        Ok(Some(t)) => t,
+        Ok(None) => {
+            let _ = tx.rollback().await;
+            return JobExecOutcome::Fail(AppError::not_found("Ticket not found"));
+        }
+        Err(e) => {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    };
+
+    let created_by_id: Option<String> = ticket.get("created_by_id");
+    let can_delete_all = check_permission_mut_tx(&mut tx, &user_id, "tickets.delete_all").await;
+    if !can_delete_all && created_by_id.as_deref() != Some(&user_id) {
+        let _ = tx.rollback().await;
+        return JobExecOutcome::Fail(AppError::forbidden(
+            "You don't have permission to delete this ticket",
+        ));
+    }
+
+    if let Err(e) = sqlx::query("DELETE FROM tickets WHERE id = $1")
+        .bind(&ticket_id)
+        .execute(&mut *tx)
+        .await
+    {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+    if let Err(e) = tx.commit().await {
+        return map_sqlx_ticket(e);
+    }
+
+    JobExecOutcome::Ok(JsonMutationResult::ok(json!({
+        "success": true,
+        "message": "Ticket deleted"
+    })))
+}
+
+async fn exec_ticket_comment_create(
+    pool: &PgPool,
+    lock_ms: u64,
+    stmt_ms: u64,
+    payload: &serde_json::Value,
+) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+    };
+    let ticket_id = match payload.get("ticket_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request("Missing ticket_id in job payload"))
+        }
+    };
+    let user_name: Option<String> = payload.get("user_name").and_then(|v| {
+        serde_json::from_value::<Option<String>>(v.clone())
+            .ok()
+            .flatten()
+    });
+    let body_val = match payload.get("request") {
+        Some(v) => v.clone(),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request("Missing request in job payload"))
+        }
+    };
+    let body: TicketCommentCreateRequest = match serde_json::from_value(body_val) {
+        Ok(b) => b,
+        Err(e) => {
+            return JobExecOutcome::Fail(AppError::bad_request(format!("Invalid comment body: {e}")))
+        }
+    };
+
+    let content_trimmed = body.content.trim().to_string();
+    if content_trimmed.is_empty() {
+        return JobExecOutcome::Fail(AppError::bad_request("Comment cannot be empty"));
+    }
+
+    let mut tx = match pool.begin().await {
+        Ok(t) => t,
+        Err(e) => return map_sqlx_ticket(e),
+    };
+    if let Err(e) = apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+
+    let can_view_all = check_permission_mut_tx(&mut tx, &user_id, "tickets.view_all").await;
+    let ticket = match sqlx::query(
+        "SELECT id, created_by_id, assigned_to_id FROM tickets WHERE id = $1
+         AND ($2::bool OR created_by_id = $3 OR assigned_to_id = $3) FOR UPDATE",
+    )
+    .bind(&ticket_id)
+    .bind(can_view_all)
+    .bind(&user_id)
+    .fetch_optional(&mut *tx)
+    .await
+    {
+        Ok(t) => t,
+        Err(e) => {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    };
+
+    if ticket.is_none() {
+        let _ = tx.rollback().await;
+        return JobExecOutcome::Fail(AppError::not_found("Ticket not found"));
+    }
+
+    let can_comment = check_permission_mut_tx(&mut tx, &user_id, "tickets.comment").await
+        || check_permission_mut_tx(&mut tx, &user_id, "tickets.view").await
+        || check_permission_mut_tx(&mut tx, &user_id, "tickets.view_all").await
+        || check_permission_mut_tx(&mut tx, &user_id, "admin.tickets.manage").await;
+    if !can_comment {
+        let _ = tx.rollback().await;
+        return JobExecOutcome::Fail(AppError::forbidden(
+            "You don't have permission to comment on this ticket",
+        ));
+    }
+
+    let mut content_plain = strip_html_plain(&content_trimmed);
+    if content_plain.is_empty() {
+        content_plain = content_trimmed.clone();
+    }
+
+    let comment_id = new_cuid();
+    let now = chrono::Utc::now().naive_utc();
+
+    if let Err(e) = sqlx::query(
+        r#"INSERT INTO ticket_comments (id, ticket_id, user_id, content, content_html, content_plain, is_agent_only, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)"#,
+    )
+    .bind(&comment_id)
+    .bind(&ticket_id)
+    .bind(&user_id)
+    .bind(&content_plain)
+    .bind(&content_trimmed)
+    .bind(&content_plain)
+    .bind(body.is_agent_only)
+    .bind(now)
+    .execute(&mut *tx)
+    .await
+    {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+
+    let activity_id = new_cuid();
+    if let Err(e) = sqlx::query(
+        r#"INSERT INTO ticket_activities (id, ticket_id, activity_type, changed_by_id, changed_by_name, metadata, created_at)
+           VALUES ($1, $2, 'COMMENT_ADDED'::"TicketActivityType", $3, $4, $5, $6)"#,
+    )
+    .bind(&activity_id)
+    .bind(&ticket_id)
+    .bind(&user_id)
+    .bind(&user_name)
+    .bind(json!({ "commentId": comment_id, "isAgentOnly": body.is_agent_only }))
+    .bind(now)
+    .execute(&mut *tx)
+    .await
+    {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+
+    if let Err(e) = tx.commit().await {
+        return map_sqlx_ticket(e);
+    }
+
+    JobExecOutcome::Ok(JsonMutationResult::created(json!({
+        "id": comment_id,
+        "success": true,
+        "message": "Comment added successfully"
     })))
 }
 
