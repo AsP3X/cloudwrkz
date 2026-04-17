@@ -3,19 +3,20 @@ use std::sync::Arc;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    http::HeaderMap,
-    response::Response,
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
     routing::get,
 };
+use serde_json::json;
 use sqlx::Row;
 
 use crate::auth::extractors::AuthUser;
 use crate::command_queue::{
-    JsonMutationResult, MutationRunContext, apply_mutation_tx_settings, mutation_response,
-    run_mutation_defer,
+    JsonMutationResult, MutationQueuedResponse, MutationRunContext, apply_mutation_tx_settings,
+    mutation_response, run_mutation_defer,
 };
-use crate::db::numbering::next_ticket_number;
 use crate::error::AppError;
+use crate::job_queue::entity_creates;
 use crate::id;
 use crate::models::ticket::{
     TicketActivityItem, TicketCommentCreateRequest, TicketCommentItem, TicketCreateRequest,
@@ -297,68 +298,46 @@ async fn create_ticket(
         idempotency_key: idempotency_key_from_headers(&headers),
         body_hash,
     };
-    let uid = user.id.clone();
-    let b = body.clone();
-    let broker = state.mutation_broker.clone();
-    let lock_ms = broker.lock_timeout_ms;
-    let stmt_ms = broker.statement_timeout_ms;
-    let pool = state.pool.clone();
-    let jobs = state.mutation_jobs.clone();
-    let make_arc = Arc::new(tokio::sync::Mutex::new({
-        let user_id = uid.clone();
-        let body = b.clone();
-        move || {
-            let user_id = user_id.clone();
-            let body = body.clone();
-            move |pool: sqlx::PgPool| async move {
-                let mut tx = pool.begin().await.map_err(AppError::from)?;
-                apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms)
-                    .await
-                    .map_err(AppError::from)?;
-                let ticket_number = next_ticket_number(&mut tx).await.map_err(AppError::from)?;
-                let id = id::new_cuid();
-                let ticket_type = body.r#type.as_deref().unwrap_or("QUESTION");
-                let priority = body.priority.as_deref().unwrap_or("MEDIUM");
-                let tags = body.tags.as_deref().unwrap_or(&[]);
-                sqlx::query(
-                    r#"INSERT INTO tickets (id, ticket_number, title, description, description_plain,
-                                type, status, priority, tags, created_by_id, assigned_to_id,
-                                assigned_to_group_id, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6::"TicketType", 'OPEN'::"TicketStatus",
-                   $7::"TicketPriority", $8, $9, $10, $11, NOW(), NOW())"#,
-                )
-                .bind(&id)
-                .bind(&ticket_number)
-                .bind(body.title.trim())
-                .bind(&body.description)
-                .bind(&body.description_plain)
-                .bind(ticket_type)
-                .bind(priority)
-                .bind(tags)
-                .bind(&user_id)
-                .bind(&body.assigned_to_id)
-                .bind(&body.assigned_to_group_id)
-                .execute(&mut *tx)
-                .await?;
-                tx.commit().await.map_err(AppError::from)?;
-                Ok(JsonMutationResult::created(serde_json::json!({
-                    "id": id,
-                    "ticket_number": ticket_number
-                })))
+    if let Some(ref ik) = ctx.idempotency_key {
+        if !ik.trim().is_empty() {
+            if let Some(cached) = state
+                .mutation_broker
+                .idempotency
+                .get(&ctx.user_id, ik, &ctx.route, ctx.body_hash)
+                .await
+            {
+                return Ok((cached.status, Json(cached.body)).into_response());
             }
         }
-    }));
-    let out = run_mutation_defer(
-        broker,
-        pool,
-        "ticket:create".to_string(),
-        ctx,
-        jobs,
-        user.id.clone(),
-        make_arc,
+    }
+
+    let request_json = serde_json::to_value(&body)
+        .map_err(|e| AppError::internal(format!("serialize ticket create: {e}")))?;
+    let job_payload = json!({
+        "user_id": user.id,
+        "route": ctx.route,
+        "body_hash": ctx.body_hash,
+        "idempotency_key": ctx.idempotency_key,
+        "request": request_json,
+    });
+    let job_id = entity_creates::enqueue_entity_create_job(
+        &state.pool,
+        entity_creates::JOB_TYPE_TICKET_CREATE,
+        &user.id,
+        job_payload,
     )
-    .await?;
-    Ok(mutation_response(out))
+    .await
+    .map_err(AppError::from)?;
+
+    let q = MutationQueuedResponse {
+        message: "Ticket creation is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed."
+            .into(),
+        queued: true,
+        job_id,
+        retry_deadline_secs: entity_creates::ENTITY_CREATE_POLL_DEADLINE_SECS,
+        job_type: Some(entity_creates::JOB_TYPE_TICKET_CREATE.to_string()),
+    };
+    Ok((StatusCode::ACCEPTED, Json(q)).into_response())
 }
 
 async fn update_ticket(

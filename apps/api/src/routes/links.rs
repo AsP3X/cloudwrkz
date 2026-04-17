@@ -8,16 +8,18 @@ use axum::{
     routing::{get, post},
 };
 use serde::Deserialize;
+use serde_json::json;
 use sqlx::Row;
 
 use crate::auth::extractors::AuthUser;
 use crate::command_queue::{
-    JsonMutationResult, MutationHandlerOutput, MutationRunContext, apply_mutation_tx_settings,
-    mutation_response, run_mutation_defer,
+    JsonMutationResult, MutationHandlerOutput, MutationQueuedResponse, MutationRunContext,
+    apply_mutation_tx_settings, mutation_response, run_mutation_defer,
 };
 use crate::error::AppError;
-use crate::github_metadata;
 use crate::job_queue;
+use crate::job_queue::entity_creates;
+use crate::link_preview;
 use crate::models::link::*;
 use crate::routes::AppState;
 use crate::routes::helpers::{hash_json_for_idempotency, idempotency_key_from_headers};
@@ -342,160 +344,46 @@ async fn create_link(
         idempotency_key: idempotency_key_from_headers(&headers),
         body_hash,
     };
-    let uid = user.id.clone();
-    let shard = format!("link:create:{uid}");
-    let b = body.clone();
-    let broker = state.mutation_broker.clone();
-    let lock_ms = broker.lock_timeout_ms;
-    let stmt_ms = broker.statement_timeout_ms;
-    let pool = state.pool.clone();
-    let jobs = state.mutation_jobs.clone();
-    let make_arc = Arc::new(tokio::sync::Mutex::new({
-        let user_id = uid.clone();
-        let body = b.clone();
-        move || {
-            let user_id = user_id.clone();
-            let body = body.clone();
-            move |pool: sqlx::PgPool| async move {
-                let allow_duplicates = body.allow_duplicates.unwrap_or(false);
-                let should_extract = body.extract_metadata.unwrap_or(false)
-                    || body.title.is_none()
-                    || body.description.is_none();
-
-                let id = crate::id::new_cuid();
-                let normalized = normalize_url(&body.url);
-                let mut title = body.title.clone();
-                let mut description = body.description.clone();
-                let mut favicon: Option<String> = None;
-                let mut metadata: Option<serde_json::Value> = None;
-                let mut metadata_extracted_at: Option<chrono::NaiveDateTime> = None;
-
-                if should_extract {
-                    if let Ok(extracted) = extract_metadata_from_url(&body.url).await {
-                        let extracted_title = extracted.title.clone();
-                        let extracted_description = extracted.description.clone();
-                        let extracted_favicon = extracted.favicon.clone();
-
-                        if title.is_none() {
-                            title = extracted_title.clone();
-                        }
-                        if description.is_none() {
-                            description = extracted_description.clone();
-                        }
-                        favicon = extracted_favicon.clone();
-                        metadata_extracted_at = Some(chrono::Utc::now().naive_utc());
-                        metadata = Some(serde_json::json!({
-                            "title": extracted_title,
-                            "description": extracted_description,
-                            "favicon": extracted_favicon,
-                        }));
-                    }
-                }
-
-                let mut tx = pool.begin().await.map_err(AppError::from)?;
-                apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms)
-                    .await
-                    .map_err(AppError::from)?;
-
-                if !allow_duplicates {
-                    let exact_duplicate_ids = sqlx::query_scalar::<_, String>(
-                        "SELECT id FROM links WHERE user_id = $1 AND normalized_url = $2",
-                    )
-                    .bind(&user_id)
-                    .bind(&normalized)
-                    .fetch_all(&mut *tx)
-                    .await?;
-
-                    if !exact_duplicate_ids.is_empty() {
-                        let host = normalized.split('/').next().unwrap_or_default().to_string();
-                        let similar_link_ids = sqlx::query_scalar::<_, String>(
-                            r#"SELECT id
-                   FROM links
-                   WHERE user_id = $1
-                     AND split_part(normalized_url, '/', 1) = $2
-                     AND normalized_url <> $3"#,
-                        )
-                        .bind(&user_id)
-                        .bind(&host)
-                        .bind(&normalized)
-                        .fetch_all(&mut *tx)
-                        .await?;
-                        drop(tx);
-                        return Ok(JsonMutationResult::new(
-                            StatusCode::OK,
-                            serde_json::json!({
-                                "success": false,
-                                "error": "A link with this exact URL already exists",
-                                "duplicate_link_ids": exact_duplicate_ids,
-                                "similar_link_ids": similar_link_ids,
-                            }),
-                        ));
-                    }
-                }
-
-                let link_type = body.link_type.as_deref().unwrap_or("WEBSITE");
-                let tags = body.tags.clone().unwrap_or_default();
-                let is_favorite = body.is_favorite.unwrap_or(false);
-                let title = title.unwrap_or_else(|| body.url.clone());
-
-                sqlx::query(
-                    r#"INSERT INTO links (id, title, url, normalized_url, description, favicon, link_type, tags,
-                              notes, is_favorite, metadata, metadata_extracted_at, user_id, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7::"LinkType", $8, $9, $10, $11, $12, $13, NOW(), NOW())"#,
-                )
-                .bind(&id)
-                .bind(&title)
-                .bind(&body.url)
-                .bind(&normalized)
-                .bind(&description)
-                .bind(&favicon)
-                .bind(link_type)
-                .bind(&tags)
-                .bind(&body.notes)
-                .bind(is_favorite)
-                .bind(&metadata)
-                .bind(metadata_extracted_at)
-                .bind(&user_id)
-                .execute(&mut *tx)
-                .await?;
-
-                if let Some(ref collection_ids) = body.collection_ids {
-                    for cid in collection_ids {
-                        let lc_id = crate::id::new_cuid();
-                        let _ = sqlx::query(
-                "INSERT INTO link_collections (id, link_id, collection_id, created_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT DO NOTHING",
-            )
-                        .bind(&lc_id)
-                        .bind(&id)
-                        .bind(cid)
-                        .execute(&mut *tx)
-                        .await;
-                    }
-                }
-
-                tx.commit().await.map_err(AppError::from)?;
-
-                if github_metadata::parse_github_owner_repo(&body.url).is_some()
-                    && !github_metadata::link_github_enrichment_matches_repo(&metadata, &body.url)
-                {
-                    if let Err(e) =
-                        job_queue::enqueue_github_link_metadata_job(&pool, &id, &user_id).await
-                    {
-                        tracing::warn!(
-                            event = "link.create.github_metadata_enqueue_failed",
-                            link_id = %id,
-                            error = %e,
-                            "could not enqueue GitHub metadata job after link create"
-                        );
-                    }
-                }
-
-                Ok(JsonMutationResult::created(serde_json::json!({ "id": id })))
+    if let Some(ref ik) = ctx.idempotency_key {
+        if !ik.trim().is_empty() {
+            if let Some(cached) = state
+                .mutation_broker
+                .idempotency
+                .get(&ctx.user_id, ik, &ctx.route, ctx.body_hash)
+                .await
+            {
+                return Ok((cached.status, Json(cached.body)).into_response());
             }
         }
-    }));
-    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
-    Ok(mutation_response(out))
+    }
+
+    let request_json = serde_json::to_value(&body)
+        .map_err(|e| AppError::internal(format!("serialize link create: {e}")))?;
+    let job_payload = json!({
+        "user_id": user.id,
+        "route": ctx.route,
+        "body_hash": ctx.body_hash,
+        "idempotency_key": ctx.idempotency_key,
+        "request": request_json,
+    });
+    let job_id = entity_creates::enqueue_entity_create_job(
+        &state.pool,
+        entity_creates::JOB_TYPE_LINK_CREATE,
+        &user.id,
+        job_payload,
+    )
+    .await
+    .map_err(AppError::from)?;
+
+    let q = MutationQueuedResponse {
+        message: "Link creation is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed."
+            .into(),
+        queued: true,
+        job_id,
+        retry_deadline_secs: entity_creates::ENTITY_CREATE_POLL_DEADLINE_SECS,
+        job_type: Some(entity_creates::JOB_TYPE_LINK_CREATE.to_string()),
+    };
+    Ok((StatusCode::ACCEPTED, Json(q)).into_response())
 }
 
 async fn update_link(
@@ -556,7 +444,7 @@ async fn update_link(
                         .await?;
                 }
                 if let Some(ref url) = body.url {
-                    let normalized = normalize_url(url);
+                    let normalized = link_preview::normalize_url(url);
                     sqlx::query(
                         "UPDATE links SET url = $1, normalized_url = $2, updated_at = NOW() WHERE id = $3",
                     )
@@ -748,7 +636,12 @@ async fn extract_metadata(
         move || {
             let url_str = url_str.clone();
             move |_pool: sqlx::PgPool| async move {
-                let extracted = extract_metadata_from_url(&url_str).await?;
+                let client = reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(10))
+                    .build()
+                    .map_err(|_| AppError::internal("Failed to create HTTP client"))?;
+                let extracted =
+                    link_preview::extract_metadata_from_url(&client, &url_str).await?;
                 let body = serde_json::to_value(&extracted)
                     .map_err(|e| AppError::internal(format!("serialize extract metadata: {e}")))?;
                 Ok(JsonMutationResult::ok(body))
@@ -766,80 +659,3 @@ async fn extract_metadata(
     }
 }
 
-async fn extract_metadata_from_url(url_str: &str) -> Result<ExtractMetadataResponse, AppError> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|_| AppError::internal("Failed to create HTTP client"))?;
-
-    let resp = client
-        .get(url_str)
-        .header("User-Agent", "CloudWrkz/1.0 Link Preview")
-        .send()
-        .await
-        .map_err(|_| AppError::bad_request("Failed to fetch URL"))?;
-
-    let html = resp
-        .text()
-        .await
-        .map_err(|_| AppError::bad_request("Failed to read response"))?;
-
-    let doc = scraper::Html::parse_document(&html);
-
-    let title = extract_meta(&doc, "og:title").or_else(|| extract_tag_text(&doc, "title"));
-    let description =
-        extract_meta(&doc, "og:description").or_else(|| extract_meta(&doc, "description"));
-    let favicon = extract_favicon(&doc, url_str);
-
-    Ok(ExtractMetadataResponse {
-        title,
-        description,
-        favicon,
-    })
-}
-
-fn extract_meta(doc: &scraper::Html, name: &str) -> Option<String> {
-    let sel_str = format!(r#"meta[property="{name}"], meta[name="{name}"]"#);
-    let selector = scraper::Selector::parse(&sel_str).ok()?;
-    doc.select(&selector)
-        .next()
-        .and_then(|el| el.value().attr("content"))
-        .map(|s| s.to_string())
-}
-
-fn extract_tag_text(doc: &scraper::Html, tag: &str) -> Option<String> {
-    let selector = scraper::Selector::parse(tag).ok()?;
-    doc.select(&selector)
-        .next()
-        .map(|el| el.text().collect::<String>())
-}
-
-fn extract_favicon(doc: &scraper::Html, base_url: &str) -> Option<String> {
-    let selector =
-        scraper::Selector::parse(r#"link[rel="icon"], link[rel="shortcut icon"]"#).ok()?;
-    if let Some(el) = doc.select(&selector).next() {
-        if let Some(href) = el.value().attr("href") {
-            if href.starts_with("http") {
-                return Some(href.to_string());
-            }
-            if let Ok(base) = url::Url::parse(base_url) {
-                return base.join(href).ok().map(|u| u.to_string());
-            }
-        }
-    }
-    url::Url::parse(base_url)
-        .ok()
-        .and_then(|u| u.join("/favicon.ico").ok())
-        .map(|u| u.to_string())
-}
-
-fn normalize_url(url: &str) -> String {
-    let mut s = url.to_lowercase();
-    s = s
-        .trim_start_matches("https://")
-        .trim_start_matches("http://")
-        .trim_start_matches("www.")
-        .trim_end_matches('/')
-        .to_string();
-    s
-}

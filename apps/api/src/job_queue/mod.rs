@@ -14,6 +14,7 @@
 //! `LOG_VERBOSITY=debug` (default filter includes `jobs=debug`) or `RUST_LOG=info,jobs=debug`.
 
 mod budget;
+pub mod entity_creates;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -25,6 +26,7 @@ use serde_json::json;
 use sqlx::{PgPool, Row};
 use tracing::{debug, error, info};
 
+use crate::command_queue::MutationBroker;
 use crate::config::AppConfig;
 use crate::github_metadata;
 use crate::github_rate_limit::GithubRestRateLimit;
@@ -74,6 +76,27 @@ fn policies_from_config(config: &AppConfig) -> HashMap<String, JobTypePolicy> {
             min_interval_between_starts: None,
         },
     );
+    m.insert(
+        entity_creates::JOB_TYPE_TICKET_CREATE.to_string(),
+        JobTypePolicy {
+            max_concurrent: 1,
+            min_interval_between_starts: None,
+        },
+    );
+    for t in [
+        entity_creates::JOB_TYPE_TODO_CREATE,
+        entity_creates::JOB_TYPE_TIME_ENTRY_CREATE_TIMER,
+        entity_creates::JOB_TYPE_TIME_ENTRY_CREATE_MANUAL,
+        entity_creates::JOB_TYPE_LINK_CREATE,
+    ] {
+        m.insert(
+            t.to_string(),
+            JobTypePolicy {
+                max_concurrent: 8,
+                min_interval_between_starts: None,
+            },
+        );
+    }
     m
 }
 
@@ -131,6 +154,7 @@ async fn run_one_job(
     pool: &PgPool,
     client: &Client,
     github_rate: Arc<GithubRestRateLimit>,
+    mutation_broker: MutationBroker,
     job_id: String,
     job_type: String,
     payload: serde_json::Value,
@@ -163,6 +187,21 @@ async fn run_one_job(
         JOB_TYPE_QR_LOGIN_FINALIZE => {
             crate::auth::qr_finalize_queue::execute_qr_login_finalize_job(pool, &job_id, &payload)
                 .await;
+        }
+        entity_creates::JOB_TYPE_TICKET_CREATE
+        | entity_creates::JOB_TYPE_TODO_CREATE
+        | entity_creates::JOB_TYPE_TIME_ENTRY_CREATE_TIMER
+        | entity_creates::JOB_TYPE_TIME_ENTRY_CREATE_MANUAL
+        | entity_creates::JOB_TYPE_LINK_CREATE => {
+            entity_creates::run_entity_create_job(
+                pool,
+                client,
+                &mutation_broker,
+                &job_id,
+                &job_type,
+                &payload,
+            )
+            .await;
         }
         other => {
             mark_job_failed(
@@ -236,7 +275,7 @@ async fn try_claim_next(
     None
 }
 
-pub fn spawn_job_queue_worker(pool: PgPool, config: AppConfig) {
+pub fn spawn_job_queue_worker(pool: PgPool, config: AppConfig, mutation_broker: MutationBroker) {
     let policies = policies_from_config(&config);
     let budgets = Arc::new(TypeBudgets::new(policies));
     let github_rate = GithubRestRateLimit::from_config(&config);
@@ -277,6 +316,7 @@ pub fn spawn_job_queue_worker(pool: PgPool, config: AppConfig) {
                 let client = client.clone();
                 let budgets = budgets.clone();
                 let gh_rate = github_rate.clone();
+                let mutation_broker = mutation_broker.clone();
                 let job_id_for_log = job_id.clone();
                 let job_type_for_log = job_type.clone();
                 tokio::spawn(async move {
@@ -293,6 +333,7 @@ pub fn spawn_job_queue_worker(pool: PgPool, config: AppConfig) {
                         &pool,
                         &client,
                         gh_rate,
+                        mutation_broker,
                         job_id,
                         job_type,
                         payload,

@@ -26,6 +26,9 @@ pub struct MutationQueuedResponse {
     pub queued: bool,
     pub job_id: String,
     pub retry_deadline_secs: u32,
+    /// When set, the work is tracked in `background_jobs` under this `job_type` (admin Jobs page).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub job_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -187,6 +190,7 @@ where
                 queued: true,
                 job_id,
                 retry_deadline_secs: MUTATION_DB_RETRY_MAX.as_secs() as u32,
+                job_type: None,
             }))
         }
         Err(e) => Err(e),

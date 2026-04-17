@@ -606,10 +606,10 @@ function AdminBackgroundJobsPageContent() {
       setError(null);
     }
     try {
-      const activeRes = await api.get<BackgroundJobsResponse>("/admin/background-jobs?limit=200");
+      const activeRes = await api.get<BackgroundJobsResponse>("/admin/background-jobs?limit=500");
       setActiveJobs(activeRes.jobs);
 
-      const histRes = await api.get<BackgroundJobsResponse>("/admin/background-jobs?include_completed=true&limit=200");
+      const histRes = await api.get<BackgroundJobsResponse>("/admin/background-jobs?include_completed=true&limit=500");
       const finished = sortFinishedJobs(
         histRes.jobs.filter((j) => j.status === "completed" || j.status === "failed" || j.status === "cancelled"),
       );
@@ -792,7 +792,7 @@ function AdminBackgroundJobsPageContent() {
         <SectionShell
           icon={IconHistory}
           title="History"
-          subtitle="Completed, failed, and cancelled jobs in this window (newest first)."
+          subtitle="Completed, failed, and cancelled jobs in this window (newest first). Ticket/todo/time/link creates appear as ticket_create, todo_create, time_entry_create_*, link_create."
           flush
         >
           {loading ? (

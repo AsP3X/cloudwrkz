@@ -3,20 +3,22 @@ use std::sync::Arc;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    http::HeaderMap,
-    response::Response,
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
 use chrono::Utc;
 use serde::Deserialize;
+use serde_json::json;
 use sqlx::{Postgres, Row};
 
 use crate::auth::extractors::AuthUser;
 use crate::command_queue::{
-    JsonMutationResult, MutationRunContext, apply_mutation_tx_settings, mutation_response,
-    run_mutation_defer,
+    JsonMutationResult, MutationQueuedResponse, MutationRunContext, apply_mutation_tx_settings,
+    mutation_response, run_mutation_defer,
 };
 use crate::error::AppError;
+use crate::job_queue::entity_creates;
 use crate::models::time_entry::*;
 use crate::routes::AppState;
 use crate::routes::helpers::{hash_json_for_idempotency, idempotency_key_from_headers};
@@ -289,54 +291,46 @@ async fn create_entry(
         idempotency_key: idempotency_key_from_headers(&headers),
         body_hash,
     };
-    let uid = user.id.clone();
-    let shard = format!("time:create:{uid}");
-    let b = body.clone();
-    let broker = state.mutation_broker.clone();
-    let lock_ms = broker.lock_timeout_ms;
-    let stmt_ms = broker.statement_timeout_ms;
-    let pool = state.pool.clone();
-    let jobs = state.mutation_jobs.clone();
-    let make_arc = Arc::new(tokio::sync::Mutex::new({
-        let user_id = uid.clone();
-        let body = b.clone();
-        move || {
-            let user_id = user_id.clone();
-            let body = body.clone();
-            move |pool: sqlx::PgPool| async move {
-                let mut tx = pool.begin().await.map_err(AppError::from)?;
-                apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms)
-                    .await
-                    .map_err(AppError::from)?;
-                let id = crate::id::new_cuid();
-                let name = body.name.unwrap_or_else(|| "Timer".to_string());
-                let tags = body.tags.unwrap_or_default();
-                let now = Utc::now().naive_utc();
-
-                sqlx::query(
-                    r#"INSERT INTO time_entries (id, name, description, status, started_at, last_resumed_at,
-                                     total_duration, user_id, ticket_id, tags, billable, location,
-                                     created_at, updated_at)
-           VALUES ($1, $2, $3, 'RUNNING', $4, $4, 0, $5, $6, $7, $8, $9, $4, $4)"#,
-                )
-                .bind(&id)
-                .bind(&name)
-                .bind(&body.description)
-                .bind(now)
-                .bind(&user_id)
-                .bind(&body.ticket_id)
-                .bind(&tags)
-                .bind(body.billable.unwrap_or(false))
-                .bind(&body.location)
-                .execute(&mut *tx)
-                .await?;
-                tx.commit().await.map_err(AppError::from)?;
-                Ok(JsonMutationResult::created(serde_json::json!({ "id": id })))
+    if let Some(ref ik) = ctx.idempotency_key {
+        if !ik.trim().is_empty() {
+            if let Some(cached) = state
+                .mutation_broker
+                .idempotency
+                .get(&ctx.user_id, ik, &ctx.route, ctx.body_hash)
+                .await
+            {
+                return Ok((cached.status, Json(cached.body)).into_response());
             }
         }
-    }));
-    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
-    Ok(mutation_response(out))
+    }
+
+    let request_json = serde_json::to_value(&body)
+        .map_err(|e| AppError::internal(format!("serialize time entry create: {e}")))?;
+    let job_payload = json!({
+        "user_id": user.id,
+        "route": ctx.route,
+        "body_hash": ctx.body_hash,
+        "idempotency_key": ctx.idempotency_key,
+        "request": request_json,
+    });
+    let job_id = entity_creates::enqueue_entity_create_job(
+        &state.pool,
+        entity_creates::JOB_TYPE_TIME_ENTRY_CREATE_TIMER,
+        &user.id,
+        job_payload,
+    )
+    .await
+    .map_err(AppError::from)?;
+
+    let q = MutationQueuedResponse {
+        message: "Time entry creation is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed."
+            .into(),
+        queued: true,
+        job_id,
+        retry_deadline_secs: entity_creates::ENTITY_CREATE_POLL_DEADLINE_SECS,
+        job_type: Some(entity_creates::JOB_TYPE_TIME_ENTRY_CREATE_TIMER.to_string()),
+    };
+    Ok((StatusCode::ACCEPTED, Json(q)).into_response())
 }
 
 fn parse_iso_datetime_utc_naive(s: &str) -> Option<chrono::NaiveDateTime> {
@@ -358,65 +352,46 @@ async fn add_manual_entry(
         idempotency_key: idempotency_key_from_headers(&headers),
         body_hash,
     };
-    let uid = user.id.clone();
-    let shard = format!("time:create:{uid}");
-    let b = body.clone();
-    let broker = state.mutation_broker.clone();
-    let lock_ms = broker.lock_timeout_ms;
-    let stmt_ms = broker.statement_timeout_ms;
-    let pool = state.pool.clone();
-    let jobs = state.mutation_jobs.clone();
-    let make_arc = Arc::new(tokio::sync::Mutex::new({
-        let user_id = uid.clone();
-        let body = b.clone();
-        move || {
-            let user_id = user_id.clone();
-            let body = body.clone();
-            move |pool: sqlx::PgPool| async move {
-                let mut tx = pool.begin().await.map_err(AppError::from)?;
-                apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms)
-                    .await
-                    .map_err(AppError::from)?;
-                let id = crate::id::new_cuid();
-                let total_secs = body.hours.unwrap_or(0) * 3600
-                    + body.minutes.unwrap_or(0) * 60
-                    + body.seconds.unwrap_or(0);
-
-                let started_at = body
-                    .started_at
-                    .as_deref()
-                    .and_then(|s| {
-                        chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.fZ").ok()
-                    })
-                    .unwrap_or_else(|| Utc::now().naive_utc());
-                let stopped_at = started_at + chrono::Duration::seconds(total_secs as i64);
-                let tags = body.tags.unwrap_or_default();
-
-                sqlx::query(
-                    r#"INSERT INTO time_entries (id, name, description, status, started_at, stopped_at,
-                                     total_duration, user_id, tags, billable, location,
-                                     created_at, updated_at)
-           VALUES ($1, $2, $3, 'STOPPED', $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())"#,
-                )
-                .bind(&id)
-                .bind(&body.name)
-                .bind(&body.description)
-                .bind(started_at)
-                .bind(stopped_at)
-                .bind(total_secs)
-                .bind(&user_id)
-                .bind(&tags)
-                .bind(body.billable.unwrap_or(false))
-                .bind(&body.location)
-                .execute(&mut *tx)
-                .await?;
-                tx.commit().await.map_err(AppError::from)?;
-                Ok(JsonMutationResult::created(serde_json::json!({ "id": id })))
+    if let Some(ref ik) = ctx.idempotency_key {
+        if !ik.trim().is_empty() {
+            if let Some(cached) = state
+                .mutation_broker
+                .idempotency
+                .get(&ctx.user_id, ik, &ctx.route, ctx.body_hash)
+                .await
+            {
+                return Ok((cached.status, Json(cached.body)).into_response());
             }
         }
-    }));
-    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
-    Ok(mutation_response(out))
+    }
+
+    let request_json = serde_json::to_value(&body)
+        .map_err(|e| AppError::internal(format!("serialize manual time entry: {e}")))?;
+    let job_payload = json!({
+        "user_id": user.id,
+        "route": ctx.route,
+        "body_hash": ctx.body_hash,
+        "idempotency_key": ctx.idempotency_key,
+        "request": request_json,
+    });
+    let job_id = entity_creates::enqueue_entity_create_job(
+        &state.pool,
+        entity_creates::JOB_TYPE_TIME_ENTRY_CREATE_MANUAL,
+        &user.id,
+        job_payload,
+    )
+    .await
+    .map_err(AppError::from)?;
+
+    let q = MutationQueuedResponse {
+        message: "Manual time entry creation is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed."
+            .into(),
+        queued: true,
+        job_id,
+        retry_deadline_secs: entity_creates::ENTITY_CREATE_POLL_DEADLINE_SECS,
+        job_type: Some(entity_creates::JOB_TYPE_TIME_ENTRY_CREATE_MANUAL.to_string()),
+    };
+    Ok((StatusCode::ACCEPTED, Json(q)).into_response())
 }
 
 async fn update_entry(

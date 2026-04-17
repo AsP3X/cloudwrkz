@@ -3,19 +3,20 @@ use std::sync::Arc;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    http::HeaderMap,
-    response::Response,
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
     routing::get,
 };
+use serde_json::json;
 use sqlx::Row;
 
 use crate::auth::extractors::AuthUser;
 use crate::command_queue::{
-    JsonMutationResult, MutationRunContext, apply_mutation_tx_settings, mutation_response,
-    run_mutation_defer,
+    JsonMutationResult, MutationQueuedResponse, MutationRunContext, apply_mutation_tx_settings,
+    mutation_response, run_mutation_defer,
 };
-use crate::db::numbering::next_todo_number;
 use crate::error::AppError;
+use crate::job_queue::entity_creates;
 use crate::models::todo::{
     CreateTodoRequest, TodoDependencyItem, TodoDependsOnSummary, TodoListItem, TodoListParams,
     TodoParentSummary, TodoRow, TodoTicketSummary, UpdateTodoRequest,
@@ -324,20 +325,6 @@ async fn get_todo(
     Ok(Json(serde_json::json!({ "todo": todo })))
 }
 
-fn strip_html_plain(html: &str) -> String {
-    let mut out = String::new();
-    let mut in_tag = false;
-    for c in html.chars() {
-        match c {
-            '<' => in_tag = true,
-            '>' => in_tag = false,
-            _ if !in_tag => out.push(c),
-            _ => {}
-        }
-    }
-    out.replace('\u{a0}', " ").trim().to_string()
-}
-
 async fn create_todo(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -388,80 +375,46 @@ async fn create_todo(
         idempotency_key: idempotency_key_from_headers(&headers),
         body_hash,
     };
-    let uid = user.id.clone();
-    let shard = format!("todo:create:{uid}");
-    let b = body.clone();
-    let broker = state.mutation_broker.clone();
-    let lock_ms = broker.lock_timeout_ms;
-    let stmt_ms = broker.statement_timeout_ms;
-    let pool = state.pool.clone();
-    let jobs = state.mutation_jobs.clone();
-    let make_arc = Arc::new(tokio::sync::Mutex::new({
-        let user_id = uid.clone();
-        let body = b.clone();
-        move || {
-            let user_id = user_id.clone();
-            let body = body.clone();
-            move |pool: sqlx::PgPool| async move {
-                let mut tx = pool.begin().await.map_err(AppError::from)?;
-                apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms)
-                    .await
-                    .map_err(AppError::from)?;
-
-                let id = crate::id::new_cuid();
-                let status = body.status.as_deref().unwrap_or("NOT_STARTED");
-                let priority = body.priority.as_deref().unwrap_or("MEDIUM");
-                let assigned_to = body.assigned_to_id.as_deref().unwrap_or(&user_id);
-
-                let description_plain = body
-                    .description_html
-                    .as_deref()
-                    .or(body.description.as_deref())
-                    .map(strip_html_plain)
-                    .filter(|s| !s.is_empty());
-
-                let todo_number = next_todo_number(&mut tx).await.map_err(AppError::from)?;
-
-                let start_ts = body
-                    .start_date
-                    .as_deref()
-                    .and_then(|s| s.parse::<chrono::NaiveDateTime>().ok());
-                let due_ts = body
-                    .due_date
-                    .as_deref()
-                    .and_then(|s| s.parse::<chrono::NaiveDateTime>().ok());
-                let desc_legacy = description_plain.as_deref().or(body.description.as_deref());
-
-                sqlx::query(
-                    r#"INSERT INTO todos (id, todo_number, title, description, description_html, description_plain,
-                              status, priority, assigned_to_id, parent_todo_id,
-                              ticket_id, estimated_hours, start_date, due_date, "order", created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7::"TodoStatus", $8::"TodoPriority",
-                   $9, $10, $11, $12, $13, $14, 0, NOW(), NOW())"#,
-                )
-                .bind(&id)
-                .bind(&todo_number)
-                .bind(body.title.trim())
-                .bind(desc_legacy)
-                .bind(&body.description_html)
-                .bind(&description_plain)
-                .bind(status)
-                .bind(priority)
-                .bind(assigned_to)
-                .bind(&body.parent_todo_id)
-                .bind(&body.ticket_id)
-                .bind(body.estimated_hours)
-                .bind(&start_ts)
-                .bind(&due_ts)
-                .execute(&mut *tx)
-                .await?;
-                tx.commit().await.map_err(AppError::from)?;
-                Ok(JsonMutationResult::created(serde_json::json!({ "id": id })))
+    if let Some(ref ik) = ctx.idempotency_key {
+        if !ik.trim().is_empty() {
+            if let Some(cached) = state
+                .mutation_broker
+                .idempotency
+                .get(&ctx.user_id, ik, &ctx.route, ctx.body_hash)
+                .await
+            {
+                return Ok((cached.status, Json(cached.body)).into_response());
             }
         }
-    }));
-    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
-    Ok(mutation_response(out))
+    }
+
+    let request_json = serde_json::to_value(&body)
+        .map_err(|e| AppError::internal(format!("serialize todo create: {e}")))?;
+    let job_payload = json!({
+        "user_id": user.id,
+        "route": ctx.route,
+        "body_hash": ctx.body_hash,
+        "idempotency_key": ctx.idempotency_key,
+        "request": request_json,
+    });
+    let job_id = entity_creates::enqueue_entity_create_job(
+        &state.pool,
+        entity_creates::JOB_TYPE_TODO_CREATE,
+        &user.id,
+        job_payload,
+    )
+    .await
+    .map_err(AppError::from)?;
+
+    let q = MutationQueuedResponse {
+        message: "Todo creation is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed."
+            .into(),
+        queued: true,
+        job_id,
+        retry_deadline_secs: entity_creates::ENTITY_CREATE_POLL_DEADLINE_SECS,
+        job_type: Some(entity_creates::JOB_TYPE_TODO_CREATE.to_string()),
+    };
+    Ok((StatusCode::ACCEPTED, Json(q)).into_response())
 }
 
 async fn update_todo(

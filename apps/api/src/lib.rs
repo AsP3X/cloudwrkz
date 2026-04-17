@@ -12,11 +12,21 @@ mod github_metadata;
 mod github_rate_limit;
 pub mod id;
 mod job_queue;
+mod link_preview;
 mod models;
 pub mod routes;
 
 pub use config::AppConfig;
 pub use routes::AppState;
+
+/// Start the PostgreSQL-backed background worker (same as `run()` after migrations). For integration tests.
+pub fn spawn_background_job_worker(
+    pool: sqlx::PgPool,
+    config: AppConfig,
+    mutation_broker: command_queue::MutationBroker,
+) {
+    job_queue::spawn_job_queue_worker(pool, config, mutation_broker);
+}
 
 use axum::Router;
 use axum::body::Body;
@@ -68,7 +78,7 @@ Environment: LOG_VERBOSITY (debug|prod), LOG_FORMAT (json), RUST_LOG, DATABASE_U
              AUTH_RATE_LIMIT_PER_MINUTE, AUTH_RATE_LIMIT_BURST,
              COMMAND_DB_TX_MAX_MS, COMMAND_DB_LOCK_TIMEOUT_MS, COMMAND_DB_STATEMENT_TIMEOUT_MS,
              MUTATION_QUEUE_CAPACITY, IDEMPOTENCY_MAX_ENTRIES, IDEMPOTENCY_TTL_SECS,
-             (Deferred mutations: GET /api/v1/mutation-jobs/{job_id} after HTTP 202 when DB was transient.)
+             (HTTP 202 + GET /api/v1/mutation-jobs/{job_id}: transient DB retries, and async creates for tickets/todos/time entries/links via background_jobs.)
              DATABASE_POOL_ACQUIRE_TIMEOUT_SECS, DATABASE_POOL_MAX_CONNECTIONS,
              DATABASE_MIGRATE_RETRY_MAX_SECS, etc.
              GITHUB_TOKEN or GITHUB_API_TOKEN (optional): authenticated GitHub REST (higher rate limits; no in-process hourly cap).
@@ -382,9 +392,10 @@ pub async fn run() {
     {
         let pool = pool.clone();
         let cfg = config.clone();
+        let mutation_broker = state.mutation_broker.clone();
         tokio::spawn(async move {
             db::run_migrations_with_transient_retries(&pool).await;
-            job_queue::spawn_job_queue_worker(pool, cfg);
+            job_queue::spawn_job_queue_worker(pool, cfg, mutation_broker);
         });
     }
 
