@@ -101,8 +101,13 @@ async fn list_todos(
     Query(params): Query<TodoListParams>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let archive = params.archive.as_deref().unwrap_or("unarchived");
-    let priority = params.priority.clone();
-    let is_root_only = params.kind.as_deref() == Some("root");
+    // Align with `get-todos-handler.ts`: `ALL` means no filter (iOS always sends status=ALL & priority=ALL).
+    let priority_filter: Option<String> = match params.priority.as_deref() {
+        None | Some("") | Some("ALL") => None,
+        Some(p) => Some(p.to_string()),
+    };
+    let is_root_only = params.kind.as_deref() == Some("root")
+        || params.include_subtodos == Some(false);
     let ticket_id = params.ticket_id.clone();
     let _ = &params.sort;
 
@@ -125,7 +130,12 @@ async fn list_todos(
     let statuses: Vec<String> = params
         .status
         .as_deref()
-        .map(|s| s.split(',').map(|v| v.trim().to_string()).collect())
+        .map(|s| {
+            s.split(',')
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty() && v != "ALL")
+                .collect()
+        })
         .unwrap_or_default();
 
     let mut sql = format!(
@@ -172,7 +182,7 @@ async fn list_todos(
 
     let mut query = sqlx::query(&sql)
         .bind(&assigned_filter)
-        .bind(&priority)
+        .bind(&priority_filter)
         .bind(archive);
     if let Some(ref tid) = ticket_id {
         query = query.bind(tid);

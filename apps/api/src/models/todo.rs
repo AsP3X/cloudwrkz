@@ -125,4 +125,7 @@ pub struct TodoListParams {
     pub limit: Option<i64>,
     /// When set, return only todos linked to this ticket (user must have ticket access).
     pub ticket_id: Option<String>,
+    /// Matches Next.js / iOS: when `false`, only top-level todos (`parent_todo_id IS NULL`).
+    #[serde(rename = "includeSubtodos")]
+    pub include_subtodos: Option<bool>,
 }
