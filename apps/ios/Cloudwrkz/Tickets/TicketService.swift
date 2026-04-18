@@ -133,6 +133,51 @@ enum TicketService {
         return url
     }
 
+    /// GET .../tickets/:id — fetch a single ticket (e.g. opening a global search result).
+    static func fetchTicket(config: ServerConfig, id: String) async -> Result<Ticket, TicketServiceError> {
+        guard let requestURL = ticketURL(config: config, id: id) else {
+            return .failure(.noServerURL)
+        }
+        guard let token = AuthTokenStorage.getToken(), !token.isEmpty else {
+            return .failure(.noToken)
+        }
+        var request = URLRequest(url: requestURL)
+        request.httpMethod = "GET"
+        request.timeoutInterval = timeout
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        AppIdentity.apply(to: &request)
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                return .failure(.serverError(message: "Invalid response"))
+            }
+            switch http.statusCode {
+            case 200:
+                struct SingleTicketResponse: Decodable {
+                    let ticket: Ticket
+                }
+                let decoded = try dateDecoder.decode(SingleTicketResponse.self, from: data)
+                return .success(decoded.ticket)
+            case 401:
+                SessionExpiredNotifier.notify()
+                return .failure(.unauthorized)
+            case 404:
+                return .failure(.serverError(message: "Ticket not found"))
+            case 400...599:
+                let message = (try? JSONDecoder().decode(MessageResponse.self, from: data))?.message
+                    ?? "Server error (\(http.statusCode))"
+                return .failure(.serverError(message: message))
+            default:
+                return .failure(.serverError(message: "Unexpected status \(http.statusCode)"))
+            }
+        } catch {
+            let description = (error as? URLError)?.localizedDescription ?? error.localizedDescription
+            return .failure(.networkError(description: description))
+        }
+    }
+
     /// PATCH .../tickets/:id — archive (archivedAt: current date).
     static func archiveTicket(config: ServerConfig, id: String) async -> Result<Void, TicketServiceError> {
         guard let requestURL = ticketURL(config: config, id: id) else { return .failure(.noServerURL) }

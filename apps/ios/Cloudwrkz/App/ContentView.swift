@@ -305,7 +305,7 @@ struct ContentView: View {
         }
     }
 
-    /// Opens the selected search result: in-app detail for todo/timeentry, Safari for ticket/link/other.
+    /// Opens the selected search result in-app when a native detail exists; otherwise Safari.
     @MainActor
     private func openSearchResult(_ result: SearchResult) async {
         let config = appState.config
@@ -322,6 +322,20 @@ struct ContentView: View {
             switch await TimeTrackingService.fetchTimeEntry(config: config, id: result.id) {
             case .success(let entry):
                 path.append(entry)
+            case .failure:
+                openSearchResultInSafari(result)
+            }
+        case "ticket":
+            switch await TicketService.fetchTicket(config: config, id: result.id) {
+            case .success(let ticket):
+                path.append(ticket)
+            case .failure:
+                openSearchResultInSafari(result)
+            }
+        case "link":
+            switch await LinkService.fetchLink(config: config, id: result.id) {
+            case .success(let link):
+                path.append(link)
             case .failure:
                 openSearchResultInSafari(result)
             }
