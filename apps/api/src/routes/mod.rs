@@ -17,6 +17,7 @@ pub mod search;
 pub mod tickets;
 pub mod time_tracking;
 pub mod todos;
+pub mod users;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -66,6 +67,7 @@ pub fn v1_router(config: &AppConfig) -> Router<AppState> {
                 .layer(crate::auth_governor::auth_rate_limit_layer(config)),
         )
         .merge(me::router())
+        .merge(users::router())
         .merge(mutation_jobs::router())
         .merge(tickets::router())
         .merge(todos::router())

@@ -1,5 +1,4 @@
 pub mod audit_log;
-pub mod collection;
 pub mod link;
 pub mod notification;
 pub mod ticket;

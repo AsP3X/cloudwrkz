@@ -177,6 +177,8 @@ export interface Collection {
   created_at: string;
   updated_at: string;
   link_count: number;
+  /** Present on list/detail from API for ownership checks in the collection filter bar. */
+  owner?: { id: string; name: string | null; email: string };
 }
 
 export interface TimeEntry {

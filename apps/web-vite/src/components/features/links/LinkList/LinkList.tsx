@@ -140,8 +140,10 @@ export const LinkList = ({
       setNewCollectionName("");
       setNewCollectionColor("");
       setCollectionDialogMode("add");
-      api.get<Array<{ id: string; name: string; color: string | null }>>("/collections")
-        .then((cols) => {
+      api
+        .get<{ collections: Array<{ id: string; name: string; color: string | null }> }>("/collections")
+        .then((res) => {
+          const cols = res.collections ?? [];
           setCollections(cols);
           setCollectionDialogMode(cols.length === 0 ? "create" : "add");
         })

@@ -60,6 +60,7 @@ pub const HELP: &str = r#"CloudWrkz API server.
 
 Usage: cloudwrkz-api [OPTIONS]
        cloudwrkz-api diagnostics-token generate
+       cloudwrkz-api migrate-repair
 
 Options:
   -v, --verbose [LEVEL]   Log verbosity: no value or "debug" = full (client_ip, user_agent, etc.); "prod" = minimal (default when -v not set)
@@ -70,6 +71,9 @@ Options:
 Commands:
   diagnostics-token generate   Generate a diagnostics API token (stores hash in DB), print token once.
                                Requires DATABASE_URL; runs migrations. Use with GET /api/v1/health/detailed.
+
+  migrate-repair               Fix sqlx checksum drift in `_sqlx_migrations` after editing migration files
+                               in dev (same as `sqlx migrate repair`). Requires DATABASE_URL; does not re-run SQL.
 
 Environment: LOG_VERBOSITY (debug|prod), LOG_FORMAT (json), RUST_LOG, DATABASE_URL,
              With LOG_VERBOSITY=debug the default filter includes jobs=debug (dispatcher + per-job tracing on target `jobs`).
@@ -353,6 +357,33 @@ pub async fn run() {
         return;
     }
 
+    if args.len() >= 2 && args[1] == "migrate-repair" {
+        let db_url = match std::env::var("DATABASE_URL") {
+            Ok(u) => u,
+            Err(_) => {
+                eprintln!("DATABASE_URL must be set for migrate-repair");
+                std::process::exit(1);
+            }
+        };
+        let pool = match db::create_pool(&db_url).await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("Failed to connect to database: {e}");
+                std::process::exit(1);
+            }
+        };
+        match db::repair_migration_checksums(&pool).await {
+            Ok(n) => {
+                eprintln!("migrate-repair: updated {n} checksum(s) in _sqlx_migrations.");
+                std::process::exit(0);
+            }
+            Err(e) => {
+                eprintln!("migrate-repair failed: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     LOG_VERBOSITY.get_or_init(|| {
         parse_verbosity_from_args().unwrap_or_else(|| {
             match std::env::var("LOG_VERBOSITY").as_deref() {
@@ -389,15 +420,15 @@ pub async fn run() {
     let api_started_at = std::time::Instant::now();
     let state = routes::AppState::new(pool.clone(), config.clone(), api_started_at);
 
-    {
-        let pool = pool.clone();
-        let cfg = config.clone();
-        let mutation_broker = state.mutation_broker.clone();
-        tokio::spawn(async move {
-            db::run_migrations_with_transient_retries(&pool).await;
-            job_queue::spawn_job_queue_worker(pool, cfg, mutation_broker);
-        });
-    }
+    // Apply migrations and start the background job worker before accepting HTTP traffic.
+    // Otherwise clients can enqueue `background_jobs` rows while no worker is running yet,
+    // and mutation polling (POST → 202 → GET /mutation-jobs/:id) appears stuck until the worker catches up.
+    db::run_migrations_with_transient_retries(&pool).await;
+    job_queue::spawn_job_queue_worker(
+        pool.clone(),
+        config.clone(),
+        state.mutation_broker.clone(),
+    );
 
     let app = build_http_app(state);
 

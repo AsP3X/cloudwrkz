@@ -1,12 +1,14 @@
-//! Persisted `background_jobs` workers for ticket / todo / time entry / link mutations (creates, updates, deletes, ticket comments, time breaks and bulk time ops).
+//! Persisted `background_jobs` workers for ticket / todo / time entry / link / collection mutations (creates, updates, deletes, ticket comments, time breaks and bulk time ops).
 //! HTTP handlers enqueue and return HTTP 202; clients poll `GET /mutation-jobs/{id}` (see `routes/mutation_jobs.rs`).
 
 use axum::http::StatusCode;
 use reqwest::Client;
+use serde::Deserialize;
 use serde_json::json;
 use sqlx::{PgPool, Row};
 use tracing::{error, info, warn};
 
+use crate::audit::{self, WriteAuditParams};
 use crate::command_queue::{
     JsonMutationResult, MutationBroker, MutationJobStatusKind, MutationJobStatusResponse,
     apply_mutation_tx_settings,
@@ -21,7 +23,7 @@ use crate::models::link::CreateLinkRequest;
 use crate::models::ticket::{
     TicketCommentCreateRequest, TicketCreateRequest, TicketUpdateRequest,
 };
-use crate::routes::helpers::check_permission_mut_tx;
+use crate::routes::helpers::{check_permission, check_permission_mut_tx};
 use crate::models::time_entry::{AddTimeEntryRequest, CreateTimeEntryRequest};
 use crate::models::todo::{CreateTodoRequest, UpdateTodoRequest};
 
@@ -49,6 +51,7 @@ pub const JOB_TYPE_TIME_ENTRY_BULK_UPDATE: &str = "time_entry_bulk_update";
 pub const JOB_TYPE_TIME_ENTRY_BULK_ARCHIVE: &str = "time_entry_bulk_archive";
 pub const JOB_TYPE_TIME_ENTRY_BULK_DELETE: &str = "time_entry_bulk_delete";
 pub const JOB_TYPE_LINK_CREATE: &str = "link_create";
+pub const JOB_TYPE_COLLECTION_CREATE: &str = "collection_create";
 
 pub const ENTITY_CREATE_POLL_DEADLINE_SECS: u32 = 120;
 
@@ -77,6 +80,7 @@ pub fn is_entity_create_job_type(job_type: &str) -> bool {
             | JOB_TYPE_TIME_ENTRY_BULK_ARCHIVE
             | JOB_TYPE_TIME_ENTRY_BULK_DELETE
             | JOB_TYPE_LINK_CREATE
+            | JOB_TYPE_COLLECTION_CREATE
     )
 }
 
@@ -332,6 +336,9 @@ pub async fn run_entity_create_job(
                 .await
         }
         JOB_TYPE_LINK_CREATE => exec_link_create(pool, http, lock_ms, stmt_ms, payload).await,
+        JOB_TYPE_COLLECTION_CREATE => {
+            exec_collection_create(pool, http, lock_ms, stmt_ms, payload).await
+        }
         _ => JobExecOutcome::Fail(AppError::internal("Unknown entity create job type")),
     };
 
@@ -1655,4 +1662,132 @@ async fn exec_link_create(
     }
 
     JobExecOutcome::Ok(JsonMutationResult::created(json!({ "id": id })))
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateCollectionJobRequest {
+    name: String,
+    description: Option<String>,
+    color: Option<String>,
+}
+
+fn collection_hex_ok(s: &str) -> bool {
+    let b = s.as_bytes();
+    b.len() == 7 && b[0] == b'#' && b[1..].iter().all(|x| x.is_ascii_hexdigit())
+}
+
+async fn exec_collection_create(
+    pool: &PgPool,
+    _http: &Client,
+    lock_ms: u64,
+    stmt_ms: u64,
+    payload: &serde_json::Value,
+) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+    };
+
+    if !check_permission(pool, &user_id, "collections.create").await {
+        return JobExecOutcome::Fail(AppError::forbidden(
+            "You don't have permission to create collections",
+        ));
+    }
+
+    let body_val = match payload.get("request") {
+        Some(v) => v.clone(),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request("Missing request in job payload"))
+        }
+    };
+    let body: CreateCollectionJobRequest = match serde_json::from_value(body_val) {
+        Ok(b) => b,
+        Err(e) => {
+            return JobExecOutcome::Fail(AppError::bad_request(format!(
+                "Invalid collection body: {e}"
+            )))
+        }
+    };
+
+    let name = body.name.trim();
+    if name.is_empty() {
+        return JobExecOutcome::Fail(AppError::bad_request("Collection name is required"));
+    }
+
+    let color = match body.color.as_ref().map(|s| s.trim()) {
+        None | Some("") => None,
+        Some(c) => {
+            if collection_hex_ok(c) {
+                Some(c.to_string())
+            } else {
+                return JobExecOutcome::Fail(AppError::bad_request(
+                    "Invalid color format. Use a hex color code (e.g. #3B82F6)",
+                ));
+            }
+        }
+    };
+
+    let desc = body
+        .description
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+
+    let mut tx = match pool.begin().await {
+        Ok(t) => t,
+        Err(e) => return map_sqlx_ticket(e),
+    };
+    if let Err(e) = apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+
+    let id = new_cuid();
+    let res = sqlx::query(
+        r#"INSERT INTO collections (id, name, description, color, owner_id, archived_at, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, NULL, NOW(), NOW())"#,
+    )
+    .bind(&id)
+    .bind(name)
+    .bind(&desc)
+    .bind(&color)
+    .bind(&user_id)
+    .execute(&mut *tx)
+    .await;
+
+    if let Err(e) = res {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+
+    if let Err(e) = tx.commit().await {
+        return map_sqlx_ticket(e);
+    }
+
+    let ip = payload
+        .get("audit_ip")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let ua = payload
+        .get("audit_user_agent")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    audit::write_audit_log(
+        pool,
+        WriteAuditParams {
+            user_id: Some(user_id.clone()),
+            action: "collections.create".into(),
+            resource_type: Some("collection".into()),
+            resource_id: Some(id.clone()),
+            context: None,
+            ip_address: ip,
+            user_agent: ua,
+        },
+    );
+
+    JobExecOutcome::Ok(JsonMutationResult::created(json!({
+        "id": id,
+        "success": true
+    })))
 }

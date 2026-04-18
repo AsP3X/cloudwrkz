@@ -207,15 +207,18 @@ async function requestWithBase<T>(
     !MUTATION_JOB_POLL_EXCLUDED_PATHS.has(path)
   ) {
     const data = (await response.json()) as MutationQueuedPayload;
-    if (data?.queued && typeof data.job_id === "string") {
+    const jobId = data?.job_id;
+    // Poll when the server returned a job id. Treat missing `queued` like true so proxies or
+    // older clients still follow the mutation-jobs contract.
+    if (typeof jobId === "string" && jobId.length > 0 && data?.queued !== false) {
       log.info("API mutation queued for DB retry", {
         path,
-        jobId: data.job_id,
+        jobId,
       });
       window.dispatchEvent(
         new CustomEvent("cloudwrkz:mutation-queued", {
           detail: {
-            job_id: data.job_id,
+            job_id: jobId,
             message: data.message,
             path,
             retry_deadline_secs: data.retry_deadline_secs ?? 30,
@@ -223,7 +226,7 @@ async function requestWithBase<T>(
         }),
       );
       return pollMutationJobUntilDone<T>(
-        data.job_id,
+        jobId,
         data.retry_deadline_secs ?? 30,
         path,
       );
