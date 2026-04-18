@@ -18,6 +18,15 @@ pub struct WriteAuditParams {
     pub user_agent: Option<String>,
 }
 
+/// Prefer `X-Request-Id` when present; otherwise a fresh UUID (matches trace spans).
+pub fn request_id_from_headers(headers: &HeaderMap) -> String {
+    headers
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
+}
+
 /// Extract client IP from headers (X-Forwarded-For, X-Real-IP, or empty).
 pub fn client_ip_from_headers(headers: &HeaderMap) -> Option<String> {
     if let Some(v) = headers.get("x-forwarded-for") {

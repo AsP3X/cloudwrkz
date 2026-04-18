@@ -16,6 +16,7 @@ import {
 } from "@/components/features/links/LinkDetailLayout";
 import { LinkInformationSidebar } from "@/components/features/links/LinkInformationSidebar";
 import { LinkDetailPageHeader } from "@/components/features/links/LinkDetailPageHeader";
+import { EditLinkDialog } from "@/components/features/links/EditLinkDialog/EditLinkDialog";
 import { RichTextDisplay } from "@/components/features/tickets/RichTextDisplay";
 import { Dialog } from "@/components/ui/Dialog";
 import { LinkMetadataDisplay } from "@/components/features/links/LinkMetadataDisplay";
@@ -30,6 +31,7 @@ export default function LinkDetailPage() {
   const [githubRefreshBusy, setGithubRefreshBusy] = useState(false);
   const [githubRefreshMessage, setGithubRefreshMessage] = useState<string | null>(null);
   const githubPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [editLinkDialogOpen, setEditLinkDialogOpen] = useState(false);
 
   const canViewLinks = can("modules.links.view");
   const canEditBase =
@@ -179,6 +181,24 @@ export default function LinkDetailPage() {
         userTimezone={userTimezone}
         archivedAt={link.archived_at}
         onLinkUpdated={loadLink}
+        onEditClick={canEdit ? () => setEditLinkDialogOpen(true) : undefined}
+      />
+
+      <EditLinkDialog
+        open={editLinkDialogOpen}
+        onOpenChange={setEditLinkDialogOpen}
+        link={
+          editLinkDialogOpen
+            ? {
+                id: link.id,
+                title: link.title,
+                url: link.url,
+                description: link.description,
+                collections: link.collections,
+              }
+            : null
+        }
+        onSuccess={() => void loadLink()}
       />
 
       <LinkDetailLayout

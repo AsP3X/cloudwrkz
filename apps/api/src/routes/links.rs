@@ -14,7 +14,7 @@ use sqlx::Row;
 use crate::auth::extractors::AuthUser;
 use crate::command_queue::{
     JsonMutationResult, MutationHandlerOutput, MutationQueuedResponse, MutationRunContext,
-    apply_mutation_tx_settings, mutation_response, run_mutation_defer,
+    run_mutation_defer,
 };
 use crate::error::AppError;
 use crate::job_queue;
@@ -397,157 +397,51 @@ async fn update_link(
     let route = format!("PUT /links/{id}");
     let ctx = MutationRunContext {
         user_id: user.id.clone(),
-        route,
+        route: route.clone(),
         idempotency_key: idempotency_key_from_headers(&headers),
         body_hash,
     };
-    let id_clone = id.clone();
-    let uid = user.id.clone();
-    let b = body.clone();
-    let shard = format!("link:{id}");
-    let broker = state.mutation_broker.clone();
-    let lock_ms = broker.lock_timeout_ms;
-    let stmt_ms = broker.statement_timeout_ms;
-    let pool = state.pool.clone();
-    let jobs = state.mutation_jobs.clone();
-    let make_arc = Arc::new(tokio::sync::Mutex::new({
-        let id = id_clone.clone();
-        let user_id = uid.clone();
-        let body = b.clone();
-        move || {
-            let id = id.clone();
-            let user_id = user_id.clone();
-            let body = body.clone();
-            move |pool: sqlx::PgPool| async move {
-                let mut tx = pool.begin().await.map_err(AppError::from)?;
-                apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms)
-                    .await
-                    .map_err(AppError::from)?;
-
-                let existing =
-                    sqlx::query("SELECT id, user_id FROM links WHERE id = $1 FOR UPDATE")
-                        .bind(&id)
-                        .fetch_optional(&mut *tx)
-                        .await?
-                        .ok_or_else(|| AppError::not_found("Link not found"))?;
-
-                let owner: String = existing.get("user_id");
-                if owner != user_id {
-                    return Err(AppError::forbidden("Not your link"));
-                }
-
-                if let Some(ref title) = body.title {
-                    sqlx::query("UPDATE links SET title = $1, updated_at = NOW() WHERE id = $2")
-                        .bind(title)
-                        .bind(&id)
-                        .execute(&mut *tx)
-                        .await?;
-                }
-                if let Some(ref url) = body.url {
-                    let normalized = link_preview::normalize_url(url);
-                    sqlx::query(
-                        "UPDATE links SET url = $1, normalized_url = $2, updated_at = NOW() WHERE id = $3",
-                    )
-                    .bind(url)
-                    .bind(&normalized)
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                }
-                if let Some(ref desc) = body.description {
-                    sqlx::query(
-                        "UPDATE links SET description = $1, updated_at = NOW() WHERE id = $2",
-                    )
-                    .bind(desc)
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                }
-                if let Some(ref tags) = body.tags {
-                    sqlx::query("UPDATE links SET tags = $1, updated_at = NOW() WHERE id = $2")
-                        .bind(tags)
-                        .bind(&id)
-                        .execute(&mut *tx)
-                        .await?;
-                }
-                if let Some(is_fav) = body.is_favorite {
-                    sqlx::query(
-                        "UPDATE links SET is_favorite = $1, updated_at = NOW() WHERE id = $2",
-                    )
-                    .bind(is_fav)
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                }
-                if let Some(ref archived) = body.archived_at {
-                    if archived.is_null() {
-                        sqlx::query(
-                            "UPDATE links SET archived_at = NULL, updated_at = NOW() WHERE id = $1",
-                        )
-                        .bind(&id)
-                        .execute(&mut *tx)
-                        .await?;
-                    } else {
-                        sqlx::query(
-                            "UPDATE links SET archived_at = NOW(), updated_at = NOW() WHERE id = $1",
-                        )
-                        .bind(&id)
-                        .execute(&mut *tx)
-                        .await?;
-                    }
-                }
-                if let Some(ref notes) = body.notes {
-                    sqlx::query("UPDATE links SET notes = $1, updated_at = NOW() WHERE id = $2")
-                        .bind(notes)
-                        .bind(&id)
-                        .execute(&mut *tx)
-                        .await?;
-                }
-                if let Some(ref link_type) = body.link_type {
-                    sqlx::query(
-                        "UPDATE links SET link_type = $1::\"LinkType\", updated_at = NOW() WHERE id = $2",
-                    )
-                    .bind(link_type)
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                }
-                if let Some(ref rating) = body.rating {
-                    sqlx::query("UPDATE links SET rating = $1, updated_at = NOW() WHERE id = $2")
-                        .bind(rating)
-                        .bind(&id)
-                        .execute(&mut *tx)
-                        .await?;
-                }
-
-                if let Some(ref collection_ids) = body.collection_ids {
-                    sqlx::query("DELETE FROM link_collections WHERE link_id = $1")
-                        .bind(&id)
-                        .execute(&mut *tx)
-                        .await?;
-                    for cid in collection_ids {
-                        let lc_id = crate::id::new_cuid();
-                        let _ = sqlx::query(
-                "INSERT INTO link_collections (id, link_id, collection_id, created_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT DO NOTHING",
-            )
-                        .bind(&lc_id)
-                        .bind(&id)
-                        .bind(cid)
-                        .execute(&mut *tx)
-                        .await;
-                    }
-                }
-
-                tx.commit().await.map_err(AppError::from)?;
-                Ok(JsonMutationResult::ok(serde_json::json!({
-                    "success": true,
-                    "message": "Link updated"
-                })))
+    if let Some(ref ik) = ctx.idempotency_key {
+        if !ik.trim().is_empty() {
+            if let Some(cached) = state
+                .mutation_broker
+                .idempotency
+                .get(&ctx.user_id, ik, &ctx.route, ctx.body_hash)
+                .await
+            {
+                return Ok((cached.status, Json(cached.body)).into_response());
             }
         }
-    }));
-    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
-    Ok(mutation_response(out))
+    }
+
+    let request_json = serde_json::to_value(&body)
+        .map_err(|e| AppError::internal(format!("serialize link update: {e}")))?;
+    let job_payload = json!({
+        "user_id": user.id,
+        "link_id": id,
+        "route": route,
+        "body_hash": ctx.body_hash,
+        "idempotency_key": ctx.idempotency_key,
+        "request": request_json,
+    });
+    let job_id = entity_creates::enqueue_entity_create_job(
+        &state.pool,
+        entity_creates::JOB_TYPE_LINK_UPDATE,
+        &user.id,
+        job_payload,
+    )
+    .await
+    .map_err(AppError::from)?;
+
+    let q = MutationQueuedResponse {
+        message: "Link update is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed."
+            .into(),
+        queued: true,
+        job_id,
+        retry_deadline_secs: entity_creates::ENTITY_CREATE_POLL_DEADLINE_SECS,
+        job_type: Some(entity_creates::JOB_TYPE_LINK_UPDATE.to_string()),
+    };
+    Ok((StatusCode::ACCEPTED, Json(q)).into_response())
 }
 
 async fn delete_link(
@@ -556,58 +450,51 @@ async fn delete_link(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
+    let route = format!("DELETE /links/{id}");
     let ctx = MutationRunContext {
         user_id: user.id.clone(),
-        route: format!("DELETE /links/{id}"),
+        route: route.clone(),
         idempotency_key: idempotency_key_from_headers(&headers),
         body_hash: 0,
     };
-    let id_clone = id.clone();
-    let uid = user.id.clone();
-    let shard = format!("link:{id}");
-    let broker = state.mutation_broker.clone();
-    let lock_ms = broker.lock_timeout_ms;
-    let stmt_ms = broker.statement_timeout_ms;
-    let pool = state.pool.clone();
-    let jobs = state.mutation_jobs.clone();
-    let make_arc = Arc::new(tokio::sync::Mutex::new({
-        let id = id_clone.clone();
-        let user_id = uid.clone();
-        move || {
-            let id = id.clone();
-            let user_id = user_id.clone();
-            move |pool: sqlx::PgPool| async move {
-                let mut tx = pool.begin().await.map_err(AppError::from)?;
-                apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms)
-                    .await
-                    .map_err(AppError::from)?;
-
-                let existing =
-                    sqlx::query("SELECT id, user_id FROM links WHERE id = $1 FOR UPDATE")
-                        .bind(&id)
-                        .fetch_optional(&mut *tx)
-                        .await?
-                        .ok_or_else(|| AppError::not_found("Link not found"))?;
-
-                let owner: String = existing.get("user_id");
-                if owner != user_id {
-                    return Err(AppError::forbidden("Not your link"));
-                }
-
-                sqlx::query("DELETE FROM links WHERE id = $1")
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                tx.commit().await.map_err(AppError::from)?;
-                Ok(JsonMutationResult::ok(serde_json::json!({
-                    "success": true,
-                    "message": "Link deleted"
-                })))
+    if let Some(ref ik) = ctx.idempotency_key {
+        if !ik.trim().is_empty() {
+            if let Some(cached) = state
+                .mutation_broker
+                .idempotency
+                .get(&ctx.user_id, ik, &ctx.route, ctx.body_hash)
+                .await
+            {
+                return Ok((cached.status, Json(cached.body)).into_response());
             }
         }
-    }));
-    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
-    Ok(mutation_response(out))
+    }
+
+    let job_payload = json!({
+        "user_id": user.id,
+        "link_id": id,
+        "route": route,
+        "body_hash": ctx.body_hash,
+        "idempotency_key": ctx.idempotency_key,
+    });
+    let job_id = entity_creates::enqueue_entity_create_job(
+        &state.pool,
+        entity_creates::JOB_TYPE_LINK_DELETE,
+        &user.id,
+        job_payload,
+    )
+    .await
+    .map_err(AppError::from)?;
+
+    let q = MutationQueuedResponse {
+        message: "Link deletion is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed."
+            .into(),
+        queued: true,
+        job_id,
+        retry_deadline_secs: entity_creates::ENTITY_CREATE_POLL_DEADLINE_SECS,
+        job_type: Some(entity_creates::JOB_TYPE_LINK_DELETE.to_string()),
+    };
+    Ok((StatusCode::ACCEPTED, Json(q)).into_response())
 }
 
 async fn extract_metadata(

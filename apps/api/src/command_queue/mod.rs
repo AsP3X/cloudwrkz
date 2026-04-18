@@ -8,7 +8,7 @@ pub use broker::{JsonMutationResult, MutationBroker, MutationRunContext};
 pub use idempotency::IdempotencyStore;
 pub use mutation_jobs::{
     MutationHandlerOutput, MutationJobStatusKind, MutationJobStatusResponse, MutationJobs,
-    MutationQueuedResponse, mutation_response, run_mutation_defer,
+    MutationQueuedResponse, run_mutation_defer,
 };
 
 /// `SET LOCAL` for queued write transactions: lock wait + statement cap (session ends at COMMIT).

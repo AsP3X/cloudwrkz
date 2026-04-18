@@ -1,6 +1,7 @@
 //! CloudWrkz HTTP API — shared by the `cloudwrkz-api` binary and integration tests.
 
 mod audit;
+mod request_tracking;
 pub mod auth;
 mod auth_governor;
 mod command_queue;
@@ -31,6 +32,7 @@ pub fn spawn_background_job_worker(
 use axum::Router;
 use axum::body::Body;
 use axum::http::Method;
+use axum::middleware;
 use axum::http::header::{self, HeaderName, HeaderValue};
 use std::net::SocketAddr;
 use std::sync::OnceLock;
@@ -84,7 +86,7 @@ Environment: LOG_VERBOSITY (debug|prod), LOG_FORMAT (json), RUST_LOG, DATABASE_U
              MUTATION_QUEUE_CAPACITY, IDEMPOTENCY_MAX_ENTRIES, IDEMPOTENCY_TTL_SECS,
              (HTTP 202 + GET /api/v1/mutation-jobs/{job_id}: transient DB retries, and async creates for tickets/todos/time entries/links via background_jobs.)
              DATABASE_POOL_ACQUIRE_TIMEOUT_SECS, DATABASE_POOL_MAX_CONNECTIONS,
-             DATABASE_MIGRATE_RETRY_MAX_SECS, etc.
+             DATABASE_MIGRATE_RETRY_MAX_SECS, HTTP_REQUEST_LOG_ENABLED (true|false, default true), etc.
              GITHUB_TOKEN or GITHUB_API_TOKEN (optional): authenticated GitHub REST (higher rate limits; no in-process hourly cap).
              GITHUB_ANONYMOUS_MAX_REQUESTS_PER_HOUR (default 60): rolling-hour cap on GitHub REST GETs for this process when no token is set (GitHub allows 60/hour per IP unauthenticated). Jobs may wait inside a run until slots free; no fixed spacing between requests.
              GitHub metadata jobs: dispatcher polls ~400ms and runs jobs concurrently up to JOB_QUEUE_GITHUB_MAX_CONCURRENT.
@@ -165,12 +167,7 @@ fn init_logging() {
 
 /// Builds a span for each HTTP request. Prod: request_id, method, uri (path). Debug: + client_ip, path_and_query, user_agent.
 fn make_request_span(request: &axum::http::Request<Body>) -> tracing::Span {
-    let request_id = request
-        .headers()
-        .get("x-request-id")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let request_id = crate::audit::request_id_from_headers(request.headers());
     let path = request.uri().path();
     let path_and_query = request
         .uri()
@@ -254,6 +251,7 @@ fn build_cors(config: &AppConfig) -> CorsLayer {
 pub fn build_http_app(state: AppState) -> Router {
     let cors = build_cors(&state.config);
     let max_body = state.config.max_body_size;
+    let request_tracking_state = state.clone();
     Router::new()
         .merge(routes::health::router())
         .nest("/api/v1", routes::v1_router(&state.config))
@@ -284,6 +282,10 @@ pub fn build_http_app(state: AppState) -> Router {
                 .on_response(ApiOnResponse),
         )
         .layer(tower_http::limit::RequestBodyLimitLayer::new(max_body))
+        .layer(middleware::from_fn_with_state(
+            request_tracking_state,
+            request_tracking::middleware,
+        ))
 }
 
 async fn shutdown_signal() {

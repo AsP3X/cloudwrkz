@@ -7,6 +7,11 @@ export interface DialogProps extends React.HTMLAttributes<HTMLDivElement> {
   onOpenChange?: (open: boolean) => void;
   title?: string;
   description?: string;
+  /**
+   * Use when opening a second dialog on top of another (e.g. picker inside edit).
+   * Raises backdrop + panel z-index so the overlay stacks above the parent dialog.
+   */
+  nested?: boolean;
 }
 
 const FOCUSABLE_SELECTOR =
@@ -25,6 +30,7 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
       title,
       description,
       className,
+      nested = false,
       ...props
     },
     ref
@@ -112,14 +118,20 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
         {/* Backdrop */}
         <div
           role="presentation"
-          className="fixed inset-0 bg-black/40 animate-dialog-backdrop z-[40]"
+          className={cn(
+            "fixed inset-0 bg-black/40 animate-dialog-backdrop",
+            nested ? "z-[100]" : "z-[40]"
+          )}
           onClick={() => onOpenChange?.(false)}
         />
 
         {/* Dialog */}
         <div
           role="presentation"
-          className="fixed inset-0 flex items-center justify-center px-4 py-4 sm:px-6 sm:py-6 overflow-x-hidden sm:overflow-x-auto z-50"
+          className={cn(
+            "fixed inset-0 flex items-center justify-center px-4 py-4 sm:px-6 sm:py-6 overflow-x-hidden sm:overflow-x-auto",
+            nested ? "z-[110]" : "z-50"
+          )}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               onOpenChange?.(false);

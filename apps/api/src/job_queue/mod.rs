@@ -113,7 +113,11 @@ fn policies_from_config(config: &AppConfig) -> HashMap<String, JobTypePolicy> {
         entity_creates::JOB_TYPE_TIME_ENTRY_BULK_ARCHIVE,
         entity_creates::JOB_TYPE_TIME_ENTRY_BULK_DELETE,
         entity_creates::JOB_TYPE_LINK_CREATE,
+        entity_creates::JOB_TYPE_LINK_UPDATE,
+        entity_creates::JOB_TYPE_LINK_DELETE,
         entity_creates::JOB_TYPE_COLLECTION_CREATE,
+        entity_creates::JOB_TYPE_COLLECTION_UPDATE,
+        entity_creates::JOB_TYPE_COLLECTION_DELETE,
     ] {
         m.insert(
             t.to_string(),
@@ -267,7 +271,11 @@ async fn run_one_job(
         | entity_creates::JOB_TYPE_TIME_ENTRY_BULK_ARCHIVE
         | entity_creates::JOB_TYPE_TIME_ENTRY_BULK_DELETE
         | entity_creates::JOB_TYPE_LINK_CREATE
-        | entity_creates::JOB_TYPE_COLLECTION_CREATE => {
+        | entity_creates::JOB_TYPE_LINK_UPDATE
+        | entity_creates::JOB_TYPE_LINK_DELETE
+        | entity_creates::JOB_TYPE_COLLECTION_CREATE
+        | entity_creates::JOB_TYPE_COLLECTION_UPDATE
+        | entity_creates::JOB_TYPE_COLLECTION_DELETE => {
             entity_creates::run_entity_create_job(
                 pool,
                 client,

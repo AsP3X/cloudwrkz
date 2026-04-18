@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::Row;
 
-use crate::audit::{self, WriteAuditParams};
+use crate::audit;
 use crate::auth::extractors::AuthUser;
 use crate::command_queue::{MutationQueuedResponse, MutationRunContext};
 use crate::error::AppError;
@@ -231,7 +231,7 @@ async fn create_collection(
     Ok((StatusCode::ACCEPTED, Json(q)).into_response())
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct UpdateCollectionBody {
     name: Option<String>,
     description: Option<String>,
@@ -244,7 +244,7 @@ async fn update_collection(
     Path(id): Path<String>,
     headers: HeaderMap,
     Json(body): Json<UpdateCollectionBody>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Response, AppError> {
     if !check_permission(&state.pool, &user.id, "collections.update").await {
         return Err(AppError::forbidden(
             "You don't have permission to update collections",
@@ -268,68 +268,71 @@ async fn update_collection(
         }
     }
 
-    let color_val: Option<Option<String>> = match &body.color {
-        None => None,
-        Some(s) if s.trim().is_empty() => Some(None),
-        Some(c) => {
-            let t = c.trim();
-            if is_hex_color(t) {
-                Some(Some(t.to_string()))
-            } else {
-                return Err(AppError::bad_request(
-                    "Invalid color format. Use a hex color code (e.g. #3B82F6)",
-                ));
+    if let Some(ref c) = body.color {
+        let t = c.trim();
+        if !t.is_empty() && !is_hex_color(t) {
+            return Err(AppError::bad_request(
+                "Invalid color format. Use a hex color code (e.g. #3B82F6)",
+            ));
+        }
+    }
+
+    let body_hash = hash_json_for_idempotency(&body);
+    let route = format!("PUT /collections/{id}");
+    let ctx = MutationRunContext {
+        user_id: user.id.clone(),
+        route: route.clone(),
+        idempotency_key: idempotency_key_from_headers(&headers),
+        body_hash,
+    };
+    if let Some(ref ik) = ctx.idempotency_key {
+        if !ik.trim().is_empty() {
+            if let Some(cached) = state
+                .mutation_broker
+                .idempotency
+                .get(&ctx.user_id, ik, &ctx.route, ctx.body_hash)
+                .await
+            {
+                return Ok((cached.status, Json(cached.body)).into_response());
             }
         }
-    };
-
-    if let Some(ref n) = body.name {
-        sqlx::query("UPDATE collections SET name = $1, updated_at = NOW() WHERE id = $2")
-            .bind(n.trim())
-            .bind(&id)
-            .execute(&state.pool)
-            .await?;
-    }
-    if body.description.is_some() {
-        let d = body
-            .description
-            .as_ref()
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .map(|s| s.to_string());
-        sqlx::query("UPDATE collections SET description = $1, updated_at = NOW() WHERE id = $2")
-            .bind(&d)
-            .bind(&id)
-            .execute(&state.pool)
-            .await?;
-    }
-    if let Some(cv) = color_val {
-        sqlx::query("UPDATE collections SET color = $1, updated_at = NOW() WHERE id = $2")
-            .bind(&cv)
-            .bind(&id)
-            .execute(&state.pool)
-            .await?;
     }
 
-    let ip = audit::client_ip_from_headers(&headers);
-    let ua = headers
+    let request_json = serde_json::to_value(&body)
+        .map_err(|e| AppError::internal(format!("serialize collection update: {e}")))?;
+    let audit_ip = audit::client_ip_from_headers(&headers);
+    let audit_ua = headers
         .get(axum::http::header::USER_AGENT)
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
-    audit::write_audit_log(
+    let job_payload = json!({
+        "user_id": user.id,
+        "collection_id": id,
+        "route": route,
+        "body_hash": ctx.body_hash,
+        "idempotency_key": ctx.idempotency_key,
+        "request": request_json,
+        "audit_ip": audit_ip,
+        "audit_user_agent": audit_ua,
+    });
+    let job_id = entity_creates::enqueue_entity_create_job(
         &state.pool,
-        WriteAuditParams {
-            user_id: Some(user.id.clone()),
-            action: "collections.update".into(),
-            resource_type: Some("collection".into()),
-            resource_id: Some(id.clone()),
-            context: None,
-            ip_address: ip,
-            user_agent: ua,
-        },
-    );
+        entity_creates::JOB_TYPE_COLLECTION_UPDATE,
+        &user.id,
+        job_payload,
+    )
+    .await
+    .map_err(AppError::from)?;
 
-    Ok(Json(json!({ "success": true })))
+    let q = MutationQueuedResponse {
+        message: "Collection update is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed."
+            .into(),
+        queued: true,
+        job_id,
+        retry_deadline_secs: entity_creates::ENTITY_CREATE_POLL_DEADLINE_SECS,
+        job_type: Some(entity_creates::JOB_TYPE_COLLECTION_UPDATE.to_string()),
+    };
+    Ok((StatusCode::ACCEPTED, Json(q)).into_response())
 }
 
 async fn delete_collection(
@@ -337,7 +340,7 @@ async fn delete_collection(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
     headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Response, AppError> {
     if !check_permission(&state.pool, &user.id, "collections.delete").await {
         return Err(AppError::forbidden(
             "You don't have permission to delete collections",
@@ -349,30 +352,58 @@ async fn delete_collection(
         return Err(AppError::forbidden("Only the collection owner can delete it"));
     }
 
-    sqlx::query("DELETE FROM collections WHERE id = $1")
-        .bind(&id)
-        .execute(&state.pool)
-        .await?;
+    let route = format!("DELETE /collections/{id}");
+    let ctx = MutationRunContext {
+        user_id: user.id.clone(),
+        route: route.clone(),
+        idempotency_key: idempotency_key_from_headers(&headers),
+        body_hash: 0,
+    };
+    if let Some(ref ik) = ctx.idempotency_key {
+        if !ik.trim().is_empty() {
+            if let Some(cached) = state
+                .mutation_broker
+                .idempotency
+                .get(&ctx.user_id, ik, &ctx.route, ctx.body_hash)
+                .await
+            {
+                return Ok((cached.status, Json(cached.body)).into_response());
+            }
+        }
+    }
 
-    let ip = audit::client_ip_from_headers(&headers);
-    let ua = headers
+    let audit_ip = audit::client_ip_from_headers(&headers);
+    let audit_ua = headers
         .get(axum::http::header::USER_AGENT)
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
-    audit::write_audit_log(
+    let job_payload = json!({
+        "user_id": user.id,
+        "collection_id": id,
+        "route": route,
+        "body_hash": ctx.body_hash,
+        "idempotency_key": ctx.idempotency_key,
+        "audit_ip": audit_ip,
+        "audit_user_agent": audit_ua,
+    });
+    let job_id = entity_creates::enqueue_entity_create_job(
         &state.pool,
-        WriteAuditParams {
-            user_id: Some(user.id.clone()),
-            action: "collections.delete".into(),
-            resource_type: Some("collection".into()),
-            resource_id: Some(id),
-            context: None,
-            ip_address: ip,
-            user_agent: ua,
-        },
-    );
+        entity_creates::JOB_TYPE_COLLECTION_DELETE,
+        &user.id,
+        job_payload,
+    )
+    .await
+    .map_err(AppError::from)?;
 
-    Ok(Json(json!({ "success": true })))
+    let q = MutationQueuedResponse {
+        message: "Collection deletion is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed."
+            .into(),
+        queued: true,
+        job_id,
+        retry_deadline_secs: entity_creates::ENTITY_CREATE_POLL_DEADLINE_SECS,
+        job_type: Some(entity_creates::JOB_TYPE_COLLECTION_DELETE.to_string()),
+    };
+    Ok((StatusCode::ACCEPTED, Json(q)).into_response())
 }
 
 async fn leave_collection(

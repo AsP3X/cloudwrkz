@@ -54,6 +54,8 @@ pub struct AppConfig {
     pub job_queue_github_min_start_interval_secs: Option<u64>,
     /// Public web app origin for QR payloads (e.g. `https://app.example.com`). If unset, `Host` / `X-Forwarded-*` from the API request is used (may point at the API host).
     pub public_web_app_url: Option<String>,
+    /// When false, skip inserts into `http_request_logs` (useful for noisy tests).
+    pub http_request_log_enabled: bool,
 }
 
 impl AppConfig {
@@ -158,6 +160,17 @@ impl AppConfig {
                 .ok()
                 .map(|s| s.trim().trim_end_matches('/').to_string())
                 .filter(|s| !s.is_empty()),
+            http_request_log_enabled: env::var("HTTP_REQUEST_LOG_ENABLED")
+                .ok()
+                .map(|s| {
+                    let t = s.trim();
+                    if t.is_empty() {
+                        return true;
+                    }
+                    let t = t.to_ascii_lowercase();
+                    !(t == "0" || t == "false" || t == "no")
+                })
+                .unwrap_or(true),
         }
     }
 

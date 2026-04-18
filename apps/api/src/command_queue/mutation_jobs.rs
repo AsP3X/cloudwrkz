@@ -6,7 +6,6 @@ use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use axum::http::StatusCode;
 use serde::Serialize;
 use sqlx::PgPool;
 use tokio::sync::Mutex as AsyncMutex;
@@ -248,13 +247,5 @@ async fn mutation_db_retry_loop<FMaker, F, Fut>(
                 break;
             }
         }
-    }
-}
-
-pub fn mutation_response(out: MutationHandlerOutput) -> axum::response::Response {
-    use axum::response::IntoResponse;
-    match out {
-        MutationHandlerOutput::Ready(jr) => (jr.status, axum::Json(jr.body)).into_response(),
-        MutationHandlerOutput::Queued(q) => (StatusCode::ACCEPTED, axum::Json(q)).into_response(),
     }
 }

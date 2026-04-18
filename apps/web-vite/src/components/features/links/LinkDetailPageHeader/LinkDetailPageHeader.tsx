@@ -20,6 +20,8 @@ interface LinkDetailPageHeaderProps {
   userTimezone: string;
   archivedAt: string | null;
   onLinkUpdated?: () => void;
+  /** When set, Edit buttons open this instead of navigating to the edit page. */
+  onEditClick?: () => void;
 }
 
 export function LinkDetailPageHeader({
@@ -35,6 +37,7 @@ export function LinkDetailPageHeader({
   userTimezone,
   archivedAt,
   onLinkUpdated,
+  onEditClick,
 }: LinkDetailPageHeaderProps) {
   const navigate = useNavigate();
   const { isOpen: sidebarOpen } = useLinkDetailSidebar();
@@ -93,9 +96,15 @@ export function LinkDetailPageHeader({
         </Link>
 
         <div className="flex flex-wrap items-center justify-end gap-2 sm:hidden min-w-0 w-full">
-          {canEdit && (
-            <Link to={`${ROUTES.DASHBOARD}/links/${linkId}/edit`} className="min-w-0">
-              <Button variant="primary" size="sm" className="min-h-[44px] sm:min-h-0 touch-manipulation w-full sm:w-auto">
+          {canEdit &&
+            (onEditClick ? (
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                className="min-h-[44px] sm:min-h-0 touch-manipulation w-full sm:w-auto"
+                onClick={() => onEditClick()}
+              >
                 <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path
                     strokeLinecap="round"
@@ -106,8 +115,21 @@ export function LinkDetailPageHeader({
                 </svg>
                 Edit
               </Button>
-            </Link>
-          )}
+            ) : (
+              <Link to={`${ROUTES.DASHBOARD}/links/${linkId}/edit`} className="min-w-0">
+                <Button variant="primary" size="sm" className="min-h-[44px] sm:min-h-0 touch-manipulation w-full sm:w-auto">
+                  <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                    />
+                  </svg>
+                  Edit
+                </Button>
+              </Link>
+            ))}
           {canDelete && (
             <Button
               variant="danger"
@@ -161,9 +183,9 @@ export function LinkDetailPageHeader({
             sidebarOpen ? "lg:mr-[360px]" : "lg:mr-12"
           )}
         >
-          {canEdit && (
-            <Link to={`${ROUTES.DASHBOARD}/links/${linkId}/edit`}>
-              <Button variant="primary" size="sm">
+          {canEdit &&
+            (onEditClick ? (
+              <Button type="button" variant="primary" size="sm" onClick={() => onEditClick()}>
                 <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path
                     strokeLinecap="round"
@@ -174,8 +196,21 @@ export function LinkDetailPageHeader({
                 </svg>
                 Edit Link
               </Button>
-            </Link>
-          )}
+            ) : (
+              <Link to={`${ROUTES.DASHBOARD}/links/${linkId}/edit`}>
+                <Button variant="primary" size="sm">
+                  <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                    />
+                  </svg>
+                  Edit Link
+                </Button>
+              </Link>
+            ))}
           {canDelete && (
             <Button variant="danger" size="sm" onClick={() => setDeleteDialogOpen(true)}>
               <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">

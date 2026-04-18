@@ -19,7 +19,7 @@ use crate::error::AppError;
 use crate::github_metadata;
 use crate::id::new_cuid;
 use crate::link_preview::{extract_metadata_from_url, normalize_url};
-use crate::models::link::CreateLinkRequest;
+use crate::models::link::{CreateLinkRequest, UpdateLinkRequest};
 use crate::models::ticket::{
     TicketCommentCreateRequest, TicketCreateRequest, TicketUpdateRequest,
 };
@@ -51,7 +51,11 @@ pub const JOB_TYPE_TIME_ENTRY_BULK_UPDATE: &str = "time_entry_bulk_update";
 pub const JOB_TYPE_TIME_ENTRY_BULK_ARCHIVE: &str = "time_entry_bulk_archive";
 pub const JOB_TYPE_TIME_ENTRY_BULK_DELETE: &str = "time_entry_bulk_delete";
 pub const JOB_TYPE_LINK_CREATE: &str = "link_create";
+pub const JOB_TYPE_LINK_UPDATE: &str = "link_update";
+pub const JOB_TYPE_LINK_DELETE: &str = "link_delete";
 pub const JOB_TYPE_COLLECTION_CREATE: &str = "collection_create";
+pub const JOB_TYPE_COLLECTION_UPDATE: &str = "collection_update";
+pub const JOB_TYPE_COLLECTION_DELETE: &str = "collection_delete";
 
 pub const ENTITY_CREATE_POLL_DEADLINE_SECS: u32 = 120;
 
@@ -80,7 +84,11 @@ pub fn is_entity_create_job_type(job_type: &str) -> bool {
             | JOB_TYPE_TIME_ENTRY_BULK_ARCHIVE
             | JOB_TYPE_TIME_ENTRY_BULK_DELETE
             | JOB_TYPE_LINK_CREATE
+            | JOB_TYPE_LINK_UPDATE
+            | JOB_TYPE_LINK_DELETE
             | JOB_TYPE_COLLECTION_CREATE
+            | JOB_TYPE_COLLECTION_UPDATE
+            | JOB_TYPE_COLLECTION_DELETE
     )
 }
 
@@ -336,8 +344,16 @@ pub async fn run_entity_create_job(
                 .await
         }
         JOB_TYPE_LINK_CREATE => exec_link_create(pool, http, lock_ms, stmt_ms, payload).await,
+        JOB_TYPE_LINK_UPDATE => exec_link_update(pool, http, lock_ms, stmt_ms, payload).await,
+        JOB_TYPE_LINK_DELETE => exec_link_delete(pool, http, lock_ms, stmt_ms, payload).await,
         JOB_TYPE_COLLECTION_CREATE => {
             exec_collection_create(pool, http, lock_ms, stmt_ms, payload).await
+        }
+        JOB_TYPE_COLLECTION_UPDATE => {
+            exec_collection_update(pool, http, lock_ms, stmt_ms, payload).await
+        }
+        JOB_TYPE_COLLECTION_DELETE => {
+            exec_collection_delete(pool, http, lock_ms, stmt_ms, payload).await
         }
         _ => JobExecOutcome::Fail(AppError::internal("Unknown entity create job type")),
     };
@@ -1789,5 +1805,585 @@ async fn exec_collection_create(
     JobExecOutcome::Ok(JsonMutationResult::created(json!({
         "id": id,
         "success": true
+    })))
+}
+
+async fn collection_access_for_job(
+    pool: &PgPool,
+    user_id: &str,
+    collection_id: &str,
+) -> Result<(String, bool), AppError> {
+    let row = sqlx::query(
+        r#"SELECT c.owner_id,
+                  EXISTS(SELECT 1 FROM collection_members cm WHERE cm.collection_id = c.id AND cm.user_id = $2) as is_member
+           FROM collections c
+           WHERE c.id = $1 AND c.archived_at IS NULL"#,
+    )
+    .bind(collection_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::from)?;
+
+    let Some(row) = row else {
+        return Err(AppError::not_found("Collection not found"));
+    };
+
+    let owner_id: String = row.get("owner_id");
+    let is_member: bool = row.get("is_member");
+    let is_owner = owner_id == user_id;
+    if !is_owner && !is_member {
+        return Err(AppError::forbidden(
+            "You don't have access to this collection",
+        ));
+    }
+    Ok((owner_id, is_owner))
+}
+
+async fn collection_is_editor_or_owner(
+    pool: &PgPool,
+    user_id: &str,
+    collection_id: &str,
+    owner_id: &str,
+) -> Result<bool, AppError> {
+    if owner_id == user_id {
+        return Ok(true);
+    }
+    let role: Option<String> = sqlx::query_scalar(
+        r#"SELECT role::text FROM collection_members
+           WHERE collection_id = $1 AND user_id = $2"#,
+    )
+    .bind(collection_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::from)?;
+    Ok(matches!(role.as_deref(), Some("EDITOR")))
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateCollectionJobRequest {
+    name: Option<String>,
+    description: Option<String>,
+    color: Option<String>,
+}
+
+async fn exec_collection_update(
+    pool: &PgPool,
+    _http: &Client,
+    lock_ms: u64,
+    stmt_ms: u64,
+    payload: &serde_json::Value,
+) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+    };
+    let collection_id = match payload.get("collection_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request(
+                "Missing collection_id in job payload",
+            ))
+        }
+    };
+    if !check_permission(pool, &user_id, "collections.update").await {
+        return JobExecOutcome::Fail(AppError::forbidden(
+            "You don't have permission to update collections",
+        ));
+    }
+    let body_val = match payload.get("request") {
+        Some(v) => v.clone(),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request("Missing request in job payload"))
+        }
+    };
+    let body: UpdateCollectionJobRequest = match serde_json::from_value(body_val) {
+        Ok(b) => b,
+        Err(e) => {
+            return JobExecOutcome::Fail(AppError::bad_request(format!(
+                "Invalid collection update body: {e}"
+            )))
+        }
+    };
+
+    if body.name.is_none() && body.description.is_none() && body.color.is_none() {
+        return JobExecOutcome::Fail(AppError::bad_request("No fields to update"));
+    }
+    if let Some(ref n) = body.name {
+        if n.trim().is_empty() {
+            return JobExecOutcome::Fail(AppError::bad_request("Collection name cannot be empty"));
+        }
+    }
+    let color_val: Option<Option<String>> = match &body.color {
+        None => None,
+        Some(s) if s.trim().is_empty() => Some(None),
+        Some(c) => {
+            let t = c.trim();
+            if collection_hex_ok(t) {
+                Some(Some(t.to_string()))
+            } else {
+                return JobExecOutcome::Fail(AppError::bad_request(
+                    "Invalid color format. Use a hex color code (e.g. #3B82F6)",
+                ));
+            }
+        }
+    };
+
+    let (owner_id, _) = match collection_access_for_job(pool, &user_id, &collection_id).await {
+        Ok(x) => x,
+        Err(e) => return JobExecOutcome::Fail(e),
+    };
+    match collection_is_editor_or_owner(pool, &user_id, &collection_id, &owner_id).await {
+        Ok(true) => {}
+        Ok(false) => {
+            return JobExecOutcome::Fail(AppError::forbidden(
+                "You don't have permission to update this collection",
+            ));
+        }
+        Err(e) => return JobExecOutcome::Fail(e),
+    }
+
+    let mut tx = match pool.begin().await {
+        Ok(t) => t,
+        Err(e) => return map_sqlx_ticket(e),
+    };
+    if let Err(e) = apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+
+    if let Some(ref n) = body.name {
+        if let Err(e) =
+            sqlx::query("UPDATE collections SET name = $1, updated_at = NOW() WHERE id = $2")
+                .bind(n.trim())
+                .bind(&collection_id)
+                .execute(&mut *tx)
+                .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if body.description.is_some() {
+        let d = body
+            .description
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+        if let Err(e) =
+            sqlx::query("UPDATE collections SET description = $1, updated_at = NOW() WHERE id = $2")
+                .bind(&d)
+                .bind(&collection_id)
+                .execute(&mut *tx)
+                .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(cv) = color_val {
+        if let Err(e) =
+            sqlx::query("UPDATE collections SET color = $1, updated_at = NOW() WHERE id = $2")
+                .bind(&cv)
+                .bind(&collection_id)
+                .execute(&mut *tx)
+                .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+
+    if let Err(e) = tx.commit().await {
+        return map_sqlx_ticket(e);
+    }
+
+    let ip = payload
+        .get("audit_ip")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let ua = payload
+        .get("audit_user_agent")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    audit::write_audit_log(
+        pool,
+        WriteAuditParams {
+            user_id: Some(user_id.clone()),
+            action: "collections.update".into(),
+            resource_type: Some("collection".into()),
+            resource_id: Some(collection_id.clone()),
+            context: None,
+            ip_address: ip,
+            user_agent: ua,
+        },
+    );
+
+    JobExecOutcome::Ok(JsonMutationResult::ok(json!({ "success": true })))
+}
+
+async fn exec_collection_delete(
+    pool: &PgPool,
+    _http: &Client,
+    lock_ms: u64,
+    stmt_ms: u64,
+    payload: &serde_json::Value,
+) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+    };
+    let collection_id = match payload.get("collection_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request(
+                "Missing collection_id in job payload",
+            ))
+        }
+    };
+    if !check_permission(pool, &user_id, "collections.delete").await {
+        return JobExecOutcome::Fail(AppError::forbidden(
+            "You don't have permission to delete collections",
+        ));
+    }
+    let (_owner_id, is_owner) = match collection_access_for_job(pool, &user_id, &collection_id).await
+    {
+        Ok(x) => x,
+        Err(e) => return JobExecOutcome::Fail(e),
+    };
+    if !is_owner {
+        return JobExecOutcome::Fail(AppError::forbidden(
+            "Only the collection owner can delete it",
+        ));
+    }
+
+    let mut tx = match pool.begin().await {
+        Ok(t) => t,
+        Err(e) => return map_sqlx_ticket(e),
+    };
+    if let Err(e) = apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+    if let Err(e) = sqlx::query("DELETE FROM collections WHERE id = $1")
+        .bind(&collection_id)
+        .execute(&mut *tx)
+        .await
+    {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+    if let Err(e) = tx.commit().await {
+        return map_sqlx_ticket(e);
+    }
+
+    let ip = payload
+        .get("audit_ip")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let ua = payload
+        .get("audit_user_agent")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    audit::write_audit_log(
+        pool,
+        WriteAuditParams {
+            user_id: Some(user_id.clone()),
+            action: "collections.delete".into(),
+            resource_type: Some("collection".into()),
+            resource_id: Some(collection_id),
+            context: None,
+            ip_address: ip,
+            user_agent: ua,
+        },
+    );
+
+    JobExecOutcome::Ok(JsonMutationResult::ok(json!({ "success": true })))
+}
+
+async fn exec_link_update(
+    pool: &PgPool,
+    _http: &Client,
+    lock_ms: u64,
+    stmt_ms: u64,
+    payload: &serde_json::Value,
+) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+    };
+    let link_id = match payload.get("link_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing link_id in job payload")),
+    };
+    let body_val = match payload.get("request") {
+        Some(v) => v.clone(),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request("Missing request in job payload"))
+        }
+    };
+    let body: UpdateLinkRequest = match serde_json::from_value(body_val) {
+        Ok(b) => b,
+        Err(e) => {
+            return JobExecOutcome::Fail(AppError::bad_request(format!(
+                "Invalid link update body: {e}"
+            )))
+        }
+    };
+
+    let mut tx = match pool.begin().await {
+        Ok(t) => t,
+        Err(e) => return map_sqlx_ticket(e),
+    };
+    if let Err(e) = apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+
+    let existing = match sqlx::query("SELECT id, user_id FROM links WHERE id = $1 FOR UPDATE")
+        .bind(&link_id)
+        .fetch_optional(&mut *tx)
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    };
+    let Some(existing) = existing else {
+        let _ = tx.rollback().await;
+        return JobExecOutcome::Fail(AppError::not_found("Link not found"));
+    };
+
+    let owner: String = existing.get("user_id");
+    if owner != user_id {
+        let _ = tx.rollback().await;
+        return JobExecOutcome::Fail(AppError::forbidden("Not your link"));
+    }
+
+    let id = &link_id;
+    if let Some(ref title) = body.title {
+        if let Err(e) = sqlx::query("UPDATE links SET title = $1, updated_at = NOW() WHERE id = $2")
+            .bind(title)
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(ref url) = body.url {
+        let normalized = normalize_url(url);
+        if let Err(e) = sqlx::query(
+            "UPDATE links SET url = $1, normalized_url = $2, updated_at = NOW() WHERE id = $3",
+        )
+        .bind(url)
+        .bind(&normalized)
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(ref desc) = body.description {
+        if let Err(e) = sqlx::query(
+            "UPDATE links SET description = $1, updated_at = NOW() WHERE id = $2",
+        )
+        .bind(desc)
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(ref tags) = body.tags {
+        if let Err(e) = sqlx::query("UPDATE links SET tags = $1, updated_at = NOW() WHERE id = $2")
+            .bind(tags)
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(is_fav) = body.is_favorite {
+        if let Err(e) = sqlx::query(
+            "UPDATE links SET is_favorite = $1, updated_at = NOW() WHERE id = $2",
+        )
+        .bind(is_fav)
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(ref archived) = body.archived_at {
+        if archived.is_null() {
+            if let Err(e) = sqlx::query(
+                "UPDATE links SET archived_at = NULL, updated_at = NOW() WHERE id = $1",
+            )
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+            {
+                let _ = tx.rollback().await;
+                return map_sqlx_ticket(e);
+            }
+        } else if let Err(e) = sqlx::query(
+            "UPDATE links SET archived_at = NOW(), updated_at = NOW() WHERE id = $1",
+        )
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(ref notes) = body.notes {
+        if let Err(e) = sqlx::query("UPDATE links SET notes = $1, updated_at = NOW() WHERE id = $2")
+            .bind(notes)
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(ref link_type) = body.link_type {
+        if let Err(e) = sqlx::query(
+            "UPDATE links SET link_type = $1::\"LinkType\", updated_at = NOW() WHERE id = $2",
+        )
+        .bind(link_type)
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+    if let Some(ref rating) = body.rating {
+        if let Err(e) = sqlx::query("UPDATE links SET rating = $1, updated_at = NOW() WHERE id = $2")
+            .bind(rating)
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+
+    if let Some(ref collection_ids) = body.collection_ids {
+        if let Err(e) = sqlx::query("DELETE FROM link_collections WHERE link_id = $1")
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+        for cid in collection_ids {
+            let lc_id = new_cuid();
+            if let Err(e) = sqlx::query(
+                "INSERT INTO link_collections (id, link_id, collection_id, created_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT DO NOTHING",
+            )
+            .bind(&lc_id)
+            .bind(id)
+            .bind(cid)
+            .execute(&mut *tx)
+            .await
+            {
+                let _ = tx.rollback().await;
+                return map_sqlx_ticket(e);
+            }
+        }
+    }
+
+    if let Err(e) = tx.commit().await {
+        return map_sqlx_ticket(e);
+    }
+
+    JobExecOutcome::Ok(JsonMutationResult::ok(json!({
+        "success": true,
+        "message": "Link updated"
+    })))
+}
+
+async fn exec_link_delete(
+    pool: &PgPool,
+    _http: &Client,
+    lock_ms: u64,
+    stmt_ms: u64,
+    payload: &serde_json::Value,
+) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+    };
+    let link_id = match payload.get("link_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing link_id in job payload")),
+    };
+
+    let mut tx = match pool.begin().await {
+        Ok(t) => t,
+        Err(e) => return map_sqlx_ticket(e),
+    };
+    if let Err(e) = apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+
+    let existing = match sqlx::query("SELECT id, user_id FROM links WHERE id = $1 FOR UPDATE")
+        .bind(&link_id)
+        .fetch_optional(&mut *tx)
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    };
+    let Some(existing) = existing else {
+        let _ = tx.rollback().await;
+        return JobExecOutcome::Fail(AppError::not_found("Link not found"));
+    };
+
+    let owner: String = existing.get("user_id");
+    if owner != user_id {
+        let _ = tx.rollback().await;
+        return JobExecOutcome::Fail(AppError::forbidden("Not your link"));
+    }
+
+    if let Err(e) = sqlx::query("DELETE FROM links WHERE id = $1")
+        .bind(&link_id)
+        .execute(&mut *tx)
+        .await
+    {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+    if let Err(e) = tx.commit().await {
+        return map_sqlx_ticket(e);
+    }
+
+    JobExecOutcome::Ok(JsonMutationResult::ok(json!({
+        "success": true,
+        "message": "Link deleted"
     })))
 }

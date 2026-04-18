@@ -9,6 +9,7 @@ import { Select } from "@/components/ui/Select";
 import { Input } from "@/components/ui/Input";
 import { cn } from "@/lib/utils/cn";
 import { OverviewContextMenu, type OverviewContextMenuItem } from "@/components/ui/OverviewContextMenu";
+import { EditLinkDialog } from "@/components/features/links/EditLinkDialog/EditLinkDialog";
 
 type LinkItem = {
   id: string;
@@ -130,6 +131,7 @@ export const LinkList = ({
   const [newCollectionError, setNewCollectionError] = React.useState<string | null>(null);
   const selectAllRef = React.useRef<HTMLInputElement>(null);
   const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number; link: LinkItem } | null>(null);
+  const [editDialogLink, setEditDialogLink] = React.useState<LinkItem | null>(null);
 
   React.useEffect(() => {
     if (showCollectionDialog) {
@@ -300,7 +302,7 @@ export const LinkList = ({
             label: "Edit",
             onClick: () => {
               setContextMenu(null);
-              navigate(`/dashboard/links/${link.id}/edit`);
+              setEditDialogLink(link);
             },
           },
           {
@@ -511,6 +513,25 @@ export const LinkList = ({
         y={contextMenu?.y ?? 0}
         onClose={() => setContextMenu(null)}
         items={contextMenu ? getLinkContextMenuItems(contextMenu.link) : []}
+      />
+
+      <EditLinkDialog
+        open={!!editDialogLink}
+        onOpenChange={(next) => {
+          if (!next) setEditDialogLink(null);
+        }}
+        link={
+          editDialogLink
+            ? {
+                id: editDialogLink.id,
+                title: editDialogLink.title,
+                url: editDialogLink.url,
+                description: editDialogLink.description,
+                collections: editDialogLink.collections,
+              }
+            : null
+        }
+        onSuccess={() => onRefresh?.()}
       />
 
       {/* Card View */}
