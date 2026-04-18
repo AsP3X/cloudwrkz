@@ -16,6 +16,7 @@ use sqlx::{PgPool, Row};
 use tracing::{info, warn};
 
 use crate::audit::{self, WriteAuditParams};
+use crate::auth::bg_job_record::finish_auth_login_job;
 use crate::auth::password::verify_password;
 use crate::auth::session::generate_token;
 use crate::db::is_transient_sqlx;
@@ -425,12 +426,9 @@ async fn login_retry_loop(
                 email = %email,
                 "login job timed out waiting for database"
             );
-            jobs.set_failed(
-                &job_id,
-                "The database did not become available in time. Please try signing in again."
-                    .into(),
-                None,
-            );
+            let msg = "The database did not become available in time. Please try signing in again.";
+            jobs.set_failed(&job_id, msg.into(), None);
+            finish_auth_login_job(&pool, &job_id, false, Some(msg)).await;
             break;
         }
 
@@ -451,6 +449,7 @@ async fn login_retry_loop(
                     "queued login completed"
                 );
                 jobs.set_completed(&job_id, response);
+                finish_auth_login_job(&pool, &job_id, true, None).await;
                 break;
             }
             Err(LoginAttemptError::Transient) => {
@@ -458,7 +457,9 @@ async fn login_retry_loop(
             }
             Err(LoginAttemptError::Final(e)) => {
                 let hint = failure_hint(&e);
-                jobs.set_failed(&job_id, e.message, hint);
+                let msg = e.message.clone();
+                jobs.set_failed(&job_id, msg.clone(), hint);
+                finish_auth_login_job(&pool, &job_id, false, Some(msg.as_str())).await;
                 break;
             }
         }

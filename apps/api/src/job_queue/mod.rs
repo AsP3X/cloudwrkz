@@ -14,8 +14,11 @@
 //! `LOG_VERBOSITY=debug` (default filter includes `jobs=debug`) or `RUST_LOG=info,jobs=debug`.
 
 mod budget;
+pub mod supervisor;
 mod time_entry_mutations;
 pub mod entity_creates;
+
+pub use supervisor::{resolve_initial_worker_count, spawn_job_queue_supervisor};
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -36,6 +39,10 @@ use crate::id::new_cuid;
 pub const JOB_TYPE_GITHUB_LINK_METADATA: &str = "github_link_metadata";
 pub const JOB_TYPE_QR_LOGIN_APPROVE: &str = "qr_login_approve";
 pub const JOB_TYPE_QR_LOGIN_FINALIZE: &str = "qr_login_finalize";
+/// Email/password sign-in queued from `POST /auth/login` (processed by [`crate::auth::login_queue`], not the global dequeue loop).
+pub const JOB_TYPE_AUTH_LOGIN: &str = "auth_login";
+/// Registration queued from `POST /auth/register` (processed by [`crate::auth::register_queue`]).
+pub const JOB_TYPE_AUTH_REGISTER: &str = "auth_register";
 
 /// Hard cap on wall-clock time for one `run_one_job` task (panic/ hang safety net).
 const RUN_ONE_JOB_WALL_TIMEOUT: Duration = Duration::from_secs(600);
@@ -61,7 +68,7 @@ impl Default for JobTypePolicy {
     }
 }
 
-fn policies_from_config(config: &AppConfig) -> HashMap<String, JobTypePolicy> {
+pub(super) fn policies_from_config(config: &AppConfig) -> HashMap<String, JobTypePolicy> {
     let mut m = HashMap::new();
     m.insert(
         JOB_TYPE_GITHUB_LINK_METADATA.to_string(),
@@ -141,8 +148,8 @@ async fn mark_job_failed(pool: &PgPool, job_id: &str, msg: &str) {
 }
 
 /// Fails jobs stuck in `processing` (e.g. process crash or task panic before `mark_job_failed`).
-/// Excludes long-running GitHub metadata refresh jobs.
-async fn reclaim_stale_processing_jobs(pool: &PgPool) {
+/// Excludes long-running GitHub metadata and auth login/register rows (updated by auth retry loops).
+pub(super) async fn reclaim_stale_processing_jobs(pool: &PgPool) {
     let res = sqlx::query(
         r#"UPDATE background_jobs
            SET status = 'failed',
@@ -152,10 +159,9 @@ async fn reclaim_stale_processing_jobs(pool: &PgPool) {
            WHERE status = 'processing'
              AND started_at IS NOT NULL
              AND started_at < clock_timestamp() - ($1::integer * interval '1 minute')
-             AND job_type <> $2"#,
+             AND job_type NOT IN ('github_link_metadata', 'auth_login', 'auth_register')"#,
     )
     .bind(STALE_PROCESSING_AFTER_MINUTES)
-    .bind(JOB_TYPE_GITHUB_LINK_METADATA)
     .execute(pool)
     .await;
 
@@ -448,99 +454,116 @@ async fn try_claim_next(
     None
 }
 
-pub fn spawn_job_queue_worker(pool: PgPool, config: AppConfig, mutation_broker: MutationBroker) {
-    let policies = policies_from_config(&config);
-    let budgets = Arc::new(TypeBudgets::new(policies));
-    let github_rate = GithubRestRateLimit::from_config(&config);
+/// One dequeue/spawn loop; `budgets` and `github_rate` are shared across all dispatchers in the process.
+pub(super) async fn run_job_queue_dispatcher_loop(
+    pool: PgPool,
+    client: Client,
+    github_rate: Arc<GithubRestRateLimit>,
+    mutation_broker: MutationBroker,
+    budgets: Arc<TypeBudgets>,
+    worker_id: u64,
+    logs: Arc<supervisor::WorkerLogRegistry>,
+) {
+    info!(
+        event = "job_queue.worker_start",
+        worker_id,
+        "background job dispatcher started"
+    );
+    logs.append(
+        worker_id,
+        "job queue dispatcher running (shared per-type budgets across dispatchers)",
+    );
+    debug!(
+        target: "jobs",
+        event = "jobs.daemon_ready",
+        worker_id,
+        "job queue dispatcher running (debug target `jobs`)"
+    );
 
-    tokio::spawn(async move {
-        let client = match Client::builder().timeout(Duration::from_secs(60)).build() {
-            Ok(c) => c,
-            Err(e) => {
-                error!(event = "job_queue.client", error = %e, "reqwest client build failed");
-                return;
-            }
-        };
+    /// Cap claims per wake so a deep backlog cannot starve the runtime in one tick.
+    const MAX_CLAIMS_PER_WAKE: u32 = 128;
+    /// ~60s between stale-`processing` sweeps (400ms × 150).
+    const STALE_RECLAIM_EVERY_N_WAKES: u64 = 150;
+    let mut wake_counter: u64 = 0;
 
-        info!(
-            event = "job_queue.worker_start",
-            "background job worker started"
-        );
-        debug!(
-            target: "jobs",
-            event = "jobs.daemon_ready",
-            "job queue dispatcher running (debug target `jobs`)"
-        );
+    loop {
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        wake_counter += 1;
+        if wake_counter % STALE_RECLAIM_EVERY_N_WAKES == 0 {
+            reclaim_stale_processing_jobs(&pool).await;
+        }
 
-        reclaim_stale_processing_jobs(&pool).await;
-
-        /// Cap claims per wake so a deep backlog cannot starve the runtime in one tick.
-        const MAX_CLAIMS_PER_WAKE: u32 = 128;
-        /// ~60s between stale-`processing` sweeps (400ms × 150).
-        const STALE_RECLAIM_EVERY_N_WAKES: u64 = 150;
-        let mut wake_counter: u64 = 0;
-
-        loop {
-            tokio::time::sleep(Duration::from_millis(400)).await;
-            wake_counter += 1;
-            if wake_counter % STALE_RECLAIM_EVERY_N_WAKES == 0 {
-                reclaim_stale_processing_jobs(&pool).await;
-            }
-
-            let mut claimed_this_wake = 0u32;
-            while claimed_this_wake < MAX_CLAIMS_PER_WAKE {
-                let Some((job_id, job_type, payload, created_by_user_id)) =
-                    try_claim_next(&pool, &budgets).await
-                else {
-                    break;
-                };
-                claimed_this_wake += 1;
-                let pool = pool.clone();
-                let client = client.clone();
-                let budgets = budgets.clone();
-                let gh_rate = github_rate.clone();
-                let mutation_broker = mutation_broker.clone();
-                let job_id_for_log = job_id.clone();
-                let job_type_for_log = job_type.clone();
-                tokio::spawn(async move {
-                    let started = Instant::now();
-                    debug!(
-                        target: "jobs",
-                        event = "jobs.job_start",
-                        job_id = %job_id_for_log,
-                        job_type = %job_type_for_log,
-                        "background job processing started"
-                    );
-                    run_one_job_supervised(
-                        pool,
-                        client,
-                        gh_rate,
-                        mutation_broker,
-                        job_id,
-                        job_type,
-                        payload,
-                        created_by_user_id,
-                        budgets,
-                    )
-                    .await;
-                    debug!(
-                        target: "jobs",
-                        event = "jobs.job_done",
-                        job_id = %job_id_for_log,
-                        job_type = %job_type_for_log,
-                        elapsed_ms = started.elapsed().as_millis() as u64,
-                        "background job processing finished"
-                    );
-                });
-            }
-            if claimed_this_wake > 0 {
+        let mut claimed_this_wake = 0u32;
+        while claimed_this_wake < MAX_CLAIMS_PER_WAKE {
+            let Some((job_id, job_type, payload, created_by_user_id)) =
+                try_claim_next(&pool, &budgets).await
+            else {
+                break;
+            };
+            claimed_this_wake += 1;
+            let pool = pool.clone();
+            let client = client.clone();
+            let budgets = budgets.clone();
+            let gh_rate = github_rate.clone();
+            let mutation_broker = mutation_broker.clone();
+            let job_id_for_log = job_id.clone();
+            let job_type_for_log = job_type.clone();
+            tokio::spawn(async move {
+                let started = Instant::now();
                 debug!(
                     target: "jobs",
-                    event = "jobs.daemon_wake",
-                    spawned = claimed_this_wake,
-                    "job queue dispatcher claimed batch"
+                    event = "jobs.job_start",
+                    job_id = %job_id_for_log,
+                    job_type = %job_type_for_log,
+                    worker_id,
+                    "background job processing started"
                 );
-            }
+                run_one_job_supervised(
+                    pool,
+                    client,
+                    gh_rate,
+                    mutation_broker,
+                    job_id,
+                    job_type,
+                    payload,
+                    created_by_user_id,
+                    budgets,
+                )
+                .await;
+                debug!(
+                    target: "jobs",
+                    event = "jobs.job_done",
+                    job_id = %job_id_for_log,
+                    job_type = %job_type_for_log,
+                    worker_id,
+                    elapsed_ms = started.elapsed().as_millis() as u64,
+                    "background job processing finished"
+                );
+            });
         }
-    });
+        if claimed_this_wake > 0 {
+            debug!(
+                target: "jobs",
+                event = "jobs.daemon_wake",
+                worker_id,
+                spawned = claimed_this_wake,
+                "job queue dispatcher claimed batch"
+            );
+            logs.append(
+                worker_id,
+                &format!("claimed {claimed_this_wake} job(s) this wake"),
+            );
+        }
+    }
+}
+
+/// Backwards-compatible entry: spawns the supervised pool using `config.job_queue_worker_count`
+/// for both the initial desired count and the env default metadata.
+pub fn spawn_job_queue_worker(
+    pool: PgPool,
+    config: AppConfig,
+    mutation_broker: MutationBroker,
+) -> Arc<supervisor::JobWorkerSupervisor> {
+    let n = config.job_queue_worker_count;
+    spawn_job_queue_supervisor(pool, config, mutation_broker, n, n)
 }

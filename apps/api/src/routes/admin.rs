@@ -2,8 +2,13 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    routing::{get, patch, post},
+    response::sse::{Event, KeepAlive, Sse},
+    routing::{delete, get, patch, post},
 };
+use futures_util::future::ready;
+use futures_util::stream::StreamExt;
+use std::convert::Infallible;
+use tokio_stream::wrappers::BroadcastStream;
 use rand::Rng;
 use serde::Deserialize;
 use sqlx::Row;
@@ -18,6 +23,10 @@ use crate::models::audit_log::AuditLogRow;
 use crate::models::notification::NotificationRow;
 use crate::routes::AppState;
 use crate::routes::helpers::{check_permission, get_user_permission_keys};
+use crate::{
+    JOB_QUEUE_WORKER_MAX, JOB_QUEUE_WORKER_MIN, SYSTEM_SETTING_JOB_QUEUE_WORKER_COUNT,
+    persist_worker_count, worker_hostname,
+};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -103,6 +112,24 @@ pub fn router() -> Router<AppState> {
             "/admin/settings/diagnostics-health-token",
             post(rotate_diagnostics_health_token),
         )
+        .route("/admin/job-queue/workers", get(list_job_queue_workers).post(post_add_job_worker))
+        .route(
+            "/admin/job-queue/workers/desired-count",
+            patch(patch_job_queue_workers_desired),
+        )
+        .route(
+            "/admin/job-queue/workers/{id}/restart",
+            post(post_restart_job_worker),
+        )
+        .route(
+            "/admin/job-queue/workers/{id}/log/stream",
+            get(job_worker_log_sse),
+        )
+        .route(
+            "/admin/job-queue/workers/{id}/log",
+            get(get_job_worker_log),
+        )
+        .route("/admin/job-queue/workers/{id}", delete(delete_dismiss_job_worker))
         .route("/notifications", get(list_notifications))
         .route("/notifications/{id}/read", post(mark_notification_read))
 }
@@ -707,6 +734,180 @@ async fn require_admin_jobs_view(pool: &sqlx::PgPool, user_id: &str) -> Result<(
     Err(AppError::forbidden("admin.jobs.view required"))
 }
 
+async fn list_job_queue_workers(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_admin_jobs_view(&state.pool, &user.id).await?;
+    let sup = &state.job_worker_supervisor;
+    let workers = sup.list_workers();
+    Ok(Json(serde_json::json!({
+        "desiredCount": sup.desired_count(),
+        "envDefault": sup.env_default(),
+        "runningCount": workers.len(),
+        "hostname": worker_hostname(),
+        "workers": workers,
+    })))
+}
+
+#[derive(Deserialize)]
+struct JobWorkersDesiredBody {
+    count: u32,
+}
+
+async fn patch_job_queue_workers_desired(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    headers: HeaderMap,
+    Json(body): Json<JobWorkersDesiredBody>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_admin_settings(&state.pool, &user.id).await?;
+    let c = body.count.clamp(JOB_QUEUE_WORKER_MIN, JOB_QUEUE_WORKER_MAX);
+    state.job_worker_supervisor.set_desired_count(c);
+    persist_worker_count(&state.pool, c)
+        .await
+        .map_err(|e| AppError::internal(format!("Could not persist worker count: {e}")))?;
+    audit::write_audit_log(
+        &state.pool,
+        WriteAuditParams {
+            user_id: Some(user.id),
+            action: "admin.job_queue.workers.desired".into(),
+            resource_type: Some("system_settings".into()),
+            resource_id: Some(SYSTEM_SETTING_JOB_QUEUE_WORKER_COUNT.into()),
+            context: Some(serde_json::json!({ "desiredCount": c })),
+            ip_address: audit::client_ip_from_headers(&headers),
+            user_agent: headers
+                .get(axum::http::header::USER_AGENT)
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string()),
+        },
+    );
+    Ok(Json(serde_json::json!({ "success": true, "desiredCount": c })))
+}
+
+async fn post_add_job_worker(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_admin_settings(&state.pool, &user.id).await?;
+    let cur = state.job_worker_supervisor.desired_count();
+    if cur >= JOB_QUEUE_WORKER_MAX {
+        return Err(AppError::bad_request("Maximum worker count reached"));
+    }
+    let n = cur + 1;
+    state.job_worker_supervisor.set_desired_count(n);
+    persist_worker_count(&state.pool, n)
+        .await
+        .map_err(|e| AppError::internal(format!("Could not persist worker count: {e}")))?;
+    audit::write_audit_log(
+        &state.pool,
+        WriteAuditParams {
+            user_id: Some(user.id),
+            action: "admin.job_queue.workers.add".into(),
+            resource_type: Some("system_settings".into()),
+            resource_id: Some(SYSTEM_SETTING_JOB_QUEUE_WORKER_COUNT.into()),
+            context: Some(serde_json::json!({ "desiredCount": n })),
+            ip_address: audit::client_ip_from_headers(&headers),
+            user_agent: headers
+                .get(axum::http::header::USER_AGENT)
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string()),
+        },
+    );
+    Ok(Json(serde_json::json!({ "success": true, "desiredCount": n })))
+}
+
+async fn post_restart_job_worker(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(worker_id): Path<u64>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_admin_settings(&state.pool, &user.id).await?;
+    if !state.job_worker_supervisor.restart_worker(worker_id) {
+        return Err(AppError::not_found("Worker not running"));
+    }
+    audit::write_audit_log(
+        &state.pool,
+        WriteAuditParams {
+            user_id: Some(user.id),
+            action: "admin.job_queue.workers.restart".into(),
+            resource_type: Some("job_worker".into()),
+            resource_id: Some(worker_id.to_string()),
+            context: None,
+            ip_address: audit::client_ip_from_headers(&headers),
+            user_agent: headers
+                .get(axum::http::header::USER_AGENT)
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string()),
+        },
+    );
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
+async fn delete_dismiss_job_worker(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(worker_id): Path<u64>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_admin_settings(&state.pool, &user.id).await?;
+    state
+        .job_worker_supervisor
+        .dismiss_worker(worker_id)
+        .map_err(AppError::bad_request)?;
+    let c = state.job_worker_supervisor.desired_count();
+    persist_worker_count(&state.pool, c)
+        .await
+        .map_err(|e| AppError::internal(format!("Could not persist worker count: {e}")))?;
+    audit::write_audit_log(
+        &state.pool,
+        WriteAuditParams {
+            user_id: Some(user.id),
+            action: "admin.job_queue.workers.dismiss".into(),
+            resource_type: Some("job_worker".into()),
+            resource_id: Some(worker_id.to_string()),
+            context: Some(serde_json::json!({ "desiredCount": c })),
+            ip_address: audit::client_ip_from_headers(&headers),
+            user_agent: headers
+                .get(axum::http::header::USER_AGENT)
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string()),
+        },
+    );
+    Ok(Json(serde_json::json!({ "success": true, "desiredCount": c })))
+}
+
+async fn get_job_worker_log(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(worker_id): Path<u64>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_admin_jobs_view(&state.pool, &user.id).await?;
+    let lines = state.job_worker_supervisor.logs().lines_for(worker_id);
+    Ok(Json(serde_json::json!({
+        "workerId": worker_id,
+        "lines": lines,
+    })))
+}
+
+async fn job_worker_log_sse(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(worker_id): Path<u64>,
+) -> Result<Sse<impl futures_util::stream::Stream<Item = Result<Event, Infallible>>>, AppError> {
+    require_admin_jobs_view(&state.pool, &user.id).await?;
+    let rx = state.job_worker_supervisor.logs().subscribe();
+    let stream = BroadcastStream::new(rx).filter_map(move |res| {
+        ready(match res {
+            Ok((id, line)) if id == worker_id => Some(Ok(Event::default().data(line))),
+            _ => None,
+        })
+    });
+    Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
+}
+
 async fn admin_settings(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -848,6 +1049,14 @@ async fn admin_settings(
         "diagnosticsHealthToken": {
             "configured": env_diag || db_diag,
             "source": diag_source,
+        },
+        "jobQueue": {
+            "desiredCount": state.job_worker_supervisor.desired_count(),
+            "envDefault": state.job_worker_supervisor.env_default(),
+            "runningCount": state.job_worker_supervisor.list_workers().len(),
+            "hostname": worker_hostname(),
+            "minWorkers": JOB_QUEUE_WORKER_MIN,
+            "maxWorkers": JOB_QUEUE_WORKER_MAX,
         },
     })))
 }

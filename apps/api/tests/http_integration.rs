@@ -15,13 +15,14 @@ use cloudwrkz_api::AppConfig;
 use cloudwrkz_api::AppState;
 use cloudwrkz_api::auth::password;
 use cloudwrkz_api::build_http_app;
-use cloudwrkz_api::spawn_background_job_worker;
+use cloudwrkz_api::mutation_broker_for_config;
+use cloudwrkz_api::spawn_job_queue_supervisor;
 
 fn test_app_state(pool: PgPool) -> AppState {
     let cfg = test_config(std::env::var("DATABASE_URL").expect("DATABASE_URL set by sqlx::test"));
-    let state = AppState::new(pool.clone(), cfg.clone(), Instant::now());
-    spawn_background_job_worker(pool, cfg, state.mutation_broker.clone());
-    state
+    let mb = mutation_broker_for_config(&cfg);
+    let sup = spawn_job_queue_supervisor(pool.clone(), cfg.clone(), mb.clone(), 2, 2);
+    AppState::new(pool, cfg, Instant::now(), mb, sup)
 }
 
 fn test_config(database_url: String) -> AppConfig {
@@ -47,6 +48,7 @@ fn test_config(database_url: String) -> AppConfig {
         idempotency_ttl_secs: 86_400,
         github_api_token: None,
         github_anonymous_max_requests_per_hour: 60,
+        job_queue_worker_count: 2,
         job_queue_github_max_concurrent: 1,
         job_queue_github_min_start_interval_secs: None,
         public_web_app_url: None,

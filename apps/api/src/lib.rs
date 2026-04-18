@@ -12,21 +12,27 @@ mod error;
 mod github_metadata;
 mod github_rate_limit;
 pub mod id;
-mod job_queue;
+pub mod job_queue;
 mod link_preview;
 mod models;
 pub mod routes;
 
 pub use config::AppConfig;
+pub use job_queue::supervisor::{
+    JobWorkerSupervisor, WorkerListEntry, WorkerLogRegistry, JOB_QUEUE_WORKER_MAX,
+    JOB_QUEUE_WORKER_MIN, SYSTEM_SETTING_JOB_QUEUE_WORKER_COUNT, persist_worker_count,
+    resolve_initial_worker_count, spawn_job_queue_supervisor, worker_hostname,
+};
+pub use routes::mutation_broker_for_config;
 pub use routes::AppState;
 
-/// Start the PostgreSQL-backed background worker (same as `run()` after migrations). For integration tests.
+/// Start the PostgreSQL-backed job worker pool (same as `run()` after migrations). For integration tests.
 pub fn spawn_background_job_worker(
     pool: sqlx::PgPool,
     config: AppConfig,
     mutation_broker: command_queue::MutationBroker,
-) {
-    job_queue::spawn_job_queue_worker(pool, config, mutation_broker);
+) -> std::sync::Arc<JobWorkerSupervisor> {
+    job_queue::spawn_job_queue_worker(pool, config, mutation_broker)
 }
 
 use axum::Router;
@@ -92,6 +98,7 @@ Environment: LOG_VERBOSITY (debug|prod), LOG_FORMAT (json), RUST_LOG, DATABASE_U
              GitHub metadata jobs: dispatcher polls ~400ms and runs jobs concurrently up to JOB_QUEUE_GITHUB_MAX_CONCURRENT.
              JOB_QUEUE_GITHUB_MAX_CONCURRENT (default 1): max concurrent github_link_metadata jobs.
              JOB_QUEUE_GITHUB_MIN_START_INTERVAL_SECS: optional pacing between job starts (per job type policy; not used for github_link_metadata today).
+             JOB_QUEUE_WORKER_COUNT (default 1, max 32): number of background job dispatcher loops in this process (shared per-type budgets; DB `system_settings.job_queue_worker_count` overrides after migrations).
 "#;
 
 /// Parse `-v` / `-v debug` / `-v prod` and `-h` from env::args(). CLI overrides LOG_VERBOSITY env.
@@ -405,6 +412,7 @@ pub async fn run() {
         log_verbosity = ?log_verbosity(),
         api_region = ?config.api_region,
         api_nodes_available = config.api_nodes_available,
+        job_queue_worker_count = config.job_queue_worker_count,
         "Starting CloudWrkz API"
     );
     if log_verbosity() == LogVerbosity::Debug {
@@ -420,16 +428,32 @@ pub async fn run() {
         .expect("Invalid DATABASE_URL (cannot parse connection string)");
 
     let api_started_at = std::time::Instant::now();
-    let state = routes::AppState::new(pool.clone(), config.clone(), api_started_at);
 
-    // Apply migrations and start the background job worker before accepting HTTP traffic.
+    // Apply migrations and start the background job worker pool before accepting HTTP traffic.
     // Otherwise clients can enqueue `background_jobs` rows while no worker is running yet,
     // and mutation polling (POST → 202 → GET /mutation-jobs/:id) appears stuck until the worker catches up.
     db::run_migrations_with_transient_retries(&pool).await;
-    job_queue::spawn_job_queue_worker(
+    let initial_worker_count = job_queue::resolve_initial_worker_count(&pool, &config).await;
+    let mutation_broker = routes::mutation_broker_for_config(&config);
+    let job_worker_supervisor = job_queue::spawn_job_queue_supervisor(
         pool.clone(),
         config.clone(),
-        state.mutation_broker.clone(),
+        mutation_broker.clone(),
+        initial_worker_count,
+        config.job_queue_worker_count,
+    );
+    let state = routes::AppState::new(
+        pool.clone(),
+        config.clone(),
+        api_started_at,
+        mutation_broker,
+        job_worker_supervisor,
+    );
+    tracing::info!(
+        event = "job_queue.supervisor",
+        desired_dispatchers = initial_worker_count,
+        env_default_dispatchers = config.job_queue_worker_count,
+        "Background job dispatcher pool configured"
     );
 
     let app = build_http_app(state);

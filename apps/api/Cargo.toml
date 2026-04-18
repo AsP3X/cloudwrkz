@@ -27,6 +27,8 @@ url = "2"
 sysinfo = { version = "0.32", default-features = false, features = ["system", "disk"] }
 hostname = "0.4"
 regex = "1"
+futures-util = "0.3"
+tokio-stream = { version = "0.1", features = ["sync"] }
 
 [dev-dependencies]
 http-body-util = "0.1"

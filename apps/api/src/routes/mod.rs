@@ -32,19 +32,29 @@ use crate::auth::register_queue::RegisterJobs;
 use crate::command_queue::{IdempotencyStore, MutationBroker, MutationJobs};
 use crate::config::AppConfig;
 
+/// Builds the mutation broker used by HTTP handlers and the background job queue (must be shared).
+pub fn mutation_broker_for_config(config: &AppConfig) -> MutationBroker {
+    let idempotency = IdempotencyStore::new(
+        config.idempotency_max_entries,
+        Duration::from_secs(config.idempotency_ttl_secs),
+    );
+    MutationBroker::new(
+        idempotency,
+        config.mutation_tx_max_ms,
+        config.mutation_lock_timeout_ms,
+        config.mutation_statement_timeout_ms,
+        config.mutation_queue_capacity,
+    )
+}
+
 impl AppState {
-    pub fn new(pool: PgPool, config: AppConfig, api_started_at: std::time::Instant) -> Self {
-        let idempotency = IdempotencyStore::new(
-            config.idempotency_max_entries,
-            Duration::from_secs(config.idempotency_ttl_secs),
-        );
-        let mutation_broker = MutationBroker::new(
-            idempotency,
-            config.mutation_tx_max_ms,
-            config.mutation_lock_timeout_ms,
-            config.mutation_statement_timeout_ms,
-            config.mutation_queue_capacity,
-        );
+    pub fn new(
+        pool: PgPool,
+        config: AppConfig,
+        api_started_at: std::time::Instant,
+        mutation_broker: MutationBroker,
+        job_worker_supervisor: std::sync::Arc<crate::JobWorkerSupervisor>,
+    ) -> Self {
         Self {
             pool,
             config,
@@ -54,6 +64,7 @@ impl AppState {
             mutation_broker,
             mutation_jobs: MutationJobs::default(),
             search_coalesce: Arc::new(Mutex::new(HashMap::new())),
+            job_worker_supervisor,
         }
     }
 }
@@ -95,6 +106,8 @@ pub struct AppState {
     pub login_jobs: LoginJobs,
     pub mutation_broker: MutationBroker,
     pub mutation_jobs: MutationJobs,
+    /// Background `background_jobs` dispatcher pool (supervisor, desired count, logs).
+    pub job_worker_supervisor: std::sync::Arc<crate::JobWorkerSupervisor>,
     /// In-flight dedup for identical search keys (short-lived; bounded by map clear).
     pub search_coalesce: SearchCoalesceCache,
 }

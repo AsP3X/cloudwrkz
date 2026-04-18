@@ -1,3 +1,4 @@
+pub mod bg_job_record;
 pub mod extractors;
 pub mod login_queue;
 pub mod password;

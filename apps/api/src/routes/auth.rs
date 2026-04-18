@@ -76,6 +76,16 @@ async fn login(
     }
 
     let job_id = new_job_id();
+    if let Err(e) =
+        crate::auth::bg_job_record::insert_auth_login_job(&state.pool, &job_id, &email).await
+    {
+        warn!(
+            event = "auth.bg_job.insert_login_failed",
+            job_id = %job_id,
+            error = %e,
+            "background_jobs mirror insert failed (login still queued in memory)"
+        );
+    }
     state.login_jobs.insert_pending(&job_id);
     spawn_login_retry(
         state.pool.clone(),
@@ -164,6 +174,21 @@ async fn register(
         })?;
 
     let job_id = new_job_id();
+    if let Err(e) = crate::auth::bg_job_record::insert_auth_register_job(
+        &state.pool,
+        &job_id,
+        &email,
+        &name,
+    )
+    .await
+    {
+        warn!(
+            event = "auth.bg_job.insert_register_failed",
+            job_id = %job_id,
+            error = %e,
+            "background_jobs mirror insert failed (registration still queued in memory)"
+        );
+    }
     state.register_jobs.insert_pending(&job_id);
     spawn_register_retry(
         state.pool.clone(),

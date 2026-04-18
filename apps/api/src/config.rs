@@ -48,6 +48,8 @@ pub struct AppConfig {
     pub github_api_token: Option<String>,
     /// Max anonymous GitHub REST requests per rolling hour for this process (GitHub allows 60/hour per IP without auth).
     pub github_anonymous_max_requests_per_hour: u32,
+    /// Number of background job dispatcher loops in this process (each polls `background_jobs`; budgets are shared).
+    pub job_queue_worker_count: u32,
     /// Max concurrent `github_link_metadata` jobs the global worker will run (each job still rate-limits HTTP internally).
     pub job_queue_github_max_concurrent: u32,
     /// Optional minimum seconds between *starting* two `github_link_metadata` jobs (pacing on top of concurrency).
@@ -138,6 +140,11 @@ impl AppConfig {
             .and_then(|s| s.parse::<u32>().ok())
             .unwrap_or(60)
             .clamp(1, 100_000),
+            job_queue_worker_count: std::env::var("JOB_QUEUE_WORKER_COUNT")
+                .ok()
+                .and_then(|s| s.parse::<u32>().ok())
+                .unwrap_or(1)
+                .clamp(1, 32),
             job_queue_github_max_concurrent: std::env::var("JOB_QUEUE_GITHUB_MAX_CONCURRENT")
                 .ok()
                 .and_then(|s| s.parse::<u32>().ok())
