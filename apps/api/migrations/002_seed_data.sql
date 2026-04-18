@@ -81,7 +81,6 @@ VALUES
   (gen_random_uuid()::text, 'modules.timetracking.view', 'View Time Tracking Module', 'Access to the Time Tracking module in navigation and dashboard', 'modules', 'timetracking', NOW(), NOW()),
   (gen_random_uuid()::text, 'modules.todos.view', 'View ToDo Module', 'Access to the ToDo module in navigation and dashboard', 'modules', 'todos', NOW(), NOW()),
   (gen_random_uuid()::text, 'links.view', 'View Links', 'View bookmarks and links', 'links', 'links', NOW(), NOW()),
-  (gen_random_uuid()::text, 'links.view_all', 'View All Links', 'View all links regardless of ownership', 'links', 'links', NOW(), NOW()),
   (gen_random_uuid()::text, 'links.create', 'Create Links', 'Create new bookmarks', 'links', 'links', NOW(), NOW()),
   (gen_random_uuid()::text, 'links.update', 'Update Links', 'Update existing bookmarks', 'links', 'links', NOW(), NOW()),
   (gen_random_uuid()::text, 'links.delete', 'Delete Links', 'Delete bookmarks', 'links', 'links', NOW(), NOW()),

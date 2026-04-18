@@ -35,6 +35,17 @@ const LinksIcon = () => (
   </svg>
 );
 
+const ArchiveIcon = () => (
+  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M20 7l-2 12H6L4 7m16 0H4m16 0l-1-3H5L4 7m6 4h4"
+    />
+  </svg>
+);
+
 const UsersIcon = () => (
   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
@@ -112,12 +123,17 @@ export function AdminSidebar({
   const { isMobileOpen, setIsMobileOpen, toolbarCompact } = useSidebar();
   const enabledSet = new Set(enabledModuleKeys);
 
-  const workItems = [
+  const moduleWorkItems = [
     { name: "Links", href: ROUTES.LINKS, icon: LinksIcon, key: "links" },
     { name: "Tickets", href: "/dashboard/tickets", icon: TicketsIcon, key: "tickets" },
     { name: "My time", href: "/dashboard/time-tracking", icon: TimeTrackingIcon, key: "time_tracking" },
     { name: "ToDo", href: "/dashboard/todos", icon: TodosIcon, key: "todos" },
   ].filter((item) => enabledSet.has(item.key));
+
+  const workItems = [
+    ...moduleWorkItems,
+    { name: "Archive", href: ROUTES.ARCHIVE, icon: ArchiveIcon },
+  ];
 
   const userMgmtItems = [
     canViewUsers && { name: "Users", href: ROUTES.ADMIN_USERS, icon: UsersIcon },

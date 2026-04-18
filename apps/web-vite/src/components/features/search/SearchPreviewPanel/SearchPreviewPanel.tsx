@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import type { SearchResult } from "../types";
+import { recordSearchResultAccess } from "../recordSearchAccess";
 import { cn } from "@/lib/utils/cn";
 
 interface SearchPreviewPanelProps {
@@ -190,7 +191,10 @@ export function SearchPreviewPanel({ result, onNavigate }: SearchPreviewPanelPro
       <div className="flex-shrink-0 p-4 border-t border-neutral-200 dark:border-neutral-800">
         <Link
           to={result.url}
-          onClick={onNavigate}
+          onClick={() => {
+            recordSearchResultAccess(result);
+            onNavigate();
+          }}
           className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg bg-primary-600 hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600 text-white text-sm font-semibold transition-colors"
         >
           Open
