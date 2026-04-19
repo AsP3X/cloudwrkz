@@ -226,7 +226,11 @@ enum TicketService {
     }
 
     /// Runs PATCH/DELETE; API may respond with 202 + background job id (`GET /api/v1/mutation-jobs/{id}`).
-    private static func runTicketMutation(request: URLRequest, config: ServerConfig) async -> Result<Void, TicketServiceError> {
+    private static func runTicketMutation(
+        request: URLRequest,
+        config: ServerConfig,
+        mutationHooks: MutationJobTitleHooks? = nil
+    ) async -> Result<Void, TicketServiceError> {
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else {
@@ -234,15 +238,29 @@ enum TicketService {
             }
             switch http.statusCode {
             case 200, 204:
+                if let completed = mutationHooks?.onCompleted {
+                    await completed()
+                }
                 return .success(())
             case 202:
-                guard let queued = try? JSONDecoder().decode(MutationQueuedPayload.self, from: data),
-                      let jid = queued.resolvedJobId, !jid.isEmpty
+                if let onQueued = mutationHooks?.onQueued {
+                    await onQueued()
+                }
+                guard let queuedPayload = try? JSONDecoder().decode(MutationQueuedPayload.self, from: data),
+                      let jid = queuedPayload.resolvedJobId, !jid.isEmpty
                 else {
                     return .failure(.serverError(message: "Change was queued but no job id was returned"))
                 }
-                let deadline = queued.retry_deadline_secs ?? 120
-                return await pollMutationJob(config: config, jobId: jid, retryDeadlineSecs: deadline)
+                let deadline = queuedPayload.retry_deadline_secs ?? 120
+                switch await pollMutationJob(config: config, jobId: jid, retryDeadlineSecs: deadline) {
+                case .failure(let err):
+                    return .failure(err)
+                case .success:
+                    if let completed = mutationHooks?.onCompleted {
+                        await completed()
+                    }
+                    return .success(())
+                }
             case 401:
                 SessionExpiredNotifier.notify()
                 return .failure(.unauthorized)
@@ -306,7 +324,11 @@ enum TicketService {
     }
 
     /// PATCH .../tickets/:id — archive (archivedAt: current date).
-    static func archiveTicket(config: ServerConfig, id: String) async -> Result<Void, TicketServiceError> {
+    static func archiveTicket(
+        config: ServerConfig,
+        id: String,
+        mutationHooks: MutationJobTitleHooks? = nil
+    ) async -> Result<Void, TicketServiceError> {
         guard let requestURL = ticketURL(config: config, id: id) else { return .failure(.noServerURL) }
         guard let token = AuthTokenStorage.getToken(), !token.isEmpty else { return .failure(.noToken) }
         var request = URLRequest(url: requestURL)
@@ -318,11 +340,15 @@ enum TicketService {
         AppIdentity.apply(to: &request)
         let body: [String: Any] = ["archivedAt": isoDate(Date())]
         request.httpBody = (try? JSONSerialization.data(withJSONObject: body))
-        return await runTicketMutation(request: request, config: config)
+        return await runTicketMutation(request: request, config: config, mutationHooks: mutationHooks)
     }
 
     /// PATCH .../tickets/:id — unarchive (archivedAt: null).
-    static func unarchiveTicket(config: ServerConfig, id: String) async -> Result<Void, TicketServiceError> {
+    static func unarchiveTicket(
+        config: ServerConfig,
+        id: String,
+        mutationHooks: MutationJobTitleHooks? = nil
+    ) async -> Result<Void, TicketServiceError> {
         guard let requestURL = ticketURL(config: config, id: id) else { return .failure(.noServerURL) }
         guard let token = AuthTokenStorage.getToken(), !token.isEmpty else { return .failure(.noToken) }
         var request = URLRequest(url: requestURL)
@@ -334,11 +360,15 @@ enum TicketService {
         AppIdentity.apply(to: &request)
         let body: [String: Any?] = ["archivedAt": NSNull()]
         request.httpBody = (try? JSONSerialization.data(withJSONObject: body))
-        return await runTicketMutation(request: request, config: config)
+        return await runTicketMutation(request: request, config: config, mutationHooks: mutationHooks)
     }
 
     /// DELETE .../tickets/:id — delete a ticket permanently.
-    static func deleteTicket(config: ServerConfig, id: String) async -> Result<Void, TicketServiceError> {
+    static func deleteTicket(
+        config: ServerConfig,
+        id: String,
+        mutationHooks: MutationJobTitleHooks? = nil
+    ) async -> Result<Void, TicketServiceError> {
         guard let requestURL = ticketURL(config: config, id: id) else { return .failure(.noServerURL) }
         guard let token = AuthTokenStorage.getToken(), !token.isEmpty else { return .failure(.noToken) }
         var request = URLRequest(url: requestURL)
@@ -347,7 +377,7 @@ enum TicketService {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         AppIdentity.apply(to: &request)
-        return await runTicketMutation(request: request, config: config)
+        return await runTicketMutation(request: request, config: config, mutationHooks: mutationHooks)
     }
 }
 

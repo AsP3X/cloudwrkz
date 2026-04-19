@@ -632,6 +632,10 @@
 
 "todo.nav_title" = "ToDo";
 
+"mutation.job_queued" = "Auftrag eingereiht";
+
+"mutation.job_completed" = "Auftrag abgeschlossen";
+
 "todo.no_server" = "Kein Server konfiguriert.";
 
 "todo.no_todos" = "Keine Aufgaben";

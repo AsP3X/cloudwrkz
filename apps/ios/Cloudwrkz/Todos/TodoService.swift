@@ -252,24 +252,42 @@ enum TodoService {
     }
 
     /// PATCH .../todos/:id — update a todo (e.g. set status to COMPLETED, or unarchive with archivedAt: null).
-    static func updateTodo(config: ServerConfig, id: String, status: String) async -> Result<Void, TodoServiceError> {
+    static func updateTodo(
+        config: ServerConfig,
+        id: String,
+        status: String,
+        mutationHooks: MutationJobTitleHooks? = nil
+    ) async -> Result<Void, TodoServiceError> {
         let body: [String: Any] = ["status": status]
-        return await patchTodo(config: config, id: id, body: body)
+        return await patchTodo(config: config, id: id, body: body, mutationHooks: mutationHooks)
     }
 
     /// Archive a todo (PATCH with archivedAt: current date).
-    static func archiveTodo(config: ServerConfig, id: String) async -> Result<Void, TodoServiceError> {
+    static func archiveTodo(
+        config: ServerConfig,
+        id: String,
+        mutationHooks: MutationJobTitleHooks? = nil
+    ) async -> Result<Void, TodoServiceError> {
         let body: [String: Any] = ["archivedAt": isoDate(Date())]
-        return await patchTodo(config: config, id: id, body: body)
+        return await patchTodo(config: config, id: id, body: body, mutationHooks: mutationHooks)
     }
 
     /// Unarchive a todo (PATCH with archivedAt: null).
-    static func unarchiveTodo(config: ServerConfig, id: String) async -> Result<Void, TodoServiceError> {
+    static func unarchiveTodo(
+        config: ServerConfig,
+        id: String,
+        mutationHooks: MutationJobTitleHooks? = nil
+    ) async -> Result<Void, TodoServiceError> {
         let body: [String: Any?] = ["archivedAt": NSNull()]
-        return await patchTodo(config: config, id: id, body: body as [String: Any])
+        return await patchTodo(config: config, id: id, body: body as [String: Any], mutationHooks: mutationHooks)
     }
 
-    private static func patchTodo(config: ServerConfig, id: String, body: [String: Any]) async -> Result<Void, TodoServiceError> {
+    private static func patchTodo(
+        config: ServerConfig,
+        id: String,
+        body: [String: Any],
+        mutationHooks: MutationJobTitleHooks? = nil
+    ) async -> Result<Void, TodoServiceError> {
         guard let requestURL = todoURL(config: config, id: id) else {
             return .failure(.noServerURL)
         }
@@ -295,18 +313,27 @@ enum TodoService {
             }
             switch http.statusCode {
             case 200:
+                if let completed = mutationHooks?.onCompleted {
+                    await completed()
+                }
                 return .success(())
             case 202:
-                guard let queued = try? JSONDecoder().decode(MutationQueuedPayload.self, from: data),
-                      let jid = queued.resolvedJobId, !jid.isEmpty
+                if let onQueued = mutationHooks?.onQueued {
+                    await onQueued()
+                }
+                guard let queuedPayload = try? JSONDecoder().decode(MutationQueuedPayload.self, from: data),
+                      let jid = queuedPayload.resolvedJobId, !jid.isEmpty
                 else {
                     return .failure(.serverError(message: "Todo update was queued but no job id was returned"))
                 }
-                let deadline = queued.retry_deadline_secs ?? 120
+                let deadline = queuedPayload.retry_deadline_secs ?? 120
                 switch await pollMutationJob(config: config, jobId: jid, retryDeadlineSecs: deadline) {
                 case .failure(let err):
                     return .failure(err)
                 case .success:
+                    if let completed = mutationHooks?.onCompleted {
+                        await completed()
+                    }
                     return .success(())
                 }
             case 401:
@@ -328,7 +355,11 @@ enum TodoService {
     }
 
     /// DELETE .../todos/:id — delete a todo (and its subtodos).
-    static func deleteTodo(config: ServerConfig, id: String) async -> Result<Void, TodoServiceError> {
+    static func deleteTodo(
+        config: ServerConfig,
+        id: String,
+        mutationHooks: MutationJobTitleHooks? = nil
+    ) async -> Result<Void, TodoServiceError> {
         guard let requestURL = todoURL(config: config, id: id) else {
             return .failure(.noServerURL)
         }
@@ -349,18 +380,27 @@ enum TodoService {
             }
             switch http.statusCode {
             case 200, 204:
+                if let completed = mutationHooks?.onCompleted {
+                    await completed()
+                }
                 return .success(())
             case 202:
-                guard let queued = try? JSONDecoder().decode(MutationQueuedPayload.self, from: data),
-                      let jid = queued.resolvedJobId, !jid.isEmpty
+                if let onQueued = mutationHooks?.onQueued {
+                    await onQueued()
+                }
+                guard let queuedPayload = try? JSONDecoder().decode(MutationQueuedPayload.self, from: data),
+                      let jid = queuedPayload.resolvedJobId, !jid.isEmpty
                 else {
                     return .failure(.serverError(message: "Todo delete was queued but no job id was returned"))
                 }
-                let deadline = queued.retry_deadline_secs ?? 120
+                let deadline = queuedPayload.retry_deadline_secs ?? 120
                 switch await pollMutationJob(config: config, jobId: jid, retryDeadlineSecs: deadline) {
                 case .failure(let err):
                     return .failure(err)
                 case .success:
+                    if let completed = mutationHooks?.onCompleted {
+                        await completed()
+                    }
                     return .success(())
                 }
             case 401:
@@ -404,7 +444,8 @@ enum TodoService {
         config: ServerConfig,
         title: String,
         description: String? = nil,
-        parentTodoId: String? = nil
+        parentTodoId: String? = nil,
+        mutationHooks: MutationJobTitleHooks? = nil
     ) async -> Result<String, TodoServiceError> {
         guard let base = config.baseURL else {
             return .failure(.noServerURL)
@@ -451,14 +492,20 @@ enum TodoService {
             case 201:
                 struct CreateResponse: Decodable { let id: String }
                 let decoded = try JSONDecoder().decode(CreateResponse.self, from: data)
+                if let completed = mutationHooks?.onCompleted {
+                    await completed()
+                }
                 return .success(decoded.id)
             case 202:
-                guard let queued = try? JSONDecoder().decode(MutationQueuedPayload.self, from: data),
-                      let jid = queued.resolvedJobId, !jid.isEmpty
+                if let onQueued = mutationHooks?.onQueued {
+                    await onQueued()
+                }
+                guard let queuedPayload = try? JSONDecoder().decode(MutationQueuedPayload.self, from: data),
+                      let jid = queuedPayload.resolvedJobId, !jid.isEmpty
                 else {
                     return .failure(.serverError(message: "Todo creation was queued but no job id was returned"))
                 }
-                let deadline = queued.retry_deadline_secs ?? 120
+                let deadline = queuedPayload.retry_deadline_secs ?? 120
                 switch await pollMutationJob(config: config, jobId: jid, retryDeadlineSecs: deadline) {
                 case .failure(let err):
                     return .failure(err)
@@ -468,6 +515,9 @@ enum TodoService {
                           let decoded = try? JSONDecoder().decode(CreateResponse.self, from: bodyData)
                     else {
                         return .failure(.serverError(message: "Todo created but response was incomplete"))
+                    }
+                    if let completed = mutationHooks?.onCompleted {
+                        await completed()
                     }
                     return .success(decoded.id)
                 }

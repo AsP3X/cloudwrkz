@@ -12,11 +12,14 @@ struct AddTodoView: View {
     /// When set, creates a subtodo under this parent.
     var parentTodoId: String?
     var parentTodoTitle: String?
+    /// When non-nil, mutation job callbacks run on the **parent** screen (e.g. Todo list), not in this sheet.
+    var mutationHooks: MutationJobTitleHooks? = nil
     var onSaved: () -> Void
+    /// Called when create fails after the sheet was dismissed (errors can no longer show in-sheet).
+    var onCreateFailed: ((String) -> Void)? = nil
 
     @State private var titleText = ""
     @State private var descriptionText = ""
-    @State private var isSaving = false
     @State private var errorMessage: String?
     @FocusState private var focusedField: Field?
 
@@ -123,8 +126,8 @@ struct AddTodoView: View {
                         Task { await save() }
                     }
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(canSave && !isSaving ? CloudwrkzColors.primary400 : CloudwrkzColors.neutral500)
-                    .disabled(!canSave || isSaving)
+                    .foregroundStyle(canSave ? CloudwrkzColors.primary400 : CloudwrkzColors.neutral500)
+                    .disabled(!canSave)
                 }
             }
             .tint(CloudwrkzColors.primary400)
@@ -138,24 +141,37 @@ struct AddTodoView: View {
 
     private func save() async {
         errorMessage = nil
-        isSaving = true
+        guard canSave else { return }
         let title = titleText.trimmingCharacters(in: .whitespacesAndNewlines)
         let description = descriptionText.trimmingCharacters(in: .whitespacesAndNewlines)
         let descriptionOpt = description.isEmpty ? nil : description
+        let config = appState.config
+        let parentId = parentTodoId
+        let hooks = mutationHooks
+        let onSavedClosure = onSaved
+        let onCreateFailedClosure = onCreateFailed
+
+        await MainActor.run {
+            dismiss()
+        }
+
+        // Sheet must be gone before mutation hooks run so the parent nav title / banner is visible.
+        try? await Task.sleep(nanoseconds: 200_000_000)
+
         let result = await TodoService.createTodo(
-            config: appState.config,
+            config: config,
             title: title,
             description: descriptionOpt,
-            parentTodoId: parentTodoId
+            parentTodoId: parentId,
+            mutationHooks: hooks
         )
+
         await MainActor.run {
-            isSaving = false
             switch result {
             case .success:
-                onSaved()
-                dismiss()
+                onSavedClosure()
             case .failure(let err):
-                errorMessage = message(for: err)
+                onCreateFailedClosure?(message(for: err))
             }
         }
     }

@@ -35,6 +35,7 @@ struct TodosOverviewView: View {
     @State private var pendingArchiveTodo: Todo?
     @State private var pendingDeleteTodo: Todo?
     @State private var refreshErrorMessage: String?
+    @State private var mutationTitleCarousel = MutationTitleCarouselState()
 
     private var viewStyle: TodoOverviewViewStyle {
         TodoOverviewViewStyle(rawValue: viewStyleRaw) ?? .card
@@ -73,8 +74,7 @@ struct TodosOverviewView: View {
                 }
             }
         }
-        .navigationTitle("todo.nav_title")
-        .navigationBarTitleDisplayMode(.inline)
+        .mutationJobNavigationTitle("todo.nav_title", state: mutationTitleCarousel)
         .toolbarBackground(.hidden, for: .navigationBar)
         .overlay(alignment: .bottomTrailing) {
             if !isLoading || !todos.isEmpty {
@@ -119,7 +119,11 @@ struct TodosOverviewView: View {
             AddTodoView(
                 parentTodoId: nil,
                 parentTodoTitle: nil,
-                onSaved: { Task { await loadTodos() } }
+                mutationHooks: todoMutationHooks(),
+                onSaved: { Task { await loadTodos() } },
+                onCreateFailed: { msg in
+                    Task { @MainActor in refreshErrorMessage = msg }
+                }
             )
         }
         .onAppear { Task { await loadTodos() } }
@@ -446,20 +450,47 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
         return "\(status) · \(todo.priority)"
     }
 
+    private func todoMutationHooks() -> MutationJobTitleHooks {
+        MutationJobTitleHooks(
+            onQueued: {
+                await mutationTitleCarousel.playCycle(
+                    message: String(localized: "mutation.job_queued"),
+                    bannerKind: .queued
+                )
+            },
+            onCompleted: {
+                await mutationTitleCarousel.playCycle(
+                    message: String(localized: "mutation.job_completed"),
+                    bannerKind: .completed
+                )
+            }
+        )
+    }
+
     private func completeTodo(_ id: String) async {
-        let result = await TodoService.updateTodo(config: appState.config, id: id, status: "COMPLETED")
+        let result = await TodoService.updateTodo(
+            config: appState.config,
+            id: id,
+            status: "COMPLETED",
+            mutationHooks: todoMutationHooks()
+        )
         guard case .success = result else { return }
         await loadTodos()
     }
 
     private func uncompleteTodo(_ id: String) async {
-        let result = await TodoService.updateTodo(config: appState.config, id: id, status: "IN_PROGRESS")
+        let result = await TodoService.updateTodo(
+            config: appState.config,
+            id: id,
+            status: "IN_PROGRESS",
+            mutationHooks: todoMutationHooks()
+        )
         guard case .success = result else { return }
         await loadTodos()
     }
 
     private func deleteTodo(_ id: String) async {
-        _ = await TodoService.deleteTodo(config: appState.config, id: id)
+        _ = await TodoService.deleteTodo(config: appState.config, id: id, mutationHooks: todoMutationHooks())
         await loadTodos(isRefresh: true)
     }
 
@@ -501,7 +532,11 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
     }
 
     private func performArchive(_ todo: Todo) async {
-        let result = await TodoService.archiveTodo(config: appState.config, id: todo.id)
+        let result = await TodoService.archiveTodo(
+            config: appState.config,
+            id: todo.id,
+            mutationHooks: todoMutationHooks()
+        )
         await MainActor.run {
             switch result {
             case .success:
@@ -516,7 +551,7 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
     }
 
     private func performDelete(_ todo: Todo) async {
-        _ = await TodoService.deleteTodo(config: appState.config, id: todo.id)
+        _ = await TodoService.deleteTodo(config: appState.config, id: todo.id, mutationHooks: todoMutationHooks())
         await loadTodos(isRefresh: true)
     }
 

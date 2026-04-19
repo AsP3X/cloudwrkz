@@ -24,6 +24,8 @@ struct TodoDetailView: View {
     @State private var todo: Todo
     @State private var showTodoInfoSidebar = false
     @State private var showAddTodo = false
+    @State private var addTodoCreateErrorMessage: String?
+    @State private var mutationTitleCarousel = MutationTitleCarouselState()
 
     init(todo: Todo) {
         _todo = State(initialValue: todo)
@@ -50,8 +52,12 @@ struct TodoDetailView: View {
             }
         .scrollContentBackground(.hidden)
         }
-        .navigationTitle(todo.todoNumber ?? todo.title)
-        .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let msg = addTodoCreateErrorMessage {
+                addTodoErrorBanner(message: msg)
+            }
+        }
+        .mutationJobNavigationTitle(LocalizedStringKey(todo.todoNumber ?? todo.title), state: mutationTitleCarousel)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -78,11 +84,50 @@ struct TodoDetailView: View {
             AddTodoView(
                 parentTodoId: todo.id,
                 parentTodoTitle: todo.title,
-                onSaved: { Task { await loadTodo() } }
+                onSaved: { Task { await loadTodo() } },
+                onCreateFailed: { msg in
+                    Task { @MainActor in addTodoCreateErrorMessage = msg }
+                }
             )
         }
         .tint(CloudwrkzColors.primary400)
         .task { await loadTodo() }
+    }
+
+    private func todoMutationHooks() -> MutationJobTitleHooks {
+        MutationJobTitleHooks(
+            onQueued: {
+                await mutationTitleCarousel.playCycle(
+                    message: String(localized: "mutation.job_queued"),
+                    bannerKind: .queued
+                )
+            },
+            onCompleted: {
+                await mutationTitleCarousel.playCycle(
+                    message: String(localized: "mutation.job_completed"),
+                    bannerKind: .completed
+                )
+            }
+        )
+    }
+
+    private func addTodoErrorBanner(message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .foregroundStyle(CloudwrkzColors.warning500)
+            Text(message)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(CloudwrkzColors.neutral100)
+            Spacer()
+            Button(String(localized: "links.dismiss")) {
+                addTodoCreateErrorMessage = nil
+            }
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(CloudwrkzColors.primary400)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(CloudwrkzColors.neutral800.opacity(0.95))
     }
 
     private func loadTodo() async {
@@ -352,19 +397,33 @@ struct TodoDetailView: View {
     }
 
     private func completeSubtodo(_ id: String, immediate: Bool = false) async {
-        let result = await TodoService.updateTodo(config: appState.config, id: id, status: "COMPLETED")
+        let result = await TodoService.updateTodo(
+            config: appState.config,
+            id: id,
+            status: "COMPLETED",
+            mutationHooks: todoMutationHooks()
+        )
         guard case .success = result else { return }
         await loadTodoAfterComplete(immediate: immediate)
     }
 
     private func uncompleteSubtodo(_ id: String, immediate: Bool = false) async {
-        let result = await TodoService.updateTodo(config: appState.config, id: id, status: "IN_PROGRESS")
+        let result = await TodoService.updateTodo(
+            config: appState.config,
+            id: id,
+            status: "IN_PROGRESS",
+            mutationHooks: todoMutationHooks()
+        )
         guard case .success = result else { return }
         await loadTodoAfterComplete(immediate: immediate)
     }
 
     private func deleteSubtodo(_ id: String) async {
-        let result = await TodoService.deleteTodo(config: appState.config, id: id)
+        let result = await TodoService.deleteTodo(
+            config: appState.config,
+            id: id,
+            mutationHooks: todoMutationHooks()
+        )
         await MainActor.run {
             if case .failure = result {
                 // Optionally show an error

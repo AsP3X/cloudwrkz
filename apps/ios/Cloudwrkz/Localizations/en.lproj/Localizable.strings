@@ -1084,6 +1084,12 @@
 
 "todo.nav_title" = "ToDo";
 
+/* Shown in the navigation bar while a background mutation is accepted (HTTP 202). */
+"mutation.job_queued" = "Job queued";
+
+/* Shown in the navigation bar after the background mutation job finishes successfully. */
+"mutation.job_completed" = "Job completed";
+
 "todo.no_server" = "No server configured.";
 
 "todo.no_todos" = "No todos";

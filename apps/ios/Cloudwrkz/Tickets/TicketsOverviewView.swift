@@ -17,6 +17,7 @@ struct TicketsOverviewView: View {
     @State private var pendingDeleteTicket: Ticket?
     /// Shown as banner when refresh or post-action refetch fails but we keep the current list.
     @State private var refreshErrorMessage: String?
+    @State private var mutationTitleCarousel = MutationTitleCarouselState()
 
     private var hasActiveFilters: Bool {
         filters.status != .unresolved
@@ -47,8 +48,7 @@ struct TicketsOverviewView: View {
                     }
             }
         }
-        .navigationTitle("ticket.nav_title")
-        .navigationBarTitleDisplayMode(.inline)
+        .mutationJobNavigationTitle("ticket.nav_title", state: mutationTitleCarousel)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -225,8 +225,29 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
         }
     }
 
+    private func ticketMutationHooks() -> MutationJobTitleHooks {
+        MutationJobTitleHooks(
+            onQueued: {
+                await mutationTitleCarousel.playCycle(
+                    message: String(localized: "mutation.job_queued"),
+                    bannerKind: .queued
+                )
+            },
+            onCompleted: {
+                await mutationTitleCarousel.playCycle(
+                    message: String(localized: "mutation.job_completed"),
+                    bannerKind: .completed
+                )
+            }
+        )
+    }
+
     private func performArchive(_ ticket: Ticket) async {
-        let result = await TicketService.archiveTicket(config: appState.config, id: ticket.id)
+        let result = await TicketService.archiveTicket(
+            config: appState.config,
+            id: ticket.id,
+            mutationHooks: ticketMutationHooks()
+        )
         await MainActor.run {
             switch result {
             case .success:
@@ -241,7 +262,11 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
     }
 
     private func performDelete(_ ticket: Ticket) async {
-        let result = await TicketService.deleteTicket(config: appState.config, id: ticket.id)
+        let result = await TicketService.deleteTicket(
+            config: appState.config,
+            id: ticket.id,
+            mutationHooks: ticketMutationHooks()
+        )
         await MainActor.run {
             switch result {
             case .success:
