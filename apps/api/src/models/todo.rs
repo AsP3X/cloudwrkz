@@ -110,6 +110,8 @@ pub struct UpdateTodoRequest {
     pub actual_hours: Option<f64>,
     pub start_date: Option<serde_json::Value>,
     pub due_date: Option<serde_json::Value>,
+    /// iOS / JSON clients send `archivedAt`; snake_case `archived_at` is also accepted.
+    #[serde(alias = "archivedAt")]
     pub archived_at: Option<serde_json::Value>,
     pub ticket_id: Option<serde_json::Value>,
     pub order: Option<i32>,

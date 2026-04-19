@@ -59,6 +59,8 @@ pub struct UpdateLinkRequest {
     pub link_type: Option<String>,
     pub is_favorite: Option<bool>,
     pub rating: Option<serde_json::Value>,
+    /// iOS / JSON clients send `archivedAt`; snake_case `archived_at` is also accepted.
+    #[serde(alias = "archivedAt")]
     pub archived_at: Option<serde_json::Value>,
     pub collection_ids: Option<Vec<String>>,
 }

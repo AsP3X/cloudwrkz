@@ -78,6 +78,8 @@ pub struct UpdateTimeEntryRequest {
     pub stopped_at: Option<serde_json::Value>,
     #[serde(default)]
     pub timezone: Option<serde_json::Value>,
+    /// iOS / JSON clients send `archivedAt`; snake_case `archived_at` is also accepted.
+    #[serde(alias = "archivedAt")]
     pub archived_at: Option<serde_json::Value>,
 }
 
