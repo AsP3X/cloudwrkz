@@ -501,8 +501,18 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
     }
 
     private func performArchive(_ todo: Todo) async {
-        _ = await TodoService.archiveTodo(config: appState.config, id: todo.id)
-        await loadTodos(isRefresh: true)
+        let result = await TodoService.archiveTodo(config: appState.config, id: todo.id)
+        await MainActor.run {
+            switch result {
+            case .success:
+                refreshErrorMessage = nil
+            case .failure(let err):
+                refreshErrorMessage = message(for: err)
+            }
+        }
+        if case .success = result {
+            await loadTodos(isRefresh: true)
+        }
     }
 
     private func performDelete(_ todo: Todo) async {

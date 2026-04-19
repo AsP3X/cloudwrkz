@@ -241,7 +241,7 @@ enum TimeTrackingService {
         AppIdentity.apply(to: &request)
         request.httpBody = try? dateEncoder.encode(input)
 
-        return await executeVoid(request: request)
+        return await executeVoid(request: request, config: config)
     }
 
     /// Unarchive a time entry (PATCH with archivedAt: null).
@@ -257,7 +257,7 @@ enum TimeTrackingService {
         AppIdentity.apply(to: &request)
         let body: [String: Any?] = ["archivedAt": NSNull()]
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        return await executeVoid(request: request)
+        return await executeVoid(request: request, config: config)
     }
 
     // MARK: - DELETE /api/time-tracking/[id]
@@ -273,7 +273,7 @@ enum TimeTrackingService {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         AppIdentity.apply(to: &request)
 
-        return await executeVoid(request: request)
+        return await executeVoid(request: request, config: config)
     }
 
     // MARK: - POST /api/time-tracking/[id]/pause
@@ -365,7 +365,99 @@ enum TimeTrackingService {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         AppIdentity.apply(to: &request)
 
-        return await executeVoid(request: request)
+        return await executeVoid(request: request, config: config)
+    }
+
+    // MARK: - Mutation jobs (Rust API returns 202 + poll GET …/mutation-jobs/{id} for many writes)
+
+    private static func mutationJobPathSegments(loginPath: String, jobId: String) -> [String] {
+        let path = loginPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let mjPath: String
+        if path.isEmpty {
+            mjPath = "api/v1/mutation-jobs/\(jobId)"
+        } else if path.lowercased().hasSuffix("/auth/login") {
+            mjPath = String(path.dropLast("/auth/login".count)) + "/mutation-jobs/\(jobId)"
+        } else {
+            mjPath = path.replacingOccurrences(of: "login", with: "mutation-jobs", options: .caseInsensitive) + "/\(jobId)"
+        }
+        return mjPath.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+    }
+
+    private struct MutationQueuedPayload: Decodable {
+        let queued: Bool?
+        let jobId: String?
+        let job_id: String?
+        let retry_deadline_secs: UInt32?
+        var resolvedJobId: String? { jobId ?? job_id }
+    }
+
+    private static func pollMutationJob(
+        config: ServerConfig,
+        jobId: String,
+        retryDeadlineSecs: UInt32
+    ) async -> Result<Void, TimeTrackingServiceError> {
+        guard let base = config.baseURL else {
+            return .failure(.noServerURL)
+        }
+        guard let token = AuthTokenStorage.getToken(), !token.isEmpty else {
+            return .failure(.noToken)
+        }
+        let segments = mutationJobPathSegments(loginPath: config.loginPath, jobId: jobId)
+        guard !segments.isEmpty else {
+            return .failure(.noServerURL)
+        }
+        var statusURL = base
+        for s in segments {
+            statusURL = statusURL.appending(path: s)
+        }
+        let maxWait = TimeInterval(retryDeadlineSecs + 5)
+        let deadline = Date().addingTimeInterval(maxWait)
+
+        while Date() < deadline {
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            var request = URLRequest(url: statusURL)
+            request.httpMethod = "GET"
+            request.timeoutInterval = timeout
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            AppIdentity.apply(to: &request)
+            let data: Data
+            let http: HTTPURLResponse
+            do {
+                let (d, response) = try await URLSession.shared.data(for: request)
+                guard let h = response as? HTTPURLResponse else {
+                    return .failure(.serverError(message: "Invalid response"))
+                }
+                data = d
+                http = h
+            } catch {
+                let description = (error as? URLError)?.localizedDescription ?? error.localizedDescription
+                return .failure(.networkError(description: description))
+            }
+            if http.statusCode == 401 {
+                SessionExpiredNotifier.notify()
+                return .failure(.unauthorized)
+            }
+            guard http.statusCode == 200,
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let st = obj["status"] as? String
+            else {
+                continue
+            }
+            if st == "completed" {
+                let code = (obj["http_status"] as? Int) ?? 200
+                if code >= 400 {
+                    let msg = (obj["message"] as? String) ?? "Request failed"
+                    return .failure(.serverError(message: msg))
+                }
+                return .success(())
+            }
+            if st == "failed" {
+                let msg = (obj["message"] as? String) ?? "Change could not be applied"
+                return .failure(.serverError(message: msg))
+            }
+        }
+        return .failure(.serverError(message: "The server took too long to apply your change. Please try again."))
     }
 
     // MARK: - Shared helpers
@@ -381,7 +473,7 @@ enum TimeTrackingService {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         AppIdentity.apply(to: &request)
 
-        return await executeVoid(request: request)
+        return await executeVoid(request: request, config: config)
     }
 
     private static func execute<T>(request: URLRequest, decode: (Data) throws -> T) async -> Result<T, TimeTrackingServiceError> {
@@ -428,7 +520,7 @@ enum TimeTrackingService {
         }
     }
 
-    private static func executeVoid(request: URLRequest) async -> Result<Void, TimeTrackingServiceError> {
+    private static func executeVoid(request: URLRequest, config: ServerConfig) async -> Result<Void, TimeTrackingServiceError> {
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else {
@@ -437,6 +529,14 @@ enum TimeTrackingService {
             switch http.statusCode {
             case 200, 201, 204:
                 return .success(())
+            case 202:
+                guard let queued = try? JSONDecoder().decode(MutationQueuedPayload.self, from: data),
+                      let jid = queued.resolvedJobId, !jid.isEmpty
+                else {
+                    return .failure(.serverError(message: "Change was queued but no job id was returned"))
+                }
+                let deadline = queued.retry_deadline_secs ?? 120
+                return await pollMutationJob(config: config, jobId: jid, retryDeadlineSecs: deadline)
             case 401:
                 SessionExpiredNotifier.notify()
                 return .failure(.unauthorized)
