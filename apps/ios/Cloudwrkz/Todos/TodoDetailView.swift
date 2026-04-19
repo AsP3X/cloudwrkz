@@ -159,8 +159,30 @@ struct TodoDetailView: View {
                 withAnimation(.easeInOut(duration: 0.25)) {
                     todo = updated
                 }
+                pruneOptimisticPendingSubtodosAlreadyRepresented(in: updated)
             }
         }
+    }
+
+    /// After one subtodo’s create finishes, GET may already include **other** in-flight subtodos. Drop any placeholder
+    /// whose title is satisfied by a non-completed subtask in the payload so we never show spinner + real row for the same item.
+    private func pruneOptimisticPendingSubtodosAlreadyRepresented(in updated: Todo) {
+        guard !optimisticPendingSubtodos.isEmpty else { return }
+        var activePool = (updated.subtodos ?? []).filter { $0.status != "COMPLETED" }
+        var kept: [OptimisticPendingSubtodo] = []
+        for p in optimisticPendingSubtodos {
+            let pNorm = Self.normalizedSubtodoTitle(p.title)
+            if let idx = activePool.firstIndex(where: { Self.normalizedSubtodoTitle($0.title) == pNorm }) {
+                activePool.remove(at: idx)
+            } else {
+                kept.append(p)
+            }
+        }
+        optimisticPendingSubtodos = kept
+    }
+
+    private static func normalizedSubtodoTitle(_ s: String) -> String {
+        s.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// After creating a subtodo: drop the matching optimistic row, fetch parent, then update `todo` with nil animation
@@ -176,6 +198,7 @@ struct TodoDetailView: View {
                 withAnimation(nil) {
                     todo = updated
                 }
+                pruneOptimisticPendingSubtodosAlreadyRepresented(in: updated)
             }
         }
     }
@@ -191,6 +214,7 @@ struct TodoDetailView: View {
                 withAnimation(.easeInOut(duration: immediate ? 0.25 : 1.4)) {
                     todo = updated
                 }
+                pruneOptimisticPendingSubtodosAlreadyRepresented(in: updated)
             }
         }
     }
