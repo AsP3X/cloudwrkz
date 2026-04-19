@@ -95,6 +95,39 @@ const TODO_SELECT: &str = r#"SELECT id, todo_number, parent_todo_id, title, desc
        assigned_to_id, estimated_hours, actual_hours, start_date, due_date,
        completed_date, archived_at, ticket_id, "order", created_at, updated_at"#;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TodoListParentScope {
+    RootOnly,
+    SubtasksOnly,
+    All,
+}
+
+/// Web-vite passes `kind` on `/todos`; iOS uses `includeSubtodos`. When `kind` is absent or
+/// unrecognized, fall back to `includeSubtodos` (default: root-only, same as Next handler).
+fn todo_list_parent_scope(params: &TodoListParams) -> TodoListParentScope {
+    let from_include = || {
+        if params.include_subtodos == Some(true) {
+            TodoListParentScope::All
+        } else {
+            TodoListParentScope::RootOnly
+        }
+    };
+    match params
+        .kind
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(k) if k.eq_ignore_ascii_case("root") => TodoListParentScope::RootOnly,
+        Some(k) if k.eq_ignore_ascii_case("subtask") || k.eq_ignore_ascii_case("subtodo") => {
+            TodoListParentScope::SubtasksOnly
+        }
+        Some(k) if k.eq_ignore_ascii_case("all") => TodoListParentScope::All,
+        Some(_) => from_include(),
+        None => from_include(),
+    }
+}
+
 async fn list_todos(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -106,9 +139,7 @@ async fn list_todos(
         None | Some("") | Some("ALL") => None,
         Some(p) => Some(p.to_string()),
     };
-    // Match web `get-todos-handler`: default is root tasks only. Include child rows only when
-    // `includeSubtodos=true` (omitted or false ⇒ `parent_todo_id IS NULL`).
-    let is_root_only = params.include_subtodos != Some(true);
+    let parent_scope = todo_list_parent_scope(&params);
     let ticket_id = params.ticket_id.clone();
     let _ = &params.sort;
 
@@ -161,8 +192,10 @@ async fn list_todos(
             placeholders.join(", ")
         ));
     }
-    if is_root_only {
-        sql.push_str(&format!(" AND parent_todo_id IS NULL"));
+    match parent_scope {
+        TodoListParentScope::RootOnly => sql.push_str(" AND parent_todo_id IS NULL"),
+        TodoListParentScope::SubtasksOnly => sql.push_str(" AND parent_todo_id IS NOT NULL"),
+        TodoListParentScope::All => {}
     }
     sql.push_str(" ORDER BY \"order\" ASC, created_at ASC");
 

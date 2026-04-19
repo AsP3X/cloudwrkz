@@ -491,7 +491,8 @@ enum TodoService {
             body["description"] = d
         }
         if let parentId = parentTodoId, !parentId.isEmpty {
-            body["parentTodoId"] = parentId
+            // Rust API field is `parent_todo_id` (camelCase alias also accepted).
+            body["parent_todo_id"] = parentId
         }
         guard let jsonData = try? JSONSerialization.data(withJSONObject: body) else {
             return .failure(.serverError(message: "Invalid request"))

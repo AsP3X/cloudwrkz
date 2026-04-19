@@ -90,8 +90,12 @@ pub struct CreateTodoRequest {
     pub description_html: Option<String>,
     pub status: Option<String>,
     pub priority: Option<String>,
+    /// iOS and some clients send `parentTodoId`; web uses `parent_todo_id`.
+    #[serde(alias = "parentTodoId")]
     pub parent_todo_id: Option<String>,
+    #[serde(alias = "ticketId")]
     pub ticket_id: Option<String>,
+    #[serde(alias = "assignedToId")]
     pub assigned_to_id: Option<String>,
     pub estimated_hours: Option<f64>,
     pub start_date: Option<String>,
@@ -123,6 +127,7 @@ pub struct TodoListParams {
     pub priority: Option<String>,
     pub sort: Option<String>,
     pub archive: Option<String>,
+    /// Filter by parent relationship (`all` | `root` | `subtask`). Matches web-vite task filters.
     pub kind: Option<String>,
     pub limit: Option<i64>,
     /// When set, return only todos linked to this ticket (user must have ticket access).

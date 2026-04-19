@@ -65,7 +65,6 @@ struct TodosOverviewView: View {
             || filters.priority != .all
             || filters.sort != .newestFirst
             || filters.archive != .unarchived
-            || filters.includeSubtodos
     }
 
     @Environment(\.appState) private var appState
@@ -324,10 +323,16 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
         todos.filter { $0.status == "COMPLETED" }
     }
 
-    /// Main list is top-level only unless the user turns on “include subtodos” in filters.
+    /// Main overview only lists root tasks. Subtodos are shown on the parent’s detail screen only.
     private func applyRootOnlyFilter(_ list: [Todo]) -> [Todo] {
-        guard !filters.includeSubtodos else { return list }
-        return list.filter { $0.parentTodoId == nil }
+        list.filter { $0.parentTodoId == nil }
+    }
+
+    /// Query params for this screen: always exclude subtodos from the flat list (matches product rule).
+    private func filtersForMainList(_ base: TodoFilters) -> TodoFilters {
+        var f = base
+        f.includeSubtodos = false
+        return f
     }
 
     /// Where to show the optimistic row so it matches GET `/todos` ordering.
@@ -587,7 +592,7 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
     private func handleTodoCreated(id: String) async {
         let hadContent = await MainActor.run { !todos.isEmpty || optimisticCreatingTodo != nil }
         async let fetched = TodoService.fetchTodo(config: appState.config, id: id)
-        async let listResult = TodoService.fetchTodos(config: appState.config, filters: filters)
+        async let listResult = TodoService.fetchTodos(config: appState.config, filters: filtersForMainList(filters))
         let (todoResult, listRes) = await (fetched, listResult)
         await MainActor.run {
             optimisticCreatingTodo = nil
@@ -623,7 +628,7 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
             errorMessage = nil
             isLoading = true
         }
-        let result = await TodoService.fetchTodos(config: appState.config, filters: filters)
+        let result = await TodoService.fetchTodos(config: appState.config, filters: filtersForMainList(filters))
         await MainActor.run {
             switch result {
             case .success(let list):

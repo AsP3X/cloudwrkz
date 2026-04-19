@@ -52,7 +52,6 @@ struct TodoFiltersView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 28) {
                         headerSection
-                        scopeSection
                         statusSection
                         prioritySection
                         sortSection
@@ -74,28 +73,6 @@ struct TodoFiltersView: View {
                     .foregroundStyle(CloudwrkzColors.primary400)
                 }
             }
-        }
-    }
-
-    private var scopeSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionHeader(String(localized: "filter_todos.scope"))
-            VStack(spacing: 10) {
-                filterRow(
-                    title: String(localized: "filter_todos.top_level_only"),
-                    isSelected: !filters.includeSubtodos
-                ) {
-                    filters.includeSubtodos = false
-                }
-                filterRow(
-                    title: String(localized: "filter_todos.include_subtodos"),
-                    isSelected: filters.includeSubtodos
-                ) {
-                    filters.includeSubtodos = true
-                }
-            }
-            .padding(20)
-            .glassPanel(cornerRadius: 20, tint: CloudwrkzColors.primary500, tintOpacity: 0.04)
         }
     }
 
