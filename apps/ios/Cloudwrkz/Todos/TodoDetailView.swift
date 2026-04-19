@@ -7,17 +7,23 @@
 
 import SwiftUI
 
+private struct OptimisticPendingSubtodo: Identifiable {
+    let id: UUID
+    let title: String
+    let description: String?
+}
+
 private enum SubtodoListItem: Identifiable {
     case completedHeader
     case subtask(Todo.TodoSubtask)
     /// Matches API `ORDER BY "order" ASC, created_at ASC` — new subtodo appears after existing actives.
-    case creatingPlaceholder(title: String)
+    case creatingPlaceholder(id: UUID, title: String)
 
     var id: String {
         switch self {
         case .completedHeader: return "completed-header"
         case .subtask(let s): return s.id
-        case .creatingPlaceholder: return "optimistic-subtodo-creating"
+        case .creatingPlaceholder(let cid, _): return "creating-\(cid.uuidString)"
         }
     }
 }
@@ -28,7 +34,8 @@ struct TodoDetailView: View {
     @State private var showTodoInfoSidebar = false
     @State private var showAddTodo = false
     @State private var addTodoCreateErrorMessage: String?
-    @State private var optimisticCreatingSubtodo: (title: String, description: String?)?
+    /// One row per in-flight POST; supports opening the add sheet again before prior creates finish.
+    @State private var optimisticPendingSubtodos: [OptimisticPendingSubtodo] = []
     @State private var mutationTitleCarousel = MutationTitleCarouselState()
 
     init(todo: Todo) {
@@ -89,15 +96,17 @@ struct TodoDetailView: View {
                 parentTodoId: todo.id,
                 parentTodoTitle: todo.title,
                 mutationHooks: todoMutationHooks(),
-                onCreateStarted: { title, description in
-                    optimisticCreatingSubtodo = (title, description)
+                onCreateStarted: { correlationId, title, description in
+                    optimisticPendingSubtodos.append(
+                        OptimisticPendingSubtodo(id: correlationId, title: title, description: description)
+                    )
                 },
-                onSaved: { _ in
-                    Task { await handleSubtodoCreated() }
+                onSaved: { _, correlationId in
+                    Task { await handleSubtodoCreated(completedCorrelationId: correlationId) }
                 },
-                onCreateFailed: { msg in
+                onCreateFailed: { msg, correlationId in
                     Task { @MainActor in
-                        optimisticCreatingSubtodo = nil
+                        optimisticPendingSubtodos.removeAll { $0.id == correlationId }
                         addTodoCreateErrorMessage = msg
                     }
                 }
@@ -154,14 +163,17 @@ struct TodoDetailView: View {
         }
     }
 
-    /// After creating a subtodo (sheet already dismissed); refresh parent so `subtodos` from GET `/todos/:id` appears.
-    private func handleSubtodoCreated() async {
+    /// After creating a subtodo: drop the matching optimistic row, fetch parent, then update `todo` with nil animation
+    /// so a placeholder and the new real row never sit in the list together (no crossfaded “duplicate” row).
+    private func handleSubtodoCreated(completedCorrelationId: UUID) async {
         let parentId = todo.id
+        await MainActor.run {
+            optimisticPendingSubtodos.removeAll { $0.id == completedCorrelationId }
+        }
         let result = await TodoService.fetchTodo(config: appState.config, id: parentId)
         await MainActor.run {
-            optimisticCreatingSubtodo = nil
             if case .success(let updated) = result {
-                withAnimation(.easeInOut(duration: 0.25)) {
+                withAnimation(nil) {
                     todo = updated
                 }
             }
@@ -241,11 +253,11 @@ struct TodoDetailView: View {
         (todo.subtodos ?? []).filter { $0.status == "COMPLETED" }
     }
 
-    /// Active first (plus optimistic create row at end), then a "Completed" header, then completed.
+    /// Active first (plus optimistic create rows at end, in creation order), then a "Completed" header, then completed.
     private var subtodoListItems: [SubtodoListItem] {
         var active: [SubtodoListItem] = activeSubtodos.map { .subtask($0) }
-        if let draft = optimisticCreatingSubtodo {
-            active.append(.creatingPlaceholder(title: draft.title))
+        for pending in optimisticPendingSubtodos {
+            active.append(.creatingPlaceholder(id: pending.id, title: pending.title))
         }
         let header: [SubtodoListItem] = completedSubtodos.isEmpty ? [] : [.completedHeader]
         let completed: [SubtodoListItem] = completedSubtodos.map { .subtask($0) }
@@ -307,7 +319,8 @@ struct TodoDetailView: View {
     }
 
     private var subtodosSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        // `sectionLabel` applies bottom padding; avoid stacking extra VStack spacing (was overlapping with a forced min height).
+        VStack(alignment: .leading, spacing: 0) {
             sectionLabel(String(localized: "common.subtodos"))
             if subtodoListItems.isEmpty {
                 subtodoPlaceholderRow
@@ -325,7 +338,7 @@ struct TodoDetailView: View {
                                 .padding(.top, 12)
                                 .padding(.leading, 4)
                                 .padding(.bottom, 4)
-                        case .creatingPlaceholder(let title):
+                        case .creatingPlaceholder(_, let title):
                             SubtodoCreatingPlaceholderRow(title: title)
                                 .padding(.horizontal, 4)
                         case .subtask(let subtodo):
@@ -364,39 +377,8 @@ struct TodoDetailView: View {
                         }
                     }
                 }
-                .frame(minHeight: listMinHeight)
-                .animation(.easeInOut(duration: 1.4), value: subtodoListItems.map(\.id))
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// Row height must match actual row content: icon 28pt + padding(.vertical, 10) + title (up to 2 lines) + subtitle.
-    private var listMinHeight: CGFloat {
-        let rowH: CGFloat = 76
-        let headerRowH: CGFloat = 40
-        var h = CGFloat(activeSubtodos.count) * rowH
-        if optimisticCreatingSubtodo != nil {
-            h += rowH
-        }
-        if !completedSubtodos.isEmpty {
-            h += headerRowH + CGFloat(completedSubtodos.count) * rowH
-        }
-        return max(h, 80)
-    }
-
-    private var subtodoEmptyActiveRow: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "circle")
-                .font(.system(size: 20))
-                .foregroundStyle(CloudwrkzColors.neutral500)
-                .frame(width: 28, height: 28)
-            Text("common.no_active_subtodos")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(CloudwrkzColors.neutral400)
-            Spacer()
-        }
-        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 

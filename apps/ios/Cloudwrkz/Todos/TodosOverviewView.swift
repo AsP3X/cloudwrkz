@@ -12,28 +12,34 @@ enum TodoOverviewViewStyle: String, CaseIterable {
     case list = "list"
 }
 
+private struct OptimisticCreatingTodo: Identifiable {
+    let id: UUID
+    let title: String
+    let description: String?
+}
+
 private enum TodoListRowItem: Identifiable {
     case completedHeader
     case todo(Todo)
     /// New todo being created; shown at the sort position where the API will place it.
-    case creatingPlaceholder(title: String)
+    case creatingPlaceholder(id: UUID, title: String)
 
     var id: String {
         switch self {
         case .completedHeader: return "completed-header"
         case .todo(let t): return t.id
-        case .creatingPlaceholder: return "optimistic-creating-list"
+        case .creatingPlaceholder(let cid, _): return "creating-list-\(cid.uuidString)"
         }
     }
 }
 
 private enum TodoCardRowItem: Identifiable {
-    case creating(title: String, description: String?)
+    case creating(id: UUID, title: String, description: String?)
     case row(Todo)
 
     var id: String {
         switch self {
-        case .creating: return "optimistic-creating-card"
+        case .creating(let cid, _, _): return "creating-card-\(cid.uuidString)"
         case .row(let t): return t.id
         }
     }
@@ -53,8 +59,8 @@ struct TodosOverviewView: View {
     @State private var todoIdsPendingArchiveOrDelete: Set<String> = []
     @State private var refreshErrorMessage: String?
     @State private var mutationTitleCarousel = MutationTitleCarouselState()
-    /// Shown at the top of the list while POST /todos is still queued or polling (API returns 202).
-    @State private var optimisticCreatingTodo: (title: String, description: String?)?
+    /// One placeholder per in-flight create (user can open add again before prior requests finish).
+    @State private var optimisticCreatingTodos: [OptimisticCreatingTodo] = []
 
     private var viewStyle: TodoOverviewViewStyle {
         TodoOverviewViewStyle(rawValue: viewStyleRaw) ?? .card
@@ -72,11 +78,11 @@ struct TodosOverviewView: View {
     var body: some View {
         ZStack {
             background
-            if isLoading && todos.isEmpty && optimisticCreatingTodo == nil {
+            if isLoading && todos.isEmpty && optimisticCreatingTodos.isEmpty {
                 loadingView
             } else if let error = errorMessage {
                 errorView(error)
-            } else if todos.isEmpty && optimisticCreatingTodo == nil {
+            } else if todos.isEmpty && optimisticCreatingTodos.isEmpty {
                 emptyView
             } else {
                 Group {
@@ -95,7 +101,7 @@ struct TodosOverviewView: View {
         .mutationJobNavigationTitle("todo.nav_title", state: mutationTitleCarousel)
         .toolbarBackground(.hidden, for: .navigationBar)
         .overlay(alignment: .bottomTrailing) {
-            if !isLoading || !todos.isEmpty || optimisticCreatingTodo != nil {
+            if !isLoading || !todos.isEmpty || !optimisticCreatingTodos.isEmpty {
                 addTodoButton
             }
         }
@@ -138,15 +144,17 @@ struct TodosOverviewView: View {
                 parentTodoId: nil,
                 parentTodoTitle: nil,
                 mutationHooks: todoMutationHooks(),
-                onCreateStarted: { title, description in
-                    optimisticCreatingTodo = (title, description)
+                onCreateStarted: { correlationId, title, description in
+                    optimisticCreatingTodos.append(
+                        OptimisticCreatingTodo(id: correlationId, title: title, description: description)
+                    )
                 },
-                onSaved: { id in
-                    Task { await handleTodoCreated(id: id) }
+                onSaved: { newId, correlationId in
+                    Task { await handleTodoCreated(newTodoId: newId, completedCorrelationId: correlationId) }
                 },
-                onCreateFailed: { msg in
+                onCreateFailed: { msg, correlationId in
                     Task { @MainActor in
-                        optimisticCreatingTodo = nil
+                        optimisticCreatingTodos.removeAll { $0.id == correlationId }
                         refreshErrorMessage = msg
                     }
                 }
@@ -246,7 +254,7 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
             LazyVStack(spacing: 14) {
                 ForEach(cardRowItems) { item in
                     switch item {
-                    case .creating(let title, let description):
+                    case .creating(_, let title, let description):
                         TodoCreatingPlaceholderCard(title: title, description: description)
                     case .row(let todo):
                         NavigationLink(value: todo) {
@@ -351,22 +359,24 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
     }
 
     private var cardRowItems: [TodoCardRowItem] {
-        guard let draft = optimisticCreatingTodo else {
-            return todos.map { TodoCardRowItem.row($0) }
-        }
-        let idx = insertionIndexForNewTodo()
         var rows = todos.map { TodoCardRowItem.row($0) }
-        let safeIdx = min(max(0, idx), rows.count)
-        rows.insert(.creating(title: draft.title, description: draft.description), at: safeIdx)
+        let baseIdx = insertionIndexForNewTodo()
+        for (i, draft) in optimisticCreatingTodos.enumerated() {
+            let idx = min(max(0, baseIdx + i), rows.count)
+            rows.insert(
+                .creating(id: draft.id, title: draft.title, description: draft.description),
+                at: idx
+            )
+        }
         return rows
     }
 
     private var todoListRowItems: [TodoListRowItem] {
         var activeItems: [TodoListRowItem] = activeTodos.map { .todo($0) }
-        if let draft = optimisticCreatingTodo {
-            let idx = insertionIndexForNewTodoAmongActives()
-            let safeIdx = min(max(0, idx), activeItems.count)
-            activeItems.insert(.creatingPlaceholder(title: draft.title), at: safeIdx)
+        let baseIdx = insertionIndexForNewTodoAmongActives()
+        for (i, draft) in optimisticCreatingTodos.enumerated() {
+            let idx = min(max(0, baseIdx + i), activeItems.count)
+            activeItems.insert(.creatingPlaceholder(id: draft.id, title: draft.title), at: idx)
         }
         let header: [TodoListRowItem] = completedTodos.isEmpty ? [] : [.completedHeader]
         let completed: [TodoListRowItem] = completedTodos.map { .todo($0) }
@@ -377,7 +387,7 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
         List {
             ForEach(todoListRowItems) { item in
                 switch item {
-                case .creatingPlaceholder(let title):
+                case .creatingPlaceholder(_, let title):
                     TodoCreatingListPlaceholder(title: title)
                         .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
                         .listRowSeparator(.hidden)
@@ -589,13 +599,13 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
     }
 
     /// Refresh after create: fetch single todo and full list **in parallel** so the new item appears as soon as either response wins (same pattern as `loadTodos` for errors).
-    private func handleTodoCreated(id: String) async {
-        let hadContent = await MainActor.run { !todos.isEmpty || optimisticCreatingTodo != nil }
-        async let fetched = TodoService.fetchTodo(config: appState.config, id: id)
+    private func handleTodoCreated(newTodoId: String, completedCorrelationId: UUID) async {
+        let hadContent = await MainActor.run { !todos.isEmpty || !optimisticCreatingTodos.isEmpty }
+        async let fetched = TodoService.fetchTodo(config: appState.config, id: newTodoId)
         async let listResult = TodoService.fetchTodos(config: appState.config, filters: filtersForMainList(filters))
         let (todoResult, listRes) = await (fetched, listResult)
         await MainActor.run {
-            optimisticCreatingTodo = nil
+            optimisticCreatingTodos.removeAll { $0.id == completedCorrelationId }
             switch listRes {
             case .success(let list):
                 todos = applyRootOnlyFilter(list)
