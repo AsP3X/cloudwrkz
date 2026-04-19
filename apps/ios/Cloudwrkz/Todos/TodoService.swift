@@ -136,6 +136,11 @@ enum TodoService {
         return .failure(.serverError(message: "The server took too long to apply your change. Please try again."))
     }
 
+    /// GET `/todos/:id` wraps the payload as `{ "todo": { ... } }` (Rust `Json(json!({ "todo": todo }))`).
+    private struct SingleTodoResponse: Decodable {
+        let todo: Todo
+    }
+
     private static var dateDecoder: JSONDecoder {
         let d = JSONDecoder()
         d.keyDecodingStrategy = .convertFromSnakeCase
@@ -238,6 +243,9 @@ enum TodoService {
             }
             switch http.statusCode {
             case 200:
+                if let wrapped = try? dateDecoder.decode(SingleTodoResponse.self, from: data) {
+                    return .success(wrapped.todo)
+                }
                 let decoded = try dateDecoder.decode(Todo.self, from: data)
                 return .success(decoded)
             case 401:

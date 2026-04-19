@@ -324,6 +324,12 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
         todos.filter { $0.status == "COMPLETED" }
     }
 
+    /// Main list is top-level only unless the user turns on “include subtodos” in filters.
+    private func applyRootOnlyFilter(_ list: [Todo]) -> [Todo] {
+        guard !filters.includeSubtodos else { return list }
+        return list.filter { $0.parentTodoId == nil }
+    }
+
     /// Where to show the optimistic row so it matches GET `/todos` ordering.
     ///
     /// The API currently ignores the `sort` query param and uses `ORDER BY "order" ASC, created_at ASC`.
@@ -587,13 +593,17 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
             optimisticCreatingTodo = nil
             switch listRes {
             case .success(let list):
-                todos = list
+                todos = applyRootOnlyFilter(list)
                 errorMessage = nil
                 refreshErrorMessage = nil
             case .failure(let err):
                 let errText = message(for: err)
-                if case .success(let t) = todoResult, !todos.contains(where: { $0.id == t.id }) {
-                    todos.insert(t, at: 0)
+                if case .success(let t) = todoResult,
+                   t.parentTodoId == nil,
+                   !todos.contains(where: { $0.id == t.id })
+                {
+                    let idx = min(insertionIndexForNewTodo(), todos.count)
+                    todos.insert(t, at: idx)
                 }
                 if hadContent || !todos.isEmpty {
                     refreshErrorMessage = errText
@@ -617,7 +627,7 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
         await MainActor.run {
             switch result {
             case .success(let list):
-                todos = list
+                todos = applyRootOnlyFilter(list)
                 errorMessage = nil
                 refreshErrorMessage = nil
             case .failure(let err):

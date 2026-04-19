@@ -106,8 +106,9 @@ async fn list_todos(
         None | Some("") | Some("ALL") => None,
         Some(p) => Some(p.to_string()),
     };
-    let is_root_only = params.kind.as_deref() == Some("root")
-        || params.include_subtodos == Some(false);
+    // Match web `get-todos-handler`: default is root tasks only. Include child rows only when
+    // `includeSubtodos=true` (omitted or false ⇒ `parent_todo_id IS NULL`).
+    let is_root_only = params.include_subtodos != Some(true);
     let ticket_id = params.ticket_id.clone();
     let _ = &params.sort;
 
