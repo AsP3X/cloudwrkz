@@ -156,6 +156,8 @@ enum TicketService {
     }
 
     /// Poll `GET .../mutation-jobs/:id` until completed or failed (Rust API queues PATCH/DELETE as 202).
+    private static let mutationJobPollIntervalNs: UInt64 = 350_000_000
+
     private static func pollMutationJob(
         config: ServerConfig,
         jobId: String,
@@ -178,8 +180,12 @@ enum TicketService {
         let maxWait = TimeInterval(retryDeadlineSecs + 5)
         let deadline = Date().addingTimeInterval(maxWait)
 
+        var pollIndex = 0
         while Date() < deadline {
-            try? await Task.sleep(nanoseconds: 800_000_000)
+            if pollIndex > 0 {
+                try? await Task.sleep(nanoseconds: mutationJobPollIntervalNs)
+            }
+            pollIndex += 1
             var request = URLRequest(url: statusURL)
             request.httpMethod = "GET"
             request.timeoutInterval = timeout

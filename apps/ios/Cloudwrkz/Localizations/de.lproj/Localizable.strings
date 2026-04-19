@@ -629,6 +629,7 @@
 "todo.load_error" = "Aufgaben konnten nicht geladen werden";
 
 "todo.loading" = "Aufgaben werden geladen?";
+"todo.creating" = "Wird erstellt…";
 
 "todo.nav_title" = "ToDo";
 

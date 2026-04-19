@@ -14,7 +14,10 @@ struct AddTodoView: View {
     var parentTodoTitle: String?
     /// When non-nil, mutation job callbacks run on the **parent** screen (e.g. Todo list), not in this sheet.
     var mutationHooks: MutationJobTitleHooks? = nil
-    var onSaved: () -> Void
+    /// Called on the main thread before the sheet dismisses so the parent can show an optimistic row.
+    var onCreateStarted: ((String, String?) -> Void)? = nil
+    /// Invoked with the new todo id after create succeeds (after mutation job completes when API returns 202).
+    var onSaved: (String) -> Void
     /// Called when create fails after the sheet was dismissed (errors can no longer show in-sheet).
     var onCreateFailed: ((String) -> Void)? = nil
 
@@ -150,13 +153,15 @@ struct AddTodoView: View {
         let hooks = mutationHooks
         let onSavedClosure = onSaved
         let onCreateFailedClosure = onCreateFailed
+        let onCreateStartedClosure = onCreateStarted
 
         await MainActor.run {
+            onCreateStartedClosure?(title, descriptionOpt)
             dismiss()
         }
 
-        // Sheet must be gone before mutation hooks run so the parent nav title / banner is visible.
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        // Brief yield so the sheet can dismiss; parent nav must be visible for mutation banner.
+        try? await Task.sleep(nanoseconds: 80_000_000)
 
         let result = await TodoService.createTodo(
             config: config,
@@ -168,8 +173,8 @@ struct AddTodoView: View {
 
         await MainActor.run {
             switch result {
-            case .success:
-                onSavedClosure()
+            case .success(let newId):
+                onSavedClosure(newId)
             case .failure(let err):
                 onCreateFailedClosure?(message(for: err))
             }
@@ -191,7 +196,7 @@ struct AddTodoView: View {
     AddTodoView(
         parentTodoId: nil,
         parentTodoTitle: nil,
-        onSaved: {}
+        onSaved: { _ in }
     )
 }
 
@@ -199,6 +204,6 @@ struct AddTodoView: View {
     AddTodoView(
         parentTodoId: "parent-1",
         parentTodoTitle: "Implement todo view for the iOS app",
-        onSaved: {}
+        onSaved: { _ in }
     )
 }

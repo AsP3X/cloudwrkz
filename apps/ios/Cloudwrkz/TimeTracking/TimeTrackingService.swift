@@ -391,6 +391,8 @@ enum TimeTrackingService {
         var resolvedJobId: String? { jobId ?? job_id }
     }
 
+    private static let mutationJobPollIntervalNs: UInt64 = 350_000_000
+
     private static func pollMutationJob(
         config: ServerConfig,
         jobId: String,
@@ -413,8 +415,12 @@ enum TimeTrackingService {
         let maxWait = TimeInterval(retryDeadlineSecs + 5)
         let deadline = Date().addingTimeInterval(maxWait)
 
+        var pollIndex = 0
         while Date() < deadline {
-            try? await Task.sleep(nanoseconds: 800_000_000)
+            if pollIndex > 0 {
+                try? await Task.sleep(nanoseconds: mutationJobPollIntervalNs)
+            }
+            pollIndex += 1
             var request = URLRequest(url: statusURL)
             request.httpMethod = "GET"
             request.timeoutInterval = timeout

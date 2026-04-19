@@ -84,7 +84,7 @@ struct TodoDetailView: View {
             AddTodoView(
                 parentTodoId: todo.id,
                 parentTodoTitle: todo.title,
-                onSaved: { Task { await loadTodo() } },
+                onSaved: { _ in Task { await loadTodo() } },
                 onCreateFailed: { msg in
                     Task { @MainActor in addTodoCreateErrorMessage = msg }
                 }

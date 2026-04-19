@@ -1081,6 +1081,7 @@
 "todo.load_error" = "Couldn't load todos";
 
 "todo.loading" = "Loading todos…";
+"todo.creating" = "Creating…";
 
 "todo.nav_title" = "ToDo";
 
