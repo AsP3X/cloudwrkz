@@ -189,3 +189,38 @@ pub struct EmployeeLifecycleEventCreateRequest {
     pub owner_user_id: Option<String>,
     pub metadata: Option<serde_json::Value>,
 }
+
+// Human: Leave request models cover vacation/sick/parental and other absence types with
+// a status-transition flow: PENDING → APPROVED or DENIED, optionally CANCELLED.
+// Agent: READS leave_type, start_date, end_date; WRITES employee_leave_requests; approval via UpdateRequest.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct LeaveRequestCreateRequest {
+    pub leave_type: String,
+    pub start_date: String,
+    pub end_date: String,
+    pub reason: Option<String>,
+    pub notes: Option<String>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+// Human: Leave update covers status transitions (approve, deny, cancel) and reasons.
+// Agent: WRITES status, approved_at, rejection_reason, approved_by_user_id; REQUIRES leave.approve permission for approval.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct LeaveRequestUpdateRequest {
+    pub status: Option<String>,
+    pub rejection_reason: Option<String>,
+    pub notes: Option<String>,
+}
+
+// Human: Document create stores URL-based file references (contracts, IDs, certs) for an employee.
+// Agent: WRITES employee_documents row; no binary storage; url is caller-provided.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct DocumentCreateRequest {
+    pub doc_type: Option<String>,
+    pub title: String,
+    pub description: Option<String>,
+    pub url: Option<String>,
+    pub file_name: Option<String>,
+    pub expires_at: Option<String>,
+    pub metadata: Option<serde_json::Value>,
+}

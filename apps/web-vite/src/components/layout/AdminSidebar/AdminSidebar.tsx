@@ -89,6 +89,17 @@ const QueueIcon = () => (
   </svg>
 );
 
+const EmployeesIcon = () => (
+  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M17 20h5v-2a4 4 0 00-5-3.87M9 20H4v-2a4 4 0 015-3.87m8-6.13a4 4 0 11-8 0 4 4 0 018 0zm6 2a3 3 0 11-6 0 3 3 0 016 0zM6 10a3 3 0 11-6 0 3 3 0 016 0z"
+    />
+  </svg>
+);
+
 export interface AdminSidebarProps {
   enabledModuleKeys: string[];
   canViewUsers: boolean;
@@ -129,6 +140,16 @@ export function AdminSidebar({
     { name: "My time", href: "/dashboard/time-tracking", icon: TimeTrackingIcon, key: "time_tracking" },
     { name: "ToDo", href: "/dashboard/todos", icon: TodosIcon, key: "todos" },
   ].filter((item) => enabledSet.has(item.key));
+
+  // Human: Employees sub-nav items are admin-visible regardless of module key so admin can always reach the section.
+  // Agent: adminVisible items bypass enabledSet check; employees section shows all sub-pages.
+  const employeeItems = [
+    { name: "Directory",   href: ROUTES.EMPLOYEES,              icon: EmployeesIcon,    key: "employees", adminVisible: true },
+    { name: "Org Chart",   href: ROUTES.EMPLOYEES_ORG_CHART,    icon: EmployeesIcon,    key: "employees", adminVisible: true },
+    { name: "Leave",       href: ROUTES.EMPLOYEES_LEAVE,        icon: TimeTrackingIcon, key: "employees", adminVisible: true },
+    { name: "Performance", href: ROUTES.EMPLOYEES_PERFORMANCE,  icon: ChartIcon,        key: "employees", adminVisible: true },
+    { name: "Documents",   href: ROUTES.EMPLOYEES_DOCUMENTS,    icon: ClipboardIcon,    key: "employees", adminVisible: true },
+  ].filter((item) => item.adminVisible || enabledSet.has(item.key));
 
   const workItems = [
     ...moduleWorkItems,
@@ -250,6 +271,14 @@ export function AdminSidebar({
             {workItems.length > 0 && (
               <CollapsibleNavSection title="Work" icon={<TicketsIcon />} defaultExpanded>
                 {workItems.map((item) => (
+                  <NavLink key={item.href} item={item} icon={item.icon} />
+                ))}
+              </CollapsibleNavSection>
+            )}
+
+            {employeeItems.length > 0 && (
+              <CollapsibleNavSection title="Employees" icon={<EmployeesIcon />} defaultExpanded={employeeItems.some((item) => hrefIsActive(item.href))}>
+                {employeeItems.map((item) => (
                   <NavLink key={item.href} item={item} icon={item.icon} />
                 ))}
               </CollapsibleNavSection>

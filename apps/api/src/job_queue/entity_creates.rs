@@ -20,10 +20,11 @@ use crate::github_metadata;
 use crate::id::new_cuid;
 use crate::link_preview::{extract_metadata_from_url, normalize_url};
 use crate::models::employee::{
-    EmployeeAssetAssignRequest, EmployeeCertificationUpsertRequest,
+    DocumentCreateRequest, EmployeeAssetAssignRequest, EmployeeCertificationUpsertRequest,
     EmployeeCompensationUpsertRequest, EmployeeCreateRequest, EmployeeGoalCreateRequest,
     EmployeeLifecycleEventCreateRequest, EmployeePerformanceReviewCreateRequest,
-    EmployeeSkillUpsertRequest, EmployeeUpdateRequest,
+    EmployeeSkillUpsertRequest, EmployeeUpdateRequest, LeaveRequestCreateRequest,
+    LeaveRequestUpdateRequest,
 };
 use crate::models::link::{CreateLinkRequest, UpdateLinkRequest};
 use crate::models::ticket::{TicketCommentCreateRequest, TicketCreateRequest, TicketUpdateRequest};
@@ -70,6 +71,10 @@ pub const JOB_TYPE_EMPLOYEE_CERTIFICATION_UPSERT: &str = "employee_certification
 pub const JOB_TYPE_EMPLOYEE_PERFORMANCE_REVIEW_CREATE: &str = "employee_performance_review_create";
 pub const JOB_TYPE_EMPLOYEE_GOAL_CREATE: &str = "employee_goal_create";
 pub const JOB_TYPE_EMPLOYEE_LIFECYCLE_EVENT_CREATE: &str = "employee_lifecycle_event_create";
+pub const JOB_TYPE_EMPLOYEE_LEAVE_REQUEST_CREATE: &str = "employee_leave_request_create";
+pub const JOB_TYPE_EMPLOYEE_LEAVE_REQUEST_UPDATE: &str = "employee_leave_request_update";
+pub const JOB_TYPE_EMPLOYEE_DOCUMENT_CREATE: &str = "employee_document_create";
+pub const JOB_TYPE_EMPLOYEE_DOCUMENT_DELETE: &str = "employee_document_delete";
 
 pub const ENTITY_CREATE_POLL_DEADLINE_SECS: u32 = 120;
 
@@ -113,6 +118,10 @@ pub fn is_entity_create_job_type(job_type: &str) -> bool {
             | JOB_TYPE_EMPLOYEE_PERFORMANCE_REVIEW_CREATE
             | JOB_TYPE_EMPLOYEE_GOAL_CREATE
             | JOB_TYPE_EMPLOYEE_LIFECYCLE_EVENT_CREATE
+            | JOB_TYPE_EMPLOYEE_LEAVE_REQUEST_CREATE
+            | JOB_TYPE_EMPLOYEE_LEAVE_REQUEST_UPDATE
+            | JOB_TYPE_EMPLOYEE_DOCUMENT_CREATE
+            | JOB_TYPE_EMPLOYEE_DOCUMENT_DELETE
     )
 }
 
@@ -417,6 +426,18 @@ pub async fn run_entity_create_job(
         }
         JOB_TYPE_EMPLOYEE_LIFECYCLE_EVENT_CREATE => {
             exec_employee_lifecycle_event_create(pool, lock_ms, stmt_ms, payload).await
+        }
+        JOB_TYPE_EMPLOYEE_LEAVE_REQUEST_CREATE => {
+            exec_employee_leave_request_create(pool, lock_ms, stmt_ms, payload).await
+        }
+        JOB_TYPE_EMPLOYEE_LEAVE_REQUEST_UPDATE => {
+            exec_employee_leave_request_update(pool, lock_ms, stmt_ms, payload).await
+        }
+        JOB_TYPE_EMPLOYEE_DOCUMENT_CREATE => {
+            exec_employee_document_create(pool, lock_ms, stmt_ms, payload).await
+        }
+        JOB_TYPE_EMPLOYEE_DOCUMENT_DELETE => {
+            exec_employee_document_delete(pool, lock_ms, stmt_ms, payload).await
         }
         _ => JobExecOutcome::Fail(AppError::internal("Unknown entity create job type")),
     };
@@ -3514,4 +3535,312 @@ async fn exec_employee_lifecycle_event_create(
         },
     );
     JobExecOutcome::Ok(JsonMutationResult::created(json!({ "success": true })))
+}
+
+// Human: Creates a leave request row with PENDING status. Validates leave_type enum membership.
+// Agent: WRITES employee_leave_requests; REQUIRES employees.leave.manage; VALIDATES leave_type against allowed values.
+async fn exec_employee_leave_request_create(
+    pool: &PgPool,
+    lock_ms: u64,
+    stmt_ms: u64,
+    payload: &serde_json::Value,
+) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+    };
+    if let Err(e) = require_employee_permission(pool, &user_id, "employees.leave.manage").await {
+        return JobExecOutcome::Fail(e);
+    }
+    let employee_id = match payload.get("employee_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing employee_id in job payload")),
+    };
+    let body: LeaveRequestCreateRequest = match payload.get("request").cloned() {
+        Some(v) => match serde_json::from_value(v) {
+            Ok(v) => v,
+            Err(e) => return JobExecOutcome::Fail(AppError::bad_request(format!("Invalid leave request body: {e}"))),
+        },
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing request in job payload")),
+    };
+
+    let valid_types = ["VACATION", "SICK", "PERSONAL", "MATERNITY", "PATERNITY",
+                       "BEREAVEMENT", "UNPAID", "COMPENSATORY", "OTHER"];
+    let leave_type = if valid_types.contains(&body.leave_type.as_str()) {
+        body.leave_type.clone()
+    } else {
+        "OTHER".to_string()
+    };
+
+    let start = match parse_optional_date(&Some(body.start_date.clone())) {
+        Some(d) => d,
+        None => return JobExecOutcome::Fail(AppError::bad_request("Invalid start_date format")),
+    };
+    let end = match parse_optional_date(&Some(body.end_date.clone())) {
+        Some(d) => d,
+        None => return JobExecOutcome::Fail(AppError::bad_request("Invalid end_date format")),
+    };
+
+    let mut tx = match pool.begin().await {
+        Ok(v) => v,
+        Err(e) => return map_sqlx_ticket(e),
+    };
+    if let Err(e) = apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+    if let Err(e) = sqlx::query(
+        r#"INSERT INTO employee_leave_requests
+            (id, employee_id, leave_type, start_date, end_date, status, reason, notes, metadata,
+             created_by_user_id, updated_by_user_id, created_at, updated_at)
+           VALUES ($1, $2, $3::"LeaveType", $4, $5, 'PENDING'::"LeaveRequestStatus",
+                   $6, $7, $8, $9, $9, NOW(), NOW())"#,
+    )
+    .bind(new_cuid())
+    .bind(&employee_id)
+    .bind(leave_type)
+    .bind(start)
+    .bind(end)
+    .bind(body.reason)
+    .bind(body.notes)
+    .bind(body.metadata)
+    .bind(&user_id)
+    .execute(&mut *tx)
+    .await
+    {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+    if let Err(e) = tx.commit().await {
+        return map_sqlx_ticket(e);
+    }
+    audit::write_audit_log(pool, WriteAuditParams {
+        user_id: Some(user_id),
+        action: "employees.leave_requests.create".into(),
+        resource_type: Some("employee".into()),
+        resource_id: Some(employee_id),
+        context: None, ip_address: None, user_agent: None,
+    });
+    JobExecOutcome::Ok(JsonMutationResult::created(json!({ "success": true })))
+}
+
+// Human: Updates a leave request status (APPROVED, DENIED, CANCELLED) and sets approval metadata.
+// Agent: WRITES status, approved_by_user_id, approved_at, rejection_reason; REQUIRES leave.approve for APPROVED/DENIED.
+async fn exec_employee_leave_request_update(
+    pool: &PgPool,
+    lock_ms: u64,
+    stmt_ms: u64,
+    payload: &serde_json::Value,
+) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+    };
+    let leave_id = match payload.get("leave_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing leave_id in job payload")),
+    };
+    let employee_id = match payload.get("employee_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing employee_id")),
+    };
+    let body: LeaveRequestUpdateRequest = match payload.get("request").cloned() {
+        Some(v) => match serde_json::from_value(v) {
+            Ok(v) => v,
+            Err(e) => return JobExecOutcome::Fail(AppError::bad_request(format!("Invalid leave update body: {e}"))),
+        },
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing request")),
+    };
+
+    // Human: Approval/denial requires dedicated approve permission; cancellation only needs manage.
+    let new_status = body.status.as_deref().unwrap_or("CANCELLED");
+    let needs_approve = matches!(new_status, "APPROVED" | "DENIED");
+    if needs_approve {
+        if let Err(e) = require_employee_permission(pool, &user_id, "employees.leave.approve").await {
+            return JobExecOutcome::Fail(e);
+        }
+    } else {
+        let has_perm = check_permission(pool, &user_id, "employees.leave.manage").await
+            || check_permission(pool, &user_id, "employees.leave.approve").await;
+        if !has_perm {
+            return JobExecOutcome::Fail(AppError::forbidden("Insufficient permission to update leave request"));
+        }
+    }
+
+    let valid_statuses = ["PENDING", "APPROVED", "DENIED", "CANCELLED"];
+    let status = if valid_statuses.contains(&new_status) {
+        new_status.to_string()
+    } else {
+        "CANCELLED".to_string()
+    };
+
+    let mut tx = match pool.begin().await {
+        Ok(v) => v,
+        Err(e) => return map_sqlx_ticket(e),
+    };
+    if let Err(e) = apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+    if let Err(e) = sqlx::query(
+        r#"UPDATE employee_leave_requests SET
+             status = $2::"LeaveRequestStatus",
+             rejection_reason = CASE WHEN $2 = 'DENIED' THEN $3 ELSE rejection_reason END,
+             approved_by_user_id = CASE WHEN $2 IN ('APPROVED','DENIED') THEN $4 ELSE approved_by_user_id END,
+             approved_at = CASE WHEN $2 IN ('APPROVED','DENIED') THEN NOW() ELSE approved_at END,
+             notes = COALESCE($5, notes),
+             updated_by_user_id = $4,
+             updated_at = NOW()
+           WHERE id = $1 AND employee_id = $6"#,
+    )
+    .bind(&leave_id)
+    .bind(&status)
+    .bind(body.rejection_reason)
+    .bind(&user_id)
+    .bind(body.notes)
+    .bind(&employee_id)
+    .execute(&mut *tx)
+    .await
+    {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+    if let Err(e) = tx.commit().await {
+        return map_sqlx_ticket(e);
+    }
+    audit::write_audit_log(pool, WriteAuditParams {
+        user_id: Some(user_id),
+        action: format!("employees.leave_requests.{}", status.to_lowercase()),
+        resource_type: Some("employee_leave_request".into()),
+        resource_id: Some(leave_id),
+        context: None, ip_address: None, user_agent: None,
+    });
+    JobExecOutcome::Ok(JsonMutationResult::ok(json!({ "success": true })))
+}
+
+// Human: Creates a document record for an employee. doc_type defaults to GENERAL if not provided.
+// Agent: WRITES employee_documents; REQUIRES documents.manage; url field is caller-supplied (no upload).
+async fn exec_employee_document_create(
+    pool: &PgPool,
+    lock_ms: u64,
+    stmt_ms: u64,
+    payload: &serde_json::Value,
+) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id")),
+    };
+    if let Err(e) = require_employee_permission(pool, &user_id, "employees.documents.manage").await {
+        return JobExecOutcome::Fail(e);
+    }
+    let employee_id = match payload.get("employee_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing employee_id")),
+    };
+    let body: DocumentCreateRequest = match payload.get("request").cloned() {
+        Some(v) => match serde_json::from_value(v) {
+            Ok(v) => v,
+            Err(e) => return JobExecOutcome::Fail(AppError::bad_request(format!("Invalid document body: {e}"))),
+        },
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing request")),
+    };
+
+    let mut tx = match pool.begin().await {
+        Ok(v) => v,
+        Err(e) => return map_sqlx_ticket(e),
+    };
+    if let Err(e) = apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+    if let Err(e) = sqlx::query(
+        r#"INSERT INTO employee_documents
+            (id, employee_id, doc_type, title, description, url, file_name, status,
+             expires_at, metadata, created_by_user_id, updated_by_user_id, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'ACTIVE'::"DocumentStatus",
+                   $8, $9, $10, $10, NOW(), NOW())"#,
+    )
+    .bind(new_cuid())
+    .bind(&employee_id)
+    .bind(body.doc_type.unwrap_or_else(|| "GENERAL".to_string()))
+    .bind(body.title.trim())
+    .bind(body.description)
+    .bind(body.url)
+    .bind(body.file_name)
+    .bind(parse_optional_date(&body.expires_at))
+    .bind(body.metadata)
+    .bind(&user_id)
+    .execute(&mut *tx)
+    .await
+    {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+    if let Err(e) = tx.commit().await {
+        return map_sqlx_ticket(e);
+    }
+    audit::write_audit_log(pool, WriteAuditParams {
+        user_id: Some(user_id),
+        action: "employees.documents.create".into(),
+        resource_type: Some("employee".into()),
+        resource_id: Some(employee_id),
+        context: None, ip_address: None, user_agent: None,
+    });
+    JobExecOutcome::Ok(JsonMutationResult::created(json!({ "success": true })))
+}
+
+// Human: Deletes an employee document row by doc_id. Cascades no children (documents are leaf nodes).
+// Agent: DELETES employee_documents WHERE id = $1 AND employee_id = $2; REQUIRES documents.manage.
+async fn exec_employee_document_delete(
+    pool: &PgPool,
+    lock_ms: u64,
+    stmt_ms: u64,
+    payload: &serde_json::Value,
+) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id")),
+    };
+    if let Err(e) = require_employee_permission(pool, &user_id, "employees.documents.manage").await {
+        return JobExecOutcome::Fail(e);
+    }
+    let employee_id = match payload.get("employee_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing employee_id")),
+    };
+    let doc_id = match payload.get("doc_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing doc_id")),
+    };
+
+    let mut tx = match pool.begin().await {
+        Ok(v) => v,
+        Err(e) => return map_sqlx_ticket(e),
+    };
+    if let Err(e) = apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+    if let Err(e) = sqlx::query(
+        "DELETE FROM employee_documents WHERE id = $1 AND employee_id = $2",
+    )
+    .bind(&doc_id)
+    .bind(&employee_id)
+    .execute(&mut *tx)
+    .await
+    {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+    if let Err(e) = tx.commit().await {
+        return map_sqlx_ticket(e);
+    }
+    audit::write_audit_log(pool, WriteAuditParams {
+        user_id: Some(user_id),
+        action: "employees.documents.delete".into(),
+        resource_type: Some("employee_document".into()),
+        resource_id: Some(doc_id),
+        context: None, ip_address: None, user_agent: None,
+    });
+    JobExecOutcome::Ok(JsonMutationResult::ok(json!({ "success": true })))
 }

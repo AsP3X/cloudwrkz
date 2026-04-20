@@ -318,6 +318,83 @@ export interface Employee {
   updated_at: string;
 }
 
+// Human: Extended Employee type mirrors the full API detail shape for profile pages.
+export interface EmployeeDetail extends Employee {
+  user_id: string | null;
+  personal_email: string | null;
+  phone: string | null;
+  date_of_birth: string | null;
+  legal_entity: string | null;
+  emergency_contact: Record<string, unknown> | null;
+  notes: string | null;
+  payroll_external_id: string | null;
+  metadata: Record<string, unknown> | null;
+  created_by_user_id: string | null;
+  updated_by_user_id: string | null;
+}
+
+export interface EmployeeLeaveRequest {
+  id: string;
+  employee_id: string;
+  employee_code?: string;
+  employee_name?: string;
+  department?: string | null;
+  job_title?: string | null;
+  leave_type: string;
+  start_date: string;
+  end_date: string;
+  status: string;
+  reason: string | null;
+  rejection_reason: string | null;
+  approved_at: string | null;
+  approved_by_user_id: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EmployeeDocument {
+  id: string;
+  employee_id: string;
+  employee_code?: string;
+  employee_name?: string;
+  doc_type: string;
+  title: string;
+  description: string | null;
+  url: string | null;
+  file_name: string | null;
+  status: string;
+  expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrgChartNode {
+  id: string;
+  employee_code: string;
+  first_name: string;
+  last_name: string;
+  display_name: string | null;
+  job_title: string | null;
+  department: string | null;
+  location: string | null;
+  status: string;
+  manager_employee_id: string | null;
+}
+
+export interface PerformanceSummary {
+  id: string;
+  employee_code: string;
+  display_name: string;
+  department: string | null;
+  job_title: string | null;
+  status: string;
+  active_goals: number;
+  total_goals: number;
+  total_reviews: number;
+  last_reviewed_at: string | null;
+}
+
 export interface AdminSession {
   id: string;
   userId: string;

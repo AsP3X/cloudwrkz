@@ -30,6 +30,15 @@ const EMPTY_FORM: EditableEmployee = {
   notes: "",
 };
 
+const STATUS_OPTIONS = ["ACTIVE", "ON_LEAVE", "TERMINATED"] as const;
+const EMPLOYMENT_TYPE_OPTIONS = [
+  "FULL_TIME",
+  "PART_TIME",
+  "CONTRACTOR",
+  "INTERN",
+  "TEMPORARY",
+] as const;
+
 export default function EmployeeEditPage() {
   const { can } = useAuth();
   const canEdit = can("employees.update");
@@ -113,8 +122,18 @@ export default function EmployeeEditPage() {
         <Field label="Department" value={form.department} onChange={(v) => setForm((p) => ({ ...p, department: v }))} />
         <Field label="Job title" value={form.job_title} onChange={(v) => setForm((p) => ({ ...p, job_title: v }))} />
         <Field label="Location" value={form.location} onChange={(v) => setForm((p) => ({ ...p, location: v }))} />
-        <Field label="Status" value={form.status} onChange={(v) => setForm((p) => ({ ...p, status: v }))} />
-        <Field label="Employment type" value={form.employment_type} onChange={(v) => setForm((p) => ({ ...p, employment_type: v }))} />
+        <SelectField
+          label="Status"
+          value={form.status}
+          options={STATUS_OPTIONS}
+          onChange={(v) => setForm((p) => ({ ...p, status: v }))}
+        />
+        <SelectField
+          label="Employment type"
+          value={form.employment_type}
+          options={EMPLOYMENT_TYPE_OPTIONS}
+          onChange={(v) => setForm((p) => ({ ...p, employment_type: v }))}
+        />
         <Field label="Notes" value={form.notes} onChange={(v) => setForm((p) => ({ ...p, notes: v }))} multiline />
 
         <div className="flex gap-2 pt-2">
@@ -156,6 +175,35 @@ function Field({
           onChange={(e) => onChange(e.target.value)}
         />
       )}
+    </label>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: ReadonlyArray<string>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">{label}</span>
+      <select
+        className="mt-1 w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 px-3 py-2 text-sm"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option.replace(/_/g, " ")}
+          </option>
+        ))}
+      </select>
     </label>
   );
 }

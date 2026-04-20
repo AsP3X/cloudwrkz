@@ -155,6 +155,42 @@ const NAV_SECTIONS = Object.freeze([
     ]),
   }),
   Object.freeze({
+    title: "Employees",
+    icon: EmployeesIcon,
+    items: Object.freeze([
+      Object.freeze({
+        name: "Directory",
+        href: ROUTES.EMPLOYEES,
+        icon: EmployeesIcon,
+        moduleKey: "employees",
+      }),
+      Object.freeze({
+        name: "Org Chart",
+        href: ROUTES.EMPLOYEES_ORG_CHART,
+        icon: EmployeesIcon,
+        moduleKey: "employees",
+      }),
+      Object.freeze({
+        name: "Leave",
+        href: ROUTES.EMPLOYEES_LEAVE,
+        icon: TimeTrackingIcon,
+        moduleKey: "employees",
+      }),
+      Object.freeze({
+        name: "Performance",
+        href: ROUTES.EMPLOYEES_PERFORMANCE,
+        icon: StatisticsIcon,
+        moduleKey: "employees",
+      }),
+      Object.freeze({
+        name: "Documents",
+        href: ROUTES.EMPLOYEES_DOCUMENTS,
+        icon: ArchiveIcon,
+        moduleKey: "employees",
+      }),
+    ]),
+  }),
+  Object.freeze({
     title: "Time tracking",
     icon: TimeTrackingIcon,
     items: Object.freeze([
@@ -181,12 +217,6 @@ const NAV_SECTIONS = Object.freeze([
         href: ROUTES.LINKS,
         icon: LinksIcon,
         moduleKey: "links",
-      }),
-      Object.freeze({
-        name: "Employees",
-        href: ROUTES.EMPLOYEES,
-        icon: EmployeesIcon,
-        moduleKey: "employees",
       }),
       Object.freeze({
         name: "Settings",

@@ -141,6 +141,7 @@ export const DashboardLayout = () => {
     /^\/dashboard\/todos\/[^/]+$/.test(path) &&
     path !== "/dashboard/todos/new" &&
     path !== "/dashboard/todos/archive";
+  const isEmployeesPage = path === ROUTES.EMPLOYEES || path.startsWith(`${ROUTES.EMPLOYEES}/`);
   const hideTopQueuedNotices = isTodoCreatePage || isTodoDetailPage;
   const showMutationQueueNotice = !hideTopQueuedNotices;
 
@@ -162,33 +163,45 @@ export const DashboardLayout = () => {
     return <Spinner />;
   }
 
+  const layoutContent = (
+    <>
+      {needsConnection ? (
+        <div className="relative z-20 border-b border-amber-200/80 bg-amber-50/95 px-4 py-3 text-center text-sm text-amber-950 backdrop-blur-sm dark:border-amber-500/25 dark:bg-amber-950/45 dark:text-amber-100">
+          <span className="font-medium">Limited connectivity.</span>{" "}
+          Showing saved profile data until the server responds.{" "}
+          <button
+            type="button"
+            className="underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-50"
+            onClick={() => void retryConnection()}
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
+      <DashboardLayoutContent />
+      <main className={cn("min-h-screen relative z-10", "lg:pl-64")}>
+        <div className="p-4 sm:p-6 lg:p-8">
+          {showMutationQueueNotice ? <MutationQueueNotice /> : null}
+          <Outlet />
+        </div>
+      </main>
+    </>
+  );
+
   return (
     <SidebarProvider>
-      <MouseSpotlightSurface
-        variant="content"
-        className="min-h-screen bg-gradient-to-br from-neutral-200/90 via-neutral-100 to-neutral-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950"
-      >
-        {needsConnection ? (
-          <div className="relative z-20 border-b border-amber-200/80 bg-amber-50/95 px-4 py-3 text-center text-sm text-amber-950 backdrop-blur-sm dark:border-amber-500/25 dark:bg-amber-950/45 dark:text-amber-100">
-            <span className="font-medium">Limited connectivity.</span>{" "}
-            Showing saved profile data until the server responds.{" "}
-            <button
-              type="button"
-              className="underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-50"
-              onClick={() => void retryConnection()}
-            >
-              Retry
-            </button>
-          </div>
-        ) : null}
-        <DashboardLayoutContent />
-        <main className={cn("min-h-screen relative z-10", "lg:pl-64")}>
-          <div className="p-4 sm:p-6 lg:p-8">
-            {showMutationQueueNotice ? <MutationQueueNotice /> : null}
-            <Outlet />
-          </div>
-        </main>
-      </MouseSpotlightSurface>
+      {isEmployeesPage ? (
+        <div className="min-h-screen bg-gradient-to-br from-neutral-200/90 via-neutral-100 to-neutral-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950">
+          {layoutContent}
+        </div>
+      ) : (
+        <MouseSpotlightSurface
+          variant="content"
+          className="min-h-screen bg-gradient-to-br from-neutral-200/90 via-neutral-100 to-neutral-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950"
+        >
+          {layoutContent}
+        </MouseSpotlightSurface>
+      )}
     </SidebarProvider>
   );
 };

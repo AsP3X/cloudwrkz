@@ -37,8 +37,13 @@ import {
   LinkEditPage,
   CollectionDetailPage,
   EmployeesPage,
+  EmployeeCreatePage,
   EmployeeDetailPage,
   EmployeeEditPage,
+  EmployeeOrgChartPage,
+  EmployeeLeavePage,
+  EmployeePerformancePage,
+  EmployeeDocumentsPage,
   TimeTrackingPage,
   TimeEntryDetailPage,
   ProfilePage,
@@ -169,6 +174,11 @@ export default function App() {
                   <Route path="links/:id/edit" element={<LinkEditPage />} />
                   <Route path="links/collections/:id" element={<CollectionDetailPage />} />
                   <Route path="employees" element={<EmployeesPage />} />
+                  <Route path="employees/new" element={<EmployeeCreatePage />} />
+                  <Route path="employees/org-chart" element={<EmployeeOrgChartPage />} />
+                  <Route path="employees/leave" element={<EmployeeLeavePage />} />
+                  <Route path="employees/performance" element={<EmployeePerformancePage />} />
+                  <Route path="employees/documents" element={<EmployeeDocumentsPage />} />
                   <Route path="employees/:id" element={<EmployeeDetailPage />} />
                   <Route path="employees/:id/edit" element={<EmployeeEditPage />} />
                   <Route path="time-tracking" element={<TimeTrackingPage />} />

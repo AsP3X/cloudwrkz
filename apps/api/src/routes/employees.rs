@@ -3,7 +3,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{delete, get, patch, post},
 };
 use serde_json::json;
 use sqlx::Row;
@@ -13,11 +13,11 @@ use crate::command_queue::{MutationQueuedResponse, MutationRunContext};
 use crate::error::AppError;
 use crate::job_queue::entity_creates;
 use crate::models::employee::{
-    EmployeeAssetAssignRequest, EmployeeCertificationUpsertRequest,
+    DocumentCreateRequest, EmployeeAssetAssignRequest, EmployeeCertificationUpsertRequest,
     EmployeeCompensationUpsertRequest, EmployeeCreateRequest, EmployeeDetail,
     EmployeeGoalCreateRequest, EmployeeLifecycleEventCreateRequest, EmployeeListItem,
     EmployeeListParams, EmployeePerformanceReviewCreateRequest, EmployeeSkillUpsertRequest,
-    EmployeeUpdateRequest,
+    EmployeeUpdateRequest, LeaveRequestCreateRequest, LeaveRequestUpdateRequest,
 };
 use crate::routes::AppState;
 use crate::routes::helpers::{
@@ -25,32 +25,48 @@ use crate::routes::helpers::{
 };
 
 pub fn router() -> Router<AppState> {
+    // Human: Static paths (/org-chart, /leave, /documents) are registered before the dynamic
+    // /{id} pattern so Axum's matchit router correctly resolves them as static segments first.
+    // Agent: ROUTES GET /employees/org-chart, GET /employees/leave, GET /employees/documents
+    //        before GET /employees/{id} to avoid shadowing.
     Router::new()
         .route("/employees", get(list_employees).post(create_employee))
+        // Company-wide aggregate reads — must precede /employees/{id}
+        .route("/employees/org-chart", get(get_org_chart))
+        .route("/employees/leave", get(list_all_leave_requests))
+        .route("/employees/documents", get(list_all_documents))
+        .route("/employees/performance-summary", get(get_performance_summary))
+        // Per-employee resource routes
         .route(
             "/employees/{id}",
             get(get_employee)
                 .patch(update_employee)
                 .delete(delete_employee),
         )
-        .route(
-            "/employees/{id}/compensation",
-            post(upsert_employee_compensation),
-        )
+        .route("/employees/{id}/compensation", post(upsert_employee_compensation))
         .route("/employees/{id}/assets", post(assign_employee_asset))
         .route("/employees/{id}/skills", post(upsert_employee_skill))
-        .route(
-            "/employees/{id}/certifications",
-            post(upsert_employee_certification),
-        )
-        .route(
-            "/employees/{id}/performance-reviews",
-            post(create_employee_performance_review),
-        )
+        .route("/employees/{id}/certifications", post(upsert_employee_certification))
+        .route("/employees/{id}/performance-reviews", post(create_employee_performance_review))
         .route("/employees/{id}/goals", post(create_employee_goal))
+        .route("/employees/{id}/lifecycle-events", post(create_employee_lifecycle_event))
+        // Leave request routes (per employee)
         .route(
-            "/employees/{id}/lifecycle-events",
-            post(create_employee_lifecycle_event),
+            "/employees/{id}/leave",
+            get(list_employee_leave).post(create_leave_request),
+        )
+        .route(
+            "/employees/{id}/leave/{leave_id}",
+            patch(update_leave_request),
+        )
+        // Document routes (per employee)
+        .route(
+            "/employees/{id}/documents",
+            get(list_employee_documents).post(create_document),
+        )
+        .route(
+            "/employees/{id}/documents/{doc_id}",
+            delete(delete_document),
         )
 }
 
@@ -739,6 +755,376 @@ async fn create_employee_goal(
         json!({ "employee_id": id, "request": request_json }),
     )
     .await
+}
+
+// Human: Org chart returns all employees with their manager links for the frontend tree renderer.
+// Agent: READS employees table; RETURNS id, name, employee_code, job_title, department, manager_employee_id, status; NO auth sub-queries.
+async fn get_org_chart(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_employee_module(&state.pool).await?;
+    let can_view = check_permission(&state.pool, &user.id, "employees.view").await
+        || check_permission(&state.pool, &user.id, "employees.view_all").await;
+    if !can_view {
+        return Err(AppError::forbidden("You don't have permission to view employees"));
+    }
+    let rows = sqlx::query(
+        r#"SELECT id, employee_code, first_name, last_name, display_name,
+                  job_title, department, location, status::text, manager_employee_id
+           FROM employees
+           ORDER BY first_name, last_name"#,
+    )
+    .fetch_all(&state.pool)
+    .await?;
+    let nodes: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| json!({
+            "id": r.get::<String, _>("id"),
+            "employee_code": r.get::<String, _>("employee_code"),
+            "first_name": r.get::<String, _>("first_name"),
+            "last_name": r.get::<String, _>("last_name"),
+            "display_name": r.get::<Option<String>, _>("display_name"),
+            "job_title": r.get::<Option<String>, _>("job_title"),
+            "department": r.get::<Option<String>, _>("department"),
+            "location": r.get::<Option<String>, _>("location"),
+            "status": r.get::<String, _>("status"),
+            "manager_employee_id": r.get::<Option<String>, _>("manager_employee_id"),
+        }))
+        .collect();
+    Ok(Json(json!({ "nodes": nodes })))
+}
+
+// Human: Lists all leave requests across all employees, filterable by status and leave type.
+// Agent: READS employee_leave_requests JOIN employees; RETURNS paginated rows; REQUIRES leave.view permission.
+async fn list_all_leave_requests(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_employee_module(&state.pool).await?;
+    let can_view = check_permission(&state.pool, &user.id, "employees.leave.view").await
+        || check_permission(&state.pool, &user.id, "employees.leave.manage").await
+        || check_permission(&state.pool, &user.id, "employees.leave.approve").await;
+    if !can_view {
+        return Err(AppError::forbidden("You don't have permission to view leave requests"));
+    }
+    let status_filter = params.get("status").cloned().unwrap_or_default();
+    let type_filter = params.get("leave_type").cloned().unwrap_or_default();
+    let rows = sqlx::query(
+        r#"SELECT lr.id, lr.employee_id, lr.leave_type::text, lr.start_date, lr.end_date,
+                  lr.status::text, lr.reason, lr.rejection_reason, lr.approved_at,
+                  lr.approved_by_user_id, lr.notes, lr.created_at, lr.updated_at,
+                  e.first_name, e.last_name, e.display_name, e.employee_code,
+                  e.department, e.job_title
+           FROM employee_leave_requests lr
+           JOIN employees e ON e.id = lr.employee_id
+           WHERE ($1::text = '' OR lr.status::text = $1)
+             AND ($2::text = '' OR lr.leave_type::text = $2)
+           ORDER BY lr.created_at DESC
+           LIMIT 500"#,
+    )
+    .bind(status_filter)
+    .bind(type_filter)
+    .fetch_all(&state.pool)
+    .await?;
+    let requests: Vec<serde_json::Value> = rows.iter().map(|r| json!({
+        "id": r.get::<String, _>("id"),
+        "employee_id": r.get::<String, _>("employee_id"),
+        "employee_code": r.get::<String, _>("employee_code"),
+        "employee_name": r.get::<Option<String>, _>("display_name")
+            .unwrap_or_else(|| format!("{} {}", r.get::<String, _>("first_name"), r.get::<String, _>("last_name"))),
+        "department": r.get::<Option<String>, _>("department"),
+        "job_title": r.get::<Option<String>, _>("job_title"),
+        "leave_type": r.get::<String, _>("leave_type"),
+        "start_date": r.get::<chrono::NaiveDate, _>("start_date"),
+        "end_date": r.get::<chrono::NaiveDate, _>("end_date"),
+        "status": r.get::<String, _>("status"),
+        "reason": r.get::<Option<String>, _>("reason"),
+        "rejection_reason": r.get::<Option<String>, _>("rejection_reason"),
+        "approved_at": r.get::<Option<chrono::NaiveDateTime>, _>("approved_at"),
+        "approved_by_user_id": r.get::<Option<String>, _>("approved_by_user_id"),
+        "notes": r.get::<Option<String>, _>("notes"),
+        "created_at": r.get::<chrono::NaiveDateTime, _>("created_at"),
+        "updated_at": r.get::<chrono::NaiveDateTime, _>("updated_at"),
+    })).collect();
+    Ok(Json(json!({ "leave_requests": requests })))
+}
+
+// Human: Lists all employee documents across all employees for the company-wide documents view.
+// Agent: READS employee_documents JOIN employees; REQUIRES documents.view permission; RETURNS rows with employee name.
+async fn list_all_documents(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_employee_module(&state.pool).await?;
+    let can_view = check_permission(&state.pool, &user.id, "employees.documents.view").await
+        || check_permission(&state.pool, &user.id, "employees.documents.manage").await;
+    if !can_view {
+        return Err(AppError::forbidden("You don't have permission to view employee documents"));
+    }
+    let type_filter = params.get("doc_type").cloned().unwrap_or_default();
+    let rows = sqlx::query(
+        r#"SELECT d.id, d.employee_id, d.doc_type, d.title, d.description,
+                  d.url, d.file_name, d.status::text, d.expires_at, d.created_at, d.updated_at,
+                  e.first_name, e.last_name, e.display_name, e.employee_code
+           FROM employee_documents d
+           JOIN employees e ON e.id = d.employee_id
+           WHERE d.status::text != 'ARCHIVED'
+             AND ($1::text = '' OR d.doc_type = $1)
+           ORDER BY d.created_at DESC
+           LIMIT 500"#,
+    )
+    .bind(type_filter)
+    .fetch_all(&state.pool)
+    .await?;
+    let docs: Vec<serde_json::Value> = rows.iter().map(|r| json!({
+        "id": r.get::<String, _>("id"),
+        "employee_id": r.get::<String, _>("employee_id"),
+        "employee_code": r.get::<String, _>("employee_code"),
+        "employee_name": r.get::<Option<String>, _>("display_name")
+            .unwrap_or_else(|| format!("{} {}", r.get::<String, _>("first_name"), r.get::<String, _>("last_name"))),
+        "doc_type": r.get::<String, _>("doc_type"),
+        "title": r.get::<String, _>("title"),
+        "description": r.get::<Option<String>, _>("description"),
+        "url": r.get::<Option<String>, _>("url"),
+        "file_name": r.get::<Option<String>, _>("file_name"),
+        "status": r.get::<String, _>("status"),
+        "expires_at": r.get::<Option<chrono::NaiveDate>, _>("expires_at"),
+        "created_at": r.get::<chrono::NaiveDateTime, _>("created_at"),
+        "updated_at": r.get::<chrono::NaiveDateTime, _>("updated_at"),
+    })).collect();
+    Ok(Json(json!({ "documents": docs })))
+}
+
+// Human: Performance summary aggregates goal and review counts per employee for the company-wide view.
+// Agent: READS employee_goals GROUP BY employee_id; READS employee_performance_reviews GROUP BY employee_id; JOINS employees.
+async fn get_performance_summary(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_employee_module(&state.pool).await?;
+    let can_view = check_permission(&state.pool, &user.id, "employees.view").await
+        || check_permission(&state.pool, &user.id, "employees.performance.manage").await;
+    if !can_view {
+        return Err(AppError::forbidden("You don't have permission to view performance data"));
+    }
+    let rows = sqlx::query(
+        r#"SELECT e.id, e.employee_code, e.first_name, e.last_name, e.display_name,
+                  e.department, e.job_title, e.status::text,
+                  COUNT(DISTINCT g.id) FILTER (WHERE g.status != 'COMPLETED' AND g.status != 'CANCELLED') AS active_goals,
+                  COUNT(DISTINCT g.id) AS total_goals,
+                  COUNT(DISTINCT pr.id) AS total_reviews,
+                  MAX(pr.reviewed_at) AS last_reviewed_at
+           FROM employees e
+           LEFT JOIN employee_goals g ON g.employee_id = e.id
+           LEFT JOIN employee_performance_reviews pr ON pr.employee_id = e.id
+           GROUP BY e.id, e.employee_code, e.first_name, e.last_name, e.display_name,
+                    e.department, e.job_title, e.status
+           ORDER BY e.first_name, e.last_name"#,
+    )
+    .fetch_all(&state.pool)
+    .await?;
+    let summaries: Vec<serde_json::Value> = rows.iter().map(|r| json!({
+        "id": r.get::<String, _>("id"),
+        "employee_code": r.get::<String, _>("employee_code"),
+        "display_name": r.get::<Option<String>, _>("display_name")
+            .unwrap_or_else(|| format!("{} {}", r.get::<String, _>("first_name"), r.get::<String, _>("last_name"))),
+        "department": r.get::<Option<String>, _>("department"),
+        "job_title": r.get::<Option<String>, _>("job_title"),
+        "status": r.get::<String, _>("status"),
+        "active_goals": r.get::<Option<i64>, _>("active_goals").unwrap_or(0),
+        "total_goals": r.get::<Option<i64>, _>("total_goals").unwrap_or(0),
+        "total_reviews": r.get::<Option<i64>, _>("total_reviews").unwrap_or(0),
+        "last_reviewed_at": r.get::<Option<chrono::NaiveDate>, _>("last_reviewed_at"),
+    })).collect();
+    Ok(Json(json!({ "summaries": summaries })))
+}
+
+// Human: Lists leave requests for a specific employee. Requires view permission.
+// Agent: READS employee_leave_requests WHERE employee_id = $1; ORDERED BY created_at DESC.
+async fn list_employee_leave(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_employee_module(&state.pool).await?;
+    let can_view = check_permission(&state.pool, &user.id, "employees.leave.view").await
+        || check_permission(&state.pool, &user.id, "employees.leave.manage").await
+        || check_permission(&state.pool, &user.id, "employees.leave.approve").await;
+    if !can_view {
+        return Err(AppError::forbidden("You don't have permission to view leave requests"));
+    }
+    let rows = sqlx::query(
+        r#"SELECT id, employee_id, leave_type::text, start_date, end_date,
+                  status::text, reason, rejection_reason, approved_at, approved_by_user_id,
+                  notes, metadata, created_at, updated_at
+           FROM employee_leave_requests
+           WHERE employee_id = $1
+           ORDER BY created_at DESC"#,
+    )
+    .bind(&id)
+    .fetch_all(&state.pool)
+    .await?;
+    let requests: Vec<serde_json::Value> = rows.iter().map(|r| json!({
+        "id": r.get::<String, _>("id"),
+        "employee_id": r.get::<String, _>("employee_id"),
+        "leave_type": r.get::<String, _>("leave_type"),
+        "start_date": r.get::<chrono::NaiveDate, _>("start_date"),
+        "end_date": r.get::<chrono::NaiveDate, _>("end_date"),
+        "status": r.get::<String, _>("status"),
+        "reason": r.get::<Option<String>, _>("reason"),
+        "rejection_reason": r.get::<Option<String>, _>("rejection_reason"),
+        "approved_at": r.get::<Option<chrono::NaiveDateTime>, _>("approved_at"),
+        "approved_by_user_id": r.get::<Option<String>, _>("approved_by_user_id"),
+        "notes": r.get::<Option<String>, _>("notes"),
+        "metadata": r.get::<Option<serde_json::Value>, _>("metadata"),
+        "created_at": r.get::<chrono::NaiveDateTime, _>("created_at"),
+        "updated_at": r.get::<chrono::NaiveDateTime, _>("updated_at"),
+    })).collect();
+    Ok(Json(json!({ "leave_requests": requests })))
+}
+
+// Human: Creates a leave request for an employee via background job queue.
+// Agent: REQUIRES employees.leave.manage; ENQUEUES employee_leave_request_create job; RETURNS 202 + job_id.
+async fn create_leave_request(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<LeaveRequestCreateRequest>,
+) -> Result<Response, AppError> {
+    require_employee_module(&state.pool).await?;
+    if !check_permission(&state.pool, &user.id, "employees.leave.manage").await {
+        return Err(AppError::forbidden("You don't have permission to create leave requests"));
+    }
+    if body.start_date.trim().is_empty() || body.end_date.trim().is_empty() || body.leave_type.trim().is_empty() {
+        return Err(AppError::bad_request("leave_type, start_date and end_date are required"));
+    }
+    let request_json = serde_json::to_value(&body)
+        .map_err(|e| AppError::internal(format!("serialize leave request: {e}")))?;
+    queue_employee_mutation(
+        &state, &user.id,
+        format!("POST /employees/{id}/leave"),
+        &headers, &body,
+        entity_creates::JOB_TYPE_EMPLOYEE_LEAVE_REQUEST_CREATE,
+        json!({ "employee_id": id, "request": request_json }),
+    ).await
+}
+
+// Human: Updates (approve/deny/cancel) a leave request via background job.
+// Agent: REQUIRES leave.approve for APPROVED/DENIED; leave.manage for CANCELLED; ENQUEUES update job.
+async fn update_leave_request(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path((id, leave_id)): Path<(String, String)>,
+    headers: HeaderMap,
+    Json(body): Json<LeaveRequestUpdateRequest>,
+) -> Result<Response, AppError> {
+    require_employee_module(&state.pool).await?;
+    let can_approve = check_permission(&state.pool, &user.id, "employees.leave.approve").await;
+    let can_manage = check_permission(&state.pool, &user.id, "employees.leave.manage").await;
+    if !can_approve && !can_manage {
+        return Err(AppError::forbidden("You don't have permission to update leave requests"));
+    }
+    let request_json = serde_json::to_value(&body)
+        .map_err(|e| AppError::internal(format!("serialize leave update: {e}")))?;
+    queue_employee_mutation(
+        &state, &user.id,
+        format!("PATCH /employees/{id}/leave/{leave_id}"),
+        &headers, &body,
+        entity_creates::JOB_TYPE_EMPLOYEE_LEAVE_REQUEST_UPDATE,
+        json!({ "employee_id": id, "leave_id": leave_id, "request": request_json }),
+    ).await
+}
+
+// Human: Lists documents for a specific employee. Requires documents.view permission.
+// Agent: READS employee_documents WHERE employee_id = $1; RETURNS rows ordered by created_at DESC.
+async fn list_employee_documents(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_employee_module(&state.pool).await?;
+    let can_view = check_permission(&state.pool, &user.id, "employees.documents.view").await
+        || check_permission(&state.pool, &user.id, "employees.documents.manage").await;
+    if !can_view {
+        return Err(AppError::forbidden("You don't have permission to view employee documents"));
+    }
+    let rows = sqlx::query(
+        r#"SELECT id, employee_id, doc_type, title, description, url, file_name,
+                  status::text, expires_at, metadata, created_at, updated_at
+           FROM employee_documents
+           WHERE employee_id = $1
+           ORDER BY created_at DESC"#,
+    )
+    .bind(&id)
+    .fetch_all(&state.pool)
+    .await?;
+    let docs: Vec<serde_json::Value> = rows.iter().map(|r| json!({
+        "id": r.get::<String, _>("id"),
+        "employee_id": r.get::<String, _>("employee_id"),
+        "doc_type": r.get::<String, _>("doc_type"),
+        "title": r.get::<String, _>("title"),
+        "description": r.get::<Option<String>, _>("description"),
+        "url": r.get::<Option<String>, _>("url"),
+        "file_name": r.get::<Option<String>, _>("file_name"),
+        "status": r.get::<String, _>("status"),
+        "expires_at": r.get::<Option<chrono::NaiveDate>, _>("expires_at"),
+        "metadata": r.get::<Option<serde_json::Value>, _>("metadata"),
+        "created_at": r.get::<chrono::NaiveDateTime, _>("created_at"),
+        "updated_at": r.get::<chrono::NaiveDateTime, _>("updated_at"),
+    })).collect();
+    Ok(Json(json!({ "documents": docs })))
+}
+
+// Human: Creates a document record for an employee (URL-based, no binary upload).
+// Agent: REQUIRES documents.manage; ENQUEUES employee_document_create job; RETURNS 202 + job_id.
+async fn create_document(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<DocumentCreateRequest>,
+) -> Result<Response, AppError> {
+    require_employee_module(&state.pool).await?;
+    if !check_permission(&state.pool, &user.id, "employees.documents.manage").await {
+        return Err(AppError::forbidden("You don't have permission to manage employee documents"));
+    }
+    if body.title.trim().is_empty() {
+        return Err(AppError::bad_request("title is required"));
+    }
+    let request_json = serde_json::to_value(&body)
+        .map_err(|e| AppError::internal(format!("serialize document: {e}")))?;
+    queue_employee_mutation(
+        &state, &user.id,
+        format!("POST /employees/{id}/documents"),
+        &headers, &body,
+        entity_creates::JOB_TYPE_EMPLOYEE_DOCUMENT_CREATE,
+        json!({ "employee_id": id, "request": request_json }),
+    ).await
+}
+
+// Human: Deletes an employee document by ID via background job queue.
+// Agent: REQUIRES documents.manage; ENQUEUES employee_document_delete job with doc_id; RETURNS 202 + job_id.
+async fn delete_document(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path((id, doc_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    require_employee_module(&state.pool).await?;
+    if !check_permission(&state.pool, &user.id, "employees.documents.manage").await {
+        return Err(AppError::forbidden("You don't have permission to manage employee documents"));
+    }
+    queue_employee_mutation(
+        &state, &user.id,
+        format!("DELETE /employees/{id}/documents/{doc_id}"),
+        &headers, &json!({}),
+        entity_creates::JOB_TYPE_EMPLOYEE_DOCUMENT_DELETE,
+        json!({ "employee_id": id, "doc_id": doc_id }),
+    ).await
 }
 
 async fn create_employee_lifecycle_event(
