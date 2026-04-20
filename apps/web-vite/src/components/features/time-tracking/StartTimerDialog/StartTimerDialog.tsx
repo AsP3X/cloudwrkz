@@ -47,10 +47,10 @@ export function StartTimerDialog({ open, onOpenChange, onCreated }: StartTimerDi
   }, [open]);
 
   React.useEffect(() => {
-    if (open && !startedAt) {
+    if (open) {
       setStartedAt(new Date());
     }
-  }, [open, startedAt]);
+  }, [open]);
 
   const handleAddTag = () => {
     const trimmed = tagInput.trim();

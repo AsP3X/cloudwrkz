@@ -482,15 +482,22 @@ pub(super) async fn run_job_queue_dispatcher_loop(
 
     /// Cap claims per wake so a deep backlog cannot starve the runtime in one tick.
     const MAX_CLAIMS_PER_WAKE: u32 = 128;
-    /// ~60s between stale-`processing` sweeps (400ms × 150).
-    const STALE_RECLAIM_EVERY_N_WAKES: u64 = 150;
-    let mut wake_counter: u64 = 0;
+    /// Sleep while queue is actively draining (keeps start latency low under load).
+    const BUSY_SLEEP_MS: u64 = 25;
+    /// Initial sleep when no eligible jobs were claimed.
+    const IDLE_SLEEP_MIN_MS: u64 = 400;
+    /// Upper bound for idle exponential backoff.
+    const IDLE_SLEEP_MAX_MS: u64 = 1_600;
+    /// Sweep stale `processing` rows roughly every minute.
+    const STALE_RECLAIM_INTERVAL: Duration = Duration::from_secs(60);
+    let mut sleep_ms = IDLE_SLEEP_MIN_MS;
+    let mut last_stale_reclaim = Instant::now();
 
     loop {
-        tokio::time::sleep(Duration::from_millis(400)).await;
-        wake_counter += 1;
-        if wake_counter % STALE_RECLAIM_EVERY_N_WAKES == 0 {
+        tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
+        if last_stale_reclaim.elapsed() >= STALE_RECLAIM_INTERVAL {
             reclaim_stale_processing_jobs(&pool).await;
+            last_stale_reclaim = Instant::now();
         }
 
         let mut claimed_this_wake = 0u32;
@@ -542,6 +549,7 @@ pub(super) async fn run_job_queue_dispatcher_loop(
             });
         }
         if claimed_this_wake > 0 {
+            sleep_ms = BUSY_SLEEP_MS;
             debug!(
                 target: "jobs",
                 event = "jobs.daemon_wake",
@@ -553,6 +561,8 @@ pub(super) async fn run_job_queue_dispatcher_loop(
                 worker_id,
                 &format!("claimed {claimed_this_wake} job(s) this wake"),
             );
+        } else {
+            sleep_ms = (sleep_ms.saturating_mul(2)).clamp(IDLE_SLEEP_MIN_MS, IDLE_SLEEP_MAX_MS);
         }
     }
 }

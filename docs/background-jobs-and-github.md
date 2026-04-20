@@ -4,9 +4,16 @@ This document describes the global `background_jobs` queue, the `github_link_met
 
 ## Job queue worker
 
-- A **single dispatcher** task polls about every **400ms**, loads pending jobs from PostgreSQL, and **spawns a separate async task per claimed job** so multiple jobs can run concurrently.
+- A supervisor keeps **N dispatcher loops** running (`JOB_QUEUE_WORKER_COUNT` at boot, or `system_settings.job_queue_worker_count` at runtime). Each dispatcher polls PostgreSQL and **spawns a separate async task per claimed job** so multiple jobs can run concurrently.
+- Poll sleep is **adaptive**: short while work is being claimed (low start latency under load) and exponentially backed off while idle (lower DB churn when the queue is empty).
 - **Per job type**, `TypeBudgets` enforces **`max_concurrent`** (and optional `min_interval_between_starts` when configured on that type). Unknown types default to a generous concurrent cap; always check `policies_from_config` for each type.
 - For **`github_link_metadata`**, `JOB_QUEUE_GITHUB_MAX_CONCURRENT` (default **1**) caps how many of these jobs run at once. Raise only if you accept more parallel GitHub traffic from this process.
+
+## Throughput tuning checklist
+
+- Increase **dispatcher count** when claim/dequeue is the bottleneck: set `JOB_QUEUE_WORKER_COUNT` (env default) and/or persist `system_settings.job_queue_worker_count` via admin settings.
+- Increase **per-type `max_concurrent`** only for handlers proven safe to run in parallel. `ticket_create` stays at `1` intentionally to preserve ordering/serialization.
+- Tune DB capacity alongside worker concurrency: if jobs queue behind `PgPool` acquisition, raise pool size or reduce concurrent job pressure.
 
 ## `github_link_metadata` jobs
 
