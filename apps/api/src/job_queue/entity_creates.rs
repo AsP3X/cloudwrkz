@@ -1388,7 +1388,11 @@ async fn exec_time_entry_timer_create(
     let id = new_cuid();
     let name = body.name.unwrap_or_else(|| "Timer".to_string());
     let tags = body.tags.unwrap_or_default();
-    let now = chrono::Utc::now().naive_utc();
+    let now = body
+        .started_at
+        .as_deref()
+        .and_then(parse_api_utc_naive_datetime)
+        .unwrap_or_else(|| chrono::Utc::now().naive_utc());
 
     let res = sqlx::query(
         r#"INSERT INTO time_entries (id, name, description, status, started_at, last_resumed_at,
@@ -1417,6 +1421,19 @@ async fn exec_time_entry_timer_create(
     }
 
     JobExecOutcome::Ok(JsonMutationResult::created(json!({ "id": id })))
+}
+
+fn parse_api_utc_naive_datetime(raw: &str) -> Option<chrono::NaiveDateTime> {
+    let input = raw.trim();
+    chrono::NaiveDateTime::parse_from_str(input, "%Y-%m-%dT%H:%M:%S%.f")
+        .ok()
+        .or_else(|| chrono::NaiveDateTime::parse_from_str(input, "%Y-%m-%dT%H:%M:%S").ok())
+        .or_else(|| {
+            chrono::DateTime::parse_from_rfc3339(input)
+        .ok()
+        .map(|dt| dt.with_timezone(&chrono::Utc).naive_utc())
+        })
+        .or_else(|| chrono::NaiveDateTime::parse_from_str(input, "%Y-%m-%dT%H:%M:%S%.fZ").ok())
 }
 
 async fn exec_time_entry_manual_create(
@@ -1459,7 +1476,7 @@ async fn exec_time_entry_manual_create(
     let started_at = body
         .started_at
         .as_deref()
-        .and_then(|s| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.fZ").ok())
+        .and_then(parse_api_utc_naive_datetime)
         .unwrap_or_else(|| chrono::Utc::now().naive_utc());
     let stopped_at = started_at + chrono::Duration::seconds(total_secs as i64);
     let tags = body.tags.unwrap_or_default();

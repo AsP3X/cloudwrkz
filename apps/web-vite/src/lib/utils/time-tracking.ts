@@ -22,7 +22,7 @@ function parseAsUTC(dateStr: string): number {
   if (/[Zz]$/.test(dateStr) || /[+-]\d{2}:\d{2}$/.test(dateStr)) {
     return new Date(dateStr).getTime();
   }
-  return new Date(dateStr + "Z").getTime();
+  return new Date(`${dateStr}Z`).getTime();
 }
 
 export function calculateTotalBreakDuration(

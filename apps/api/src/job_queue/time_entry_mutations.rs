@@ -45,9 +45,15 @@ fn row_to_entry(r: &sqlx::postgres::PgRow) -> TimeEntryRow {
 }
 
 fn parse_iso_datetime_utc_naive(s: &str) -> Option<chrono::NaiveDateTime> {
-    chrono::DateTime::parse_from_rfc3339(s.trim())
+    let raw = s.trim();
+    chrono::NaiveDateTime::parse_from_str(raw, "%Y-%m-%dT%H:%M:%S%.f")
+        .ok()
+        .or_else(|| chrono::NaiveDateTime::parse_from_str(raw, "%Y-%m-%dT%H:%M:%S").ok())
+        .or_else(|| {
+            chrono::DateTime::parse_from_rfc3339(raw)
         .ok()
         .map(|dt| dt.naive_utc())
+        })
 }
 
 async fn lock_time_entry_tx(
@@ -283,6 +289,14 @@ pub(super) async fn exec_time_entry_update(
         let recalculated_duration = final_stopped
             .map(|stop| stop.signed_duration_since(final_started).num_seconds())
             .unwrap_or(existing.total_duration as i64);
+        let final_last_resumed = if started_at_update.is_some()
+            && existing.status == "RUNNING"
+            && existing.total_duration == 0
+        {
+            Some(final_started)
+        } else {
+            existing.last_resumed_at
+        };
 
         if recalculated_duration < 0 {
             let _ = tx.rollback().await;
@@ -290,11 +304,12 @@ pub(super) async fn exec_time_entry_update(
         }
 
         if let Err(e) = sqlx::query(
-            "UPDATE time_entries SET started_at = $1, stopped_at = $2, total_duration = $3, updated_at = NOW() WHERE id = $4",
+            "UPDATE time_entries SET started_at = $1, stopped_at = $2, total_duration = $3, last_resumed_at = $4, updated_at = NOW() WHERE id = $5",
         )
         .bind(final_started)
         .bind(final_stopped)
         .bind(recalculated_duration as i32)
+        .bind(final_last_resumed)
         .bind(&time_entry_id)
         .execute(&mut *tx)
         .await

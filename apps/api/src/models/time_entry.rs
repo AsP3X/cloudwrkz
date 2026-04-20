@@ -50,6 +50,8 @@ pub struct CreateTimeEntryRequest {
     pub location: Option<String>,
     pub billable: Option<bool>,
     pub ticket_id: Option<String>,
+    #[serde(default, alias = "startedAt")]
+    pub started_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
