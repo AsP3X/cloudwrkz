@@ -1,7 +1,6 @@
 //! CloudWrkz HTTP API — shared by the `cloudwrkz-api` binary and integration tests.
 
 mod audit;
-mod request_tracking;
 pub mod auth;
 mod auth_governor;
 mod command_queue;
@@ -15,16 +14,18 @@ pub mod id;
 pub mod job_queue;
 mod link_preview;
 mod models;
+mod request_tracking;
 pub mod routes;
 
 pub use config::AppConfig;
 pub use job_queue::supervisor::{
-    JobWorkerSupervisor, WorkerListEntry, WorkerLogRegistry, JOB_QUEUE_WORKER_MAX,
-    JOB_QUEUE_WORKER_MIN, SYSTEM_SETTING_JOB_QUEUE_WORKER_COUNT, persist_worker_count,
-    resolve_initial_worker_count, spawn_job_queue_supervisor, worker_hostname,
+    JOB_QUEUE_WORKER_MAX, JOB_QUEUE_WORKER_MIN, JobWorkerSupervisor,
+    SYSTEM_SETTING_JOB_QUEUE_WORKER_COUNT, WorkerListEntry, WorkerLogRegistry,
+    persist_worker_count, resolve_initial_worker_count, spawn_job_queue_supervisor,
+    worker_hostname,
 };
-pub use routes::mutation_broker_for_config;
 pub use routes::AppState;
+pub use routes::mutation_broker_for_config;
 
 /// Start the PostgreSQL-backed job worker pool (same as `run()` after migrations). For integration tests.
 pub fn spawn_background_job_worker(
@@ -38,8 +39,8 @@ pub fn spawn_background_job_worker(
 use axum::Router;
 use axum::body::Body;
 use axum::http::Method;
-use axum::middleware;
 use axum::http::header::{self, HeaderName, HeaderValue};
+use axum::middleware;
 use std::net::SocketAddr;
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -469,7 +470,7 @@ pub async fn run() {
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .expect("Server error");
+    .with_graceful_shutdown(shutdown_signal())
+    .await
+    .expect("Server error");
 }

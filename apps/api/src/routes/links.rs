@@ -527,8 +527,7 @@ async fn extract_metadata(
                     .timeout(std::time::Duration::from_secs(10))
                     .build()
                     .map_err(|_| AppError::internal("Failed to create HTTP client"))?;
-                let extracted =
-                    link_preview::extract_metadata_from_url(&client, &url_str).await?;
+                let extracted = link_preview::extract_metadata_from_url(&client, &url_str).await?;
                 let body = serde_json::to_value(&extracted)
                     .map_err(|e| AppError::internal(format!("serialize extract metadata: {e}")))?;
                 Ok(JsonMutationResult::ok(body))
@@ -545,4 +544,3 @@ async fn extract_metadata(
         MutationHandlerOutput::Queued(q) => Ok((StatusCode::ACCEPTED, Json(q)).into_response()),
     }
 }
-

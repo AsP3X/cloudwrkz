@@ -80,7 +80,11 @@ impl ApiClient {
         Ok(out)
     }
 
-    async fn poll_login_until_done(&self, job_id: &str, retry_secs: u32) -> Result<LoginResponse, ApiError> {
+    async fn poll_login_until_done(
+        &self,
+        job_id: &str,
+        retry_secs: u32,
+    ) -> Result<LoginResponse, ApiError> {
         use std::time::{Duration, Instant};
         let max_wait = Duration::from_secs(u64::from(retry_secs.saturating_add(10)));
         let start = Instant::now();
@@ -107,12 +111,12 @@ impl ApiClient {
             let st: LoginJobStatusBody = res.json().await?;
             match st.status.as_str() {
                 "completed" => {
-                    let token = st
-                        .token
-                        .ok_or_else(|| ApiError::Http(500, "Login completed but token missing".into()))?;
-                    let user = st
-                        .user
-                        .ok_or_else(|| ApiError::Http(500, "Login completed but user missing".into()))?;
+                    let token = st.token.ok_or_else(|| {
+                        ApiError::Http(500, "Login completed but token missing".into())
+                    })?;
+                    let user = st.user.ok_or_else(|| {
+                        ApiError::Http(500, "Login completed but user missing".into())
+                    })?;
                     return Ok(LoginResponse { token, user });
                 }
                 "failed" => {
@@ -158,7 +162,10 @@ impl ApiClient {
             body.insert("role".to_string(), serde_json::Value::String(r.to_string()));
         }
         if let Some(s) = status {
-            body.insert("status".to_string(), serde_json::Value::String(s.to_string()));
+            body.insert(
+                "status".to_string(),
+                serde_json::Value::String(s.to_string()),
+            );
         }
         self.patch(&format!("admin/users/{}", id), body).await
     }
@@ -174,14 +181,21 @@ impl ApiClient {
     }
 
     /// GET /admin/users/:id/permissions (direct grants only)
-    pub async fn list_user_permissions(&self, user_id: &str) -> Result<UserPermissionsResponse, ApiError> {
-        self.get(&format!("admin/users/{}/permissions", user_id)).await
+    pub async fn list_user_permissions(
+        &self,
+        user_id: &str,
+    ) -> Result<UserPermissionsResponse, ApiError> {
+        self.get(&format!("admin/users/{}/permissions", user_id))
+            .await
     }
 
     /// POST /admin/users/:id/permissions (body: { "key": "tickets.view" })
     pub async fn grant_user_permission(&self, user_id: &str, key: &str) -> Result<(), ApiError> {
         let body = serde_json::json!({ "key": key });
-        let mut req = self.client.post(self.url(&format!("admin/users/{}/permissions", user_id))).json(&body);
+        let mut req = self
+            .client
+            .post(self.url(&format!("admin/users/{}/permissions", user_id)))
+            .json(&body);
         if let Some(h) = self.auth_header() {
             req = req.header("Authorization", h);
         }
@@ -200,7 +214,11 @@ impl ApiClient {
         self.delete(&path).await
     }
 
-    async fn patch(&self, path: &str, body: serde_json::Map<String, serde_json::Value>) -> Result<(), ApiError> {
+    async fn patch(
+        &self,
+        path: &str,
+        body: serde_json::Map<String, serde_json::Value>,
+    ) -> Result<(), ApiError> {
         let mut req = self.client.patch(self.url(path)).json(&body);
         if let Some(h) = self.auth_header() {
             req = req.header("Authorization", h);

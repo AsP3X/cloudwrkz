@@ -174,13 +174,9 @@ async fn register(
         })?;
 
     let job_id = new_job_id();
-    if let Err(e) = crate::auth::bg_job_record::insert_auth_register_job(
-        &state.pool,
-        &job_id,
-        &email,
-        &name,
-    )
-    .await
+    if let Err(e) =
+        crate::auth::bg_job_record::insert_auth_register_job(&state.pool, &job_id, &email, &name)
+            .await
     {
         warn!(
             event = "auth.bg_job.insert_register_failed",

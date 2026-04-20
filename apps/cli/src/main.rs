@@ -19,16 +19,16 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use argon2::password_hash::{
-    rand_core::{OsRng, RngCore},
-    PasswordHasher, SaltString,
-};
 use argon2::Argon2;
+use argon2::password_hash::{
+    PasswordHasher, SaltString,
+    rand_core::{OsRng, RngCore},
+};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use inquire::{Confirm, Password, Text};
-use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
+use sqlx::postgres::PgPoolOptions;
 
 const APP_NAME: &str = "CloudWrkz";
 const FALLBACK_COLS: usize = 80;
@@ -62,9 +62,21 @@ impl std::fmt::Display for PermissionOption {
 
 fn permission_option_from_json(p: &serde_json::Value) -> PermissionOption {
     PermissionOption {
-        key: p.get("key").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        name: p.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        category: p.get("category").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        key: p
+            .get("key")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        name: p
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        category: p
+            .get("category")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
     }
 }
 
@@ -80,7 +92,9 @@ fn filter_by_search(items: &[String], query: &str) -> (Vec<String>, Vec<usize>) 
     let mut filtered = Vec::new();
     let mut indices = Vec::new();
     let back_idx = items.len().saturating_sub(1);
-    let has_back = items.get(back_idx).map_or(false, |s| s.as_str() == BACK_LABEL);
+    let has_back = items
+        .get(back_idx)
+        .map_or(false, |s| s.as_str() == BACK_LABEL);
     for (i, s) in items.iter().enumerate() {
         if s.to_lowercase().contains(&q) {
             filtered.push(s.clone());
@@ -96,7 +110,8 @@ fn filter_by_search(items: &[String], query: &str) -> (Vec<String>, Vec<usize>) 
 
 /// Unique categories from permissions, sorted.
 fn categories_from_permissions(perms: &[PermissionOption]) -> Vec<String> {
-    let mut cats: std::collections::HashSet<String> = perms.iter().map(|p| p.category.clone()).collect();
+    let mut cats: std::collections::HashSet<String> =
+        perms.iter().map(|p| p.category.clone()).collect();
     cats.remove("");
     let mut list: Vec<String> = cats.into_iter().collect();
     list.sort();
@@ -272,11 +287,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 "DATABASE_URL must be set (e.g. in .env or apps/api/.env)".to_string()
             })?;
             match subcommand {
-                DbCommand::Seed { migrations_dir: dir } => {
+                DbCommand::Seed {
+                    migrations_dir: dir,
+                } => {
                     let dir = migrations_dir(dir);
                     run_seed(&database_url, &dir).await?;
                 }
-                DbCommand::Migrate { migrations_dir: dir } => {
+                DbCommand::Migrate {
+                    migrations_dir: dir,
+                } => {
                     let dir = migrations_dir(dir);
                     run_migrate(&database_url, &dir).await?;
                 }
@@ -296,7 +315,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 "DATABASE_URL must be set (e.g. in .env or apps/api/.env)".to_string()
             })?;
             match subcommand {
-                AdminCommand::CreateAdmin { email, password, name } => {
+                AdminCommand::CreateAdmin {
+                    email,
+                    password,
+                    name,
+                } => {
                     run_create_admin(&database_url, &email, &password, name.as_deref()).await?;
                 }
             }
@@ -306,7 +329,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 "DATABASE_URL must be set (e.g. in .env or apps/api/.env)".to_string()
             })?;
             match subcommand {
-                DiagnosticsTokenCommand::Generate { migrations_dir: dir } => {
+                DiagnosticsTokenCommand::Generate {
+                    migrations_dir: dir,
+                } => {
                     let dir = migrations_dir(dir);
                     run_diagnostics_token_generate(&database_url, &dir).await?;
                 }
@@ -367,7 +392,11 @@ async fn run_login(
     let client = api::ApiClient::new(base_url.clone(), None);
 
     let email = email.unwrap_or_else(|| {
-        Text::new("Email:").prompt().unwrap_or_default().trim().to_string()
+        Text::new("Email:")
+            .prompt()
+            .unwrap_or_default()
+            .trim()
+            .to_string()
     });
     let password = password.unwrap_or_else(|| {
         Password::new("Password:")
@@ -472,7 +501,11 @@ async fn run_create_admin(
     // Require bootstrap secret so DATABASE_URL alone is not enough (e.g. in CI or leaked env).
     let secret = std::env::var("CLOUDWRKZ_BOOTSTRAP_SECRET").unwrap_or_default();
     if secret.trim().is_empty() {
-        eprintln!("{} create-admin is protected. Set {} (any non-empty value) to allow bootstrap.", "✗".red(), "CLOUDWRKZ_BOOTSTRAP_SECRET".cyan());
+        eprintln!(
+            "{} create-admin is protected. Set {} (any non-empty value) to allow bootstrap.",
+            "✗".red(),
+            "CLOUDWRKZ_BOOTSTRAP_SECRET".cyan()
+        );
         eprintln!("  Example: export CLOUDWRKZ_BOOTSTRAP_SECRET=your-secret-here");
         std::process::exit(1);
     }
@@ -498,12 +531,16 @@ async fn run_create_admin(
     let pool = pool(database_url).await?;
 
     // Only allow creating the first admin. After that, use API or web app.
-    let existing: Option<(i32,)> = sqlx::query_as("SELECT 1 FROM users WHERE role = 'ADMIN' LIMIT 1")
-        .fetch_optional(&pool)
-        .await?;
+    let existing: Option<(i32,)> =
+        sqlx::query_as("SELECT 1 FROM users WHERE role = 'ADMIN' LIMIT 1")
+            .fetch_optional(&pool)
+            .await?;
     if existing.is_some() {
         pool.close().await;
-        eprintln!("{} An admin user already exists. Create more users via the API or web app.", "✗".red());
+        eprintln!(
+            "{} An admin user already exists. Create more users via the API or web app.",
+            "✗".red()
+        );
         std::process::exit(1);
     }
 
@@ -557,21 +594,57 @@ enum AppScreen {
         role: String,
         status: String,
     },
-    StatusChoice { user_id: String, email: String },
-    RoleChoice { user_id: String, email: String },
-    Permissions { user_id: String, email: String, status: String },
-    GrantPermission { permissions: Vec<PermissionOption>, categories: Vec<String>, email: String, status: String, selected: HashSet<String> },
-    RevokeCategory { categories: Vec<String>, email: String, status: String },
-    RevokePermission { permissions: Vec<PermissionOption>, categories: Vec<String>, email: String, status: String, selected: HashSet<String> },
-    ConfirmDelete { user_id: String, email: String },
-    ConfirmRevoke { user_id: String, key: String },
+    StatusChoice {
+        user_id: String,
+        email: String,
+    },
+    RoleChoice {
+        user_id: String,
+        email: String,
+    },
+    Permissions {
+        user_id: String,
+        email: String,
+        status: String,
+    },
+    GrantPermission {
+        permissions: Vec<PermissionOption>,
+        categories: Vec<String>,
+        email: String,
+        status: String,
+        selected: HashSet<String>,
+    },
+    RevokeCategory {
+        categories: Vec<String>,
+        email: String,
+        status: String,
+    },
+    RevokePermission {
+        permissions: Vec<PermissionOption>,
+        categories: Vec<String>,
+        email: String,
+        status: String,
+        selected: HashSet<String>,
+    },
+    ConfirmDelete {
+        user_id: String,
+        email: String,
+    },
+    ConfirmRevoke {
+        user_id: String,
+        key: String,
+    },
     GroupsList(Vec<serde_json::Value>),
     ModulesList(Vec<serde_json::Value>),
     SessionsList(Vec<serde_json::Value>),
     DbOutput(String),
     Help(String),
     UserDetailsJson(String),
-    PermissionTable { _user_id: String, email: String, permissions: Vec<PermissionOption> },
+    PermissionTable {
+        _user_id: String,
+        email: String,
+        permissions: Vec<PermissionOption>,
+    },
     ConfirmDbReset,
 }
 
@@ -728,14 +801,20 @@ fn panel_content(screen: &AppScreen, sidebar_idx: usize, has_token: bool) -> Vec
             let mut content: Vec<String> = filtered
                 .iter()
                 .map(|p| {
-                    let mark = if selected.contains(&p.key) { "☑ " } else { "  " };
+                    let mark = if selected.contains(&p.key) {
+                        "☑ "
+                    } else {
+                        "  "
+                    };
                     format!("{}{} — {} ({})", mark, p.key, p.name, p.category)
                 })
                 .collect();
             content.push(BACK_LABEL.to_string());
             content
         }
-        AppScreen::RevokeCategory { categories: cats, .. } => {
+        AppScreen::RevokeCategory {
+            categories: cats, ..
+        } => {
             let mut content = cats.clone();
             content.push(BACK_LABEL.to_string());
             content
@@ -755,7 +834,11 @@ fn panel_content(screen: &AppScreen, sidebar_idx: usize, has_token: bool) -> Vec
             let mut content: Vec<String> = filtered
                 .iter()
                 .map(|p| {
-                    let mark = if selected.contains(&p.key) { "☑ " } else { "  " };
+                    let mark = if selected.contains(&p.key) {
+                        "☑ "
+                    } else {
+                        "  "
+                    };
                     format!("{}{} — {} ({})", mark, p.key, p.name, p.category)
                 })
                 .collect();
@@ -766,7 +849,10 @@ fn panel_content(screen: &AppScreen, sidebar_idx: usize, has_token: bool) -> Vec
             if sidebar_idx == 0 {
                 main_section_submenu(0, true)
             } else {
-                vec!["Yes, soft-delete this user".to_string(), "No, cancel".to_string()]
+                vec![
+                    "Yes, soft-delete this user".to_string(),
+                    "No, cancel".to_string(),
+                ]
             }
         }
         AppScreen::ConfirmRevoke { key, .. } => {
@@ -834,7 +920,8 @@ fn panel_content(screen: &AppScreen, sidebar_idx: usize, has_token: bool) -> Vec
             if sidebar_idx == 0 {
                 main_section_submenu(4, has_token)
             } else {
-                let mut lines: Vec<String> = text.lines().map(|s| s.to_string()).take(200).collect();
+                let mut lines: Vec<String> =
+                    text.lines().map(|s| s.to_string()).take(200).collect();
                 lines.push(BACK_LABEL.to_string());
                 lines
             }
@@ -843,7 +930,8 @@ fn panel_content(screen: &AppScreen, sidebar_idx: usize, has_token: bool) -> Vec
             if sidebar_idx == 0 {
                 main_section_submenu(5, has_token)
             } else {
-                let mut lines: Vec<String> = text.lines().map(|s| s.to_string()).take(200).collect();
+                let mut lines: Vec<String> =
+                    text.lines().map(|s| s.to_string()).take(200).collect();
                 lines.push(BACK_LABEL.to_string());
                 lines
             }
@@ -852,7 +940,8 @@ fn panel_content(screen: &AppScreen, sidebar_idx: usize, has_token: bool) -> Vec
             if sidebar_idx == 0 {
                 main_section_submenu(0, true)
             } else {
-                let mut lines: Vec<String> = text.lines().map(|s| s.to_string()).take(200).collect();
+                let mut lines: Vec<String> =
+                    text.lines().map(|s| s.to_string()).take(200).collect();
                 lines.push(BACK_LABEL.to_string());
                 lines
             }
@@ -873,10 +962,7 @@ fn panel_content(screen: &AppScreen, sidebar_idx: usize, has_token: bool) -> Vec
             if sidebar_idx == 0 {
                 main_section_submenu(4, has_token)
             } else {
-                vec![
-                    "Yes, reset database".to_string(),
-                    "No, cancel".to_string(),
-                ]
+                vec!["Yes, reset database".to_string(), "No, cancel".to_string()]
             }
         }
     }
@@ -886,7 +972,13 @@ fn build_ui(
     screen: &AppScreen,
     has_token: bool,
     sidebar_index: usize,
-) -> (String, Vec<String>, String, Vec<String>, Option<(Vec<String>, String)>) {
+) -> (
+    String,
+    Vec<String>,
+    String,
+    Vec<String>,
+    Option<(Vec<String>, String)>,
+) {
     match screen {
         AppScreen::Main => {
             let sidebar = vec![
@@ -899,7 +991,13 @@ fn build_ui(
                 "🚪 Quit".to_string(),
             ];
             let content = panel_content(screen, sidebar_index, has_token);
-            (" CloudWrkz ".to_string(), sidebar, " Actions ".to_string(), content, None)
+            (
+                " CloudWrkz ".to_string(),
+                sidebar,
+                " Actions ".to_string(),
+                content,
+                None,
+            )
         }
         AppScreen::UserList { total, .. } => {
             let sidebar = sidebar_parent_plus_submenu(0, true);
@@ -907,9 +1005,19 @@ fn build_ui(
             let title_right = format!(" Select user ({} total) ", total);
             (" Users ".to_string(), sidebar, title_right, content, None)
         }
-        AppScreen::UserDetail { email, name, status, role: _role, .. } => {
+        AppScreen::UserDetail {
+            email,
+            name,
+            status,
+            role: _role,
+            ..
+        } => {
             let username = name.trim();
-            let user_label = if username.is_empty() { email.as_str() } else { username };
+            let user_label = if username.is_empty() {
+                email.as_str()
+            } else {
+                username
+            };
             let header = vec![
                 format!("Root → User [{}] → Manage", user_label),
                 format!("Status: {}", status),
@@ -917,19 +1025,37 @@ fn build_ui(
             ];
             let sidebar = sidebar_parent_plus_submenu(0, true);
             let content = panel_content(screen, sidebar_index, has_token);
-            (" User ".to_string(), sidebar, " Sub menu options ".to_string(), content, Some((header, "User".to_string())))
+            (
+                " User ".to_string(),
+                sidebar,
+                " Sub menu options ".to_string(),
+                content,
+                Some((header, "User".to_string())),
+            )
         }
         AppScreen::StatusChoice { email, .. } => {
             let mut sidebar = sidebar_parent_plus_submenu(0, true);
             sidebar.push(format!("Set status — {}", email));
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Status ".to_string(), sidebar, " Choose status ".to_string(), content, None)
+            (
+                " Status ".to_string(),
+                sidebar,
+                " Choose status ".to_string(),
+                content,
+                None,
+            )
         }
         AppScreen::RoleChoice { email, .. } => {
             let mut sidebar = sidebar_parent_plus_submenu(0, true);
             sidebar.push(format!("Set role — {}", email));
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Role ".to_string(), sidebar, " Choose role ".to_string(), content, None)
+            (
+                " Role ".to_string(),
+                sidebar,
+                " Choose role ".to_string(),
+                content,
+                None,
+            )
         }
         AppScreen::Permissions { email, status, .. } => {
             let header = vec![
@@ -939,9 +1065,21 @@ fn build_ui(
             ];
             let sidebar = sidebar_parent_plus_submenu(0, true);
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Permissions ".to_string(), sidebar, " Sub menu options ".to_string(), content, Some((header, "Permissions".to_string())))
+            (
+                " Permissions ".to_string(),
+                sidebar,
+                " Sub menu options ".to_string(),
+                content,
+                Some((header, "Permissions".to_string())),
+            )
         }
-        AppScreen::GrantPermission { permissions: _, categories: cats, email, status, selected: _ } => {
+        AppScreen::GrantPermission {
+            permissions: _,
+            categories: cats,
+            email,
+            status,
+            selected: _,
+        } => {
             let header = vec![
                 format!("Root → User [{}] → Grant permission", email),
                 format!("Status: {}", status),
@@ -951,9 +1089,19 @@ fn build_ui(
             let mut sidebar = vec!["All".to_string()];
             sidebar.extend(cats.clone());
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Grant ".to_string(), sidebar, " Permissions ".to_string(), content, Some((header, "Grant permission".to_string())))
+            (
+                " Grant ".to_string(),
+                sidebar,
+                " Permissions ".to_string(),
+                content,
+                Some((header, "Grant permission".to_string())),
+            )
         }
-        AppScreen::RevokeCategory { categories: cats, email, status } => {
+        AppScreen::RevokeCategory {
+            categories: cats,
+            email,
+            status,
+        } => {
             let header = vec![
                 format!("Root → User [{}] → Revoke permission", email),
                 format!("Status: {}", status),
@@ -961,9 +1109,21 @@ fn build_ui(
             ];
             let sidebar = cats.clone();
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Revoke ".to_string(), sidebar, " Categories ".to_string(), content, Some((header, "Revoke permission".to_string())))
+            (
+                " Revoke ".to_string(),
+                sidebar,
+                " Categories ".to_string(),
+                content,
+                Some((header, "Revoke permission".to_string())),
+            )
         }
-        AppScreen::RevokePermission { permissions: _, categories: cats, email, status, selected: _ } => {
+        AppScreen::RevokePermission {
+            permissions: _,
+            categories: cats,
+            email,
+            status,
+            selected: _,
+        } => {
             let header = vec![
                 format!("Root → User [{}] → Revoke permission", email),
                 format!("Status: {}", status),
@@ -972,55 +1132,117 @@ fn build_ui(
             ];
             let sidebar = cats.clone();
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Revoke ".to_string(), sidebar, " Select to revoke ".to_string(), content, Some((header, "Revoke permission".to_string())))
+            (
+                " Revoke ".to_string(),
+                sidebar,
+                " Select to revoke ".to_string(),
+                content,
+                Some((header, "Revoke permission".to_string())),
+            )
         }
         AppScreen::ConfirmDelete { email, .. } => {
             let mut sidebar = sidebar_parent_plus_submenu(0, true);
             sidebar.push(format!("Delete — {}", email));
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Confirm ".to_string(), sidebar, " Delete user? ".to_string(), content, None)
+            (
+                " Confirm ".to_string(),
+                sidebar,
+                " Delete user? ".to_string(),
+                content,
+                None,
+            )
         }
         AppScreen::ConfirmRevoke { key, .. } => {
             let mut sidebar = sidebar_parent_plus_submenu(0, true);
             sidebar.push(format!("Revoke — {}", key));
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Confirm ".to_string(), sidebar, " Revoke? ".to_string(), content, None)
+            (
+                " Confirm ".to_string(),
+                sidebar,
+                " Revoke? ".to_string(),
+                content,
+                None,
+            )
         }
         AppScreen::GroupsList(_) => {
             let sidebar = sidebar_parent_plus_submenu(1, has_token);
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Groups ".to_string(), sidebar, " List ".to_string(), content, None)
+            (
+                " Groups ".to_string(),
+                sidebar,
+                " List ".to_string(),
+                content,
+                None,
+            )
         }
         AppScreen::ModulesList(_) => {
             let sidebar = sidebar_parent_plus_submenu(2, has_token);
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Modules ".to_string(), sidebar, " List ".to_string(), content, None)
+            (
+                " Modules ".to_string(),
+                sidebar,
+                " List ".to_string(),
+                content,
+                None,
+            )
         }
         AppScreen::SessionsList(_) => {
             let sidebar = sidebar_parent_plus_submenu(3, has_token);
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Sessions ".to_string(), sidebar, " List ".to_string(), content, None)
+            (
+                " Sessions ".to_string(),
+                sidebar,
+                " List ".to_string(),
+                content,
+                None,
+            )
         }
         AppScreen::DbOutput(_) => {
             let sidebar = sidebar_parent_plus_submenu(4, has_token);
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Output ".to_string(), sidebar, " Result ".to_string(), content, None)
+            (
+                " Output ".to_string(),
+                sidebar,
+                " Result ".to_string(),
+                content,
+                None,
+            )
         }
         AppScreen::Help(_) => {
             let sidebar = sidebar_parent_plus_submenu(5, has_token);
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Help ".to_string(), sidebar, " Documentation ".to_string(), content, None)
+            (
+                " Help ".to_string(),
+                sidebar,
+                " Documentation ".to_string(),
+                content,
+                None,
+            )
         }
         AppScreen::UserDetailsJson(_) => {
             let sidebar = sidebar_parent_plus_submenu(0, true);
             let content = panel_content(screen, sidebar_index, has_token);
-            (" User details ".to_string(), sidebar, " JSON ".to_string(), content, None)
+            (
+                " User details ".to_string(),
+                sidebar,
+                " JSON ".to_string(),
+                content,
+                None,
+            )
         }
-        AppScreen::PermissionTable { email, permissions, .. } => {
+        AppScreen::PermissionTable {
+            email, permissions, ..
+        } => {
             let mut sidebar = sidebar_parent_plus_submenu(0, true);
             sidebar.push(format!("Permissions — {}", email));
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Direct permissions ".to_string(), sidebar, format!(" {} ", permissions.len()), content, None)
+            (
+                " Direct permissions ".to_string(),
+                sidebar,
+                format!(" {} ", permissions.len()),
+                content,
+                None,
+            )
         }
         AppScreen::ConfirmDbReset => {
             let mut sidebar = sidebar_parent_plus_submenu(4, has_token);
@@ -1070,7 +1292,11 @@ async fn run_interactive() -> Result<(), Box<dyn std::error::Error + Send + Sync
     let database_url = match std::env::var("DATABASE_URL") {
         Ok(u) => u,
         Err(_) => {
-            eprintln!("{} {}", "✗".red(), "DATABASE_URL must be set (e.g. in .env or apps/api/.env)".red());
+            eprintln!(
+                "{} {}",
+                "✗".red(),
+                "DATABASE_URL must be set (e.g. in .env or apps/api/.env)".red()
+            );
             std::process::exit(1);
         }
     };
@@ -1121,7 +1347,9 @@ async fn run_interactive() -> Result<(), Box<dyn std::error::Error + Send + Sync
             &display_sidebar,
             &title_right,
             &display_content,
-            header.as_ref().map(|(lines, title)| (lines.as_slice(), title.as_str())),
+            header
+                .as_ref()
+                .map(|(lines, title)| (lines.as_slice(), title.as_str())),
             if search_active {
                 Some(&mut search_query)
             } else {
@@ -1149,12 +1377,20 @@ async fn run_interactive() -> Result<(), Box<dyn std::error::Error + Send + Sync
             }
             tui::TuiExit::SearchChanged(query) => {
                 search_active = true;
-                search_filter = if query.is_empty() { None } else { Some(query.clone()) };
+                search_filter = if query.is_empty() {
+                    None
+                } else {
+                    Some(query.clone())
+                };
                 search_query = query;
             }
             tui::TuiExit::SearchDone(query) => {
                 search_active = false;
-                search_filter = if query.is_empty() { None } else { Some(query.clone()) };
+                search_filter = if query.is_empty() {
+                    None
+                } else {
+                    Some(query.clone())
+                };
                 search_query = query;
             }
             tui::TuiExit::SearchCancel => {
@@ -1217,7 +1453,10 @@ async fn run_interactive() -> Result<(), Box<dyn std::error::Error + Send + Sync
             }
             tui::TuiExit::Select(sb_idx, content_idx) => {
                 let real_sb = sidebar_orig_indices.get(sb_idx).copied().unwrap_or(sb_idx);
-                let real_content = content_orig_indices.get(content_idx).copied().unwrap_or(content_idx);
+                let real_content = content_orig_indices
+                    .get(content_idx)
+                    .copied()
+                    .unwrap_or(content_idx);
                 let handled = dispatch_tui_action(
                     &mut tui_state,
                     &mut stack,
@@ -1237,7 +1476,10 @@ async fn run_interactive() -> Result<(), Box<dyn std::error::Error + Send + Sync
             }
         }
     }
-    println!("{}", format!("Thank you for using {} CLI. Goodbye! 👋", APP_NAME).bright_blue());
+    println!(
+        "{}",
+        format!("Thank you for using {} CLI. Goodbye! 👋", APP_NAME).bright_blue()
+    );
     Ok(())
 }
 
@@ -1259,7 +1501,10 @@ async fn dispatch_tui_action(
     database_url: &str,
 ) -> Result<DispatchResult, Box<dyn std::error::Error + Send + Sync>> {
     let live = panel_content(screen, sb_idx, has_token);
-    let is_back = content_idx < live.len() && live.get(content_idx).is_some_and(|s| s.trim() == BACK_LABEL);
+    let is_back = content_idx < live.len()
+        && live
+            .get(content_idx)
+            .is_some_and(|s| s.trim() == BACK_LABEL);
 
     match screen {
         AppScreen::Main => {
@@ -1270,29 +1515,27 @@ async fn dispatch_tui_action(
                     show_login_required();
                     wait_for_enter();
                 }
-                0 => {
-                    match content_idx {
-                        0 => {
-                            let res = api_client.list_users().await?;
-                            tui_state.sidebar_index = 1;
-                            stack.push(AppScreen::UserList {
-                                users: res.users,
-                                for_manage: true,
-                                total: res.total,
-                            });
-                        }
-                        1 | 2 => {
-                            let res = api_client.list_users().await?;
-                            tui_state.sidebar_index = 1 + content_idx;
-                            stack.push(AppScreen::UserList {
-                                users: res.users,
-                                for_manage: false,
-                                total: res.total,
-                            });
-                        }
-                        _ => {}
+                0 => match content_idx {
+                    0 => {
+                        let res = api_client.list_users().await?;
+                        tui_state.sidebar_index = 1;
+                        stack.push(AppScreen::UserList {
+                            users: res.users,
+                            for_manage: true,
+                            total: res.total,
+                        });
                     }
-                }
+                    1 | 2 => {
+                        let res = api_client.list_users().await?;
+                        tui_state.sidebar_index = 1 + content_idx;
+                        stack.push(AppScreen::UserList {
+                            users: res.users,
+                            for_manage: false,
+                            total: res.total,
+                        });
+                    }
+                    _ => {}
+                },
                 1 if has_token => {
                     let res = api_client.list_groups().await?;
                     tui_state.sidebar_index = 1;
@@ -1371,11 +1614,31 @@ async fn dispatch_tui_action(
                 return Ok(DispatchResult::Continue);
             }
             if let Some(u) = users.get(content_idx) {
-                let id = u.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let email = u.get("email").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let name = u.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let role = u.get("role").and_then(|v| v.as_str()).unwrap_or("-").to_string();
-                let status = u.get("status").and_then(|v| v.as_str()).unwrap_or("-").to_string();
+                let id = u
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let email = u
+                    .get("email")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let name = u
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let role = u
+                    .get("role")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("-")
+                    .to_string();
+                let status = u
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("-")
+                    .to_string();
                 if for_manage {
                     tui_state.sidebar_index = 1;
                     stack.push(AppScreen::UserDetail {
@@ -1387,13 +1650,20 @@ async fn dispatch_tui_action(
                     });
                 } else {
                     let v = api_client.get_user(&id).await?;
-                    let pretty = serde_json::to_string_pretty(v.get("user").unwrap_or(&serde_json::Value::Null))?;
+                    let pretty = serde_json::to_string_pretty(
+                        v.get("user").unwrap_or(&serde_json::Value::Null),
+                    )?;
                     tui_state.sidebar_index = 3;
                     stack.push(AppScreen::UserDetailsJson(pretty));
                 }
             }
         }
-        AppScreen::UserDetail { user_id, email, status, .. } => {
+        AppScreen::UserDetail {
+            user_id,
+            email,
+            status,
+            ..
+        } => {
             if sb_idx == 0 {
                 match content_idx {
                     0 => return Ok(DispatchResult::Continue),
@@ -1432,15 +1702,23 @@ async fn dispatch_tui_action(
             match content_idx {
                 0 => {
                     let v = api_client.get_user(&user_id).await?;
-                    let pretty = serde_json::to_string_pretty(v.get("user").unwrap_or(&serde_json::Value::Null))?;
+                    let pretty = serde_json::to_string_pretty(
+                        v.get("user").unwrap_or(&serde_json::Value::Null),
+                    )?;
                     tui_state.sidebar_index = 1;
                     stack.push(AppScreen::UserDetailsJson(pretty));
                 }
                 1 => {
                     let name = inquire::Text::new("New display name (empty to clear):").prompt();
                     if let Ok(n) = name {
-                        let val = if n.trim().is_empty() { None } else { Some(n.trim().to_string()) };
-                        let _ = api_client.update_user(&user_id, val.as_deref(), None, None).await;
+                        let val = if n.trim().is_empty() {
+                            None
+                        } else {
+                            Some(n.trim().to_string())
+                        };
+                        let _ = api_client
+                            .update_user(&user_id, val.as_deref(), None, None)
+                            .await;
                     }
                 }
                 2 => {
@@ -1456,7 +1734,11 @@ async fn dispatch_tui_action(
                 }
                 5 => {
                     tui_state.sidebar_index = 1;
-                    stack.push(AppScreen::Permissions { user_id, email, status });
+                    stack.push(AppScreen::Permissions {
+                        user_id,
+                        email,
+                        status,
+                    });
                 }
                 6 => {
                     tui_state.sidebar_index = 1;
@@ -1490,7 +1772,11 @@ async fn dispatch_tui_action(
             }
             stack.pop();
         }
-        AppScreen::Permissions { user_id, email, status } => {
+        AppScreen::Permissions {
+            user_id,
+            email,
+            status,
+        } => {
             if is_back {
                 stack.pop();
                 return Ok(DispatchResult::Continue);
@@ -1498,8 +1784,11 @@ async fn dispatch_tui_action(
             match content_idx {
                 0 => {
                     let res = api_client.list_user_permissions(user_id).await?;
-                    let perms: Vec<PermissionOption> =
-                        res.permissions.iter().map(permission_option_from_json).collect();
+                    let perms: Vec<PermissionOption> = res
+                        .permissions
+                        .iter()
+                        .map(permission_option_from_json)
+                        .collect();
                     tui_state.sidebar_index = 1;
                     stack.push(AppScreen::PermissionTable {
                         _user_id: user_id.clone(),
@@ -1515,7 +1804,9 @@ async fn dispatch_tui_action(
                         .map(|r| {
                             r.permissions
                                 .iter()
-                                .filter_map(|p| p.get("key").and_then(|v| v.as_str()).map(String::from))
+                                .filter_map(|p| {
+                                    p.get("key").and_then(|v| v.as_str()).map(String::from)
+                                })
                                 .collect()
                         })
                         .unwrap_or_default();
@@ -1528,7 +1819,9 @@ async fn dispatch_tui_action(
                         })
                         .map(permission_option_from_json)
                         .collect();
-                    available.sort_by(|a, b| a.category.cmp(&b.category).then_with(|| a.key.cmp(&b.key)));
+                    available.sort_by(|a, b| {
+                        a.category.cmp(&b.category).then_with(|| a.key.cmp(&b.key))
+                    });
                     let categories = categories_from_permissions(&available);
                     tui_state.sidebar_index = 0;
                     tui_state.content_index = 0;
@@ -1546,9 +1839,14 @@ async fn dispatch_tui_action(
                         stack.pop();
                         return Ok(DispatchResult::Continue);
                     }
-                    let mut opts: Vec<PermissionOption> =
-                        res.permissions.iter().map(permission_option_from_json).collect();
-                    opts.sort_by(|a, b| a.category.cmp(&b.category).then_with(|| a.key.cmp(&b.key)));
+                    let mut opts: Vec<PermissionOption> = res
+                        .permissions
+                        .iter()
+                        .map(permission_option_from_json)
+                        .collect();
+                    opts.sort_by(|a, b| {
+                        a.category.cmp(&b.category).then_with(|| a.key.cmp(&b.key))
+                    });
                     let categories = categories_from_permissions(&opts);
                     if categories.len() > 1 {
                         tui_state.sidebar_index = 0;
@@ -1619,21 +1917,32 @@ async fn dispatch_tui_action(
                 stack.pop();
             }
         }
-        AppScreen::RevokeCategory { categories: cats, email, status } => {
+        AppScreen::RevokeCategory {
+            categories: cats,
+            email,
+            status,
+        } => {
             if is_back {
                 stack.pop();
                 return Ok(DispatchResult::Continue);
             }
-            let user_id_for_revoke = stack.iter().rev().find_map(|s| {
-                if let AppScreen::Permissions { user_id, .. } = s {
-                    Some(user_id.as_str())
-                } else {
-                    None
-                }
-            }).unwrap_or("");
+            let user_id_for_revoke = stack
+                .iter()
+                .rev()
+                .find_map(|s| {
+                    if let AppScreen::Permissions { user_id, .. } = s {
+                        Some(user_id.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or("");
             let res = api_client.list_user_permissions(user_id_for_revoke).await?;
-            let mut opts: Vec<PermissionOption> =
-                res.permissions.iter().map(permission_option_from_json).collect();
+            let mut opts: Vec<PermissionOption> = res
+                .permissions
+                .iter()
+                .map(permission_option_from_json)
+                .collect();
             opts.sort_by(|a, b| a.category.cmp(&b.category).then_with(|| a.key.cmp(&b.key)));
             stack.pop();
             tui_state.sidebar_index = 0;
@@ -1709,7 +2018,9 @@ async fn dispatch_tui_action(
                 stack.pop();
             }
         }
-        AppScreen::DbOutput(_) | AppScreen::Help(_) | AppScreen::UserDetailsJson(_)
+        AppScreen::DbOutput(_)
+        | AppScreen::Help(_)
+        | AppScreen::UserDetailsJson(_)
         | AppScreen::PermissionTable { .. } => {
             if is_back {
                 stack.pop();
@@ -1731,7 +2042,6 @@ async fn dispatch_tui_action(
     Ok(DispatchResult::Continue)
 }
 
-
 /// Run a DB action and return output as a string (for TUI display).
 async fn run_db_action_capture(
     database_url: &str,
@@ -1747,15 +2057,21 @@ async fn run_db_action_capture(
     }
 }
 
-async fn run_status_string(database_url: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+async fn run_status_string(
+    database_url: &str,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     let pool = pool(database_url).await?;
     let _: (i32,) = sqlx::query_as("SELECT 1").fetch_one(&pool).await?;
-    let users: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users").fetch_one(&pool).await?;
+    let users: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+        .fetch_one(&pool)
+        .await?;
     pool.close().await;
     Ok(format!("Database: connected\nUsers:   {}", users.0))
 }
 
-async fn run_stats_string(database_url: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+async fn run_stats_string(
+    database_url: &str,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     let pool = pool(database_url).await?;
     async fn count(pool: &PgPool, table: &str) -> Result<i64, sqlx::Error> {
         let row: (i64,) = sqlx::query_as(&format!("SELECT COUNT(*) FROM {}", table))
@@ -1780,12 +2096,18 @@ async fn run_stats_string(database_url: &str) -> Result<String, Box<dyn std::err
     ))
 }
 
-async fn run_seed_string(database_url: &str, migrations_dir: &PathBuf) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+async fn run_seed_string(
+    database_url: &str,
+    migrations_dir: &PathBuf,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     run_seed(database_url, migrations_dir).await?;
     Ok("Seed complete.".to_string())
 }
 
-async fn run_migrate_string(database_url: &str, migrations_dir: &PathBuf) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+async fn run_migrate_string(
+    database_url: &str,
+    migrations_dir: &PathBuf,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     run_migrate(database_url, migrations_dir).await?;
     Ok("Migrations complete.".to_string())
 }
@@ -1809,14 +2131,25 @@ fn help_text() -> String {
 
 fn show_login_required() {
     clear_screen();
-    header("Login required", "Management (Users, Groups, Modules, Sessions) uses the API.");
-    println!("{} Set {} and (optionally) {} then run again.", "ℹ".bright_blue(), "CLOUDWRKZ_TOKEN".cyan(), "CLOUDWRKZ_API_URL".cyan());
+    header(
+        "Login required",
+        "Management (Users, Groups, Modules, Sessions) uses the API.",
+    );
+    println!(
+        "{} Set {} and (optionally) {} then run again.",
+        "ℹ".bright_blue(),
+        "CLOUDWRKZ_TOKEN".cyan(),
+        "CLOUDWRKZ_API_URL".cyan()
+    );
     println!();
     println!("  {}  Get a token by logging in:", "To get a token:".bold());
     println!("     {}", "cloudwrkz-cli login".cyan());
     println!();
     println!("  Then export the token:");
-    println!("     {}", "export CLOUDWRKZ_TOKEN=\"<token from login>\"".bright_black());
+    println!(
+        "     {}",
+        "export CLOUDWRKZ_TOKEN=\"<token from login>\"".bright_black()
+    );
     println!();
     wait_for_enter();
 }
@@ -1828,7 +2161,10 @@ async fn pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
         .await
 }
 
-async fn run_seed(database_url: &str, migrations_dir: &PathBuf) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn run_seed(
+    database_url: &str,
+    migrations_dir: &PathBuf,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let seed_file = migrations_dir.join("002_seed_data.sql");
     let sql = std::fs::read_to_string(&seed_file).map_err(|e| {
         format!(
@@ -1852,12 +2188,18 @@ async fn run_seed(database_url: &str, migrations_dir: &PathBuf) -> Result<(), Bo
         .fetch_one(&pool)
         .await?;
 
-    println!("Seed complete. Modules: {}, Permissions: {}", modules.0, permissions.0);
+    println!(
+        "Seed complete. Modules: {}, Permissions: {}",
+        modules.0, permissions.0
+    );
     pool.close().await;
     Ok(())
 }
 
-async fn run_migrate(database_url: &str, migrations_dir: &PathBuf) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn run_migrate(
+    database_url: &str,
+    migrations_dir: &PathBuf,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if !migrations_dir.exists() {
         return Err(format!(
             "Migrations directory not found: {}. Set MIGRATIONS_DIR or run from repo root.",
@@ -1881,7 +2223,9 @@ async fn run_status(database_url: &str) -> Result<(), Box<dyn std::error::Error 
     let pool = pool(database_url).await?;
 
     let _: (i32,) = sqlx::query_as("SELECT 1").fetch_one(&pool).await?;
-    let users: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users").fetch_one(&pool).await?;
+    let users: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+        .fetch_one(&pool)
+        .await?;
 
     println!("Database: connected");
     println!("Users:   {}", users.0);

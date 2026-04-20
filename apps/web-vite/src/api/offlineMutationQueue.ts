@@ -31,7 +31,7 @@ const listeners = new Set<() => void>();
 let processing = false;
 
 /** When the browser stays "online" but the API is still unreachable, `online` never fires — retry drain on a timer. */
-let drainRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let drainRetryTimer: number | null = null;
 
 const DRAIN_RETRY_MS = 5000;
 

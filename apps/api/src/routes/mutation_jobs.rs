@@ -19,12 +19,9 @@ async fn mutation_job_status(
     AuthUser(user): AuthUser,
     Path(job_id): Path<String>,
 ) -> Result<Json<MutationJobStatusResponse>, AppError> {
-    if let Some(st) = entity_creates::try_entity_create_job_status_for_user(
-        &state.pool,
-        &job_id,
-        &user.id,
-    )
-    .await?
+    if let Some(st) =
+        entity_creates::try_entity_create_job_status_for_user(&state.pool, &job_id, &user.id)
+            .await?
     {
         return Ok(Json(st));
     }

@@ -235,7 +235,8 @@ async fn register_retry_loop(
                 email = %email,
                 "registration job timed out waiting for database"
             );
-            let msg = "The database did not become available in time. Please try registering again.";
+            let msg =
+                "The database did not become available in time. Please try registering again.";
             jobs.set_outcome(
                 &job_id,
                 RegisterJobStatusKind::Failed,

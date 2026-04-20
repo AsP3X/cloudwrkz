@@ -18,9 +18,8 @@ use crate::models::ticket::{
 };
 use crate::routes::AppState;
 use crate::routes::helpers::{
-    check_permission, fetch_comment_author, fetch_group_summary,
-    fetch_user_summary, get_user_permission_keys, hash_json_for_idempotency,
-    idempotency_key_from_headers,
+    check_permission, fetch_comment_author, fetch_group_summary, fetch_user_summary,
+    get_user_permission_keys, hash_json_for_idempotency, idempotency_key_from_headers,
 };
 
 pub fn router() -> Router<AppState> {

@@ -74,15 +74,23 @@ pub async fn fetch_recent_access_counts(
     Ok(counts)
 }
 
-pub fn rank_and_truncate(mut hits: Vec<ScoredHit>, counts: &HashMap<(String, String), i64>, limit: usize) -> Vec<serde_json::Value> {
+pub fn rank_and_truncate(
+    mut hits: Vec<ScoredHit>,
+    counts: &HashMap<(String, String), i64>,
+    limit: usize,
+) -> Vec<serde_json::Value> {
     hits.sort_by(|a, b| {
         let sa = final_score(
             a.match_score,
-            *counts.get(&(a.entity_type.clone(), a.entity_id.clone())).unwrap_or(&0),
+            *counts
+                .get(&(a.entity_type.clone(), a.entity_id.clone()))
+                .unwrap_or(&0),
         );
         let sb = final_score(
             b.match_score,
-            *counts.get(&(b.entity_type.clone(), b.entity_id.clone())).unwrap_or(&0),
+            *counts
+                .get(&(b.entity_type.clone(), b.entity_id.clone()))
+                .unwrap_or(&0),
         );
         sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
     });

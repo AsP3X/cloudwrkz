@@ -85,8 +85,10 @@ impl JobWorkerSupervisor {
     }
 
     pub fn set_desired_count(&self, n: u32) {
-        self.desired
-            .store(n.clamp(JOB_QUEUE_WORKER_MIN, JOB_QUEUE_WORKER_MAX), Ordering::SeqCst);
+        self.desired.store(
+            n.clamp(JOB_QUEUE_WORKER_MIN, JOB_QUEUE_WORKER_MAX),
+            Ordering::SeqCst,
+        );
     }
 
     pub fn logs(&self) -> Arc<WorkerLogRegistry> {

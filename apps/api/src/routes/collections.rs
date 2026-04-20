@@ -15,14 +15,14 @@ use crate::command_queue::{MutationQueuedResponse, MutationRunContext};
 use crate::error::AppError;
 use crate::job_queue::entity_creates;
 use crate::models::link::LinkRow;
-use crate::routes::helpers::{check_permission, hash_json_for_idempotency, idempotency_key_from_headers};
 use crate::routes::AppState;
+use crate::routes::helpers::{
+    check_permission, hash_json_for_idempotency, idempotency_key_from_headers,
+};
 
 fn is_hex_color(value: &str) -> bool {
     let b = value.as_bytes();
-    b.len() == 7
-        && b[0] == b'#'
-        && b[1..].iter().all(|x| x.is_ascii_hexdigit())
+    b.len() == 7 && b[0] == b'#' && b[1..].iter().all(|x| x.is_ascii_hexdigit())
 }
 
 pub fn router() -> Router<AppState> {
@@ -35,9 +35,14 @@ pub fn router() -> Router<AppState> {
         .route("/collections/{id}/leave", post(leave_collection))
         .route(
             "/collections/{id}",
-            get(get_collection).put(update_collection).delete(delete_collection),
+            get(get_collection)
+                .put(update_collection)
+                .delete(delete_collection),
         )
-        .route("/collections", get(list_collections).post(create_collection))
+        .route(
+            "/collections",
+            get(list_collections).post(create_collection),
+        )
 }
 
 async fn ensure_collection_access(
@@ -64,7 +69,9 @@ async fn ensure_collection_access(
     let is_member: bool = row.get("is_member");
     let is_owner = owner_id == user_id;
     if !is_owner && !is_member {
-        return Err(AppError::forbidden("You don't have access to this collection"));
+        return Err(AppError::forbidden(
+            "You don't have access to this collection",
+        ));
     }
     Ok((owner_id, is_owner))
 }
@@ -349,7 +356,9 @@ async fn delete_collection(
 
     let (owner_id, is_owner) = ensure_collection_access(&state.pool, &user.id, &id).await?;
     if !is_owner || owner_id != user.id {
-        return Err(AppError::forbidden("Only the collection owner can delete it"));
+        return Err(AppError::forbidden(
+            "Only the collection owner can delete it",
+        ));
     }
 
     let route = format!("DELETE /collections/{id}");
@@ -418,17 +427,18 @@ async fn leave_collection(
         ));
     }
 
-    let n = sqlx::query(
-        r#"DELETE FROM collection_members WHERE collection_id = $1 AND user_id = $2"#,
-    )
-    .bind(&id)
-    .bind(&user.id)
-    .execute(&state.pool)
-    .await?
-    .rows_affected();
+    let n =
+        sqlx::query(r#"DELETE FROM collection_members WHERE collection_id = $1 AND user_id = $2"#)
+            .bind(&id)
+            .bind(&user.id)
+            .execute(&state.pool)
+            .await?
+            .rows_affected();
 
     if n == 0 {
-        return Err(AppError::not_found("You are not a member of this collection"));
+        return Err(AppError::not_found(
+            "You are not a member of this collection",
+        ));
     }
 
     Ok(Json(json!({ "success": true })))
@@ -548,7 +558,10 @@ async fn get_collection(
     })))
 }
 
-async fn fetch_members_json(pool: &sqlx::PgPool, collection_id: &str) -> Result<serde_json::Value, AppError> {
+async fn fetch_members_json(
+    pool: &sqlx::PgPool,
+    collection_id: &str,
+) -> Result<serde_json::Value, AppError> {
     let rows = sqlx::query(
         r#"SELECT cm.id, cm.user_id, cm.role::text as role,
                   u.id as u_id, u.name as u_name, u.email as u_email
@@ -600,7 +613,9 @@ async fn add_member(
 
     let (owner_id, _) = ensure_collection_access(&state.pool, &user.id, &id).await?;
     if owner_id != user.id {
-        return Err(AppError::forbidden("Only the collection owner can share it"));
+        return Err(AppError::forbidden(
+            "Only the collection owner can share it",
+        ));
     }
 
     let target = body.user_id.trim();
@@ -608,7 +623,9 @@ async fn add_member(
         return Err(AppError::bad_request("user_id is required"));
     }
     if target == user.id {
-        return Err(AppError::bad_request("Cannot share collection with yourself"));
+        return Err(AppError::bad_request(
+            "Cannot share collection with yourself",
+        ));
     }
     if target == owner_id {
         return Err(AppError::bad_request("Cannot add the owner as a member"));
@@ -617,9 +634,7 @@ async fn add_member(
     let role = match body.role.as_str() {
         "VIEWER" | "EDITOR" => body.role.as_str(),
         _ => {
-            return Err(AppError::bad_request(
-                "role must be VIEWER or EDITOR",
-            ));
+            return Err(AppError::bad_request("role must be VIEWER or EDITOR"));
         }
     };
 
@@ -666,15 +681,15 @@ async fn update_member_role(
 
     let (owner_id, _) = ensure_collection_access(&state.pool, &user.id, &id).await?;
     if owner_id != user.id {
-        return Err(AppError::forbidden("Only the collection owner can update members"));
+        return Err(AppError::forbidden(
+            "Only the collection owner can update members",
+        ));
     }
 
     let role = match body.role.as_str() {
         "VIEWER" | "EDITOR" => body.role.as_str(),
         _ => {
-            return Err(AppError::bad_request(
-                "role must be VIEWER or EDITOR",
-            ));
+            return Err(AppError::bad_request("role must be VIEWER or EDITOR"));
         }
     };
 
@@ -713,21 +728,22 @@ async fn remove_member(
 
     let (owner_id, _) = ensure_collection_access(&state.pool, &user.id, &id).await?;
     if owner_id != user.id {
-        return Err(AppError::forbidden("Only the collection owner can remove members"));
+        return Err(AppError::forbidden(
+            "Only the collection owner can remove members",
+        ));
     }
 
     if member_user_id == owner_id {
         return Err(AppError::bad_request("Cannot remove collection owner"));
     }
 
-    let n = sqlx::query(
-        r#"DELETE FROM collection_members WHERE collection_id = $1 AND user_id = $2"#,
-    )
-    .bind(&id)
-    .bind(&member_user_id)
-    .execute(&state.pool)
-    .await?
-    .rows_affected();
+    let n =
+        sqlx::query(r#"DELETE FROM collection_members WHERE collection_id = $1 AND user_id = $2"#)
+            .bind(&id)
+            .bind(&member_user_id)
+            .execute(&state.pool)
+            .await?
+            .rows_affected();
 
     if n == 0 {
         return Err(AppError::not_found("Member not found"));

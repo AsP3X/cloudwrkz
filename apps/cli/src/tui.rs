@@ -2,19 +2,17 @@
 //! Used for main menu and all sub-screens; caller supplies sidebar and content strings.
 
 use ratatui::{
+    Frame, Terminal,
     backend::CrosstermBackend,
     crossterm::{
         event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
         execute,
-        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+        terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
     },
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{
-        Block, Borders, List, ListItem, ListState, Paragraph,
-    },
-    Frame, Terminal,
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
 };
 use std::io::{self, Stdout};
 
@@ -209,30 +207,27 @@ fn run_tui_loop(
                     KeyCode::Backspace => return Ok(TuiExit::Back),
                     KeyCode::Char('q') => return Ok(TuiExit::Quit),
                     KeyCode::Esc => {}
-                    KeyCode::Up => {
-                        match state.focus {
-                            PanelFocus::Sidebar if slen > 0 && state.sidebar_index > 0 => {
-                                state.sidebar_index = state.sidebar_index.saturating_sub(1);
-                                state.content_index = 0;
-                            }
-                            PanelFocus::Content if clen > 0 => {
-                                state.content_index = state.content_index.saturating_sub(1);
-                            }
-                            _ => {}
+                    KeyCode::Up => match state.focus {
+                        PanelFocus::Sidebar if slen > 0 && state.sidebar_index > 0 => {
+                            state.sidebar_index = state.sidebar_index.saturating_sub(1);
+                            state.content_index = 0;
                         }
-                    }
-                    KeyCode::Down => {
-                        match state.focus {
-                            PanelFocus::Sidebar if state.sidebar_index < slen.saturating_sub(1) => {
-                                state.sidebar_index = (state.sidebar_index + 1).min(slen.saturating_sub(1));
-                                state.content_index = 0;
-                            }
-                            PanelFocus::Content if clen > 0 => {
-                                state.content_index = (state.content_index + 1).min(clen - 1);
-                            }
-                            _ => {}
+                        PanelFocus::Content if clen > 0 => {
+                            state.content_index = state.content_index.saturating_sub(1);
                         }
-                    }
+                        _ => {}
+                    },
+                    KeyCode::Down => match state.focus {
+                        PanelFocus::Sidebar if state.sidebar_index < slen.saturating_sub(1) => {
+                            state.sidebar_index =
+                                (state.sidebar_index + 1).min(slen.saturating_sub(1));
+                            state.content_index = 0;
+                        }
+                        PanelFocus::Content if clen > 0 => {
+                            state.content_index = (state.content_index + 1).min(clen - 1);
+                        }
+                        _ => {}
+                    },
                     KeyCode::Char(' ') => {
                         if state.focus == PanelFocus::Content && clen > 0 {
                             return Ok(TuiExit::ToggleSelect(
@@ -245,7 +240,10 @@ fn run_tui_loop(
                         // Sidebar is for navigation only (right panel updates live); confirm actions on the content list.
                         if state.focus == PanelFocus::Content {
                             if clen > 0 {
-                                return Ok(TuiExit::Select(state.sidebar_index, state.content_index));
+                                return Ok(TuiExit::Select(
+                                    state.sidebar_index,
+                                    state.content_index,
+                                ));
                             }
                             if slen > 0 {
                                 return Ok(TuiExit::Select(state.sidebar_index, 0));
@@ -337,7 +335,10 @@ fn ui(
         .enumerate()
         .map(|(i, s)| {
             let style = if i == state.sidebar_index {
-                Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
@@ -346,7 +347,9 @@ fn ui(
         .collect();
     state.list_state.select(Some(state.sidebar_index));
     let sidebar_border = if sidebar_focused {
-        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(Color::Cyan)
     };
@@ -357,7 +360,12 @@ fn ui(
                 .borders(Borders::ALL)
                 .border_style(sidebar_border),
         )
-        .highlight_style(Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD))
+        .highlight_style(
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
         .highlight_symbol("▸ ");
     f.render_stateful_widget(sidebar, chunks[0], &mut state.list_state);
 
@@ -367,7 +375,9 @@ fn ui(
         .enumerate()
         .map(|(i, s)| {
             let style = if i == state.content_index {
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
@@ -377,10 +387,16 @@ fn ui(
     state.content_state.select(if content_items.is_empty() {
         None
     } else {
-        Some(state.content_index.min(content_items.len().saturating_sub(1)))
+        Some(
+            state
+                .content_index
+                .min(content_items.len().saturating_sub(1)),
+        )
     });
     let content_border = if content_focused {
-        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(Color::DarkGray)
     };
@@ -391,7 +407,12 @@ fn ui(
                 .borders(Borders::ALL)
                 .border_style(content_border),
         )
-        .highlight_style(Style::default().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD))
+        .highlight_style(
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )
         .highlight_symbol("  › ");
     f.render_stateful_widget(content, chunks[1], &mut state.content_state);
 

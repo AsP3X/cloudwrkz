@@ -257,14 +257,7 @@ pub(crate) async fn middleware(
     let status = response.status();
 
     let row = build_row(
-        request_id,
-        method,
-        path,
-        query,
-        status,
-        latency_ms,
-        client_ip,
-        user_agent,
+        request_id, method, path, query, status, latency_ms, client_ip, user_agent,
     );
 
     let pool = Arc::new(state.pool.clone());
@@ -282,7 +275,10 @@ mod tests {
     #[test]
     fn route_category_buckets() {
         assert_eq!(route_category("/api/v1/me"), "api_v1");
-        assert_eq!(route_category("/api/auth/qr-login/request"), "qr_login_public");
+        assert_eq!(
+            route_category("/api/auth/qr-login/request"),
+            "qr_login_public"
+        );
         assert_eq!(route_category("/api/health"), "legacy_health");
         assert_eq!(route_category("/inform"), "other");
     }

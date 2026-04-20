@@ -79,9 +79,8 @@ async fn load_search_context(pool: &sqlx::PgPool, user_id: &str) -> SearchContex
     let mod_todos = module_enabled(pool, "todos").await;
     let mod_links = module_enabled(pool, "links").await;
     let mod_time = module_enabled(pool, "timetracking").await;
-    let can_view_all_tickets =
-        check_permission(pool, user_id, "tickets.view_all").await
-            || check_permission(pool, user_id, "admin.tickets.manage").await;
+    let can_view_all_tickets = check_permission(pool, user_id, "tickets.view_all").await
+        || check_permission(pool, user_id, "admin.tickets.manage").await;
     let can_view_all_time = check_permission(pool, user_id, "time_tracking.view_all").await;
 
     SearchContext {
@@ -115,7 +114,9 @@ fn can_search_links(ctx: &SearchContext) -> bool {
 }
 
 fn can_search_time(ctx: &SearchContext) -> bool {
-    ctx.mod_time && (has_perm(&ctx.perm_keys, "time_tracking.view") || has_perm(&ctx.perm_keys, "time_tracking.view_all"))
+    ctx.mod_time
+        && (has_perm(&ctx.perm_keys, "time_tracking.view")
+            || has_perm(&ctx.perm_keys, "time_tracking.view_all"))
 }
 
 fn row_match_score(r: &sqlx::postgres::PgRow) -> f64 {

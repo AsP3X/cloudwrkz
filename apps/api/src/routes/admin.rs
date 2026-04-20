@@ -7,12 +7,12 @@ use axum::{
 };
 use futures_util::future::ready;
 use futures_util::stream::StreamExt;
-use std::convert::Infallible;
-use tokio_stream::wrappers::BroadcastStream;
 use rand::Rng;
 use serde::Deserialize;
 use sqlx::Row;
 use std::collections::HashSet;
+use std::convert::Infallible;
+use tokio_stream::wrappers::BroadcastStream;
 
 use crate::audit::{self, WriteAuditParams};
 use crate::auth::extractors::AuthUser;
@@ -112,7 +112,10 @@ pub fn router() -> Router<AppState> {
             "/admin/settings/diagnostics-health-token",
             post(rotate_diagnostics_health_token),
         )
-        .route("/admin/job-queue/workers", get(list_job_queue_workers).post(post_add_job_worker))
+        .route(
+            "/admin/job-queue/workers",
+            get(list_job_queue_workers).post(post_add_job_worker),
+        )
         .route(
             "/admin/job-queue/workers/desired-count",
             patch(patch_job_queue_workers_desired),
@@ -125,11 +128,11 @@ pub fn router() -> Router<AppState> {
             "/admin/job-queue/workers/{id}/log/stream",
             get(job_worker_log_sse),
         )
+        .route("/admin/job-queue/workers/{id}/log", get(get_job_worker_log))
         .route(
-            "/admin/job-queue/workers/{id}/log",
-            get(get_job_worker_log),
+            "/admin/job-queue/workers/{id}",
+            delete(delete_dismiss_job_worker),
         )
-        .route("/admin/job-queue/workers/{id}", delete(delete_dismiss_job_worker))
         .route("/notifications", get(list_notifications))
         .route("/notifications/{id}/read", post(mark_notification_read))
 }
@@ -782,7 +785,9 @@ async fn patch_job_queue_workers_desired(
                 .map(|s| s.to_string()),
         },
     );
-    Ok(Json(serde_json::json!({ "success": true, "desiredCount": c })))
+    Ok(Json(
+        serde_json::json!({ "success": true, "desiredCount": c }),
+    ))
 }
 
 async fn post_add_job_worker(
@@ -815,7 +820,9 @@ async fn post_add_job_worker(
                 .map(|s| s.to_string()),
         },
     );
-    Ok(Json(serde_json::json!({ "success": true, "desiredCount": n })))
+    Ok(Json(
+        serde_json::json!({ "success": true, "desiredCount": n }),
+    ))
 }
 
 async fn post_restart_job_worker(
@@ -876,7 +883,9 @@ async fn delete_dismiss_job_worker(
                 .map(|s| s.to_string()),
         },
     );
-    Ok(Json(serde_json::json!({ "success": true, "desiredCount": c })))
+    Ok(Json(
+        serde_json::json!({ "success": true, "desiredCount": c }),
+    ))
 }
 
 async fn get_job_worker_log(
@@ -1248,10 +1257,11 @@ async fn create_user(
     if user.role != "ADMIN" && user.role != "MODERATOR" {
         return Err(AppError::forbidden("Admin access required"));
     }
-    if user.role != "ADMIN"
-        && !check_permission(&state.pool, &user.id, "admin.users.create").await
+    if user.role != "ADMIN" && !check_permission(&state.pool, &user.id, "admin.users.create").await
     {
-        return Err(AppError::forbidden("You do not have permission to create users"));
+        return Err(AppError::forbidden(
+            "You do not have permission to create users",
+        ));
     }
 
     let email = body.email.trim().to_lowercase();
@@ -1267,10 +1277,7 @@ async fn create_user(
     }
 
     let role = body.role.to_uppercase();
-    if !matches!(
-        role.as_str(),
-        "USER" | "AGENT" | "ADMIN" | "MODERATOR"
-    ) {
+    if !matches!(role.as_str(), "USER" | "AGENT" | "ADMIN" | "MODERATOR") {
         return Err(AppError::bad_request("Invalid role"));
     }
 
@@ -1282,17 +1289,14 @@ async fn create_user(
         return Err(AppError::bad_request("Invalid status"));
     }
 
-    let existing: Option<String> = sqlx::query_scalar(
-        "SELECT id FROM users WHERE lower(email) = lower($1)",
-    )
-    .bind(&email)
-    .fetch_optional(&state.pool)
-    .await?;
+    let existing: Option<String> =
+        sqlx::query_scalar("SELECT id FROM users WHERE lower(email) = lower($1)")
+            .bind(&email)
+            .fetch_optional(&state.pool)
+            .await?;
 
     if existing.is_some() {
-        return Err(AppError::bad_request(
-            "User with this email already exists",
-        ));
+        return Err(AppError::bad_request("User with this email already exists"));
     }
 
     let name_trimmed = body
@@ -1888,12 +1892,10 @@ async fn replace_user_permissions(
     let perm_rows: Vec<(String, String)> = if unique_keys.is_empty() {
         Vec::new()
     } else {
-        sqlx::query_as(
-            r#"SELECT id, key FROM permissions WHERE key = ANY($1)"#,
-        )
-        .bind(&unique_keys)
-        .fetch_all(&state.pool)
-        .await?
+        sqlx::query_as(r#"SELECT id, key FROM permissions WHERE key = ANY($1)"#)
+            .bind(&unique_keys)
+            .fetch_all(&state.pool)
+            .await?
     };
 
     let found: HashSet<String> = perm_rows.iter().map(|(_, k)| k.clone()).collect();
@@ -2113,12 +2115,10 @@ async fn replace_group_permissions(
     let perm_rows: Vec<(String, String)> = if unique_keys.is_empty() {
         Vec::new()
     } else {
-        sqlx::query_as(
-            r#"SELECT id, key FROM permissions WHERE key = ANY($1)"#,
-        )
-        .bind(&unique_keys)
-        .fetch_all(&state.pool)
-        .await?
+        sqlx::query_as(r#"SELECT id, key FROM permissions WHERE key = ANY($1)"#)
+            .bind(&unique_keys)
+            .fetch_all(&state.pool)
+            .await?
     };
 
     let found: HashSet<String> = perm_rows.iter().map(|(_, k)| k.clone()).collect();
