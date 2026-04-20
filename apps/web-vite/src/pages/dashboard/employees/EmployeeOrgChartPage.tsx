@@ -8,28 +8,29 @@ import { ROUTES } from "@/lib/constants/routes";
 import type { OrgChartNode } from "@/lib/types";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { useTheme } from "@/components/providers/ThemeProvider";
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
 
 const DEPT_PALETTE = [
-  { border: "#3b82f6", bg: "#eff6ff", avatar: "#3b82f6", label: "#1d4ed8" },  // blue
-  { border: "#f59e0b", bg: "#fffbeb", avatar: "#d97706", label: "#92400e" },  // amber
-  { border: "#14b8a6", bg: "#f0fdfa", avatar: "#0d9488", label: "#0f766e" },  // teal
-  { border: "#8b5cf6", bg: "#f5f3ff", avatar: "#7c3aed", label: "#5b21b6" },  // violet
-  { border: "#f43f5e", bg: "#fff1f2", avatar: "#e11d48", label: "#9f1239" },  // rose
-  { border: "#10b981", bg: "#ecfdf5", avatar: "#059669", label: "#065f46" },  // emerald
-  { border: "#f97316", bg: "#fff7ed", avatar: "#ea580c", label: "#7c2d12" },  // orange
-  { border: "#6366f1", bg: "#eef2ff", avatar: "#4f46e5", label: "#3730a3" },  // indigo
+  { border: "#3b82f6", bgLight: "#eff6ff", bgDark: "#172554", avatarLight: "#3b82f6", avatarDark: "#60a5fa", labelLight: "#1d4ed8", labelDark: "#93c5fd" }, // blue
+  { border: "#f59e0b", bgLight: "#fffbeb", bgDark: "#451a03", avatarLight: "#d97706", avatarDark: "#fbbf24", labelLight: "#92400e", labelDark: "#fcd34d" }, // amber
+  { border: "#14b8a6", bgLight: "#f0fdfa", bgDark: "#042f2e", avatarLight: "#0d9488", avatarDark: "#2dd4bf", labelLight: "#0f766e", labelDark: "#5eead4" }, // teal
+  { border: "#8b5cf6", bgLight: "#f5f3ff", bgDark: "#2e1065", avatarLight: "#7c3aed", avatarDark: "#a78bfa", labelLight: "#5b21b6", labelDark: "#c4b5fd" }, // violet
+  { border: "#f43f5e", bgLight: "#fff1f2", bgDark: "#4c0519", avatarLight: "#e11d48", avatarDark: "#fb7185", labelLight: "#9f1239", labelDark: "#fda4af" }, // rose
+  { border: "#10b981", bgLight: "#ecfdf5", bgDark: "#022c22", avatarLight: "#059669", avatarDark: "#34d399", labelLight: "#065f46", labelDark: "#6ee7b7" }, // emerald
+  { border: "#f97316", bgLight: "#fff7ed", bgDark: "#431407", avatarLight: "#ea580c", avatarDark: "#fb923c", labelLight: "#7c2d12", labelDark: "#fdba74" }, // orange
+  { border: "#6366f1", bgLight: "#eef2ff", bgDark: "#1e1b4b", avatarLight: "#4f46e5", avatarDark: "#818cf8", labelLight: "#3730a3", labelDark: "#a5b4fc" }, // indigo
 ] as const;
 
 type DeptColor = (typeof DEPT_PALETTE)[number];
-
-const LINE = "#d1d5db"; // connector line colour (gray-300)
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function EmployeeOrgChartPage() {
   const { can } = useAuth();
+  const { effectiveTheme } = useTheme();
+  const isDark = effectiveTheme === "dark";
   const canView = can("modules.employees.view");
   const [nodes, setNodes]   = useState<OrgChartNode[]>([]);
   const [loading, setLoading] = useState(true);
@@ -127,7 +128,7 @@ export default function EmployeeOrgChartPage() {
                     <div key={dept} className="flex items-center gap-2">
                       <div
                         className="h-3 w-5 rounded-sm border"
-                        style={{ borderColor: c.border, backgroundColor: c.bg }}
+                        style={{ borderColor: c.border, backgroundColor: isDark ? c.bgDark : c.bgLight }}
                       />
                       <span className="text-xs text-neutral-700 dark:text-neutral-300">{dept}</span>
                     </div>
@@ -142,7 +143,7 @@ export default function EmployeeOrgChartPage() {
             <div className="flex min-w-full justify-center">
               <div className="inline-flex flex-col items-center gap-0">
                 {roots.map((root) => (
-                  <OrgTree key={root.id} node={root} childrenMap={childrenMap} colorOf={colorOf} />
+                  <OrgTree key={root.id} node={root} childrenMap={childrenMap} colorOf={colorOf} isDark={isDark} />
                 ))}
               </div>
             </div>
@@ -159,10 +160,12 @@ function OrgTree({
   node,
   childrenMap,
   colorOf,
+  isDark,
 }: {
   node: OrgChartNode;
   childrenMap: Record<string, OrgChartNode[]>;
   colorOf: (dept: string | null) => DeptColor;
+  isDark: boolean;
 }) {
   const [expanded, setExpanded] = useState(true);
   const children = childrenMap[node.id] ?? [];
@@ -171,14 +174,17 @@ function OrgTree({
   return (
     <div className="flex flex-col items-center">
       {/* Card */}
-      <OrgCard node={node} colorOf={colorOf} />
+      <OrgCard node={node} colorOf={colorOf} isDark={isDark} />
 
       {/* Expand / collapse trigger */}
       {hasChildren && (
         <button
           type="button"
           onClick={() => setExpanded((e) => !e)}
-          style={{ borderColor: colorOf(node.department).border, color: colorOf(node.department).label }}
+          style={{
+            borderColor: colorOf(node.department).border,
+            color: isDark ? colorOf(node.department).labelDark : colorOf(node.department).labelLight,
+          }}
           className="relative z-10 -mt-px flex h-5 w-5 items-center justify-center rounded-full border-2 bg-white text-[10px] font-bold shadow-sm transition-colors hover:opacity-80 dark:bg-neutral-900"
           title={expanded ? "Collapse" : "Expand"}
         >
@@ -190,7 +196,7 @@ function OrgTree({
       {hasChildren && expanded && (
         <div className="flex flex-col items-center">
           {/* Short vertical line from button to horizontal bar */}
-          <div style={{ width: 2, height: 12, backgroundColor: LINE }} />
+          <div style={{ width: 2, height: 12, backgroundColor: isDark ? "#475569" : "#d1d5db" }} />
 
           {/* Horizontal bar + children */}
           <div className="flex items-start">
@@ -201,8 +207,8 @@ function OrgTree({
                 style={{ padding: "0 10px" }}
               >
                 {/* Connector: horizontal segment + vertical drop */}
-                <ChildConnector idx={idx} total={children.length} />
-                <OrgTree node={child} childrenMap={childrenMap} colorOf={colorOf} />
+                <ChildConnector idx={idx} total={children.length} lineColor={isDark ? "#475569" : "#d1d5db"} />
+                <OrgTree node={child} childrenMap={childrenMap} colorOf={colorOf} isDark={isDark} />
               </div>
             ))}
           </div>
@@ -217,9 +223,11 @@ function OrgTree({
 function OrgCard({
   node,
   colorOf,
+  isDark,
 }: {
   node: OrgChartNode;
   colorOf: (dept: string | null) => DeptColor;
+  isDark: boolean;
 }) {
   const c = colorOf(node.department);
   const fullName = `${node.first_name} ${node.last_name}`.trim();
@@ -231,12 +239,12 @@ function OrgCard({
     <Link
       to={`${ROUTES.EMPLOYEES}/${node.id}`}
       className="group flex w-[148px] flex-col items-center rounded-xl border-2 p-3 shadow-sm transition-shadow hover:shadow-md"
-      style={{ borderColor: c.border, backgroundColor: c.bg }}
+      style={{ borderColor: c.border, backgroundColor: isDark ? c.bgDark : c.bgLight }}
     >
       {/* Avatar */}
       <div
         className="mb-2 flex h-12 w-12 items-center justify-center rounded-full text-sm font-bold text-white shadow-sm"
-        style={{ backgroundColor: c.avatar }}
+        style={{ backgroundColor: isDark ? c.avatarDark : c.avatarLight }}
       >
         {initials}
       </div>
@@ -244,7 +252,7 @@ function OrgCard({
       {/* Name */}
       <p
         className="mb-0.5 text-center text-[12px] font-bold leading-tight group-hover:underline"
-        style={{ color: c.label }}
+        style={{ color: isDark ? c.labelDark : c.labelLight }}
       >
         {name}
       </p>
@@ -260,7 +268,7 @@ function OrgCard({
       {node.department ? (
         <p
           className="mt-1.5 rounded px-1.5 py-0.5 text-center text-[10px] font-semibold uppercase tracking-wide"
-          style={{ color: c.label, backgroundColor: `${c.border}18` }}
+          style={{ color: isDark ? c.labelDark : c.labelLight, backgroundColor: `${c.border}22` }}
         >
           {node.department}
         </p>
@@ -272,13 +280,13 @@ function OrgCard({
 // ─── ChildConnector ───────────────────────────────────────────────────────────
 // Draws the elbow/T-bar connector between the horizontal line and each child card.
 
-function ChildConnector({ idx, total }: { idx: number; total: number }) {
+function ChildConnector({ idx, total, lineColor }: { idx: number; total: number; lineColor: string }) {
   const CONNECTOR_H = 20;
 
   // Single child: straight vertical line
   if (total === 1) {
     return (
-      <div style={{ width: 2, height: CONNECTOR_H, backgroundColor: LINE, margin: "0 auto" }} />
+      <div style={{ width: 2, height: CONNECTOR_H, backgroundColor: lineColor, margin: "0 auto" }} />
     );
   }
 
@@ -295,7 +303,7 @@ function ChildConnector({ idx, total }: { idx: number; total: number }) {
           left:  isFirst ? "50%" : 0,
           right: isLast  ? "50%" : 0,
           height: 2,
-          backgroundColor: LINE,
+          backgroundColor: lineColor,
         }}
       />
       {/* Vertical drop from bar to child */}
@@ -307,7 +315,7 @@ function ChildConnector({ idx, total }: { idx: number; total: number }) {
           transform: "translateX(-50%)",
           width: 2,
           height: CONNECTOR_H,
-          backgroundColor: LINE,
+          backgroundColor: lineColor,
         }}
       />
     </div>
