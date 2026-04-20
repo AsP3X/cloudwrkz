@@ -5,6 +5,7 @@ import { ROUTES } from "@/lib/constants/routes";
 import { Button } from "@/components/ui/Button";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { useAuth } from "@/components/providers/AuthProvider";
+import type { Employee } from "@/lib/types";
 
 type EditableEmployee = {
   first_name: string;
@@ -15,6 +16,7 @@ type EditableEmployee = {
   location: string;
   status: string;
   employment_type: string;
+  manager_employee_id: string;
   notes: string;
 };
 
@@ -27,6 +29,7 @@ const EMPTY_FORM: EditableEmployee = {
   location: "",
   status: "ACTIVE",
   employment_type: "FULL_TIME",
+  manager_employee_id: "",
   notes: "",
 };
 
@@ -45,6 +48,7 @@ export default function EmployeeEditPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [form, setForm] = useState<EditableEmployee>(EMPTY_FORM);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,8 +56,11 @@ export default function EmployeeEditPage() {
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const data = await api.get<{ employee: Partial<EditableEmployee> }>(`/employees/${id}`);
-      const e = data.employee ?? {};
+      const [empData, listData] = await Promise.all([
+        api.get<{ employee: Partial<EditableEmployee & { manager_employee_id?: string | null }> }>(`/employees/${id}`),
+        api.get<{ employees: Employee[] }>("/employees"),
+      ]);
+      const e = empData.employee ?? {};
       setForm({
         first_name: String(e.first_name ?? ""),
         last_name: String(e.last_name ?? ""),
@@ -63,8 +70,10 @@ export default function EmployeeEditPage() {
         location: String(e.location ?? ""),
         status: String(e.status ?? "ACTIVE"),
         employment_type: String(e.employment_type ?? "FULL_TIME"),
+        manager_employee_id: String(e.manager_employee_id ?? ""),
         notes: String(e.notes ?? ""),
       });
+      setEmployees((listData.employees ?? []).filter((emp) => emp.id !== id));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load employee");
@@ -83,7 +92,10 @@ export default function EmployeeEditPage() {
     setSaving(true);
     setError(null);
     try {
-      await api.patch(`/employees/${id}`, form);
+      await api.patch(`/employees/${id}`, {
+        ...form,
+        manager_employee_id: form.manager_employee_id || null,
+      });
       navigate(`${ROUTES.EMPLOYEES}/${id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save employee");
@@ -134,6 +146,25 @@ export default function EmployeeEditPage() {
           options={EMPLOYMENT_TYPE_OPTIONS}
           onChange={(v) => setForm((p) => ({ ...p, employment_type: v }))}
         />
+        <label className="block">
+          <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">Superior (manager)</span>
+          <select
+            className="mt-1 w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 px-3 py-2 text-sm"
+            value={form.manager_employee_id}
+            onChange={(e) => setForm((p) => ({ ...p, manager_employee_id: e.target.value }))}
+          >
+            <option value="">— None —</option>
+            {employees.map((emp) => {
+              const fullName = `${emp.first_name} ${emp.last_name}`.trim();
+              const name = emp.display_name ?? (fullName || emp.employee_code);
+              return (
+                <option key={emp.id} value={emp.id}>
+                  {emp.employee_code} – {name}
+                </option>
+              );
+            })}
+          </select>
+        </label>
         <Field label="Notes" value={form.notes} onChange={(v) => setForm((p) => ({ ...p, notes: v }))} multiline />
 
         <div className="flex gap-2 pt-2">

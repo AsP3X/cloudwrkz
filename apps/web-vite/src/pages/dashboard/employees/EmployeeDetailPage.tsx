@@ -6,17 +6,17 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, ApiError } from "@/api/client";
 import { ROUTES } from "@/lib/constants/routes";
 import { Button } from "@/components/ui/Button";
-import type { EmployeeLeaveRequest, EmployeeDocument } from "@/lib/types";
+import type { Employee, EmployeeLeaveRequest, EmployeeDocument } from "@/lib/types";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { useAuth } from "@/components/providers/AuthProvider";
 
-type Tab = "profile" | "compensation" | "leave" | "assets" | "skills" | "performance" | "documents" | "lifecycle";
+type Tab = "profile" | "compensation" | "vacation" | "leave" | "assets" | "skills" | "performance" | "documents" | "lifecycle";
 
 interface EmployeeDetail {
   id: string;
   employee_code: string;
-  first_name: string;
-  last_name: string;
+  first_name: string | null;
+  last_name: string | null;
   display_name: string | null;
   work_email: string | null;
   personal_email: string | null;
@@ -44,6 +44,26 @@ interface EmployeeDetail {
   lifecycle_events: LifecycleRecord[];
 }
 
+interface EmployeeDetailApiResponse {
+  employee: Omit<
+    EmployeeDetail,
+    | "compensation"
+    | "assets"
+    | "skills"
+    | "certifications"
+    | "performance_reviews"
+    | "goals"
+    | "lifecycle_events"
+  >;
+  compensation?: CompRecord[];
+  assets?: AssetRecord[];
+  skills?: SkillRecord[];
+  certifications?: CertRecord[];
+  performance_reviews?: ReviewRecord[];
+  goals?: GoalRecord[];
+  lifecycle_events?: LifecycleRecord[];
+}
+
 interface CompRecord { id: string; pay_frequency: string; amount_cents: number; currency: string; compensation_type: string; effective_from: string; effective_to: string | null; is_current: boolean; }
 interface AssetRecord { id: string; asset_name: string; asset_tag: string | null; category: string | null; status: string; assigned_at: string; }
 interface SkillRecord { id: string; skill_name: string; level: number | null; category: string | null; verified: boolean; }
@@ -68,10 +88,11 @@ const STATUS_STYLE: Record<string, string> = {
 const PAY_FREQS = ["HOURLY", "WEEKLY", "BIWEEKLY", "MONTHLY", "ANNUAL"] as const;
 const LEAVE_TYPES = ["VACATION", "SICK", "PERSONAL", "MATERNITY", "PATERNITY", "BEREAVEMENT", "UNPAID", "COMPENSATORY", "OTHER"] as const;
 
-function Badge({ status }: { status: string }) {
+function Badge({ status }: { status?: string | null }) {
+  const safeStatus = (status ?? "UNKNOWN").toString();
   return (
-    <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_STYLE[status] ?? STATUS_STYLE.DRAFT}`}>
-      {status.replace(/_/g, " ")}
+    <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_STYLE[safeStatus] ?? STATUS_STYLE.DRAFT}`}>
+      {safeStatus.replace(/_/g, " ")}
     </span>
   );
 }
@@ -118,6 +139,9 @@ export default function EmployeeDetailPage() {
   const [formError, setFormError]   = useState<string | null>(null);
 
   // Leave tab state
+  const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
+
+  // Leave tab state
   const [leaveRequests, setLeaveRequests] = useState<EmployeeLeaveRequest[]>([]);
   const [showLeaveForm, setShowLeaveForm] = useState(false);
   const [leaveType, setLeaveType]   = useState("VACATION");
@@ -138,14 +162,35 @@ export default function EmployeeDetailPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.get<EmployeeDetail>(`/employees/${id}`);
-      setEmployee(data);
+      const data = await api.get<EmployeeDetailApiResponse>(`/employees/${id}`);
+      if (!data?.employee) {
+        setError("Employee payload missing");
+        setEmployee(null);
+        return;
+      }
+      setEmployee({
+        ...data.employee,
+        compensation: data.compensation ?? [],
+        assets: data.assets ?? [],
+        skills: data.skills ?? [],
+        certifications: data.certifications ?? [],
+        performance_reviews: data.performance_reviews ?? [],
+        goals: data.goals ?? [],
+        lifecycle_events: data.lifecycle_events ?? [],
+      });
     } catch (loadError) {
       setError(loadError instanceof ApiError ? loadError.message : "Failed to load employee");
     } finally {
       setLoading(false);
     }
   }, [id]);
+
+  const loadAllEmployees = useCallback(async () => {
+    try {
+      const data = await api.get<{ employees: Employee[] }>("/employees");
+      setAllEmployees(data.employees ?? []);
+    } catch { /* non-fatal */ }
+  }, []);
 
   const loadLeave = useCallback(async () => {
     if (!id) return;
@@ -163,8 +208,8 @@ export default function EmployeeDetailPage() {
     } catch { setDocuments([]); }
   }, [id]);
 
-  useEffect(() => { void loadEmployee(); }, [loadEmployee]);
-  useEffect(() => { if (tab === "leave") void loadLeave(); }, [tab, loadLeave]);
+  useEffect(() => { void loadEmployee(); void loadAllEmployees(); }, [loadEmployee, loadAllEmployees]);
+  useEffect(() => { if (tab === "leave" || tab === "vacation") void loadLeave(); }, [tab, loadLeave]);
   useEffect(() => { if (tab === "documents") void loadDocs(); }, [tab, loadDocs]);
 
   const run = useCallback(async (key: string, action: () => Promise<unknown>, onDone?: () => void) => {
@@ -198,11 +243,29 @@ export default function EmployeeDetailPage() {
     </div>
   );
 
-  const name = employee.display_name ?? `${employee.first_name} ${employee.last_name}`;
+  const firstName = employee.first_name?.trim() ?? "";
+  const lastName = employee.last_name?.trim() ?? "";
+  const fallbackName = [firstName, lastName].filter(Boolean).join(" ").trim() || employee.employee_code || "Unknown Employee";
+  const name = employee.display_name?.trim() || fallbackName;
+  const initials =
+    `${firstName.charAt(0)}${lastName.charAt(0)}`.trim() ||
+    name.charAt(0).toUpperCase() ||
+    "?";
+
+  // Resolve superior (manager) display label from loaded employees list
+  const managerEmployee = employee.manager_employee_id
+    ? allEmployees.find((e) => e.id === employee.manager_employee_id) ?? null
+    : null;
+  const managerLabel = managerEmployee
+    ? `${managerEmployee.employee_code} – ${managerEmployee.display_name ?? `${managerEmployee.first_name} ${managerEmployee.last_name}`.trim()}`
+    : employee.manager_employee_id
+      ? employee.manager_employee_id  // fallback: show raw ID while employees load
+      : null;
 
   const TABS: { key: Tab; label: string }[] = [
     { key: "profile",      label: "Profile" },
     { key: "compensation", label: "Compensation" },
+    { key: "vacation",     label: "Vacation" },
     { key: "leave",        label: "Leave" },
     { key: "assets",       label: "Assets" },
     { key: "skills",       label: "Skills & Certs" },
@@ -217,7 +280,7 @@ export default function EmployeeDetailPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
           <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary-100 text-xl font-bold text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
-            {employee.first_name[0]}{employee.last_name[0]}
+            {initials}
           </div>
           <div>
             <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">{name}</h1>
@@ -287,7 +350,7 @@ export default function EmployeeDetailPage() {
             <h2 className="mb-3 font-semibold text-neutral-900 dark:text-neutral-100">Identity</h2>
             <dl>
               <Row label="Employee code" value={employee.employee_code} />
-              <Row label="Full name" value={`${employee.first_name} ${employee.last_name}`} />
+              <Row label="Full name" value={fallbackName} />
               <Row label="Display name" value={employee.display_name} />
               <Row label="Date of birth" value={employee.date_of_birth} />
             </dl>
@@ -317,7 +380,7 @@ export default function EmployeeDetailPage() {
               <Row label="Department" value={employee.department} />
               <Row label="Job title" value={employee.job_title} />
               <Row label="Location" value={employee.location} />
-              <Row label="Manager ID" value={employee.manager_employee_id} />
+              <Row label="Superior" value={managerLabel} />
             </dl>
           </section>
           {employee.notes && (
@@ -350,6 +413,19 @@ export default function EmployeeDetailPage() {
             <CompForm employeeId={employee.id} onSaved={loadEmployee} submitting={submitting} setError={setFormError} run={run} />
           )}
         </div>
+      )}
+
+      {/* Vacation tab */}
+      {tab === "vacation" && (
+        <VacationTab
+          employeeId={employee.id}
+          leaveRequests={leaveRequests}
+          canCreate={canLeaveManage}
+          canApprove={canLeaveApprove}
+          submitting={submitting}
+          run={run}
+          loadLeave={loadLeave}
+        />
       )}
 
       {/* Leave tab */}
@@ -615,6 +691,172 @@ export default function EmployeeDetailPage() {
               </div>
             ))
           }
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Vacation Tab ────────────────────────────────────────────────────────────
+
+function VacationTab({
+  employeeId,
+  leaveRequests,
+  canCreate,
+  canApprove,
+  submitting,
+  run,
+  loadLeave,
+}: {
+  employeeId: string;
+  leaveRequests: EmployeeLeaveRequest[];
+  canCreate: boolean;
+  canApprove: boolean;
+  submitting: string | null;
+  run: (key: string, action: () => Promise<unknown>, onDone?: () => void) => Promise<void>;
+  loadLeave: () => void;
+}) {
+  const [showForm, setShowForm] = useState(false);
+  const [start, setStart] = useState("");
+  const [end, setEnd]     = useState("");
+  const [reason, setReason] = useState("");
+
+  const vacations = leaveRequests.filter((r) => r.leave_type === "VACATION");
+
+  // Days-count helper (inclusive)
+  const daysBetween = (s: string, e: string) => {
+    const ms = new Date(e).getTime() - new Date(s).getTime();
+    return Math.max(1, Math.round(ms / 86_400_000) + 1);
+  };
+
+  const currentYear = new Date().getFullYear();
+  const thisYear = vacations.filter((r) => r.start_date?.startsWith(String(currentYear)));
+  const approved  = thisYear.filter((r) => r.status === "APPROVED");
+  const pending   = thisYear.filter((r) => r.status === "PENDING");
+  const upcoming  = approved.filter((r) => new Date(r.start_date) >= new Date());
+
+  const daysApproved = approved.reduce((sum, r) => sum + daysBetween(r.start_date, r.end_date), 0);
+  const daysPending  = pending.reduce((sum, r) => sum + daysBetween(r.start_date, r.end_date), 0);
+
+  const STATUS_STYLE: Record<string, string> = {
+    PENDING:   "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+    APPROVED:  "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
+    DENIED:    "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+    CANCELLED: "bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-400",
+  };
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!start || !end) return;
+    void run("vacation-create", () =>
+      api.post(`/employees/${employeeId}/leave`, {
+        leave_type: "VACATION",
+        start_date: start,
+        end_date: end,
+        reason: reason || null,
+      }),
+      () => { setShowForm(false); setStart(""); setEnd(""); setReason(""); loadLeave(); }
+    );
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Summary bar */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[
+          { label: "Days approved", value: daysApproved, color: "text-emerald-600 dark:text-emerald-400" },
+          { label: "Days pending",  value: daysPending,  color: "text-amber-600 dark:text-amber-400" },
+          { label: "Upcoming trips",value: upcoming.length, color: "text-primary-600 dark:text-primary-400" },
+          { label: `Requests ${currentYear}`, value: thisYear.length, color: "text-neutral-700 dark:text-neutral-300" },
+        ].map(({ label, value, color }) => (
+          <div key={label} className="rounded-xl border border-neutral-200 bg-white p-4 shadow-soft-lg dark:border-neutral-800 dark:bg-neutral-900">
+            <p className="text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400">{label}</p>
+            <p className={`mt-1 text-2xl font-bold ${color}`}>{value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Request button */}
+      {canCreate && (
+        <div className="flex justify-end">
+          <Button onClick={() => setShowForm(!showForm)}>
+            {showForm ? "Cancel" : "Plan vacation"}
+          </Button>
+        </div>
+      )}
+
+      {/* New vacation form */}
+      {showForm && canCreate && (
+        <form onSubmit={submit} className="grid grid-cols-1 gap-3 rounded-xl border border-neutral-200 bg-white p-5 shadow-soft-lg dark:border-neutral-800 dark:bg-neutral-900 sm:grid-cols-3">
+          <h3 className="col-span-full font-semibold text-neutral-900 dark:text-neutral-100">New vacation request</h3>
+          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+            Start date*
+            <input type="date" className={`mt-1 ${inputClass}`} value={start} onChange={(e) => setStart(e.target.value)} required />
+          </label>
+          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+            End date*
+            <input type="date" className={`mt-1 ${inputClass}`} value={end} onChange={(e) => setEnd(e.target.value)} required min={start} />
+          </label>
+          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+            Reason (optional)
+            <input className={`mt-1 ${inputClass}`} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Summer holiday" />
+          </label>
+          {start && end && new Date(end) >= new Date(start) && (
+            <p className="col-span-full text-sm text-neutral-500 dark:text-neutral-400">
+              Duration: <strong className="text-neutral-800 dark:text-neutral-200">{daysBetween(start, end)} day{daysBetween(start, end) !== 1 ? "s" : ""}</strong>
+            </p>
+          )}
+          <Button type="submit" disabled={submitting === "vacation-create"} className="w-fit">
+            {submitting === "vacation-create" ? "Submitting…" : "Submit request"}
+          </Button>
+        </form>
+      )}
+
+      {/* Vacation list */}
+      {vacations.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-neutral-300 py-8 text-center text-sm text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
+          No vacation requests yet.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">All vacation requests</h3>
+          {vacations.map((req) => {
+            const days = daysBetween(req.start_date, req.end_date);
+            const isPast = new Date(req.end_date) < new Date();
+            return (
+              <div key={req.id} className={`flex items-center gap-4 rounded-xl border p-4 shadow-soft-lg ${isPast ? "border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900/50" : "border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900"}`}>
+                {/* Date range block */}
+                <div className="flex w-28 shrink-0 flex-col items-center rounded-lg border border-neutral-200 bg-white px-3 py-2 text-center dark:border-neutral-700 dark:bg-neutral-800">
+                  <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{req.start_date}</span>
+                  <span className="my-0.5 text-xs text-neutral-400">↓</span>
+                  <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{req.end_date}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-neutral-900 dark:text-neutral-100">
+                    {days} day{days !== 1 ? "s" : ""} vacation
+                    {isPast ? <span className="ml-2 text-xs font-normal text-neutral-400">(past)</span> : null}
+                  </p>
+                  {req.reason && <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">{req.reason}</p>}
+                </div>
+                <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_STYLE[req.status] ?? STATUS_STYLE.CANCELLED}`}>
+                  {req.status}
+                </span>
+                {/* Approve/deny for managers */}
+                {canApprove && req.status === "PENDING" && (
+                  <div className="flex shrink-0 gap-2">
+                    <Button type="button" disabled={submitting === `vap-approve-${req.id}`}
+                      onClick={() => void run(`vap-approve-${req.id}`, () => api.patch(`/employees/${employeeId}/leave/${req.id}`, { status: "APPROVED" }), loadLeave)}>
+                      {submitting === `vap-approve-${req.id}` ? "…" : "Approve"}
+                    </Button>
+                    <Button type="button" variant="outline" disabled={submitting === `vap-deny-${req.id}`}
+                      onClick={() => void run(`vap-deny-${req.id}`, () => api.patch(`/employees/${employeeId}/leave/${req.id}`, { status: "DENIED" }), loadLeave)}>
+                      {submitting === `vap-deny-${req.id}` ? "…" : "Deny"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

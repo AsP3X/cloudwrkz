@@ -177,6 +177,12 @@ const NAV_SECTIONS = Object.freeze([
         moduleKey: "employees",
       }),
       Object.freeze({
+        name: "Vacation Planner",
+        href: ROUTES.EMPLOYEES_VACATION,
+        icon: TimeTrackingIcon,
+        moduleKey: "employees",
+      }),
+      Object.freeze({
         name: "Performance",
         href: ROUTES.EMPLOYEES_PERFORMANCE,
         icon: StatisticsIcon,

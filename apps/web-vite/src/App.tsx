@@ -44,6 +44,7 @@ import {
   EmployeeLeavePage,
   EmployeePerformancePage,
   EmployeeDocumentsPage,
+  EmployeeVacationPlannerPage,
   TimeTrackingPage,
   TimeEntryDetailPage,
   ProfilePage,
@@ -179,6 +180,7 @@ export default function App() {
                   <Route path="employees/leave" element={<EmployeeLeavePage />} />
                   <Route path="employees/performance" element={<EmployeePerformancePage />} />
                   <Route path="employees/documents" element={<EmployeeDocumentsPage />} />
+                  <Route path="employees/vacation" element={<EmployeeVacationPlannerPage />} />
                   <Route path="employees/:id" element={<EmployeeDetailPage />} />
                   <Route path="employees/:id/edit" element={<EmployeeEditPage />} />
                   <Route path="time-tracking" element={<TimeTrackingPage />} />

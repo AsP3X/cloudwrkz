@@ -34,5 +34,6 @@ export const ROUTES = {
   EMPLOYEES_LEAVE: "/dashboard/employees/leave",
   EMPLOYEES_PERFORMANCE: "/dashboard/employees/performance",
   EMPLOYEES_DOCUMENTS: "/dashboard/employees/documents",
+  EMPLOYEES_VACATION: "/dashboard/employees/vacation",
   ARCHIVE: "/dashboard/archive",
 } as const;

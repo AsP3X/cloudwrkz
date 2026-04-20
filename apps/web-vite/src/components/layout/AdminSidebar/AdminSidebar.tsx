@@ -146,8 +146,9 @@ export function AdminSidebar({
   const employeeItems = [
     { name: "Directory",   href: ROUTES.EMPLOYEES,              icon: EmployeesIcon,    key: "employees", adminVisible: true },
     { name: "Org Chart",   href: ROUTES.EMPLOYEES_ORG_CHART,    icon: EmployeesIcon,    key: "employees", adminVisible: true },
-    { name: "Leave",       href: ROUTES.EMPLOYEES_LEAVE,        icon: TimeTrackingIcon, key: "employees", adminVisible: true },
-    { name: "Performance", href: ROUTES.EMPLOYEES_PERFORMANCE,  icon: ChartIcon,        key: "employees", adminVisible: true },
+    { name: "Leave",             href: ROUTES.EMPLOYEES_LEAVE,             icon: TimeTrackingIcon, key: "employees", adminVisible: true },
+    { name: "Vacation Planner",  href: ROUTES.EMPLOYEES_VACATION,          icon: TimeTrackingIcon, key: "employees", adminVisible: true },
+    { name: "Performance",       href: ROUTES.EMPLOYEES_PERFORMANCE,       icon: ChartIcon,        key: "employees", adminVisible: true },
     { name: "Documents",   href: ROUTES.EMPLOYEES_DOCUMENTS,    icon: ClipboardIcon,    key: "employees", adminVisible: true },
   ].filter((item) => item.adminVisible || enabledSet.has(item.key));
 
