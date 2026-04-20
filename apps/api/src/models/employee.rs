@@ -218,7 +218,7 @@ pub struct LeaveRequestUpdateRequest {
 pub struct DepartmentCreateRequest {
     pub name: String,
     pub description: Option<String>,
-    pub manager_employee_id: Option<String>,
+    pub manager_employee_ids: Option<Vec<String>>,
     pub parent_department_id: Option<String>,
     pub color: Option<String>,
 }
@@ -227,7 +227,7 @@ pub struct DepartmentCreateRequest {
 pub struct DepartmentUpdateRequest {
     pub name: Option<String>,
     pub description: Option<String>,
-    pub manager_employee_id: Option<String>,
+    pub manager_employee_ids: Option<Vec<String>>,
     pub parent_department_id: Option<String>,
     pub color: Option<String>,
     pub status: Option<String>,

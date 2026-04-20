@@ -1178,45 +1178,55 @@ async fn list_departments(
     }
 
     let rows = sqlx::query(
-        r#"SELECT d.id, d.name, d.description, d.manager_employee_id, d.parent_department_id,
+        r#"SELECT d.id, d.name, d.description, d.parent_department_id,
                   d.color, d.status, d.created_at, d.updated_at,
                   (SELECT COUNT(*) FROM employees e WHERE e.department = d.name) AS employee_count,
-                  e.employee_code AS manager_code, e.first_name AS manager_first, e.last_name AS manager_last,
-                  e.display_name AS manager_display
+                  COALESCE(
+                    array_agg(me.id) FILTER (WHERE me.id IS NOT NULL),
+                    ARRAY[]::text[]
+                  ) AS manager_employee_ids,
+                  COALESCE(
+                    array_agg(
+                      me.employee_code || ' – ' ||
+                      COALESCE(
+                        NULLIF(me.display_name, ''),
+                        NULLIF(TRIM(COALESCE(me.first_name, '') || ' ' || COALESCE(me.last_name, '')), ''),
+                        me.employee_code
+                      )
+                    ) FILTER (WHERE me.id IS NOT NULL),
+                    ARRAY[]::text[]
+                  ) AS manager_labels
            FROM departments d
-           LEFT JOIN employees e ON e.id = d.manager_employee_id
+           LEFT JOIN department_managers dm ON dm.department_id = d.id
+           LEFT JOIN employees me ON me.id = dm.manager_employee_id
+           GROUP BY d.id, d.name, d.description, d.parent_department_id,
+                    d.color, d.status, d.created_at, d.updated_at
            ORDER BY d.name ASC"#,
     )
     .fetch_all(&state.pool)
     .await?;
 
-    let departments: Vec<serde_json::Value> = rows.iter().map(|r| {
-        let manager_code: Option<String> = r.get("manager_code");
-        let manager_first: Option<String> = r.get("manager_first");
-        let manager_last: Option<String> = r.get("manager_last");
-        let manager_display: Option<String> = r.get("manager_display");
-        let manager_label = manager_code.as_ref().map(|code| {
-            let name = manager_display.clone()
-                .unwrap_or_else(|| format!("{} {}",
-                    manager_first.clone().unwrap_or_default(),
-                    manager_last.clone().unwrap_or_default()).trim().to_string());
-            format!("{} – {}", code, name)
-        });
-        let count: i64 = r.get("employee_count");
-        json!({
-            "id": r.get::<String, _>("id"),
-            "name": r.get::<String, _>("name"),
-            "description": r.get::<Option<String>, _>("description"),
-            "manager_employee_id": r.get::<Option<String>, _>("manager_employee_id"),
-            "manager_label": manager_label,
-            "parent_department_id": r.get::<Option<String>, _>("parent_department_id"),
-            "color": r.get::<Option<String>, _>("color"),
-            "status": r.get::<String, _>("status"),
-            "employee_count": count,
-            "created_at": r.get::<chrono::DateTime<chrono::Utc>, _>("created_at"),
-            "updated_at": r.get::<chrono::DateTime<chrono::Utc>, _>("updated_at"),
+    let departments: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            let manager_employee_ids: Vec<String> = r.get("manager_employee_ids");
+            let manager_labels: Vec<String> = r.get("manager_labels");
+            let count: i64 = r.get("employee_count");
+            json!({
+                "id": r.get::<String, _>("id"),
+                "name": r.get::<String, _>("name"),
+                "description": r.get::<Option<String>, _>("description"),
+                "manager_employee_ids": manager_employee_ids,
+                "manager_labels": manager_labels,
+                "parent_department_id": r.get::<Option<String>, _>("parent_department_id"),
+                "color": r.get::<Option<String>, _>("color"),
+                "status": r.get::<String, _>("status"),
+                "employee_count": count,
+                "created_at": r.get::<chrono::DateTime<chrono::Utc>, _>("created_at"),
+                "updated_at": r.get::<chrono::DateTime<chrono::Utc>, _>("updated_at"),
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(Json(json!({ "departments": departments })))
 }
@@ -1234,10 +1244,30 @@ async fn get_department(
     }
 
     let row = sqlx::query(
-        r#"SELECT d.id, d.name, d.description, d.manager_employee_id, d.parent_department_id,
+        r#"SELECT d.id, d.name, d.description, d.parent_department_id,
                   d.color, d.status, d.created_at, d.updated_at,
-                  (SELECT COUNT(*) FROM employees e WHERE e.department = d.name) AS employee_count
-           FROM departments d WHERE d.id = $1"#,
+                  (SELECT COUNT(*) FROM employees e WHERE e.department = d.name) AS employee_count,
+                  COALESCE(
+                    array_agg(me.id) FILTER (WHERE me.id IS NOT NULL),
+                    ARRAY[]::text[]
+                  ) AS manager_employee_ids,
+                  COALESCE(
+                    array_agg(
+                      me.employee_code || ' – ' ||
+                      COALESCE(
+                        NULLIF(me.display_name, ''),
+                        NULLIF(TRIM(COALESCE(me.first_name, '') || ' ' || COALESCE(me.last_name, '')), ''),
+                        me.employee_code
+                      )
+                    ) FILTER (WHERE me.id IS NOT NULL),
+                    ARRAY[]::text[]
+                  ) AS manager_labels
+           FROM departments d
+           LEFT JOIN department_managers dm ON dm.department_id = d.id
+           LEFT JOIN employees me ON me.id = dm.manager_employee_id
+           WHERE d.id = $1
+           GROUP BY d.id, d.name, d.description, d.parent_department_id,
+                    d.color, d.status, d.created_at, d.updated_at"#,
     )
     .bind(&dept_id)
     .fetch_optional(&state.pool)
@@ -1247,11 +1277,14 @@ async fn get_department(
         None => Err(AppError::not_found("Department not found")),
         Some(r) => {
             let count: i64 = r.get("employee_count");
+            let manager_employee_ids: Vec<String> = r.get("manager_employee_ids");
+            let manager_labels: Vec<String> = r.get("manager_labels");
             Ok(Json(json!({
                 "id": r.get::<String, _>("id"),
                 "name": r.get::<String, _>("name"),
                 "description": r.get::<Option<String>, _>("description"),
-                "manager_employee_id": r.get::<Option<String>, _>("manager_employee_id"),
+                "manager_employee_ids": manager_employee_ids,
+                "manager_labels": manager_labels,
                 "parent_department_id": r.get::<Option<String>, _>("parent_department_id"),
                 "color": r.get::<Option<String>, _>("color"),
                 "status": r.get::<String, _>("status"),

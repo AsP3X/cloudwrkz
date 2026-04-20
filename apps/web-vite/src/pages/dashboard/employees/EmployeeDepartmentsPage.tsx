@@ -15,8 +15,8 @@ interface Department {
   id: string;
   name: string;
   description: string | null;
-  manager_employee_id: string | null;
-  manager_label: string | null;
+  manager_employee_ids: string[];
+  manager_labels: string[];
   parent_department_id: string | null;
   color: string | null;
   status: string;
@@ -28,7 +28,7 @@ interface Department {
 const EMPTY_FORM = {
   name: "",
   description: "",
-  manager_employee_id: "",
+  manager_employee_ids: [] as string[],
   parent_department_id: "",
   color: "#6366f1",
   status: "ACTIVE",
@@ -125,7 +125,7 @@ export default function EmployeeDepartmentsPage() {
     setForm({
       name: dept.name,
       description: dept.description ?? "",
-      manager_employee_id: dept.manager_employee_id ?? "",
+      manager_employee_ids: dept.manager_employee_ids ?? [],
       parent_department_id: dept.parent_department_id ?? "",
       color: dept.color ?? "#6366f1",
       status: dept.status,
@@ -146,7 +146,7 @@ export default function EmployeeDepartmentsPage() {
     const body = {
       name: form.name.trim(),
       description: form.description.trim() || null,
-      manager_employee_id: form.manager_employee_id || null,
+      manager_employee_ids: form.manager_employee_ids,
       parent_department_id: form.parent_department_id || null,
       color: form.color || null,
       ...(editingId ? { status: form.status } : {}),
@@ -240,15 +240,18 @@ export default function EmployeeDepartmentsPage() {
               />
             </label>
 
-            {/* Manager */}
+            {/* Managers */}
             <label className={labelCls}>
-              Manager (head of department)
+              Department managers
               <select
                 className={`mt-1 ${inputCls}`}
-                value={form.manager_employee_id}
-                onChange={(e) => setForm((f) => ({ ...f, manager_employee_id: e.target.value }))}
+                value={form.manager_employee_ids}
+                onChange={(e) => {
+                  const values = Array.from(e.target.selectedOptions).map((opt) => opt.value);
+                  setForm((f) => ({ ...f, manager_employee_ids: values }));
+                }}
+                multiple
               >
-                <option value="">— None —</option>
                 {employees.map((emp) => {
                   const fullName = `${emp.first_name ?? ""} ${emp.last_name ?? ""}`.trim();
                   const label = emp.display_name ?? (fullName || emp.employee_code);
@@ -259,6 +262,9 @@ export default function EmployeeDepartmentsPage() {
                   );
                 })}
               </select>
+              <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                Hold Cmd/Ctrl to select multiple managers.
+              </p>
             </label>
 
             {/* Parent department */}
@@ -466,8 +472,8 @@ export default function EmployeeDepartmentsPage() {
                 {/* Meta rows */}
                 <dl className="space-y-1.5 text-sm">
                   <MetaRow label="Employees" value={String(dept.employee_count)} />
-                  {dept.manager_label && (
-                    <MetaRow label="Head" value={dept.manager_label} />
+                  {dept.manager_labels.length > 0 && (
+                    <MetaRow label="Heads" value={dept.manager_labels.join(", ")} />
                   )}
                   {parentName && (
                     <MetaRow label="Parent" value={parentName} />

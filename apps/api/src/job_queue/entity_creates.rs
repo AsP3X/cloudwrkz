@@ -3890,6 +3890,8 @@ async fn exec_department_create(
         let _ = tx.rollback().await;
         return map_sqlx_ticket(e);
     }
+    let manager_employee_ids = body.manager_employee_ids.unwrap_or_default();
+    let primary_manager_employee_id = manager_employee_ids.first().cloned();
     if let Err(e) = sqlx::query(
         r#"INSERT INTO departments
             (id, name, description, manager_employee_id, parent_department_id, color, status,
@@ -3899,7 +3901,7 @@ async fn exec_department_create(
     .bind(&dept_id)
     .bind(body.name.trim())
     .bind(body.description)
-    .bind(body.manager_employee_id)
+    .bind(primary_manager_employee_id)
     .bind(body.parent_department_id)
     .bind(body.color)
     .bind(&user_id)
@@ -3908,6 +3910,22 @@ async fn exec_department_create(
     {
         let _ = tx.rollback().await;
         return map_sqlx_ticket(e);
+    }
+    for manager_employee_id in manager_employee_ids {
+        if let Err(e) = sqlx::query(
+            r#"INSERT INTO department_managers (id, department_id, manager_employee_id, created_at)
+               VALUES ($1, $2, $3, NOW())
+               ON CONFLICT (department_id, manager_employee_id) DO NOTHING"#,
+        )
+        .bind(new_cuid())
+        .bind(&dept_id)
+        .bind(manager_employee_id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
     }
     if let Err(e) = tx.commit().await {
         return map_sqlx_ticket(e);
@@ -3957,6 +3975,10 @@ async fn exec_department_update(
         let _ = tx.rollback().await;
         return map_sqlx_ticket(e);
     }
+    let manager_employee_ids = body.manager_employee_ids.clone();
+    let primary_manager_employee_id = manager_employee_ids
+        .as_ref()
+        .and_then(|ids| ids.first().cloned());
     if let Err(e) = sqlx::query(
         r#"UPDATE departments SET
             name                 = COALESCE($2, name),
@@ -3972,7 +3994,7 @@ async fn exec_department_update(
     .bind(&dept_id)
     .bind(body.name.as_deref().map(str::trim))
     .bind(body.description)
-    .bind(body.manager_employee_id)
+    .bind(primary_manager_employee_id)
     .bind(body.parent_department_id)
     .bind(body.color)
     .bind(body.status)
@@ -3982,6 +4004,32 @@ async fn exec_department_update(
     {
         let _ = tx.rollback().await;
         return map_sqlx_ticket(e);
+    }
+    if let Some(manager_ids) = manager_employee_ids {
+        if let Err(e) = sqlx::query("DELETE FROM department_managers WHERE department_id = $1")
+            .bind(&dept_id)
+            .execute(&mut *tx)
+            .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+        for manager_employee_id in manager_ids {
+            if let Err(e) = sqlx::query(
+                r#"INSERT INTO department_managers (id, department_id, manager_employee_id, created_at)
+                   VALUES ($1, $2, $3, NOW())
+                   ON CONFLICT (department_id, manager_employee_id) DO NOTHING"#,
+            )
+            .bind(new_cuid())
+            .bind(&dept_id)
+            .bind(manager_employee_id)
+            .execute(&mut *tx)
+            .await
+            {
+                let _ = tx.rollback().await;
+                return map_sqlx_ticket(e);
+            }
+        }
     }
     if let Err(e) = tx.commit().await {
         return map_sqlx_ticket(e);
