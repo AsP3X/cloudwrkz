@@ -20,7 +20,8 @@ use crate::github_metadata;
 use crate::id::new_cuid;
 use crate::link_preview::{extract_metadata_from_url, normalize_url};
 use crate::models::employee::{
-    DocumentCreateRequest, EmployeeAssetAssignRequest, EmployeeCertificationUpsertRequest,
+    DepartmentCreateRequest, DepartmentUpdateRequest, DocumentCreateRequest,
+    EmployeeAssetAssignRequest, EmployeeCertificationUpsertRequest,
     EmployeeCompensationUpsertRequest, EmployeeCreateRequest, EmployeeGoalCreateRequest,
     EmployeeLifecycleEventCreateRequest, EmployeePerformanceReviewCreateRequest,
     EmployeeSkillUpsertRequest, EmployeeUpdateRequest, LeaveRequestCreateRequest,
@@ -75,6 +76,9 @@ pub const JOB_TYPE_EMPLOYEE_LEAVE_REQUEST_CREATE: &str = "employee_leave_request
 pub const JOB_TYPE_EMPLOYEE_LEAVE_REQUEST_UPDATE: &str = "employee_leave_request_update";
 pub const JOB_TYPE_EMPLOYEE_DOCUMENT_CREATE: &str = "employee_document_create";
 pub const JOB_TYPE_EMPLOYEE_DOCUMENT_DELETE: &str = "employee_document_delete";
+pub const JOB_TYPE_DEPARTMENT_CREATE: &str = "department_create";
+pub const JOB_TYPE_DEPARTMENT_UPDATE: &str = "department_update";
+pub const JOB_TYPE_DEPARTMENT_DELETE: &str = "department_delete";
 
 pub const ENTITY_CREATE_POLL_DEADLINE_SECS: u32 = 120;
 
@@ -438,6 +442,15 @@ pub async fn run_entity_create_job(
         }
         JOB_TYPE_EMPLOYEE_DOCUMENT_DELETE => {
             exec_employee_document_delete(pool, lock_ms, stmt_ms, payload).await
+        }
+        JOB_TYPE_DEPARTMENT_CREATE => {
+            exec_department_create(pool, lock_ms, stmt_ms, payload).await
+        }
+        JOB_TYPE_DEPARTMENT_UPDATE => {
+            exec_department_update(pool, lock_ms, stmt_ms, payload).await
+        }
+        JOB_TYPE_DEPARTMENT_DELETE => {
+            exec_department_delete(pool, lock_ms, stmt_ms, payload).await
         }
         _ => JobExecOutcome::Fail(AppError::internal("Unknown entity create job type")),
     };
@@ -3840,6 +3853,193 @@ async fn exec_employee_document_delete(
         action: "employees.documents.delete".into(),
         resource_type: Some("employee_document".into()),
         resource_id: Some(doc_id),
+        context: None, ip_address: None, user_agent: None,
+    });
+    JobExecOutcome::Ok(JsonMutationResult::ok(json!({ "success": true })))
+}
+
+// Human: Creates a new department record.
+// Agent: INSERT INTO departments; REQUIRES employees.departments.manage.
+async fn exec_department_create(
+    pool: &PgPool,
+    lock_ms: u64,
+    stmt_ms: u64,
+    payload: &serde_json::Value,
+) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id")),
+    };
+    if let Err(e) = require_employee_permission(pool, &user_id, "employees.departments.manage").await {
+        return JobExecOutcome::Fail(e);
+    }
+    let body: DepartmentCreateRequest = match payload.get("request").cloned() {
+        Some(v) => match serde_json::from_value(v) {
+            Ok(v) => v,
+            Err(e) => return JobExecOutcome::Fail(AppError::bad_request(format!("Invalid department body: {e}"))),
+        },
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing request")),
+    };
+
+    let dept_id = new_cuid();
+    let mut tx = match pool.begin().await {
+        Ok(v) => v,
+        Err(e) => return map_sqlx_ticket(e),
+    };
+    if let Err(e) = apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+    if let Err(e) = sqlx::query(
+        r#"INSERT INTO departments
+            (id, name, description, manager_employee_id, parent_department_id, color, status,
+             created_by_user_id, updated_by_user_id, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, 'ACTIVE', $7, $7, NOW(), NOW())"#,
+    )
+    .bind(&dept_id)
+    .bind(body.name.trim())
+    .bind(body.description)
+    .bind(body.manager_employee_id)
+    .bind(body.parent_department_id)
+    .bind(body.color)
+    .bind(&user_id)
+    .execute(&mut *tx)
+    .await
+    {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+    if let Err(e) = tx.commit().await {
+        return map_sqlx_ticket(e);
+    }
+    audit::write_audit_log(pool, WriteAuditParams {
+        user_id: Some(user_id),
+        action: "employees.departments.create".into(),
+        resource_type: Some("department".into()),
+        resource_id: Some(dept_id.clone()),
+        context: None, ip_address: None, user_agent: None,
+    });
+    JobExecOutcome::Ok(JsonMutationResult::created(json!({ "id": dept_id })))
+}
+
+// Human: Updates a department record by id.
+// Agent: UPDATE departments SET ... WHERE id = $dept_id; REQUIRES employees.departments.manage.
+async fn exec_department_update(
+    pool: &PgPool,
+    lock_ms: u64,
+    stmt_ms: u64,
+    payload: &serde_json::Value,
+) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id")),
+    };
+    if let Err(e) = require_employee_permission(pool, &user_id, "employees.departments.manage").await {
+        return JobExecOutcome::Fail(e);
+    }
+    let dept_id = match payload.get("dept_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing dept_id")),
+    };
+    let body: DepartmentUpdateRequest = match payload.get("request").cloned() {
+        Some(v) => match serde_json::from_value(v) {
+            Ok(v) => v,
+            Err(e) => return JobExecOutcome::Fail(AppError::bad_request(format!("Invalid department update body: {e}"))),
+        },
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing request")),
+    };
+
+    let mut tx = match pool.begin().await {
+        Ok(v) => v,
+        Err(e) => return map_sqlx_ticket(e),
+    };
+    if let Err(e) = apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+    if let Err(e) = sqlx::query(
+        r#"UPDATE departments SET
+            name                 = COALESCE($2, name),
+            description          = COALESCE($3, description),
+            manager_employee_id  = CASE WHEN $4::text IS NOT NULL THEN $4 ELSE manager_employee_id END,
+            parent_department_id = CASE WHEN $5::text IS NOT NULL THEN $5 ELSE parent_department_id END,
+            color                = COALESCE($6, color),
+            status               = COALESCE($7, status),
+            updated_by_user_id   = $8,
+            updated_at           = NOW()
+           WHERE id = $1"#,
+    )
+    .bind(&dept_id)
+    .bind(body.name.as_deref().map(str::trim))
+    .bind(body.description)
+    .bind(body.manager_employee_id)
+    .bind(body.parent_department_id)
+    .bind(body.color)
+    .bind(body.status)
+    .bind(&user_id)
+    .execute(&mut *tx)
+    .await
+    {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+    if let Err(e) = tx.commit().await {
+        return map_sqlx_ticket(e);
+    }
+    audit::write_audit_log(pool, WriteAuditParams {
+        user_id: Some(user_id),
+        action: "employees.departments.update".into(),
+        resource_type: Some("department".into()),
+        resource_id: Some(dept_id),
+        context: None, ip_address: None, user_agent: None,
+    });
+    JobExecOutcome::Ok(JsonMutationResult::ok(json!({ "success": true })))
+}
+
+// Human: Deletes a department record. Does not delete employees – they keep their department string.
+// Agent: DELETE FROM departments WHERE id = $1; REQUIRES employees.departments.manage.
+async fn exec_department_delete(
+    pool: &PgPool,
+    lock_ms: u64,
+    stmt_ms: u64,
+    payload: &serde_json::Value,
+) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id")),
+    };
+    if let Err(e) = require_employee_permission(pool, &user_id, "employees.departments.manage").await {
+        return JobExecOutcome::Fail(e);
+    }
+    let dept_id = match payload.get("dept_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing dept_id")),
+    };
+
+    let mut tx = match pool.begin().await {
+        Ok(v) => v,
+        Err(e) => return map_sqlx_ticket(e),
+    };
+    if let Err(e) = apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+    if let Err(e) = sqlx::query("DELETE FROM departments WHERE id = $1")
+        .bind(&dept_id)
+        .execute(&mut *tx)
+        .await
+    {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+    if let Err(e) = tx.commit().await {
+        return map_sqlx_ticket(e);
+    }
+    audit::write_audit_log(pool, WriteAuditParams {
+        user_id: Some(user_id),
+        action: "employees.departments.delete".into(),
+        resource_type: Some("department".into()),
+        resource_id: Some(dept_id),
         context: None, ip_address: None, user_agent: None,
     });
     JobExecOutcome::Ok(JsonMutationResult::ok(json!({ "success": true })))

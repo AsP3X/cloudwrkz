@@ -139,6 +139,9 @@ pub(super) fn policies_from_config(config: &AppConfig) -> HashMap<String, JobTyp
         entity_creates::JOB_TYPE_EMPLOYEE_LEAVE_REQUEST_UPDATE,
         entity_creates::JOB_TYPE_EMPLOYEE_DOCUMENT_CREATE,
         entity_creates::JOB_TYPE_EMPLOYEE_DOCUMENT_DELETE,
+        entity_creates::JOB_TYPE_DEPARTMENT_CREATE,
+        entity_creates::JOB_TYPE_DEPARTMENT_UPDATE,
+        entity_creates::JOB_TYPE_DEPARTMENT_DELETE,
     ] {
         m.insert(
             t.to_string(),
@@ -309,7 +312,10 @@ async fn run_one_job(
         | entity_creates::JOB_TYPE_EMPLOYEE_LEAVE_REQUEST_CREATE
         | entity_creates::JOB_TYPE_EMPLOYEE_LEAVE_REQUEST_UPDATE
         | entity_creates::JOB_TYPE_EMPLOYEE_DOCUMENT_CREATE
-        | entity_creates::JOB_TYPE_EMPLOYEE_DOCUMENT_DELETE => {
+        | entity_creates::JOB_TYPE_EMPLOYEE_DOCUMENT_DELETE
+        | entity_creates::JOB_TYPE_DEPARTMENT_CREATE
+        | entity_creates::JOB_TYPE_DEPARTMENT_UPDATE
+        | entity_creates::JOB_TYPE_DEPARTMENT_DELETE => {
             entity_creates::run_entity_create_job(
                 pool,
                 client,

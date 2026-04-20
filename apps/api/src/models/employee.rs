@@ -212,6 +212,27 @@ pub struct LeaveRequestUpdateRequest {
     pub notes: Option<String>,
 }
 
+// Human: Department create/update DTOs for the departments management endpoints.
+// Agent: WRITES departments row; name is required on create, all fields optional on update.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct DepartmentCreateRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub manager_employee_id: Option<String>,
+    pub parent_department_id: Option<String>,
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct DepartmentUpdateRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub manager_employee_id: Option<String>,
+    pub parent_department_id: Option<String>,
+    pub color: Option<String>,
+    pub status: Option<String>,
+}
+
 // Human: Document create stores URL-based file references (contracts, IDs, certs) for an employee.
 // Agent: WRITES employee_documents row; no binary storage; url is caller-provided.
 #[derive(Debug, Deserialize, Serialize)]

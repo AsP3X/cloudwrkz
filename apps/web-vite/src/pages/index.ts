@@ -34,6 +34,7 @@ export { default as EmployeeLeavePage } from "./dashboard/employees/EmployeeLeav
 export { default as EmployeePerformancePage } from "./dashboard/employees/EmployeePerformancePage";
 export { default as EmployeeDocumentsPage } from "./dashboard/employees/EmployeeDocumentsPage";
 export { default as EmployeeVacationPlannerPage } from "./dashboard/employees/EmployeeVacationPlannerPage";
+export { default as EmployeeDepartmentsPage } from "./dashboard/employees/EmployeeDepartmentsPage";
 export { default as TimeTrackingPage } from "./dashboard/TimeTrackingPage";
 export { default as TimeEntryDetailPage } from "./dashboard/TimeEntryDetailPage";
 export { default as ProfilePage } from "./dashboard/ProfilePage";

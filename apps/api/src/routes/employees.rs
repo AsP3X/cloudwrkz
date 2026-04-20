@@ -13,7 +13,8 @@ use crate::command_queue::{MutationQueuedResponse, MutationRunContext};
 use crate::error::AppError;
 use crate::job_queue::entity_creates;
 use crate::models::employee::{
-    DocumentCreateRequest, EmployeeAssetAssignRequest, EmployeeCertificationUpsertRequest,
+    DepartmentCreateRequest, DepartmentUpdateRequest, DocumentCreateRequest,
+    EmployeeAssetAssignRequest, EmployeeCertificationUpsertRequest,
     EmployeeCompensationUpsertRequest, EmployeeCreateRequest, EmployeeDetail,
     EmployeeGoalCreateRequest, EmployeeLifecycleEventCreateRequest, EmployeeListItem,
     EmployeeListParams, EmployeePerformanceReviewCreateRequest, EmployeeSkillUpsertRequest,
@@ -36,6 +37,12 @@ pub fn router() -> Router<AppState> {
         .route("/employees/leave", get(list_all_leave_requests))
         .route("/employees/documents", get(list_all_documents))
         .route("/employees/performance-summary", get(get_performance_summary))
+        // Department routes (static before /{id})
+        .route("/employees/departments", get(list_departments).post(create_department))
+        .route(
+            "/employees/departments/{dept_id}",
+            get(get_department).patch(update_department).delete(delete_department),
+        )
         // Per-employee resource routes
         .route(
             "/employees/{id}",
@@ -1153,6 +1160,179 @@ async fn create_employee_lifecycle_event(
         &body,
         entity_creates::JOB_TYPE_EMPLOYEE_LIFECYCLE_EVENT_CREATE,
         json!({ "employee_id": id, "request": request_json }),
+    )
+    .await
+}
+
+// ─── Department handlers ───────────────────────────────────────────────────────
+
+async fn list_departments(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_employee_module(&state.pool).await?;
+    let can_view = check_permission(&state.pool, &user.id, "employees.departments.view").await
+        || check_permission(&state.pool, &user.id, "employees.departments.manage").await;
+    if !can_view {
+        return Err(AppError::forbidden("You don't have permission to view departments"));
+    }
+
+    let rows = sqlx::query(
+        r#"SELECT d.id, d.name, d.description, d.manager_employee_id, d.parent_department_id,
+                  d.color, d.status, d.created_at, d.updated_at,
+                  (SELECT COUNT(*) FROM employees e WHERE e.department = d.name) AS employee_count,
+                  e.employee_code AS manager_code, e.first_name AS manager_first, e.last_name AS manager_last,
+                  e.display_name AS manager_display
+           FROM departments d
+           LEFT JOIN employees e ON e.id = d.manager_employee_id
+           ORDER BY d.name ASC"#,
+    )
+    .fetch_all(&state.pool)
+    .await?;
+
+    let departments: Vec<serde_json::Value> = rows.iter().map(|r| {
+        let manager_code: Option<String> = r.get("manager_code");
+        let manager_first: Option<String> = r.get("manager_first");
+        let manager_last: Option<String> = r.get("manager_last");
+        let manager_display: Option<String> = r.get("manager_display");
+        let manager_label = manager_code.as_ref().map(|code| {
+            let name = manager_display.clone()
+                .unwrap_or_else(|| format!("{} {}",
+                    manager_first.clone().unwrap_or_default(),
+                    manager_last.clone().unwrap_or_default()).trim().to_string());
+            format!("{} – {}", code, name)
+        });
+        let count: i64 = r.get("employee_count");
+        json!({
+            "id": r.get::<String, _>("id"),
+            "name": r.get::<String, _>("name"),
+            "description": r.get::<Option<String>, _>("description"),
+            "manager_employee_id": r.get::<Option<String>, _>("manager_employee_id"),
+            "manager_label": manager_label,
+            "parent_department_id": r.get::<Option<String>, _>("parent_department_id"),
+            "color": r.get::<Option<String>, _>("color"),
+            "status": r.get::<String, _>("status"),
+            "employee_count": count,
+            "created_at": r.get::<chrono::DateTime<chrono::Utc>, _>("created_at"),
+            "updated_at": r.get::<chrono::DateTime<chrono::Utc>, _>("updated_at"),
+        })
+    }).collect();
+
+    Ok(Json(json!({ "departments": departments })))
+}
+
+async fn get_department(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(dept_id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_employee_module(&state.pool).await?;
+    let can_view = check_permission(&state.pool, &user.id, "employees.departments.view").await
+        || check_permission(&state.pool, &user.id, "employees.departments.manage").await;
+    if !can_view {
+        return Err(AppError::forbidden("You don't have permission to view departments"));
+    }
+
+    let row = sqlx::query(
+        r#"SELECT d.id, d.name, d.description, d.manager_employee_id, d.parent_department_id,
+                  d.color, d.status, d.created_at, d.updated_at,
+                  (SELECT COUNT(*) FROM employees e WHERE e.department = d.name) AS employee_count
+           FROM departments d WHERE d.id = $1"#,
+    )
+    .bind(&dept_id)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    match row {
+        None => Err(AppError::not_found("Department not found")),
+        Some(r) => {
+            let count: i64 = r.get("employee_count");
+            Ok(Json(json!({
+                "id": r.get::<String, _>("id"),
+                "name": r.get::<String, _>("name"),
+                "description": r.get::<Option<String>, _>("description"),
+                "manager_employee_id": r.get::<Option<String>, _>("manager_employee_id"),
+                "parent_department_id": r.get::<Option<String>, _>("parent_department_id"),
+                "color": r.get::<Option<String>, _>("color"),
+                "status": r.get::<String, _>("status"),
+                "employee_count": count,
+                "created_at": r.get::<chrono::DateTime<chrono::Utc>, _>("created_at"),
+                "updated_at": r.get::<chrono::DateTime<chrono::Utc>, _>("updated_at"),
+            })))
+        }
+    }
+}
+
+async fn create_department(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    headers: HeaderMap,
+    Json(body): Json<DepartmentCreateRequest>,
+) -> Result<Response, AppError> {
+    require_employee_module(&state.pool).await?;
+    if !check_permission(&state.pool, &user.id, "employees.departments.manage").await {
+        return Err(AppError::forbidden("You don't have permission to manage departments"));
+    }
+    if body.name.trim().is_empty() {
+        return Err(AppError::bad_request("Department name is required"));
+    }
+    let request_json = serde_json::to_value(&body)
+        .map_err(|e| AppError::internal(format!("serialize department: {e}")))?;
+    queue_employee_mutation(
+        &state,
+        &user.id,
+        "POST /employees/departments".to_string(),
+        &headers,
+        &body,
+        entity_creates::JOB_TYPE_DEPARTMENT_CREATE,
+        json!({ "request": request_json }),
+    )
+    .await
+}
+
+async fn update_department(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(dept_id): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<DepartmentUpdateRequest>,
+) -> Result<Response, AppError> {
+    require_employee_module(&state.pool).await?;
+    if !check_permission(&state.pool, &user.id, "employees.departments.manage").await {
+        return Err(AppError::forbidden("You don't have permission to manage departments"));
+    }
+    let request_json = serde_json::to_value(&body)
+        .map_err(|e| AppError::internal(format!("serialize department update: {e}")))?;
+    queue_employee_mutation(
+        &state,
+        &user.id,
+        format!("PATCH /employees/departments/{dept_id}"),
+        &headers,
+        &body,
+        entity_creates::JOB_TYPE_DEPARTMENT_UPDATE,
+        json!({ "dept_id": dept_id, "request": request_json }),
+    )
+    .await
+}
+
+async fn delete_department(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(dept_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    require_employee_module(&state.pool).await?;
+    if !check_permission(&state.pool, &user.id, "employees.departments.manage").await {
+        return Err(AppError::forbidden("You don't have permission to manage departments"));
+    }
+    queue_employee_mutation(
+        &state,
+        &user.id,
+        format!("DELETE /employees/departments/{dept_id}"),
+        &headers,
+        &serde_json::Value::Null,
+        entity_creates::JOB_TYPE_DEPARTMENT_DELETE,
+        json!({ "dept_id": dept_id }),
     )
     .await
 }

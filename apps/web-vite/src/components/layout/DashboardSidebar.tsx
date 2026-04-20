@@ -183,6 +183,12 @@ const NAV_SECTIONS = Object.freeze([
         moduleKey: "employees",
       }),
       Object.freeze({
+        name: "Departments",
+        href: ROUTES.EMPLOYEES_DEPARTMENTS,
+        icon: StatisticsIcon,
+        moduleKey: "employees",
+      }),
+      Object.freeze({
         name: "Performance",
         href: ROUTES.EMPLOYEES_PERFORMANCE,
         icon: StatisticsIcon,

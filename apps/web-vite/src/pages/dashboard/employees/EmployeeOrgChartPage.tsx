@@ -141,7 +141,7 @@ export default function EmployeeOrgChartPage() {
           {/* Scrollable tree canvas */}
           <div className="overflow-auto p-8 pb-12 pt-6">
             <div className="flex min-w-full justify-center">
-              <div className="inline-flex flex-col items-center gap-0">
+              <div className="inline-flex items-start gap-6">
                 {roots.map((root) => (
                   <OrgTree key={root.id} node={root} childrenMap={childrenMap} colorOf={colorOf} isDark={isDark} />
                 ))}
