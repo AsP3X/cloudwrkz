@@ -54,6 +54,8 @@ pub struct GroupSummary {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct TicketUpdateRequest {
+    /// iOS / JSON clients send `archivedAt`; snake_case `archived_at` is also accepted.
+    #[serde(alias = "archivedAt")]
     pub archived_at: Option<serde_json::Value>,
     pub title: Option<String>,
     pub description: Option<String>,

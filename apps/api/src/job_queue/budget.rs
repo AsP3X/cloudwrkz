@@ -44,9 +44,12 @@ impl TypeBudgets {
     /// Try to reserve a slot for this job type (non-blocking). Returns false if limits block.
     pub fn try_acquire(&self, job_type: &str) -> bool {
         let cfg = self.configs.get(job_type).cloned().unwrap_or_default();
+        // `max_concurrent == 0` would make `in_flight >= 0` true immediately and permanently
+        // starve that job type (rows flip pending → processing → pending forever, started_at stays null).
+        let max_concurrent = cfg.max_concurrent.max(1);
         let mut map = self.state.lock().expect("job budget mutex poisoned");
         let s = map.entry(job_type.to_string()).or_default();
-        if s.in_flight >= cfg.max_concurrent {
+        if s.in_flight >= max_concurrent {
             return false;
         }
         if let Some(min_gap) = cfg.min_interval_between_starts {

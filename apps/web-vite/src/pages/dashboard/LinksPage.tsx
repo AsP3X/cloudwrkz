@@ -13,11 +13,12 @@ import { CollectionFilterBar } from "@/components/features/links/CollectionFilte
 import { LinkList } from "@/components/features/links/LinkList";
 import { LinksPagination } from "@/components/features/links/LinksPagination";
 import { AddLinkDialog } from "@/components/features/links/AddLinkDialog";
+import { CreateCollectionDialog } from "@/components/features/links/CreateCollectionDialog/CreateCollectionDialog";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { AccessIssueTicketDialog } from "@/components/features/tickets/AccessIssueTicketDialog";
 
 function LinksPageContent() {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const { viewMode } = useLinkView();
   const [searchParams] = useSearchParams();
   const [links, setLinks] = useState<LinkType[]>([]);
@@ -26,8 +27,16 @@ function LinksPageContent() {
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [createCollectionOpen, setCreateCollectionOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+
+  const canCreateLinks = can("links.create");
+  const canCreateCollections = can("collections.create");
+  const selectedCollectionId = searchParams.get("collection") || undefined;
+  const selectedCollection = selectedCollectionId
+    ? collections.find((c) => c.id === selectedCollectionId)
+    : undefined;
 
   const page = parseInt(searchParams.get("page") || "1", 10);
   const limit = parseInt(searchParams.get("limit") || "25", 10);
@@ -79,39 +88,60 @@ function LinksPageContent() {
     <div className="space-y-6">
       <LinkFilterLoader />
 
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100">My Links</h1>
-          <p className="text-neutral-600 dark:text-neutral-400 mt-1">
-            Save, organize, and discover links
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <LinkViewControls />
-          <LinkFilterButton collections={collections} />
-          <Button variant="primary" onClick={() => setAddDialogOpen(true)}>Create</Button>
-          <div className="relative" ref={menuRef}>
-            <Button variant="outline" onClick={() => setMenuOpen((o) => !o)} aria-label="More actions">
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-              </svg>
-            </Button>
-            {menuOpen && (
-              <div className="absolute right-0 top-full z-50 mt-1 min-w-[160px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 py-1 shadow-lg">
-                <RouterLink to={`${ROUTES.ARCHIVE}?type=links`} className="block w-full px-4 py-2 text-left text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800" onClick={() => setMenuOpen(false)}>
-                  Archive
-                </RouterLink>
+      <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-soft-lg overflow-hidden">
+        <div className="p-5 sm:p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-neutral-100 truncate">
+                {selectedCollection ? selectedCollection.name : "My Links"}
+              </h1>
+              <p className="text-sm sm:text-base text-neutral-600 dark:text-neutral-400 mt-1">
+                Store and organize your bookmarks and links
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 shrink-0">
+              <LinkViewControls />
+              <LinkFilterButton collections={collections} />
+              {canCreateLinks && (
+                <Button variant="primary" onClick={() => setAddDialogOpen(true)}>
+                  Create
+                </Button>
+              )}
+              <div className="relative" ref={menuRef}>
+                <Button variant="outline" onClick={() => setMenuOpen((o) => !o)} aria-label="More actions">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                  </svg>
+                </Button>
+                {menuOpen && (
+                  <div className="absolute right-0 top-full z-50 mt-1 min-w-[160px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 py-1 shadow-lg">
+                    <RouterLink
+                      to={ROUTES.LINKS_ARCHIVE}
+                      className="block w-full px-4 py-2 text-left text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      Archive
+                    </RouterLink>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
+
+          {(canCreateCollections || collections.length > 0) && (
+            <>
+              <div className="my-5 h-px bg-neutral-200 dark:bg-neutral-800" aria-hidden />
+              <CollectionFilterBar
+                collections={collections}
+                canCreate={canCreateCollections}
+                currentUserId={user?.id || ""}
+                onCreateCollection={canCreateCollections ? () => setCreateCollectionOpen(true) : undefined}
+                onCollectionsUpdated={fetchData}
+              />
+            </>
+          )}
         </div>
       </div>
-
-      <CollectionFilterBar
-        collections={collections}
-        canCreate={true}
-        currentUserId={user?.id || ""}
-      />
 
       {total > 0 && (
         <div className="flex items-center justify-between flex-wrap gap-2">
@@ -152,7 +182,18 @@ function LinksPageContent() {
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
         onSuccess={fetchData}
+        selectedCollectionId={selectedCollectionId}
+        selectedCollectionName={selectedCollection?.name}
+        selectedCollectionColor={selectedCollection?.color ?? null}
       />
+
+      {canCreateCollections && (
+        <CreateCollectionDialog
+          open={createCollectionOpen}
+          onOpenChange={setCreateCollectionOpen}
+          onSuccess={fetchData}
+        />
+      )}
     </div>
   );
 }

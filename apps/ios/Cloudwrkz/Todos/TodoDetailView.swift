@@ -7,14 +7,23 @@
 
 import SwiftUI
 
+private struct OptimisticPendingSubtodo: Identifiable {
+    let id: UUID
+    let title: String
+    let description: String?
+}
+
 private enum SubtodoListItem: Identifiable {
     case completedHeader
     case subtask(Todo.TodoSubtask)
+    /// Matches API `ORDER BY "order" ASC, created_at ASC` — new subtodo appears after existing actives.
+    case creatingPlaceholder(id: UUID, title: String)
 
     var id: String {
         switch self {
         case .completedHeader: return "completed-header"
         case .subtask(let s): return s.id
+        case .creatingPlaceholder(let cid, _): return "creating-\(cid.uuidString)"
         }
     }
 }
@@ -24,6 +33,10 @@ struct TodoDetailView: View {
     @State private var todo: Todo
     @State private var showTodoInfoSidebar = false
     @State private var showAddTodo = false
+    @State private var addTodoCreateErrorMessage: String?
+    /// One row per in-flight POST; supports opening the add sheet again before prior creates finish.
+    @State private var optimisticPendingSubtodos: [OptimisticPendingSubtodo] = []
+    @State private var mutationTitleCarousel = MutationTitleCarouselState()
 
     init(todo: Todo) {
         _todo = State(initialValue: todo)
@@ -50,8 +63,12 @@ struct TodoDetailView: View {
             }
         .scrollContentBackground(.hidden)
         }
-        .navigationTitle(todo.todoNumber ?? todo.title)
-        .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let msg = addTodoCreateErrorMessage {
+                addTodoErrorBanner(message: msg)
+            }
+        }
+        .mutationJobNavigationTitle(LocalizedStringKey(todo.todoNumber ?? todo.title), state: mutationTitleCarousel)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -78,11 +95,61 @@ struct TodoDetailView: View {
             AddTodoView(
                 parentTodoId: todo.id,
                 parentTodoTitle: todo.title,
-                onSaved: { Task { await loadTodo() } }
+                mutationHooks: todoMutationHooks(),
+                onCreateStarted: { correlationId, title, description in
+                    optimisticPendingSubtodos.append(
+                        OptimisticPendingSubtodo(id: correlationId, title: title, description: description)
+                    )
+                },
+                onSaved: { _, correlationId in
+                    Task { await handleSubtodoCreated(completedCorrelationId: correlationId) }
+                },
+                onCreateFailed: { msg, correlationId in
+                    Task { @MainActor in
+                        optimisticPendingSubtodos.removeAll { $0.id == correlationId }
+                        addTodoCreateErrorMessage = msg
+                    }
+                }
             )
         }
         .tint(CloudwrkzColors.primary400)
         .task { await loadTodo() }
+    }
+
+    private func todoMutationHooks() -> MutationJobTitleHooks {
+        MutationJobTitleHooks(
+            onQueued: {
+                await mutationTitleCarousel.playCycle(
+                    message: String(localized: "mutation.job_queued"),
+                    bannerKind: .queued
+                )
+            },
+            onCompleted: {
+                await mutationTitleCarousel.playCycle(
+                    message: String(localized: "mutation.job_completed"),
+                    bannerKind: .completed
+                )
+            }
+        )
+    }
+
+    private func addTodoErrorBanner(message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .foregroundStyle(CloudwrkzColors.warning500)
+            Text(message)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(CloudwrkzColors.neutral100)
+            Spacer()
+            Button(String(localized: "links.dismiss")) {
+                addTodoCreateErrorMessage = nil
+            }
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(CloudwrkzColors.primary400)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(CloudwrkzColors.neutral800.opacity(0.95))
     }
 
     private func loadTodo() async {
@@ -92,6 +159,46 @@ struct TodoDetailView: View {
                 withAnimation(.easeInOut(duration: 0.25)) {
                     todo = updated
                 }
+                pruneOptimisticPendingSubtodosAlreadyRepresented(in: updated)
+            }
+        }
+    }
+
+    /// After one subtodo’s create finishes, GET may already include **other** in-flight subtodos. Drop any placeholder
+    /// whose title is satisfied by a non-completed subtask in the payload so we never show spinner + real row for the same item.
+    private func pruneOptimisticPendingSubtodosAlreadyRepresented(in updated: Todo) {
+        guard !optimisticPendingSubtodos.isEmpty else { return }
+        var activePool = (updated.subtodos ?? []).filter { $0.status != "COMPLETED" }
+        var kept: [OptimisticPendingSubtodo] = []
+        for p in optimisticPendingSubtodos {
+            let pNorm = Self.normalizedSubtodoTitle(p.title)
+            if let idx = activePool.firstIndex(where: { Self.normalizedSubtodoTitle($0.title) == pNorm }) {
+                activePool.remove(at: idx)
+            } else {
+                kept.append(p)
+            }
+        }
+        optimisticPendingSubtodos = kept
+    }
+
+    private static func normalizedSubtodoTitle(_ s: String) -> String {
+        s.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// After creating a subtodo: drop the matching optimistic row, fetch parent, then update `todo` with nil animation
+    /// so a placeholder and the new real row never sit in the list together (no crossfaded “duplicate” row).
+    private func handleSubtodoCreated(completedCorrelationId: UUID) async {
+        let parentId = todo.id
+        await MainActor.run {
+            optimisticPendingSubtodos.removeAll { $0.id == completedCorrelationId }
+        }
+        let result = await TodoService.fetchTodo(config: appState.config, id: parentId)
+        await MainActor.run {
+            if case .success(let updated) = result {
+                withAnimation(nil) {
+                    todo = updated
+                }
+                pruneOptimisticPendingSubtodosAlreadyRepresented(in: updated)
             }
         }
     }
@@ -107,6 +214,7 @@ struct TodoDetailView: View {
                 withAnimation(.easeInOut(duration: immediate ? 0.25 : 1.4)) {
                     todo = updated
                 }
+                pruneOptimisticPendingSubtodosAlreadyRepresented(in: updated)
             }
         }
     }
@@ -169,9 +277,12 @@ struct TodoDetailView: View {
         (todo.subtodos ?? []).filter { $0.status == "COMPLETED" }
     }
 
-    /// Active first, then a "Completed" header, then completed — so completing an item moves it in the list and can animate.
+    /// Active first (plus optimistic create rows at end, in creation order), then a "Completed" header, then completed.
     private var subtodoListItems: [SubtodoListItem] {
-        let active: [SubtodoListItem] = activeSubtodos.map { .subtask($0) }
+        var active: [SubtodoListItem] = activeSubtodos.map { .subtask($0) }
+        for pending in optimisticPendingSubtodos {
+            active.append(.creatingPlaceholder(id: pending.id, title: pending.title))
+        }
         let header: [SubtodoListItem] = completedSubtodos.isEmpty ? [] : [.completedHeader]
         let completed: [SubtodoListItem] = completedSubtodos.map { .subtask($0) }
         return active + header + completed
@@ -232,13 +343,14 @@ struct TodoDetailView: View {
     }
 
     private var subtodosSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        // `sectionLabel` applies bottom padding; avoid stacking extra VStack spacing (was overlapping with a forced min height).
+        VStack(alignment: .leading, spacing: 0) {
             sectionLabel(String(localized: "common.subtodos"))
             if subtodoListItems.isEmpty {
                 subtodoPlaceholderRow
                     .padding(.horizontal, 4)
             } else {
-                List {
+                LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(subtodoListItems) { item in
                         switch item {
                         case .completedHeader:
@@ -246,79 +358,51 @@ struct TodoDetailView: View {
                                 .font(.system(size: 11, weight: .bold))
                                 .tracking(0.8)
                                 .foregroundStyle(CloudwrkzColors.neutral500)
-                                .listRowInsets(EdgeInsets(top: 12, leading: 4, bottom: 4, trailing: 4))
-                                .listRowSeparator(.hidden)
-                                .listRowBackground(Color.clear)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.top, 12)
+                                .padding(.leading, 4)
+                                .padding(.bottom, 4)
+                        case .creatingPlaceholder(_, let title):
+                            SubtodoCreatingPlaceholderRow(title: title)
+                                .padding(.horizontal, 4)
                         case .subtask(let subtodo):
                             if subtodo.status == "COMPLETED" {
                                 NavigationLink(destination: TodoDetailLoaderView(todoId: subtodo.id)) {
                                     completedSubtodoRow(subtodo)
                                 }
                                 .buttonStyle(.plain)
-                                .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
-                                .listRowSeparator(.hidden)
-                                .listRowBackground(Color.clear)
-                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                .padding(.horizontal, 4)
+                                .contextMenu {
                                     Button(role: .destructive) {
                                         Task { await deleteSubtodo(subtodo.id) }
-                                    } label: { Image(systemName: "trash") }
-                                    .tint(.red)
+                                    } label: {
+                                        Label(String(localized: "todo.delete"), systemImage: "trash")
+                                    }
                                 }
                             } else {
                                 NavigationLink(destination: TodoDetailLoaderView(todoId: subtodo.id)) {
                                     subtodoSettingsRow(subtodo)
                                 }
                                 .buttonStyle(.plain)
-                                .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
-                                .listRowSeparator(.hidden)
-                                .listRowBackground(Color.clear)
-                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                    Button(role: .destructive) {
-                                        Task { await deleteSubtodo(subtodo.id) }
-                                    } label: { Image(systemName: "trash") }
-                                    .tint(.red)
+                                .padding(.horizontal, 4)
+                                .contextMenu {
                                     Button {
                                         Task { await completeSubtodo(subtodo.id) }
-                                    } label: { Image(systemName: "checkmark") }
-                                    .tint(CloudwrkzColors.success500)
+                                    } label: {
+                                        Label(String(localized: "todo.context_complete"), systemImage: "checkmark.circle")
+                                    }
+                                    Button(role: .destructive) {
+                                        Task { await deleteSubtodo(subtodo.id) }
+                                    } label: {
+                                        Label(String(localized: "todo.delete"), systemImage: "trash")
+                                    }
                                 }
                             }
                         }
                     }
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .scrollDisabled(true)
-                .frame(minHeight: listMinHeight)
-                .animation(.easeInOut(duration: 1.4), value: subtodoListItems.map(\.id))
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// Row height must match actual row content: icon 28pt + padding(.vertical, 10) + title (up to 2 lines) + subtitle.
-    private var listMinHeight: CGFloat {
-        let rowH: CGFloat = 76
-        let headerRowH: CGFloat = 40
-        var h = CGFloat(activeSubtodos.count) * rowH
-        if !completedSubtodos.isEmpty {
-            h += headerRowH + CGFloat(completedSubtodos.count) * rowH
-        }
-        return max(h, 80)
-    }
-
-    private var subtodoEmptyActiveRow: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "circle")
-                .font(.system(size: 20))
-                .foregroundStyle(CloudwrkzColors.neutral500)
-                .frame(width: 28, height: 28)
-            Text("common.no_active_subtodos")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(CloudwrkzColors.neutral400)
-            Spacer()
-        }
-        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -352,19 +436,33 @@ struct TodoDetailView: View {
     }
 
     private func completeSubtodo(_ id: String, immediate: Bool = false) async {
-        let result = await TodoService.updateTodo(config: appState.config, id: id, status: "COMPLETED")
+        let result = await TodoService.updateTodo(
+            config: appState.config,
+            id: id,
+            status: "COMPLETED",
+            mutationHooks: todoMutationHooks()
+        )
         guard case .success = result else { return }
         await loadTodoAfterComplete(immediate: immediate)
     }
 
     private func uncompleteSubtodo(_ id: String, immediate: Bool = false) async {
-        let result = await TodoService.updateTodo(config: appState.config, id: id, status: "IN_PROGRESS")
+        let result = await TodoService.updateTodo(
+            config: appState.config,
+            id: id,
+            status: "IN_PROGRESS",
+            mutationHooks: todoMutationHooks()
+        )
         guard case .success = result else { return }
         await loadTodoAfterComplete(immediate: immediate)
     }
 
     private func deleteSubtodo(_ id: String) async {
-        let result = await TodoService.deleteTodo(config: appState.config, id: id)
+        let result = await TodoService.deleteTodo(
+            config: appState.config,
+            id: id,
+            mutationHooks: todoMutationHooks()
+        )
         await MainActor.run {
             if case .failure = result {
                 // Optionally show an error
@@ -477,6 +575,43 @@ struct TodoDetailView: View {
         case "MEDIUM": return CloudwrkzColors.warning400
         default: return CloudwrkzColors.neutral400
         }
+    }
+}
+
+// MARK: - Optimistic subtodo row (matches `subtodoSettingsRow` + top-trailing spinner)
+
+private struct SubtodoCreatingPlaceholderRow: View {
+    let title: String
+
+    private var subtitleLine: String {
+        let status = "NOT_STARTED".replacingOccurrences(of: "_", with: " ").lowercased()
+        return "\(status) · MEDIUM"
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: "circle")
+                .font(.system(size: 20))
+                .foregroundStyle(CloudwrkzColors.neutral500)
+                .frame(width: 28, height: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(CloudwrkzColors.neutral100)
+                    .lineLimit(2)
+                Text(subtitleLine)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(CloudwrkzColors.neutral500)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
+                .scaleEffect(0.72)
+                .frame(width: 22, height: 22)
+                .accessibilityLabel(String(localized: "todo.creating"))
+        }
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 }
 

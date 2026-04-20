@@ -76,37 +76,60 @@ function CollectionDetailContent() {
   const links = collection.links ?? [];
   const linkCount = collection._count?.links ?? collection.link_count ?? links.length;
 
+  const hasAccent = collection.color && /^#[0-9A-Fa-f]{6}$/.test(collection.color);
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <Link to={ROUTES.LINKS}>
-          <Button variant="outline">← Back to Links</Button>
-        </Link>
-      </div>
-      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6">
-        <h1
-          className="text-2xl font-bold mb-2"
-          style={collection.color ? { color: collection.color } : undefined}
-        >
-          {collection.name}
-        </h1>
-        {collection.description && (
-          <p className="text-neutral-600 dark:text-neutral-400">{collection.description}</p>
-        )}
-        <div className="flex items-center gap-4 text-sm text-neutral-500 dark:text-neutral-500 mt-2">
-          <span>{linkCount} link{linkCount !== 1 ? "s" : ""}</span>
-          <span>•</span>
-          <span>Created {formatDate(collection.created_at)}</span>
-          {collection.owner && (
-            <>
-              <span>•</span>
-              <span>Owner: {collection.owner.name || collection.owner.email}</span>
-            </>
-          )}
+      <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-soft-lg overflow-hidden">
+        <div className="p-5 sm:p-6">
+          <div className="flex flex-col gap-4">
+            <Link to={ROUTES.LINKS} className="inline-flex w-fit">
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <span aria-hidden>←</span>
+                Back to links
+              </Button>
+            </Link>
+            <div className="flex items-start gap-3">
+              {hasAccent && (
+                <span
+                  className="mt-1.5 h-8 w-1.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: collection.color! }}
+                  aria-hidden
+                />
+              )}
+              <div className="min-w-0 flex-1">
+                <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-neutral-100 truncate">
+                  {collection.name}
+                </h1>
+                {collection.description && (
+                  <p className="text-neutral-600 dark:text-neutral-400 mt-2 text-sm sm:text-base leading-relaxed">
+                    {collection.description}
+                  </p>
+                )}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mt-3">
+                  <span>
+                    {linkCount} link{linkCount !== 1 ? "s" : ""}
+                  </span>
+                  <span className="text-neutral-300 dark:text-neutral-600" aria-hidden>
+                    ·
+                  </span>
+                  <span>Created {formatDate(collection.created_at)}</span>
+                  {collection.owner && (
+                    <>
+                      <span className="text-neutral-300 dark:text-neutral-600" aria-hidden>
+                        ·
+                      </span>
+                      <span className="truncate">{collection.owner.name || collection.owner.email}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">Links</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Links in this collection</h2>
         <LinkViewControls />
       </div>
       {links.length === 0 ? (

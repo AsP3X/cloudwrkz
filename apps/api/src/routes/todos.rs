@@ -1,21 +1,17 @@
-use std::sync::Arc;
-
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    http::HeaderMap,
-    response::Response,
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
     routing::get,
 };
+use serde_json::json;
 use sqlx::Row;
 
 use crate::auth::extractors::AuthUser;
-use crate::command_queue::{
-    JsonMutationResult, MutationRunContext, apply_mutation_tx_settings, mutation_response,
-    run_mutation_defer,
-};
-use crate::db::numbering::next_todo_number;
+use crate::command_queue::{MutationQueuedResponse, MutationRunContext};
 use crate::error::AppError;
+use crate::job_queue::entity_creates;
 use crate::models::todo::{
     CreateTodoRequest, TodoDependencyItem, TodoDependsOnSummary, TodoListItem, TodoListParams,
     TodoParentSummary, TodoRow, TodoTicketSummary, UpdateTodoRequest,
@@ -99,14 +95,51 @@ const TODO_SELECT: &str = r#"SELECT id, todo_number, parent_todo_id, title, desc
        assigned_to_id, estimated_hours, actual_hours, start_date, due_date,
        completed_date, archived_at, ticket_id, "order", created_at, updated_at"#;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TodoListParentScope {
+    RootOnly,
+    SubtasksOnly,
+    All,
+}
+
+/// Web-vite passes `kind` on `/todos`; iOS uses `includeSubtodos`. When `kind` is absent or
+/// unrecognized, fall back to `includeSubtodos` (default: root-only, same as Next handler).
+fn todo_list_parent_scope(params: &TodoListParams) -> TodoListParentScope {
+    let from_include = || {
+        if params.include_subtodos == Some(true) {
+            TodoListParentScope::All
+        } else {
+            TodoListParentScope::RootOnly
+        }
+    };
+    match params
+        .kind
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(k) if k.eq_ignore_ascii_case("root") => TodoListParentScope::RootOnly,
+        Some(k) if k.eq_ignore_ascii_case("subtask") || k.eq_ignore_ascii_case("subtodo") => {
+            TodoListParentScope::SubtasksOnly
+        }
+        Some(k) if k.eq_ignore_ascii_case("all") => TodoListParentScope::All,
+        Some(_) => from_include(),
+        None => from_include(),
+    }
+}
+
 async fn list_todos(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Query(params): Query<TodoListParams>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let archive = params.archive.as_deref().unwrap_or("unarchived");
-    let priority = params.priority.clone();
-    let is_root_only = params.kind.as_deref() == Some("root");
+    // Align with `get-todos-handler.ts`: `ALL` means no filter (iOS always sends status=ALL & priority=ALL).
+    let priority_filter: Option<String> = match params.priority.as_deref() {
+        None | Some("") | Some("ALL") => None,
+        Some(p) => Some(p.to_string()),
+    };
+    let parent_scope = todo_list_parent_scope(&params);
     let ticket_id = params.ticket_id.clone();
     let _ = &params.sort;
 
@@ -129,7 +162,12 @@ async fn list_todos(
     let statuses: Vec<String> = params
         .status
         .as_deref()
-        .map(|s| s.split(',').map(|v| v.trim().to_string()).collect())
+        .map(|s| {
+            s.split(',')
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty() && v != "ALL")
+                .collect()
+        })
         .unwrap_or_default();
 
     let mut sql = format!(
@@ -154,8 +192,10 @@ async fn list_todos(
             placeholders.join(", ")
         ));
     }
-    if is_root_only {
-        sql.push_str(&format!(" AND parent_todo_id IS NULL"));
+    match parent_scope {
+        TodoListParentScope::RootOnly => sql.push_str(" AND parent_todo_id IS NULL"),
+        TodoListParentScope::SubtasksOnly => sql.push_str(" AND parent_todo_id IS NOT NULL"),
+        TodoListParentScope::All => {}
     }
     sql.push_str(" ORDER BY \"order\" ASC, created_at ASC");
 
@@ -176,7 +216,7 @@ async fn list_todos(
 
     let mut query = sqlx::query(&sql)
         .bind(&assigned_filter)
-        .bind(&priority)
+        .bind(&priority_filter)
         .bind(archive);
     if let Some(ref tid) = ticket_id {
         query = query.bind(tid);
@@ -324,20 +364,6 @@ async fn get_todo(
     Ok(Json(serde_json::json!({ "todo": todo })))
 }
 
-fn strip_html_plain(html: &str) -> String {
-    let mut out = String::new();
-    let mut in_tag = false;
-    for c in html.chars() {
-        match c {
-            '<' => in_tag = true,
-            '>' => in_tag = false,
-            _ if !in_tag => out.push(c),
-            _ => {}
-        }
-    }
-    out.replace('\u{a0}', " ").trim().to_string()
-}
-
 async fn create_todo(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -388,80 +414,46 @@ async fn create_todo(
         idempotency_key: idempotency_key_from_headers(&headers),
         body_hash,
     };
-    let uid = user.id.clone();
-    let shard = format!("todo:create:{uid}");
-    let b = body.clone();
-    let broker = state.mutation_broker.clone();
-    let lock_ms = broker.lock_timeout_ms;
-    let stmt_ms = broker.statement_timeout_ms;
-    let pool = state.pool.clone();
-    let jobs = state.mutation_jobs.clone();
-    let make_arc = Arc::new(tokio::sync::Mutex::new({
-        let user_id = uid.clone();
-        let body = b.clone();
-        move || {
-            let user_id = user_id.clone();
-            let body = body.clone();
-            move |pool: sqlx::PgPool| async move {
-                let mut tx = pool.begin().await.map_err(AppError::from)?;
-                apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms)
-                    .await
-                    .map_err(AppError::from)?;
-
-                let id = crate::id::new_cuid();
-                let status = body.status.as_deref().unwrap_or("NOT_STARTED");
-                let priority = body.priority.as_deref().unwrap_or("MEDIUM");
-                let assigned_to = body.assigned_to_id.as_deref().unwrap_or(&user_id);
-
-                let description_plain = body
-                    .description_html
-                    .as_deref()
-                    .or(body.description.as_deref())
-                    .map(strip_html_plain)
-                    .filter(|s| !s.is_empty());
-
-                let todo_number = next_todo_number(&mut tx).await.map_err(AppError::from)?;
-
-                let start_ts = body
-                    .start_date
-                    .as_deref()
-                    .and_then(|s| s.parse::<chrono::NaiveDateTime>().ok());
-                let due_ts = body
-                    .due_date
-                    .as_deref()
-                    .and_then(|s| s.parse::<chrono::NaiveDateTime>().ok());
-                let desc_legacy = description_plain.as_deref().or(body.description.as_deref());
-
-                sqlx::query(
-                    r#"INSERT INTO todos (id, todo_number, title, description, description_html, description_plain,
-                              status, priority, assigned_to_id, parent_todo_id,
-                              ticket_id, estimated_hours, start_date, due_date, "order", created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7::"TodoStatus", $8::"TodoPriority",
-                   $9, $10, $11, $12, $13, $14, 0, NOW(), NOW())"#,
-                )
-                .bind(&id)
-                .bind(&todo_number)
-                .bind(body.title.trim())
-                .bind(desc_legacy)
-                .bind(&body.description_html)
-                .bind(&description_plain)
-                .bind(status)
-                .bind(priority)
-                .bind(assigned_to)
-                .bind(&body.parent_todo_id)
-                .bind(&body.ticket_id)
-                .bind(body.estimated_hours)
-                .bind(&start_ts)
-                .bind(&due_ts)
-                .execute(&mut *tx)
-                .await?;
-                tx.commit().await.map_err(AppError::from)?;
-                Ok(JsonMutationResult::created(serde_json::json!({ "id": id })))
+    if let Some(ref ik) = ctx.idempotency_key {
+        if !ik.trim().is_empty() {
+            if let Some(cached) = state
+                .mutation_broker
+                .idempotency
+                .get(&ctx.user_id, ik, &ctx.route, ctx.body_hash)
+                .await
+            {
+                return Ok((cached.status, Json(cached.body)).into_response());
             }
         }
-    }));
-    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
-    Ok(mutation_response(out))
+    }
+
+    let request_json = serde_json::to_value(&body)
+        .map_err(|e| AppError::internal(format!("serialize todo create: {e}")))?;
+    let job_payload = json!({
+        "user_id": user.id,
+        "route": ctx.route,
+        "body_hash": ctx.body_hash,
+        "idempotency_key": ctx.idempotency_key,
+        "request": request_json,
+    });
+    let job_id = entity_creates::enqueue_entity_create_job(
+        &state.pool,
+        entity_creates::JOB_TYPE_TODO_CREATE,
+        &user.id,
+        job_payload,
+    )
+    .await
+    .map_err(AppError::from)?;
+
+    let q = MutationQueuedResponse {
+        message: "Todo creation is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed."
+            .into(),
+        queued: true,
+        job_id,
+        retry_deadline_secs: entity_creates::ENTITY_CREATE_POLL_DEADLINE_SECS,
+        job_type: Some(entity_creates::JOB_TYPE_TODO_CREATE.to_string()),
+    };
+    Ok((StatusCode::ACCEPTED, Json(q)).into_response())
 }
 
 async fn update_todo(
@@ -479,203 +471,47 @@ async fn update_todo(
         idempotency_key: idempotency_key_from_headers(&headers),
         body_hash,
     };
-    let id_clone = id.clone();
-    let uid = user.id.clone();
-    let b = body.clone();
-    let shard = format!("todo:{id}");
-    let broker = state.mutation_broker.clone();
-    let lock_ms = broker.lock_timeout_ms;
-    let stmt_ms = broker.statement_timeout_ms;
-    let pool = state.pool.clone();
-    let jobs = state.mutation_jobs.clone();
-    let make_arc = Arc::new(tokio::sync::Mutex::new({
-        let id = id_clone.clone();
-        let user_id = uid.clone();
-        let body = b.clone();
-        move || {
-            let id = id.clone();
-            let user_id = user_id.clone();
-            let body = body.clone();
-            move |pool: sqlx::PgPool| async move {
-                let mut tx = pool.begin().await.map_err(AppError::from)?;
-                apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms)
-                    .await
-                    .map_err(AppError::from)?;
-
-                let existing =
-                    sqlx::query("SELECT id, assigned_to_id FROM todos WHERE id = $1 FOR UPDATE")
-                        .bind(&id)
-                        .fetch_optional(&mut *tx)
-                        .await?
-                        .ok_or_else(|| AppError::not_found("Todo not found"))?;
-
-                let owner: Option<String> = existing.get("assigned_to_id");
-                if owner.as_deref() != Some(&user_id) {
-                    return Err(AppError::forbidden("Not your todo"));
-                }
-
-                if let Some(ref title) = body.title {
-                    sqlx::query("UPDATE todos SET title = $1, updated_at = NOW() WHERE id = $2")
-                        .bind(title)
-                        .bind(&id)
-                        .execute(&mut *tx)
-                        .await?;
-                }
-                if let Some(ref desc) = body.description {
-                    sqlx::query(
-                        "UPDATE todos SET description = $1, updated_at = NOW() WHERE id = $2",
-                    )
-                    .bind(desc)
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                }
-                if let Some(ref desc_html) = body.description_html {
-                    sqlx::query(
-                        "UPDATE todos SET description_html = $1, updated_at = NOW() WHERE id = $2",
-                    )
-                    .bind(desc_html)
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                }
-                if let Some(ref aid) = body.assigned_to_id {
-                    let s: Option<String> = aid
-                        .as_str()
-                        .map(|s| s.to_string())
-                        .filter(|s| !s.is_empty());
-                    sqlx::query(
-                        "UPDATE todos SET assigned_to_id = $1, updated_at = NOW() WHERE id = $2",
-                    )
-                    .bind(&s)
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                }
-                if let Some(est) = body.estimated_hours {
-                    sqlx::query(
-                        "UPDATE todos SET estimated_hours = $1, updated_at = NOW() WHERE id = $2",
-                    )
-                    .bind(est)
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                }
-                if let Some(act) = body.actual_hours {
-                    sqlx::query(
-                        "UPDATE todos SET actual_hours = $1, updated_at = NOW() WHERE id = $2",
-                    )
-                    .bind(act)
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                }
-                if body.start_date.is_some() {
-                    let v = body
-                        .start_date
-                        .as_ref()
-                        .and_then(|v| v.as_str())
-                        .and_then(|s| s.parse::<chrono::NaiveDateTime>().ok());
-                    sqlx::query(
-                        "UPDATE todos SET start_date = $1, updated_at = NOW() WHERE id = $2",
-                    )
-                    .bind(&v)
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                }
-                if body.due_date.is_some() {
-                    let v = body
-                        .due_date
-                        .as_ref()
-                        .and_then(|v| v.as_str())
-                        .and_then(|s| s.parse::<chrono::NaiveDateTime>().ok());
-                    sqlx::query("UPDATE todos SET due_date = $1, updated_at = NOW() WHERE id = $2")
-                        .bind(&v)
-                        .bind(&id)
-                        .execute(&mut *tx)
-                        .await?;
-                }
-                if body.ticket_id.is_some() {
-                    let v = body
-                        .ticket_id
-                        .as_ref()
-                        .and_then(|v| v.as_str())
-                        .filter(|s| !s.is_empty());
-                    sqlx::query(
-                        "UPDATE todos SET ticket_id = $1, updated_at = NOW() WHERE id = $2",
-                    )
-                    .bind(v)
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                }
-                if let Some(ref status) = body.status {
-                    let completed_date = if status == "COMPLETED" {
-                        Some(chrono::Utc::now().naive_utc())
-                    } else {
-                        None
-                    };
-                    sqlx::query(
-                        r#"UPDATE todos SET status = $1::"TodoStatus", completed_date = $2, updated_at = NOW() WHERE id = $3"#,
-                    )
-                    .bind(status)
-                    .bind(completed_date)
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                }
-                if let Some(ref priority) = body.priority {
-                    sqlx::query(
-                        r#"UPDATE todos SET priority = $1::"TodoPriority", updated_at = NOW() WHERE id = $2"#,
-                    )
-                    .bind(priority)
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                }
-                if body.archived_at.is_some() {
-                    let set_null = body
-                        .archived_at
-                        .as_ref()
-                        .map(serde_json::Value::is_null)
-                        .unwrap_or(false);
-                    if set_null {
-                        sqlx::query(
-                            "UPDATE todos SET archived_at = NULL, updated_at = NOW() WHERE id = $1",
-                        )
-                        .bind(&id)
-                        .execute(&mut *tx)
-                        .await?;
-                    } else {
-                        sqlx::query(
-                            "UPDATE todos SET archived_at = NOW(), updated_at = NOW() WHERE id = $1",
-                        )
-                        .bind(&id)
-                        .execute(&mut *tx)
-                        .await?;
-                    }
-                }
-                if let Some(order) = body.order {
-                    sqlx::query(
-                        "UPDATE todos SET \"order\" = $1, updated_at = NOW() WHERE id = $2",
-                    )
-                    .bind(order)
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                }
-
-                tx.commit().await.map_err(AppError::from)?;
-                Ok(JsonMutationResult::ok(serde_json::json!({
-                    "success": true,
-                    "message": "Todo updated"
-                })))
+    if let Some(ref ik) = ctx.idempotency_key {
+        if !ik.trim().is_empty() {
+            if let Some(cached) = state
+                .mutation_broker
+                .idempotency
+                .get(&ctx.user_id, ik, &ctx.route, ctx.body_hash)
+                .await
+            {
+                return Ok((cached.status, Json(cached.body)).into_response());
             }
         }
-    }));
-    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
-    Ok(mutation_response(out))
+    }
+
+    let request_json = serde_json::to_value(&body)
+        .map_err(|e| AppError::internal(format!("serialize todo update: {e}")))?;
+    let job_payload = json!({
+        "user_id": user.id,
+        "todo_id": id,
+        "route": ctx.route,
+        "body_hash": ctx.body_hash,
+        "idempotency_key": ctx.idempotency_key,
+        "request": request_json,
+    });
+    let job_id = entity_creates::enqueue_entity_create_job(
+        &state.pool,
+        entity_creates::JOB_TYPE_TODO_UPDATE,
+        &user.id,
+        job_payload,
+    )
+    .await
+    .map_err(AppError::from)?;
+
+    let q = MutationQueuedResponse {
+        message: "Todo update is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed."
+            .into(),
+        queued: true,
+        job_id,
+        retry_deadline_secs: entity_creates::ENTITY_CREATE_POLL_DEADLINE_SECS,
+        job_type: Some(entity_creates::JOB_TYPE_TODO_UPDATE.to_string()),
+    };
+    Ok((StatusCode::ACCEPTED, Json(q)).into_response())
 }
 
 async fn delete_todo(
@@ -684,60 +520,49 @@ async fn delete_todo(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
+    let route = format!("DELETE /todos/{id}");
     let ctx = MutationRunContext {
         user_id: user.id.clone(),
-        route: format!("DELETE /todos/{id}"),
+        route,
         idempotency_key: idempotency_key_from_headers(&headers),
         body_hash: 0,
     };
-    let id_clone = id.clone();
-    let uid = user.id.clone();
-    let shard = format!("todo:{id}");
-    let broker = state.mutation_broker.clone();
-    let lock_ms = broker.lock_timeout_ms;
-    let stmt_ms = broker.statement_timeout_ms;
-    let pool = state.pool.clone();
-    let jobs = state.mutation_jobs.clone();
-    let make_arc = Arc::new(tokio::sync::Mutex::new({
-        let id = id_clone.clone();
-        let user_id = uid.clone();
-        move || {
-            let id = id.clone();
-            let user_id = user_id.clone();
-            move |pool: sqlx::PgPool| async move {
-                let mut tx = pool.begin().await.map_err(AppError::from)?;
-                apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms)
-                    .await
-                    .map_err(AppError::from)?;
-
-                let existing =
-                    sqlx::query("SELECT id, assigned_to_id FROM todos WHERE id = $1 FOR UPDATE")
-                        .bind(&id)
-                        .fetch_optional(&mut *tx)
-                        .await?
-                        .ok_or_else(|| AppError::not_found("Todo not found"))?;
-
-                let owner: Option<String> = existing.get("assigned_to_id");
-                if owner.as_deref() != Some(&user_id) {
-                    return Err(AppError::forbidden("Not your todo"));
-                }
-
-                sqlx::query("DELETE FROM todos WHERE parent_todo_id = $1")
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                sqlx::query("DELETE FROM todos WHERE id = $1")
-                    .bind(&id)
-                    .execute(&mut *tx)
-                    .await?;
-                tx.commit().await.map_err(AppError::from)?;
-                Ok(JsonMutationResult::ok(serde_json::json!({
-                    "success": true,
-                    "message": "Todo deleted"
-                })))
+    if let Some(ref ik) = ctx.idempotency_key {
+        if !ik.trim().is_empty() {
+            if let Some(cached) = state
+                .mutation_broker
+                .idempotency
+                .get(&ctx.user_id, ik, &ctx.route, ctx.body_hash)
+                .await
+            {
+                return Ok((cached.status, Json(cached.body)).into_response());
             }
         }
-    }));
-    let out = run_mutation_defer(broker, pool, shard, ctx, jobs, user.id.clone(), make_arc).await?;
-    Ok(mutation_response(out))
+    }
+
+    let job_payload = json!({
+        "user_id": user.id,
+        "todo_id": id,
+        "route": ctx.route,
+        "body_hash": ctx.body_hash,
+        "idempotency_key": ctx.idempotency_key,
+    });
+    let job_id = entity_creates::enqueue_entity_create_job(
+        &state.pool,
+        entity_creates::JOB_TYPE_TODO_DELETE,
+        &user.id,
+        job_payload,
+    )
+    .await
+    .map_err(AppError::from)?;
+
+    let q = MutationQueuedResponse {
+        message: "Todo deletion is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed."
+            .into(),
+        queued: true,
+        job_id,
+        retry_deadline_secs: entity_creates::ENTITY_CREATE_POLL_DEADLINE_SECS,
+        job_type: Some(entity_creates::JOB_TYPE_TODO_DELETE.to_string()),
+    };
+    Ok((StatusCode::ACCEPTED, Json(q)).into_response())
 }

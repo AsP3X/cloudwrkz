@@ -9,6 +9,7 @@ import { ROUTES } from "@/lib/constants/routes";
 import { cn } from "@/lib/utils/cn";
 import { api } from "@/api/client";
 import { MutationQueueNotice } from "@/components/ui/MutationQueueNotice";
+import { MouseSpotlightSurface } from "@/components/ui/MouseSpotlightSurface";
 
 function hasStoredAuthToken(): boolean {
   return Boolean(localStorage.getItem("auth_token"));
@@ -89,25 +90,30 @@ function SessionConnectionWaitScreen({
   retrying: boolean;
 }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-gradient-to-br from-primary-50 via-white to-secondary-50 p-6 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950">
-      <div className="max-w-md rounded-xl border border-neutral-200 bg-white p-8 text-center shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-          Can&apos;t reach the server
-        </h1>
-        <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
-          You are still signed in. When the API or database is back, we&apos;ll load your account again.
-          This is not a sign-out.
-        </p>
-        <button
-          type="button"
-          disabled={retrying}
-          onClick={() => void onRetry()}
-          className="mt-6 inline-flex items-center justify-center rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-60"
-        >
-          {retrying ? "Retrying…" : "Try again"}
-        </button>
+    <MouseSpotlightSurface
+      variant="content"
+      className="min-h-screen bg-gradient-to-br from-neutral-200/90 via-neutral-100 to-neutral-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950"
+    >
+      <div className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
+        <div className="max-w-md rounded-xl border border-white/25 bg-white/82 p-8 text-center shadow-soft-xl ring-1 ring-neutral-900/[0.04] backdrop-blur-md dark:border-white/10 dark:bg-neutral-950/55 dark:ring-white/[0.06]">
+          <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+            Can&apos;t reach the server
+          </h1>
+          <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+            You are still signed in. When the API or database is back, we&apos;ll load your account again.
+            This is not a sign-out.
+          </p>
+          <button
+            type="button"
+            disabled={retrying}
+            onClick={() => void onRetry()}
+            className="mt-6 inline-flex items-center justify-center rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-60"
+          >
+            {retrying ? "Retrying…" : "Try again"}
+          </button>
+        </div>
       </div>
-    </div>
+    </MouseSpotlightSurface>
   );
 }
 
@@ -158,9 +164,12 @@ export const DashboardLayout = () => {
 
   return (
     <SidebarProvider>
-      <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-secondary-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950">
+      <MouseSpotlightSurface
+        variant="content"
+        className="min-h-screen bg-gradient-to-br from-neutral-200/90 via-neutral-100 to-neutral-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950"
+      >
         {needsConnection ? (
-          <div className="relative z-20 border-b border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
+          <div className="relative z-20 border-b border-amber-200/80 bg-amber-50/95 px-4 py-3 text-center text-sm text-amber-950 backdrop-blur-sm dark:border-amber-500/25 dark:bg-amber-950/45 dark:text-amber-100">
             <span className="font-medium">Limited connectivity.</span>{" "}
             Showing saved profile data until the server responds.{" "}
             <button
@@ -172,12 +181,6 @@ export const DashboardLayout = () => {
             </button>
           </div>
         ) : null}
-        {/* Background decoration - matches Next.js app */}
-        <div className="fixed inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-20 left-10 w-96 h-96 bg-primary-200 dark:bg-primary-900 rounded-full mix-blend-multiply filter blur-3xl opacity-10 dark:opacity-5" />
-          <div className="absolute bottom-20 right-10 w-96 h-96 bg-secondary-200 dark:bg-secondary-900 rounded-full mix-blend-multiply filter blur-3xl opacity-10 dark:opacity-5" />
-          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-primary-100 dark:bg-primary-950 rounded-full mix-blend-multiply filter blur-3xl opacity-5 dark:opacity-2" />
-        </div>
         <DashboardLayoutContent />
         <main className={cn("min-h-screen relative z-10", "lg:pl-64")}>
           <div className="p-4 sm:p-6 lg:p-8">
@@ -185,7 +188,7 @@ export const DashboardLayout = () => {
             <Outlet />
           </div>
         </main>
-      </div>
+      </MouseSpotlightSurface>
     </SidebarProvider>
   );
 };

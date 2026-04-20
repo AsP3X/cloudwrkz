@@ -5,6 +5,7 @@ import { Footer } from "@/components/layout/Footer";
 import { Hero } from "@/features/landing/Hero";
 import { Features } from "@/features/landing/Features";
 import { CTA } from "@/features/landing/CTA";
+import { MouseSpotlightSurface } from "@/components/ui/MouseSpotlightSurface";
 import { SkipToContent } from "@/components/ui/SkipToContent";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { ROUTES } from "@/lib/constants/routes";
@@ -53,10 +54,12 @@ export default function HomePage() {
     <>
       <SkipToContent />
       <Header />
-      <main id="main-content">
-        <Hero />
-        <Features />
-        <CTA />
+      <main id="main-content" className="flex min-h-screen flex-col">
+        <MouseSpotlightSurface variant="about" className="flex w-full min-h-0 flex-1 flex-col">
+          <Hero />
+          <Features />
+        </MouseSpotlightSurface>
+        <CTA className="relative z-10 rounded-t-3xl shadow-[0_-16px_48px_-20px_rgba(0,0,0,0.2)] dark:shadow-[0_-16px_48px_-20px_rgba(0,0,0,0.45)]" />
       </main>
       <Footer />
     </>

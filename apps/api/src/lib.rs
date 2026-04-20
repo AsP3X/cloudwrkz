@@ -1,6 +1,7 @@
 //! CloudWrkz HTTP API — shared by the `cloudwrkz-api` binary and integration tests.
 
 mod audit;
+mod request_tracking;
 pub mod auth;
 mod auth_governor;
 mod command_queue;
@@ -11,16 +12,33 @@ mod error;
 mod github_metadata;
 mod github_rate_limit;
 pub mod id;
-mod job_queue;
+pub mod job_queue;
+mod link_preview;
 mod models;
 pub mod routes;
 
 pub use config::AppConfig;
+pub use job_queue::supervisor::{
+    JobWorkerSupervisor, WorkerListEntry, WorkerLogRegistry, JOB_QUEUE_WORKER_MAX,
+    JOB_QUEUE_WORKER_MIN, SYSTEM_SETTING_JOB_QUEUE_WORKER_COUNT, persist_worker_count,
+    resolve_initial_worker_count, spawn_job_queue_supervisor, worker_hostname,
+};
+pub use routes::mutation_broker_for_config;
 pub use routes::AppState;
+
+/// Start the PostgreSQL-backed job worker pool (same as `run()` after migrations). For integration tests.
+pub fn spawn_background_job_worker(
+    pool: sqlx::PgPool,
+    config: AppConfig,
+    mutation_broker: command_queue::MutationBroker,
+) -> std::sync::Arc<JobWorkerSupervisor> {
+    job_queue::spawn_job_queue_worker(pool, config, mutation_broker)
+}
 
 use axum::Router;
 use axum::body::Body;
 use axum::http::Method;
+use axum::middleware;
 use axum::http::header::{self, HeaderName, HeaderValue};
 use std::net::SocketAddr;
 use std::sync::OnceLock;
@@ -50,6 +68,7 @@ pub const HELP: &str = r#"CloudWrkz API server.
 
 Usage: cloudwrkz-api [OPTIONS]
        cloudwrkz-api diagnostics-token generate
+       cloudwrkz-api migrate-repair
 
 Options:
   -v, --verbose [LEVEL]   Log verbosity: no value or "debug" = full (client_ip, user_agent, etc.); "prod" = minimal (default when -v not set)
@@ -61,6 +80,9 @@ Commands:
   diagnostics-token generate   Generate a diagnostics API token (stores hash in DB), print token once.
                                Requires DATABASE_URL; runs migrations. Use with GET /api/v1/health/detailed.
 
+  migrate-repair               Fix sqlx checksum drift in `_sqlx_migrations` after editing migration files
+                               in dev (same as `sqlx migrate repair`). Requires DATABASE_URL; does not re-run SQL.
+
 Environment: LOG_VERBOSITY (debug|prod), LOG_FORMAT (json), RUST_LOG, DATABASE_URL,
              With LOG_VERBOSITY=debug the default filter includes jobs=debug (dispatcher + per-job tracing on target `jobs`).
              With LOG_VERBOSITY=prod you can still set RUST_LOG=info,jobs=debug to log only the background job queue.
@@ -68,14 +90,15 @@ Environment: LOG_VERBOSITY (debug|prod), LOG_FORMAT (json), RUST_LOG, DATABASE_U
              AUTH_RATE_LIMIT_PER_MINUTE, AUTH_RATE_LIMIT_BURST,
              COMMAND_DB_TX_MAX_MS, COMMAND_DB_LOCK_TIMEOUT_MS, COMMAND_DB_STATEMENT_TIMEOUT_MS,
              MUTATION_QUEUE_CAPACITY, IDEMPOTENCY_MAX_ENTRIES, IDEMPOTENCY_TTL_SECS,
-             (Deferred mutations: GET /api/v1/mutation-jobs/{job_id} after HTTP 202 when DB was transient.)
+             (HTTP 202 + GET /api/v1/mutation-jobs/{job_id}: transient DB retries, and async creates for tickets/todos/time entries/links via background_jobs.)
              DATABASE_POOL_ACQUIRE_TIMEOUT_SECS, DATABASE_POOL_MAX_CONNECTIONS,
-             DATABASE_MIGRATE_RETRY_MAX_SECS, etc.
+             DATABASE_MIGRATE_RETRY_MAX_SECS, HTTP_REQUEST_LOG_ENABLED (true|false, default true), etc.
              GITHUB_TOKEN or GITHUB_API_TOKEN (optional): authenticated GitHub REST (higher rate limits; no in-process hourly cap).
              GITHUB_ANONYMOUS_MAX_REQUESTS_PER_HOUR (default 60): rolling-hour cap on GitHub REST GETs for this process when no token is set (GitHub allows 60/hour per IP unauthenticated). Jobs may wait inside a run until slots free; no fixed spacing between requests.
              GitHub metadata jobs: dispatcher polls ~400ms and runs jobs concurrently up to JOB_QUEUE_GITHUB_MAX_CONCURRENT.
              JOB_QUEUE_GITHUB_MAX_CONCURRENT (default 1): max concurrent github_link_metadata jobs.
              JOB_QUEUE_GITHUB_MIN_START_INTERVAL_SECS: optional pacing between job starts (per job type policy; not used for github_link_metadata today).
+             JOB_QUEUE_WORKER_COUNT (default 1, max 32): number of background job dispatcher loops in this process (shared per-type budgets; DB `system_settings.job_queue_worker_count` overrides after migrations).
 "#;
 
 /// Parse `-v` / `-v debug` / `-v prod` and `-h` from env::args(). CLI overrides LOG_VERBOSITY env.
@@ -151,12 +174,7 @@ fn init_logging() {
 
 /// Builds a span for each HTTP request. Prod: request_id, method, uri (path). Debug: + client_ip, path_and_query, user_agent.
 fn make_request_span(request: &axum::http::Request<Body>) -> tracing::Span {
-    let request_id = request
-        .headers()
-        .get("x-request-id")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let request_id = crate::audit::request_id_from_headers(request.headers());
     let path = request.uri().path();
     let path_and_query = request
         .uri()
@@ -240,6 +258,7 @@ fn build_cors(config: &AppConfig) -> CorsLayer {
 pub fn build_http_app(state: AppState) -> Router {
     let cors = build_cors(&state.config);
     let max_body = state.config.max_body_size;
+    let request_tracking_state = state.clone();
     Router::new()
         .merge(routes::health::router())
         .nest("/api/v1", routes::v1_router(&state.config))
@@ -270,6 +289,10 @@ pub fn build_http_app(state: AppState) -> Router {
                 .on_response(ApiOnResponse),
         )
         .layer(tower_http::limit::RequestBodyLimitLayer::new(max_body))
+        .layer(middleware::from_fn_with_state(
+            request_tracking_state,
+            request_tracking::middleware,
+        ))
 }
 
 async fn shutdown_signal() {
@@ -343,6 +366,33 @@ pub async fn run() {
         return;
     }
 
+    if args.len() >= 2 && args[1] == "migrate-repair" {
+        let db_url = match std::env::var("DATABASE_URL") {
+            Ok(u) => u,
+            Err(_) => {
+                eprintln!("DATABASE_URL must be set for migrate-repair");
+                std::process::exit(1);
+            }
+        };
+        let pool = match db::create_pool(&db_url).await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("Failed to connect to database: {e}");
+                std::process::exit(1);
+            }
+        };
+        match db::repair_migration_checksums(&pool).await {
+            Ok(n) => {
+                eprintln!("migrate-repair: updated {n} checksum(s) in _sqlx_migrations.");
+                std::process::exit(0);
+            }
+            Err(e) => {
+                eprintln!("migrate-repair failed: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     LOG_VERBOSITY.get_or_init(|| {
         parse_verbosity_from_args().unwrap_or_else(|| {
             match std::env::var("LOG_VERBOSITY").as_deref() {
@@ -362,6 +412,7 @@ pub async fn run() {
         log_verbosity = ?log_verbosity(),
         api_region = ?config.api_region,
         api_nodes_available = config.api_nodes_available,
+        job_queue_worker_count = config.job_queue_worker_count,
         "Starting CloudWrkz API"
     );
     if log_verbosity() == LogVerbosity::Debug {
@@ -377,16 +428,33 @@ pub async fn run() {
         .expect("Invalid DATABASE_URL (cannot parse connection string)");
 
     let api_started_at = std::time::Instant::now();
-    let state = routes::AppState::new(pool.clone(), config.clone(), api_started_at);
 
-    {
-        let pool = pool.clone();
-        let cfg = config.clone();
-        tokio::spawn(async move {
-            db::run_migrations_with_transient_retries(&pool).await;
-            job_queue::spawn_job_queue_worker(pool, cfg);
-        });
-    }
+    // Apply migrations and start the background job worker pool before accepting HTTP traffic.
+    // Otherwise clients can enqueue `background_jobs` rows while no worker is running yet,
+    // and mutation polling (POST → 202 → GET /mutation-jobs/:id) appears stuck until the worker catches up.
+    db::run_migrations_with_transient_retries(&pool).await;
+    let initial_worker_count = job_queue::resolve_initial_worker_count(&pool, &config).await;
+    let mutation_broker = routes::mutation_broker_for_config(&config);
+    let job_worker_supervisor = job_queue::spawn_job_queue_supervisor(
+        pool.clone(),
+        config.clone(),
+        mutation_broker.clone(),
+        initial_worker_count,
+        config.job_queue_worker_count,
+    );
+    let state = routes::AppState::new(
+        pool.clone(),
+        config.clone(),
+        api_started_at,
+        mutation_broker,
+        job_worker_supervisor,
+    );
+    tracing::info!(
+        event = "job_queue.supervisor",
+        desired_dispatchers = initial_worker_count,
+        env_default_dispatchers = config.job_queue_worker_count,
+        "Background job dispatcher pool configured"
+    );
 
     let app = build_http_app(state);
 

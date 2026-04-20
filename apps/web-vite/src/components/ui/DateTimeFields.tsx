@@ -74,15 +74,17 @@ export function DateTimeFields({
   const [year, setYear] = React.useState("");
   const [hour, setHour] = React.useState("");
   const [minute, setMinute] = React.useState("");
+  const [isEditing, setIsEditing] = React.useState(false);
 
   React.useEffect(() => {
+    if (isEditing) return;
     const next = toParts(value ?? null);
     setDay(next.day);
     setMonth(next.month);
     setYear(next.year);
     setHour(next.hour);
     setMinute(next.minute);
-  }, [value]);
+  }, [isEditing, value]);
 
   const emit = (
     nextDay: string,
@@ -178,6 +180,8 @@ export function DateTimeFields({
           inputMode="numeric"
           placeholder="TT"
           onKeyDown={handleDayKeyDown}
+          onFocus={() => setIsEditing(true)}
+          onBlur={() => setIsEditing(false)}
           className="w-7 bg-transparent text-center text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none"
         />
         <span className="text-neutral-400 dark:text-neutral-500 text-sm">.</span>
@@ -194,6 +198,8 @@ export function DateTimeFields({
           inputMode="numeric"
           placeholder="MM"
           onKeyDown={handleMonthKeyDown}
+          onFocus={() => setIsEditing(true)}
+          onBlur={() => setIsEditing(false)}
           className="w-7 bg-transparent text-center text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none"
         />
         <span className="text-neutral-400 dark:text-neutral-500 text-sm">.</span>
@@ -210,6 +216,8 @@ export function DateTimeFields({
           inputMode="numeric"
           placeholder="JJJJ"
           onKeyDown={handleYearKeyDown}
+          onFocus={() => setIsEditing(true)}
+          onBlur={() => setIsEditing(false)}
           className="w-10 bg-transparent text-center text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none"
         />
         <span className="mx-0.5 h-5 w-px bg-neutral-300 dark:bg-neutral-600" />
@@ -229,6 +237,8 @@ export function DateTimeFields({
           inputMode="numeric"
           placeholder="HH"
           onKeyDown={handleHourKeyDown}
+          onFocus={() => setIsEditing(true)}
+          onBlur={() => setIsEditing(false)}
           className="w-7 bg-transparent text-center text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none"
         />
         <span className="text-neutral-400 dark:text-neutral-500 text-sm">:</span>
@@ -245,6 +255,8 @@ export function DateTimeFields({
           inputMode="numeric"
           placeholder="MM"
           onKeyDown={handleMinuteKeyDown}
+          onFocus={() => setIsEditing(true)}
+          onBlur={() => setIsEditing(false)}
           className="w-7 bg-transparent text-center text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none"
         />
       </div>

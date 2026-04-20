@@ -14,6 +14,7 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::audit::{self, WriteAuditParams};
+use crate::auth::bg_job_record::finish_auth_register_job;
 use crate::db::is_transient_sqlx;
 
 /// Wall-clock time the API will keep retrying a queued registration.
@@ -234,16 +235,15 @@ async fn register_retry_loop(
                 email = %email,
                 "registration job timed out waiting for database"
             );
+            let msg = "The database did not become available in time. Please try registering again.";
             jobs.set_outcome(
                 &job_id,
                 RegisterJobStatusKind::Failed,
-                Some(
-                    "The database did not become available in time. Please try registering again."
-                        .into(),
-                ),
+                Some(msg.into()),
                 None,
                 None,
             );
+            finish_auth_register_job(&pool, &job_id, false, Some(msg)).await;
             break;
         }
 
@@ -272,6 +272,7 @@ async fn register_retry_loop(
                     Some(user_id),
                     Some(em),
                 );
+                finish_auth_register_job(&pool, &job_id, true, None).await;
                 break;
             }
             Err(RegisterAttemptError::Transient) => {
@@ -281,10 +282,11 @@ async fn register_retry_loop(
                 jobs.set_outcome(
                     &job_id,
                     RegisterJobStatusKind::Failed,
-                    Some(msg),
+                    Some(msg.clone()),
                     None,
                     None,
                 );
+                finish_auth_register_job(&pool, &job_id, false, Some(msg.as_str())).await;
                 break;
             }
             Err(RegisterAttemptError::Fatal(msg)) => {
@@ -295,13 +297,15 @@ async fn register_retry_loop(
                     "{}",
                     msg
                 );
+                let user_msg = "Registration failed. Please try again later.";
                 jobs.set_outcome(
                     &job_id,
                     RegisterJobStatusKind::Failed,
-                    Some("Registration failed. Please try again later.".into()),
+                    Some(user_msg.into()),
                     None,
                     None,
                 );
+                finish_auth_register_job(&pool, &job_id, false, Some(user_msg)).await;
                 break;
             }
         }

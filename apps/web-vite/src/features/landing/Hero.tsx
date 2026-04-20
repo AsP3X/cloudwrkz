@@ -13,38 +13,32 @@ const handleLearnMoreClick = (e: React.MouseEvent<HTMLElement>) => {
 export const Hero = () => {
   return (
     <section
-      className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16"
+      className="relative flex min-h-screen items-center justify-center overflow-hidden pt-16"
       aria-label="Hero section"
     >
-      {/* Background gradient */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary-50 via-white to-secondary-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950" aria-hidden="true" />
-
-      {/* Animated background elements */}
-      <div className="absolute inset-0 overflow-hidden" aria-hidden="true">
-        <div className="absolute top-20 left-10 w-72 h-72 bg-primary-200 dark:bg-primary-900 rounded-full mix-blend-multiply filter blur-xl opacity-30 dark:opacity-5 animate-pulse" />
-        <div className="absolute top-40 right-10 w-72 h-72 bg-secondary-200 dark:bg-secondary-900 rounded-full mix-blend-multiply filter blur-xl opacity-30 dark:opacity-5 animate-pulse-delay-700" />
-        <div className="absolute -bottom-8 left-1/2 w-72 h-72 bg-primary-300 dark:bg-primary-950 rounded-full mix-blend-multiply filter blur-xl opacity-20 dark:opacity-3 animate-pulse-delay-1000" />
-      </div>
-
-      <div className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 py-20">
+      <div className="relative z-10 container mx-auto px-4 py-20 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
           {/* Badge */}
-          <div className="inline-flex items-center px-4 py-2 rounded-full bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 text-sm font-medium mb-8 animate-fade-in" role="status" aria-label="Status badge">
-            <span className="w-2 h-2 bg-primary-500 dark:bg-primary-400 rounded-full mr-2 animate-pulse" aria-hidden="true" />
+          <div
+            className="mb-8 inline-flex animate-fade-in items-center rounded-full border border-primary-300/50 bg-white/70 px-4 py-2 text-sm font-medium text-primary-900 shadow-sm backdrop-blur-sm dark:border-primary-400/30 dark:bg-neutral-950/50 dark:text-primary-200"
+            role="status"
+            aria-label="Status badge"
+          >
+            <span className="mr-2 h-2 w-2 animate-pulse rounded-full bg-primary-500 dark:bg-primary-400" aria-hidden="true" />
             Now Available - Enterprise Ready
           </div>
 
           {/* Main headline */}
-          <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-neutral-900 dark:text-neutral-100 mb-6 leading-tight animate-slide-in">
+          <h1 className="mb-6 animate-slide-in text-5xl font-bold leading-tight text-neutral-950 dark:text-neutral-50 sm:text-6xl lg:text-7xl">
             Build Modern Apps
             <br />
-            <span className="bg-gradient-to-r from-primary-600 to-secondary-600 dark:from-primary-400 dark:to-secondary-400 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-primary-600 to-secondary-600 bg-clip-text text-transparent dark:from-primary-300 dark:to-secondary-300">
               Faster Than Ever
             </span>
           </h1>
 
           {/* Subheadline */}
-          <p className="text-xl sm:text-2xl text-neutral-600 dark:text-neutral-400 mb-12 max-w-2xl mx-auto leading-relaxed animate-fade-in">
+          <p className="mx-auto mb-12 max-w-2xl animate-fade-in text-xl leading-relaxed text-neutral-700 dark:text-neutral-300 sm:text-2xl">
             A powerful, modular platform that combines cutting-edge technology
             with enterprise-grade reliability. Ship faster, scale effortlessly.
           </p>
@@ -76,15 +70,15 @@ export const Hero = () => {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 max-w-3xl mx-auto" role="list" aria-label="Key statistics">
             <div className="text-center" role="listitem">
               <div className="text-4xl font-bold text-primary-600 dark:text-primary-400 mb-2" aria-label="99.9 percent">99.9%</div>
-              <div className="text-neutral-600 dark:text-neutral-400">Uptime</div>
+              <div className="text-neutral-700 dark:text-neutral-300">Uptime</div>
             </div>
             <div className="text-center" role="listitem">
               <div className="text-4xl font-bold text-primary-600 dark:text-primary-400 mb-2" aria-label="10 times">10x</div>
-              <div className="text-neutral-600 dark:text-neutral-400">Faster Development</div>
+              <div className="text-neutral-700 dark:text-neutral-300">Faster Development</div>
             </div>
             <div className="text-center" role="listitem">
               <div className="text-4xl font-bold text-primary-600 dark:text-primary-400 mb-2" aria-label="24/7">24/7</div>
-              <div className="text-neutral-600 dark:text-neutral-400">Support</div>
+              <div className="text-neutral-700 dark:text-neutral-300">Support</div>
             </div>
           </div>
         </div>
@@ -96,8 +90,8 @@ export const Hero = () => {
         aria-hidden="true"
         aria-label="Scroll indicator"
       >
-        <div className="w-6 h-10 border-2 border-neutral-300 dark:border-neutral-700 rounded-full flex justify-center">
-          <div className="w-1 h-3 bg-neutral-400 dark:bg-neutral-500 rounded-full mt-2" />
+        <div className="flex h-10 w-6 justify-center rounded-full border-2 border-neutral-400/80 dark:border-white/35">
+          <div className="mt-2 h-3 w-1 rounded-full bg-neutral-500 dark:bg-white/50" />
         </div>
       </div>
     </section>

@@ -90,8 +90,12 @@ pub struct CreateTodoRequest {
     pub description_html: Option<String>,
     pub status: Option<String>,
     pub priority: Option<String>,
+    /// iOS and some clients send `parentTodoId`; web uses `parent_todo_id`.
+    #[serde(alias = "parentTodoId")]
     pub parent_todo_id: Option<String>,
+    #[serde(alias = "ticketId")]
     pub ticket_id: Option<String>,
+    #[serde(alias = "assignedToId")]
     pub assigned_to_id: Option<String>,
     pub estimated_hours: Option<f64>,
     pub start_date: Option<String>,
@@ -110,6 +114,8 @@ pub struct UpdateTodoRequest {
     pub actual_hours: Option<f64>,
     pub start_date: Option<serde_json::Value>,
     pub due_date: Option<serde_json::Value>,
+    /// iOS / JSON clients send `archivedAt`; snake_case `archived_at` is also accepted.
+    #[serde(alias = "archivedAt")]
     pub archived_at: Option<serde_json::Value>,
     pub ticket_id: Option<serde_json::Value>,
     pub order: Option<i32>,
@@ -121,8 +127,12 @@ pub struct TodoListParams {
     pub priority: Option<String>,
     pub sort: Option<String>,
     pub archive: Option<String>,
+    /// Filter by parent relationship (`all` | `root` | `subtask`). Matches web-vite task filters.
     pub kind: Option<String>,
     pub limit: Option<i64>,
     /// When set, return only todos linked to this ticket (user must have ticket access).
     pub ticket_id: Option<String>,
+    /// Matches Next.js / iOS: when `false`, only top-level todos (`parent_todo_id IS NULL`).
+    #[serde(rename = "includeSubtodos")]
+    pub include_subtodos: Option<bool>,
 }

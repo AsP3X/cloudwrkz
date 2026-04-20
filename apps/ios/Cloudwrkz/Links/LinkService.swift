@@ -38,12 +38,11 @@ enum LinkService {
         d.dateDecodingStrategy = .custom { decoder in
             let c = try decoder.singleValueContainer()
             let s = try c.decode(String.self)
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            if let date = formatter.date(from: s) { return date }
-            formatter.formatOptions = [.withInternetDateTime]
-            if let date = formatter.date(from: s) { return date }
-            throw DecodingError.dataCorruptedError(in: c, debugDescription: "Invalid date: \(s)")
+            do {
+                return try ApiTimestampParsing.decode(s)
+            } catch {
+                throw DecodingError.dataCorruptedError(in: c, debugDescription: "Invalid date: \(s)")
+            }
         }
         return d
     }
@@ -101,6 +100,166 @@ enum LinkService {
             case 401:
                 SessionExpiredNotifier.notify()
                 return .failure(.unauthorized)
+            case 400...599:
+                let message = (try? JSONDecoder().decode(MessageResponse.self, from: data))?.message
+                    ?? "Server error (\(http.statusCode))"
+                return .failure(.serverError(message: message))
+            default:
+                return .failure(.serverError(message: "Unexpected status \(http.statusCode)"))
+            }
+        } catch {
+            let description = (error as? URLError)?.localizedDescription ?? error.localizedDescription
+            return .failure(.networkError(description: description))
+        }
+    }
+
+    /// Build URL for a single link resource (GET/PUT/DELETE).
+    private static func linkURL(config: ServerConfig, id: String) -> URL? {
+        guard let base = config.baseURL else { return nil }
+        let pathSegments = linksPathSegments(loginPath: config.loginPath)
+        guard !pathSegments.isEmpty else { return nil }
+        var url = base
+        for segment in pathSegments {
+            url = url.appending(path: segment)
+        }
+        return url.appending(path: id)
+    }
+
+    /// GET mutation-jobs status URL (same derivation as web `api` client).
+    private static func mutationJobPathSegments(loginPath: String, jobId: String) -> [String] {
+        let path = loginPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let mjPath: String
+        if path.isEmpty {
+            mjPath = "api/v1/mutation-jobs/\(jobId)"
+        } else if path.lowercased().hasSuffix("/auth/login") {
+            mjPath = String(path.dropLast("/auth/login".count)) + "/mutation-jobs/\(jobId)"
+        } else {
+            mjPath = path.replacingOccurrences(of: "login", with: "mutation-jobs", options: .caseInsensitive) + "/\(jobId)"
+        }
+        return mjPath.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+    }
+
+    private struct MutationQueuedPayload: Decodable {
+        let queued: Bool?
+        let jobId: String?
+        let job_id: String?
+        let retry_deadline_secs: UInt32?
+        var resolvedJobId: String? { jobId ?? job_id }
+    }
+
+    /// Poll `GET .../mutation-jobs/:id` until completed or failed (matches Vite `client.ts`).
+    private static let mutationJobPollIntervalNs: UInt64 = 350_000_000
+
+    private static func pollMutationJob(
+        config: ServerConfig,
+        jobId: String,
+        retryDeadlineSecs: UInt32
+    ) async -> Result<Data?, LinkServiceError> {
+        guard let base = config.baseURL else {
+            return .failure(.noServerURL)
+        }
+        guard let token = AuthTokenStorage.getToken(), !token.isEmpty else {
+            return .failure(.noToken)
+        }
+        let segments = mutationJobPathSegments(loginPath: config.loginPath, jobId: jobId)
+        guard !segments.isEmpty else {
+            return .failure(.noServerURL)
+        }
+        var statusURL = base
+        for s in segments {
+            statusURL = statusURL.appending(path: s)
+        }
+        let maxWait = TimeInterval(retryDeadlineSecs + 5)
+        let deadline = Date().addingTimeInterval(maxWait)
+
+        var pollIndex = 0
+        while Date() < deadline {
+            if pollIndex > 0 {
+                try? await Task.sleep(nanoseconds: mutationJobPollIntervalNs)
+            }
+            pollIndex += 1
+            var request = URLRequest(url: statusURL)
+            request.httpMethod = "GET"
+            request.timeoutInterval = timeout
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            AppIdentity.apply(to: &request)
+            let data: Data
+            let http: HTTPURLResponse
+            do {
+                let (d, response) = try await URLSession.shared.data(for: request)
+                guard let h = response as? HTTPURLResponse else {
+                    return .failure(.serverError(message: "Invalid response"))
+                }
+                data = d
+                http = h
+            } catch {
+                let description = (error as? URLError)?.localizedDescription ?? error.localizedDescription
+                return .failure(.networkError(description: description))
+            }
+            if http.statusCode == 401 {
+                SessionExpiredNotifier.notify()
+                return .failure(.unauthorized)
+            }
+            guard http.statusCode == 200,
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let st = obj["status"] as? String
+            else {
+                continue
+            }
+            if st == "completed" {
+                let code = (obj["http_status"] as? Int) ?? 200
+                if code >= 400 {
+                    let msg = (obj["message"] as? String) ?? "Request failed"
+                    return .failure(.serverError(message: msg))
+                }
+                if let body = obj["body"] {
+                    if let bodyData = try? JSONSerialization.data(withJSONObject: body) {
+                        return .success(bodyData)
+                    }
+                }
+                return .success(nil)
+            }
+            if st == "failed" {
+                let msg = (obj["message"] as? String) ?? "Change could not be applied"
+                return .failure(.serverError(message: msg))
+            }
+        }
+        return .failure(.serverError(message: "The server took too long to apply your change. Please try again."))
+    }
+
+    /// GET .../links/:id — fetch a single link (e.g. opening a global search result).
+    static func fetchLink(config: ServerConfig, id: String) async -> Result<Link, LinkServiceError> {
+        guard let requestURL = linkURL(config: config, id: id) else {
+            return .failure(.noServerURL)
+        }
+        guard let token = AuthTokenStorage.getToken(), !token.isEmpty else {
+            return .failure(.noToken)
+        }
+        var request = URLRequest(url: requestURL)
+        request.httpMethod = "GET"
+        request.timeoutInterval = timeout
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        AppIdentity.apply(to: &request)
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                return .failure(.serverError(message: "Invalid response"))
+            }
+            switch http.statusCode {
+            case 200:
+                struct SingleLinkResponse: Decodable {
+                    let link: Link
+                }
+                let decoded = try dateDecoder.decode(SingleLinkResponse.self, from: data)
+                return .success(decoded.link)
+            case 401:
+                SessionExpiredNotifier.notify()
+                return .failure(.unauthorized)
+            case 404:
+                return .failure(.serverError(message: "Link not found"))
             case 400...599:
                 let message = (try? JSONDecoder().decode(MessageResponse.self, from: data))?.message
                     ?? "Server error (\(http.statusCode))"
@@ -176,6 +335,25 @@ enum LinkService {
                 struct CreateResponse: Decodable { let id: String }
                 let decoded = try JSONDecoder().decode(CreateResponse.self, from: data)
                 return .success(decoded.id)
+            case 202:
+                guard let queued = try? JSONDecoder().decode(MutationQueuedPayload.self, from: data),
+                      let jid = queued.resolvedJobId, !jid.isEmpty
+                else {
+                    return .failure(.serverError(message: "Link creation was queued but no job id was returned"))
+                }
+                let deadline = queued.retry_deadline_secs ?? 120
+                switch await pollMutationJob(config: config, jobId: jid, retryDeadlineSecs: deadline) {
+                case .failure(let err):
+                    return .failure(err)
+                case .success(let bodyData):
+                    struct CreateResponse: Decodable { let id: String }
+                    guard let bodyData,
+                          let decoded = try? JSONDecoder().decode(CreateResponse.self, from: bodyData)
+                    else {
+                        return .failure(.serverError(message: "Link created but response was incomplete"))
+                    }
+                    return .success(decoded.id)
+                }
             case 401:
                 SessionExpiredNotifier.notify()
                 return .failure(.unauthorized)
@@ -211,21 +389,12 @@ enum LinkService {
         collectionIds: [String]? = nil,
         extractMetadata: Bool? = nil
     ) async -> Result<String, LinkServiceError> {
-        guard let base = config.baseURL else {
+        guard let requestURL = linkURL(config: config, id: id) else {
             return .failure(.noServerURL)
         }
         guard let token = AuthTokenStorage.getToken(), !token.isEmpty else {
             return .failure(.noToken)
         }
-        let pathSegments = linksPathSegments(loginPath: config.loginPath)
-        guard !pathSegments.isEmpty else {
-            return .failure(.noServerURL)
-        }
-        var requestURL = base
-        for segment in pathSegments {
-            requestURL = requestURL.appending(path: segment)
-        }
-        requestURL = requestURL.appending(path: id)
 
         var request = URLRequest(url: requestURL)
         request.httpMethod = "PUT"
@@ -286,9 +455,20 @@ enum LinkService {
             }
             switch http.statusCode {
             case 200:
-                struct UpdateResponse: Decodable { let id: String }
-                let decoded = try JSONDecoder().decode(UpdateResponse.self, from: data)
-                return .success(decoded.id)
+                return .success(id)
+            case 202:
+                guard let queued = try? JSONDecoder().decode(MutationQueuedPayload.self, from: data),
+                      let jid = queued.resolvedJobId, !jid.isEmpty
+                else {
+                    return .failure(.serverError(message: "Link update was queued but no job id was returned"))
+                }
+                let deadline = queued.retry_deadline_secs ?? 120
+                switch await pollMutationJob(config: config, jobId: jid, retryDeadlineSecs: deadline) {
+                case .failure(let err):
+                    return .failure(err)
+                case .success:
+                    return .success(id)
+                }
             case 401:
                 SessionExpiredNotifier.notify()
                 return .failure(.unauthorized)
@@ -310,13 +490,8 @@ enum LinkService {
 
     /// Unarchive a link (PUT with archivedAt: null).
     static func unarchiveLink(config: ServerConfig, id: String) async -> Result<Void, LinkServiceError> {
-        guard let base = config.baseURL else { return .failure(.noServerURL) }
+        guard let requestURL = linkURL(config: config, id: id) else { return .failure(.noServerURL) }
         guard let token = AuthTokenStorage.getToken(), !token.isEmpty else { return .failure(.noToken) }
-        let pathSegments = linksPathSegments(loginPath: config.loginPath)
-        guard !pathSegments.isEmpty else { return .failure(.noServerURL) }
-        var requestURL = base
-        for segment in pathSegments { requestURL = requestURL.appending(path: segment) }
-        requestURL = requestURL.appending(path: id)
         var request = URLRequest(url: requestURL)
         request.httpMethod = "PUT"
         request.timeoutInterval = timeout
@@ -330,7 +505,21 @@ enum LinkService {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else { return .failure(.serverError(message: "Invalid response")) }
             switch http.statusCode {
-            case 200: return .success(())
+            case 200:
+                return .success(())
+            case 202:
+                guard let queued = try? JSONDecoder().decode(MutationQueuedPayload.self, from: data),
+                      let jid = queued.resolvedJobId, !jid.isEmpty
+                else {
+                    return .failure(.serverError(message: "Unarchive was queued but no job id was returned"))
+                }
+                let deadline = queued.retry_deadline_secs ?? 120
+                switch await pollMutationJob(config: config, jobId: jid, retryDeadlineSecs: deadline) {
+                case .failure(let err):
+                    return .failure(err)
+                case .success:
+                    return .success(())
+                }
             case 401: SessionExpiredNotifier.notify(); return .failure(.unauthorized)
             case 403, 400...599:
                 let message = (try? JSONDecoder().decode(MessageResponse.self, from: data))?.message ?? "Server error (\(http.statusCode))"
@@ -345,13 +534,8 @@ enum LinkService {
 
     /// DELETE .../[id] — delete a single link.
     static func deleteLink(config: ServerConfig, id: String) async -> Result<Void, LinkServiceError> {
-        guard let base = config.baseURL else { return .failure(.noServerURL) }
+        guard let requestURL = linkURL(config: config, id: id) else { return .failure(.noServerURL) }
         guard let token = AuthTokenStorage.getToken(), !token.isEmpty else { return .failure(.noToken) }
-        let pathSegments = linksPathSegments(loginPath: config.loginPath)
-        guard !pathSegments.isEmpty else { return .failure(.noServerURL) }
-        var requestURL = base
-        for segment in pathSegments { requestURL = requestURL.appending(path: segment) }
-        requestURL = requestURL.appending(path: id)
 
         var request = URLRequest(url: requestURL)
         request.httpMethod = "DELETE"
@@ -368,6 +552,19 @@ enum LinkService {
             switch http.statusCode {
             case 200, 204:
                 return .success(())
+            case 202:
+                guard let queued = try? JSONDecoder().decode(MutationQueuedPayload.self, from: data),
+                      let jid = queued.resolvedJobId, !jid.isEmpty
+                else {
+                    return .failure(.serverError(message: "Delete was queued but no job id was returned"))
+                }
+                let deadline = queued.retry_deadline_secs ?? 120
+                switch await pollMutationJob(config: config, jobId: jid, retryDeadlineSecs: deadline) {
+                case .failure(let err):
+                    return .failure(err)
+                case .success:
+                    return .success(())
+                }
             case 401:
                 SessionExpiredNotifier.notify()
                 return .failure(.unauthorized)

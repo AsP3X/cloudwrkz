@@ -629,8 +629,13 @@
 "todo.load_error" = "Aufgaben konnten nicht geladen werden";
 
 "todo.loading" = "Aufgaben werden geladen?";
+"todo.creating" = "Wird erstellt…";
 
 "todo.nav_title" = "ToDo";
+
+"mutation.job_queued" = "Auftrag eingereiht";
+
+"mutation.job_completed" = "Auftrag abgeschlossen";
 
 "todo.no_server" = "Kein Server konfiguriert.";
 

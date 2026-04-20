@@ -1,5 +1,6 @@
-use sqlx::migrate::MigrateError;
-use sqlx::postgres::{PgPool, PgPoolOptions};
+use sqlx::migrate::{Migrate, MigrateError};
+use sqlx::postgres::{PgConnection, PgPool, PgPoolOptions};
+use std::collections::HashMap;
 use std::time::Duration;
 
 mod transient;
@@ -50,7 +51,14 @@ fn migration_fatal_message(e: &MigrateError) -> String {
             v
         ),
         MigrateError::VersionMismatch(_) => {
-            "A migration was modified after being applied. Migrations must be immutable.".into()
+            "A migration was modified after it was applied (sqlx checksum mismatch). \
+             Migrations must be immutable once shipped. \
+             For a local dev database, align checksums without re-running SQL: \
+             `cargo run -p cloudwrkz-api -- migrate-repair` (requires DATABASE_URL). \
+             Alternative: install sqlx-cli and run `sqlx migrate repair` from `apps/api`. \
+             If you can drop data, `sqlx database reset` from `apps/api` also clears this. \
+             Production: never edit applied migrations; add a new migration instead."
+                .into()
         }
         _ => String::new(),
     };
@@ -59,6 +67,36 @@ fn migration_fatal_message(e: &MigrateError) -> String {
     } else {
         format!("Failed to run migrations: {e} — {hint}")
     }
+}
+
+/// Update `_sqlx_migrations.checksum` for rows whose bytes differ from the migration sources
+/// embedded in this binary — same effect as `sqlx migrate repair`. Does not re-execute SQL.
+pub async fn repair_migration_checksums(pool: &PgPool) -> Result<usize, MigrateError> {
+    let migrator = sqlx::migrate!("./migrations");
+    let by_version: HashMap<i64, _> = migrator.iter().map(|m| (m.version, m)).collect();
+
+    let mut conn = pool.acquire().await.map_err(MigrateError::Execute)?;
+    let pg: &mut PgConnection = &mut *conn;
+    pg.ensure_migrations_table().await?;
+    let applied = pg.list_applied_migrations().await?;
+
+    let mut repaired = 0usize;
+    for applied_m in applied {
+        let Some(m) = by_version.get(&applied_m.version) else {
+            continue;
+        };
+        if applied_m.checksum.as_ref() == m.checksum.as_ref() {
+            continue;
+        }
+        sqlx::query(r#"UPDATE _sqlx_migrations SET checksum = $1 WHERE version = $2"#)
+            .bind(m.checksum.as_ref())
+            .bind(applied_m.version)
+            .execute(&mut *conn)
+            .await
+            .map_err(MigrateError::Execute)?;
+        repaired += 1;
+    }
+    Ok(repaired)
 }
 
 fn migrate_error_is_transient(e: &MigrateError) -> bool {

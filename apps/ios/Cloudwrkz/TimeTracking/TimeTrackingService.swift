@@ -44,41 +44,6 @@ enum TimeTrackingService {
         return url
     }
 
-    /// Parses timestamps from the Rust API: `chrono::DateTime<Utc>` (RFC3339 with `Z`) and
-    /// `NaiveDateTime` (no timezone, as returned for many `time_entries` columns).
-    private static func decodeApiTimestamp(_ raw: String) throws -> Date {
-        let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if s.isEmpty {
-            throw NSError(domain: "TimeTrackingService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Empty date string"])
-        }
-
-        let iso = ISO8601DateFormatter()
-        iso.timeZone = TimeZone(secondsFromGMT: 0)
-        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = iso.date(from: s) { return d }
-        iso.formatOptions = [.withInternetDateTime]
-        if let d = iso.date(from: s) { return d }
-
-        // Naive timestamps from Postgres/chrono (no `Z` / offset): treat as UTC.
-        let df = DateFormatter()
-        df.locale = Locale(identifier: "en_US_POSIX")
-        df.timeZone = TimeZone(secondsFromGMT: 0)
-        for pattern in [
-            "yyyy-MM-dd'T'HH:mm:ss.SSSSSSSSS",
-            "yyyy-MM-dd'T'HH:mm:ss.SSSSSS",
-            "yyyy-MM-dd'T'HH:mm:ss.SSS",
-            "yyyy-MM-dd'T'HH:mm:ss",
-            "yyyy-MM-dd HH:mm:ss.SSSSSS",
-            "yyyy-MM-dd HH:mm:ss.SSS",
-            "yyyy-MM-dd HH:mm:ss",
-        ] {
-            df.dateFormat = pattern
-            if let d = df.date(from: s) { return d }
-        }
-
-        throw NSError(domain: "TimeTrackingService", code: 2, userInfo: [NSLocalizedDescriptionKey: "Unrecognized date: \(s)"])
-    }
-
     private static var dateDecoder: JSONDecoder {
         let d = JSONDecoder()
         d.keyDecodingStrategy = .convertFromSnakeCase
@@ -86,7 +51,7 @@ enum TimeTrackingService {
             let c = try decoder.singleValueContainer()
             let s = try c.decode(String.self)
             do {
-                return try decodeApiTimestamp(s)
+                return try ApiTimestampParsing.decode(s)
             } catch {
                 throw DecodingError.dataCorruptedError(in: c, debugDescription: "Invalid date: \(s)")
             }
@@ -276,7 +241,7 @@ enum TimeTrackingService {
         AppIdentity.apply(to: &request)
         request.httpBody = try? dateEncoder.encode(input)
 
-        return await executeVoid(request: request)
+        return await executeVoid(request: request, config: config)
     }
 
     /// Unarchive a time entry (PATCH with archivedAt: null).
@@ -292,7 +257,7 @@ enum TimeTrackingService {
         AppIdentity.apply(to: &request)
         let body: [String: Any?] = ["archivedAt": NSNull()]
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        return await executeVoid(request: request)
+        return await executeVoid(request: request, config: config)
     }
 
     // MARK: - DELETE /api/time-tracking/[id]
@@ -308,7 +273,28 @@ enum TimeTrackingService {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         AppIdentity.apply(to: &request)
 
-        return await executeVoid(request: request)
+        return await executeVoid(request: request, config: config)
+    }
+
+    /// POST /api/time-tracking/bulk-delete — one `time_entry_bulk_delete` background job on the Rust API (202 + poll).
+    /// Callers without this route (e.g. legacy Next handlers) get `notFound` and should fall back to per-id deletes.
+    static func bulkDeleteTimeEntries(config: ServerConfig, ids: [String]) async -> Result<Void, TimeTrackingServiceError> {
+        let trimmed = ids.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        guard !trimmed.isEmpty else { return .success(()) }
+        guard let url = buildURL(config: config, extraSegments: ["bulk-delete"]) else { return .failure(.noServerURL) }
+        guard let token = AuthTokenStorage.getToken(), !token.isEmpty else { return .failure(.noToken) }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = timeout
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        AppIdentity.apply(to: &request)
+        struct BulkIdsBody: Encodable { let ids: [String] }
+        request.httpBody = try? JSONEncoder().encode(BulkIdsBody(ids: trimmed))
+
+        return await executeVoid(request: request, config: config)
     }
 
     // MARK: - POST /api/time-tracking/[id]/pause
@@ -400,7 +386,105 @@ enum TimeTrackingService {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         AppIdentity.apply(to: &request)
 
-        return await executeVoid(request: request)
+        return await executeVoid(request: request, config: config)
+    }
+
+    // MARK: - Mutation jobs (Rust API returns 202 + poll GET …/mutation-jobs/{id} for many writes)
+
+    private static func mutationJobPathSegments(loginPath: String, jobId: String) -> [String] {
+        let path = loginPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let mjPath: String
+        if path.isEmpty {
+            mjPath = "api/v1/mutation-jobs/\(jobId)"
+        } else if path.lowercased().hasSuffix("/auth/login") {
+            mjPath = String(path.dropLast("/auth/login".count)) + "/mutation-jobs/\(jobId)"
+        } else {
+            mjPath = path.replacingOccurrences(of: "login", with: "mutation-jobs", options: .caseInsensitive) + "/\(jobId)"
+        }
+        return mjPath.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+    }
+
+    private struct MutationQueuedPayload: Decodable {
+        let queued: Bool?
+        let jobId: String?
+        let job_id: String?
+        let retry_deadline_secs: UInt32?
+        var resolvedJobId: String? { jobId ?? job_id }
+    }
+
+    private static let mutationJobPollIntervalNs: UInt64 = 350_000_000
+
+    private static func pollMutationJob(
+        config: ServerConfig,
+        jobId: String,
+        retryDeadlineSecs: UInt32
+    ) async -> Result<Void, TimeTrackingServiceError> {
+        guard let base = config.baseURL else {
+            return .failure(.noServerURL)
+        }
+        guard let token = AuthTokenStorage.getToken(), !token.isEmpty else {
+            return .failure(.noToken)
+        }
+        let segments = mutationJobPathSegments(loginPath: config.loginPath, jobId: jobId)
+        guard !segments.isEmpty else {
+            return .failure(.noServerURL)
+        }
+        var statusURL = base
+        for s in segments {
+            statusURL = statusURL.appending(path: s)
+        }
+        let maxWait = TimeInterval(retryDeadlineSecs + 5)
+        let deadline = Date().addingTimeInterval(maxWait)
+
+        var pollIndex = 0
+        while Date() < deadline {
+            if pollIndex > 0 {
+                try? await Task.sleep(nanoseconds: mutationJobPollIntervalNs)
+            }
+            pollIndex += 1
+            var request = URLRequest(url: statusURL)
+            request.httpMethod = "GET"
+            request.timeoutInterval = timeout
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            AppIdentity.apply(to: &request)
+            let data: Data
+            let http: HTTPURLResponse
+            do {
+                let (d, response) = try await URLSession.shared.data(for: request)
+                guard let h = response as? HTTPURLResponse else {
+                    return .failure(.serverError(message: "Invalid response"))
+                }
+                data = d
+                http = h
+            } catch {
+                let description = (error as? URLError)?.localizedDescription ?? error.localizedDescription
+                return .failure(.networkError(description: description))
+            }
+            if http.statusCode == 401 {
+                SessionExpiredNotifier.notify()
+                return .failure(.unauthorized)
+            }
+            guard http.statusCode == 200,
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let st = obj["status"] as? String
+            else {
+                continue
+            }
+            if st == "completed" {
+                let code = (obj["http_status"] as? Int) ?? 200
+                if code >= 400 {
+                    let msg = (obj["message"] as? String) ?? "Request failed"
+                    return .failure(.serverError(message: msg))
+                }
+                return .success(())
+            }
+            if st == "failed" {
+                let msg = (obj["message"] as? String) ?? "Change could not be applied"
+                return .failure(.serverError(message: msg))
+            }
+        }
+        return .failure(.serverError(message: "The server took too long to apply your change. Please try again."))
     }
 
     // MARK: - Shared helpers
@@ -416,7 +500,7 @@ enum TimeTrackingService {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         AppIdentity.apply(to: &request)
 
-        return await executeVoid(request: request)
+        return await executeVoid(request: request, config: config)
     }
 
     private static func execute<T>(request: URLRequest, decode: (Data) throws -> T) async -> Result<T, TimeTrackingServiceError> {
@@ -463,7 +547,7 @@ enum TimeTrackingService {
         }
     }
 
-    private static func executeVoid(request: URLRequest) async -> Result<Void, TimeTrackingServiceError> {
+    private static func executeVoid(request: URLRequest, config: ServerConfig) async -> Result<Void, TimeTrackingServiceError> {
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else {
@@ -472,6 +556,14 @@ enum TimeTrackingService {
             switch http.statusCode {
             case 200, 201, 204:
                 return .success(())
+            case 202:
+                guard let queued = try? JSONDecoder().decode(MutationQueuedPayload.self, from: data),
+                      let jid = queued.resolvedJobId, !jid.isEmpty
+                else {
+                    return .failure(.serverError(message: "Change was queued but no job id was returned"))
+                }
+                let deadline = queued.retry_deadline_secs ?? 120
+                return await pollMutationJob(config: config, jobId: jid, retryDeadlineSecs: deadline)
             case 401:
                 SessionExpiredNotifier.notify()
                 return .failure(.unauthorized)

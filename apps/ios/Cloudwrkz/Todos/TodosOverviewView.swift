@@ -12,14 +12,35 @@ enum TodoOverviewViewStyle: String, CaseIterable {
     case list = "list"
 }
 
+private struct OptimisticCreatingTodo: Identifiable {
+    let id: UUID
+    let title: String
+    let description: String?
+}
+
 private enum TodoListRowItem: Identifiable {
     case completedHeader
     case todo(Todo)
+    /// New todo being created; shown at the sort position where the API will place it.
+    case creatingPlaceholder(id: UUID, title: String)
 
     var id: String {
         switch self {
         case .completedHeader: return "completed-header"
         case .todo(let t): return t.id
+        case .creatingPlaceholder(let cid, _): return "creating-list-\(cid.uuidString)"
+        }
+    }
+}
+
+private enum TodoCardRowItem: Identifiable {
+    case creating(id: UUID, title: String, description: String?)
+    case row(Todo)
+
+    var id: String {
+        switch self {
+        case .creating(let cid, _, _): return "creating-card-\(cid.uuidString)"
+        case .row(let t): return t.id
         }
     }
 }
@@ -34,7 +55,12 @@ struct TodosOverviewView: View {
     @AppStorage("todoOverviewViewStyle") private var viewStyleRaw: String = TodoOverviewViewStyle.card.rawValue
     @State private var pendingArchiveTodo: Todo?
     @State private var pendingDeleteTodo: Todo?
+    /// Rows blurred while archive/delete mutation is in flight (202 + poll).
+    @State private var todoIdsPendingArchiveOrDelete: Set<String> = []
     @State private var refreshErrorMessage: String?
+    @State private var mutationTitleCarousel = MutationTitleCarouselState()
+    /// One placeholder per in-flight create (user can open add again before prior requests finish).
+    @State private var optimisticCreatingTodos: [OptimisticCreatingTodo] = []
 
     private var viewStyle: TodoOverviewViewStyle {
         TodoOverviewViewStyle(rawValue: viewStyleRaw) ?? .card
@@ -45,7 +71,6 @@ struct TodosOverviewView: View {
             || filters.priority != .all
             || filters.sort != .newestFirst
             || filters.archive != .unarchived
-            || filters.includeSubtodos
     }
 
     @Environment(\.appState) private var appState
@@ -53,11 +78,11 @@ struct TodosOverviewView: View {
     var body: some View {
         ZStack {
             background
-            if isLoading && todos.isEmpty {
+            if isLoading && todos.isEmpty && optimisticCreatingTodos.isEmpty {
                 loadingView
             } else if let error = errorMessage {
                 errorView(error)
-            } else if todos.isEmpty {
+            } else if todos.isEmpty && optimisticCreatingTodos.isEmpty {
                 emptyView
             } else {
                 Group {
@@ -73,11 +98,10 @@ struct TodosOverviewView: View {
                 }
             }
         }
-        .navigationTitle("todo.nav_title")
-        .navigationBarTitleDisplayMode(.inline)
+        .mutationJobNavigationTitle("todo.nav_title", state: mutationTitleCarousel)
         .toolbarBackground(.hidden, for: .navigationBar)
         .overlay(alignment: .bottomTrailing) {
-            if !isLoading || !todos.isEmpty {
+            if !isLoading || !todos.isEmpty || !optimisticCreatingTodos.isEmpty {
                 addTodoButton
             }
         }
@@ -119,7 +143,21 @@ struct TodosOverviewView: View {
             AddTodoView(
                 parentTodoId: nil,
                 parentTodoTitle: nil,
-                onSaved: { Task { await loadTodos() } }
+                mutationHooks: todoMutationHooks(),
+                onCreateStarted: { correlationId, title, description in
+                    optimisticCreatingTodos.append(
+                        OptimisticCreatingTodo(id: correlationId, title: title, description: description)
+                    )
+                },
+                onSaved: { newId, correlationId in
+                    Task { await handleTodoCreated(newTodoId: newId, completedCorrelationId: correlationId) }
+                },
+                onCreateFailed: { msg, correlationId in
+                    Task { @MainActor in
+                        optimisticCreatingTodos.removeAll { $0.id == correlationId }
+                        refreshErrorMessage = msg
+                    }
+                }
             )
         }
         .onAppear { Task { await loadTodos() } }
@@ -214,35 +252,43 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
     private var cardView: some View {
         ScrollView {
             LazyVStack(spacing: 14) {
-                ForEach(todos) { todo in
-                    NavigationLink(value: todo) {
-                        TodoRowView(todo: todo)
-                    }
-                    .buttonStyle(.plain)
-                    .contextMenu {
-                        if todo.status == "COMPLETED" {
-                            Button {
-                                Task { await uncompleteTodo(todo.id) }
-                            } label: {
-                                Label(String(localized: "todo.context_uncomplete"), systemImage: "arrow.uturn.backward.circle")
-                            }
-                        } else {
-                            Button {
-                                Task { await completeTodo(todo.id) }
-                            } label: {
-                                Label(String(localized: "todo.context_complete"), systemImage: "checkmark.circle")
-                            }
+                ForEach(cardRowItems) { item in
+                    switch item {
+                    case .creating(_, let title, let description):
+                        TodoCreatingPlaceholderCard(title: title, description: description)
+                    case .row(let todo):
+                        NavigationLink(value: todo) {
+                            TodoRowView(
+                                todo: todo,
+                                isMutationPending: todoIdsPendingArchiveOrDelete.contains(todo.id)
+                            )
                         }
-                        Divider()
-                        Button {
-                            pendingArchiveTodo = todo
-                        } label: {
-                            Label(String(localized: "todo.archive"), systemImage: "archivebox")
-                        }
-                        Button(role: .destructive) {
-                            pendingDeleteTodo = todo
-                        } label: {
-                            Label(String(localized: "todo.delete"), systemImage: "trash")
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            if todo.status == "COMPLETED" {
+                                Button {
+                                    Task { await uncompleteTodo(todo.id) }
+                                } label: {
+                                    Label(String(localized: "todo.context_uncomplete"), systemImage: "arrow.uturn.backward.circle")
+                                }
+                            } else {
+                                Button {
+                                    Task { await completeTodo(todo.id) }
+                                } label: {
+                                    Label(String(localized: "todo.context_complete"), systemImage: "checkmark.circle")
+                                }
+                            }
+                            Divider()
+                            Button {
+                                pendingArchiveTodo = todo
+                            } label: {
+                                Label(String(localized: "todo.archive"), systemImage: "archivebox")
+                            }
+                            Button(role: .destructive) {
+                                pendingDeleteTodo = todo
+                            } label: {
+                                Label(String(localized: "todo.delete"), systemImage: "trash")
+                            }
                         }
                     }
                 }
@@ -285,17 +331,67 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
         todos.filter { $0.status == "COMPLETED" }
     }
 
+    /// Main overview only lists root tasks. Subtodos are shown on the parent’s detail screen only.
+    private func applyRootOnlyFilter(_ list: [Todo]) -> [Todo] {
+        list.filter { $0.parentTodoId == nil }
+    }
+
+    /// Query params for this screen: always exclude subtodos from the flat list (matches product rule).
+    private func filtersForMainList(_ base: TodoFilters) -> TodoFilters {
+        var f = base
+        f.includeSubtodos = false
+        return f
+    }
+
+    /// Where to show the optimistic row so it matches GET `/todos` ordering.
+    ///
+    /// The API currently ignores the `sort` query param and uses `ORDER BY "order" ASC, created_at ASC`.
+    /// New todos are inserted with `order = 0` and the latest `created_at`, so they appear **after**
+    /// existing peers — typically at the **end** of the returned list, not the top (even when the UI
+    /// filter says “newest first”).
+    private func insertionIndexForNewTodo() -> Int {
+        todos.count
+    }
+
+    /// Same as ``insertionIndexForNewTodo()`` but within the **active** slice used by list view.
+    private func insertionIndexForNewTodoAmongActives() -> Int {
+        activeTodos.count
+    }
+
+    private var cardRowItems: [TodoCardRowItem] {
+        var rows = todos.map { TodoCardRowItem.row($0) }
+        let baseIdx = insertionIndexForNewTodo()
+        for (i, draft) in optimisticCreatingTodos.enumerated() {
+            let idx = min(max(0, baseIdx + i), rows.count)
+            rows.insert(
+                .creating(id: draft.id, title: draft.title, description: draft.description),
+                at: idx
+            )
+        }
+        return rows
+    }
+
     private var todoListRowItems: [TodoListRowItem] {
-        let active: [TodoListRowItem] = activeTodos.map { .todo($0) }
+        var activeItems: [TodoListRowItem] = activeTodos.map { .todo($0) }
+        let baseIdx = insertionIndexForNewTodoAmongActives()
+        for (i, draft) in optimisticCreatingTodos.enumerated() {
+            let idx = min(max(0, baseIdx + i), activeItems.count)
+            activeItems.insert(.creatingPlaceholder(id: draft.id, title: draft.title), at: idx)
+        }
         let header: [TodoListRowItem] = completedTodos.isEmpty ? [] : [.completedHeader]
         let completed: [TodoListRowItem] = completedTodos.map { .todo($0) }
-        return active + header + completed
+        return activeItems + header + completed
     }
 
     private var listView: some View {
         List {
             ForEach(todoListRowItems) { item in
                 switch item {
+                case .creatingPlaceholder(_, let title):
+                    TodoCreatingListPlaceholder(title: title)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
                 case .completedHeader:
                     Text("todo.completed_header")
                         .font(.system(size: 11, weight: .bold))
@@ -387,7 +483,8 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
     }
 
     private func overviewActiveRow(_ todo: Todo) -> some View {
-        HStack(spacing: 14) {
+        let pending = todoIdsPendingArchiveOrDelete.contains(todo.id)
+        return HStack(spacing: 14) {
             Button {
                 Task { await completeTodo(todo.id) }
             } label: {
@@ -397,6 +494,7 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
                     .frame(width: 28, height: 28)
             }
             .buttonStyle(.plain)
+            .disabled(pending)
             VStack(alignment: .leading, spacing: 2) {
                 Text(todo.title)
                     .font(.system(size: 15, weight: .semibold))
@@ -411,10 +509,14 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
+        .blur(radius: pending ? 4 : 0)
+        .allowsHitTesting(!pending)
+        .animation(.easeInOut(duration: 0.22), value: pending)
     }
 
     private func overviewCompletedRow(_ todo: Todo) -> some View {
-        HStack(spacing: 14) {
+        let pending = todoIdsPendingArchiveOrDelete.contains(todo.id)
+        return HStack(spacing: 14) {
             Button {
                 Task { await uncompleteTodo(todo.id) }
             } label: {
@@ -424,6 +526,7 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
                     .frame(width: 28, height: 28)
             }
             .buttonStyle(.plain)
+            .disabled(pending)
             VStack(alignment: .leading, spacing: 2) {
                 Text(todo.title)
                     .font(.system(size: 15, weight: .semibold))
@@ -439,6 +542,9 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
+        .blur(radius: pending ? 4 : 0)
+        .allowsHitTesting(!pending)
+        .animation(.easeInOut(duration: 0.22), value: pending)
     }
 
     private func overviewTodoSubtitle(_ todo: Todo) -> String {
@@ -446,21 +552,83 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
         return "\(status) · \(todo.priority)"
     }
 
+    private func todoMutationHooks() -> MutationJobTitleHooks {
+        MutationJobTitleHooks(
+            onQueued: {
+                await mutationTitleCarousel.playCycle(
+                    message: String(localized: "mutation.job_queued"),
+                    bannerKind: .queued
+                )
+            },
+            onCompleted: {
+                await mutationTitleCarousel.playCycle(
+                    message: String(localized: "mutation.job_completed"),
+                    bannerKind: .completed
+                )
+            }
+        )
+    }
+
     private func completeTodo(_ id: String) async {
-        let result = await TodoService.updateTodo(config: appState.config, id: id, status: "COMPLETED")
+        let result = await TodoService.updateTodo(
+            config: appState.config,
+            id: id,
+            status: "COMPLETED",
+            mutationHooks: todoMutationHooks()
+        )
         guard case .success = result else { return }
         await loadTodos()
     }
 
     private func uncompleteTodo(_ id: String) async {
-        let result = await TodoService.updateTodo(config: appState.config, id: id, status: "IN_PROGRESS")
+        let result = await TodoService.updateTodo(
+            config: appState.config,
+            id: id,
+            status: "IN_PROGRESS",
+            mutationHooks: todoMutationHooks()
+        )
         guard case .success = result else { return }
         await loadTodos()
     }
 
     private func deleteTodo(_ id: String) async {
-        _ = await TodoService.deleteTodo(config: appState.config, id: id)
+        await MainActor.run { todoIdsPendingArchiveOrDelete.insert(id) }
+        _ = await TodoService.deleteTodo(config: appState.config, id: id, mutationHooks: todoMutationHooks())
         await loadTodos(isRefresh: true)
+        await MainActor.run { todoIdsPendingArchiveOrDelete.remove(id) }
+    }
+
+    /// Refresh after create: fetch single todo and full list **in parallel** so the new item appears as soon as either response wins (same pattern as `loadTodos` for errors).
+    private func handleTodoCreated(newTodoId: String, completedCorrelationId: UUID) async {
+        let hadContent = await MainActor.run { !todos.isEmpty || !optimisticCreatingTodos.isEmpty }
+        async let fetched = TodoService.fetchTodo(config: appState.config, id: newTodoId)
+        async let listResult = TodoService.fetchTodos(config: appState.config, filters: filtersForMainList(filters))
+        let (todoResult, listRes) = await (fetched, listResult)
+        await MainActor.run {
+            optimisticCreatingTodos.removeAll { $0.id == completedCorrelationId }
+            switch listRes {
+            case .success(let list):
+                todos = applyRootOnlyFilter(list)
+                errorMessage = nil
+                refreshErrorMessage = nil
+            case .failure(let err):
+                let errText = message(for: err)
+                if case .success(let t) = todoResult,
+                   t.parentTodoId == nil,
+                   !todos.contains(where: { $0.id == t.id })
+                {
+                    let idx = min(insertionIndexForNewTodo(), todos.count)
+                    todos.insert(t, at: idx)
+                }
+                if hadContent || !todos.isEmpty {
+                    refreshErrorMessage = errText
+                } else {
+                    todos = []
+                    errorMessage = errText
+                }
+            }
+            isLoading = false
+        }
     }
 
     /// Load todos; when isRefresh and we already have todos, failure shows a banner instead of full-screen error.
@@ -470,11 +638,11 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
             errorMessage = nil
             isLoading = true
         }
-        let result = await TodoService.fetchTodos(config: appState.config, filters: filters)
+        let result = await TodoService.fetchTodos(config: appState.config, filters: filtersForMainList(filters))
         await MainActor.run {
             switch result {
             case .success(let list):
-                todos = list
+                todos = applyRootOnlyFilter(list)
                 errorMessage = nil
                 refreshErrorMessage = nil
             case .failure(let err):
@@ -501,13 +669,29 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
     }
 
     private func performArchive(_ todo: Todo) async {
-        _ = await TodoService.archiveTodo(config: appState.config, id: todo.id)
-        await loadTodos(isRefresh: true)
+        let id = todo.id
+        await MainActor.run { todoIdsPendingArchiveOrDelete.insert(id) }
+        let result = await TodoService.archiveTodo(
+            config: appState.config,
+            id: id,
+            mutationHooks: todoMutationHooks()
+        )
+        await MainActor.run {
+            switch result {
+            case .success:
+                refreshErrorMessage = nil
+            case .failure(let err):
+                refreshErrorMessage = message(for: err)
+            }
+        }
+        if case .success = result {
+            await loadTodos(isRefresh: true)
+        }
+        await MainActor.run { todoIdsPendingArchiveOrDelete.remove(id) }
     }
 
     private func performDelete(_ todo: Todo) async {
-        _ = await TodoService.deleteTodo(config: appState.config, id: todo.id)
-        await loadTodos(isRefresh: true)
+        await deleteTodo(todo.id)
     }
 
     @ViewBuilder
@@ -699,10 +883,119 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
     }
 }
 
+// MARK: - Creating placeholder (matches `TodoRowView` / list row geometry for in-place swap)
+
+/// Mirrors `TodoRowView`: same pills/title/footer layout; spinner in the **top-trailing** corner of the card (inside padding).
+private struct TodoCreatingPlaceholderCard: View {
+    let title: String
+    let description: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Text("NOT_STARTED".replacingOccurrences(of: "_", with: " "))
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(CloudwrkzColors.neutral400)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(CloudwrkzColors.neutral400.opacity(0.2), in: Capsule())
+                        Text("MEDIUM")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(CloudwrkzColors.warning400)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(CloudwrkzColors.warning400.opacity(0.2), in: Capsule())
+                    }
+                }
+                Spacer(minLength: 8)
+                CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
+                    .scaleEffect(0.72)
+                    .frame(width: 22, height: 22)
+                    .accessibilityLabel(String(localized: "todo.creating"))
+            }
+
+            Text(title)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(CloudwrkzColors.neutral100)
+                .lineLimit(2)
+
+            if let description, !description.isEmpty {
+                Text(description)
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(CloudwrkzColors.neutral400)
+                    .lineLimit(2)
+            }
+
+            HStack(spacing: 16) {
+                creatingCardLabelValue(String(localized: "todo.assigned"), String(localized: "todo.unassigned"))
+                creatingCardLabelValue(String(localized: "todo.created"), "—")
+            }
+            .font(.system(size: 12, weight: .regular))
+            .foregroundStyle(CloudwrkzColors.neutral400)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .glassCard(cornerRadius: 16)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text(title))
+    }
+
+    private func creatingCardLabelValue(_ label: String, _ value: String) -> some View {
+        HStack(spacing: 4) {
+            Text("\(label):")
+                .foregroundStyle(CloudwrkzColors.neutral400)
+            Text(value)
+                .foregroundStyle(CloudwrkzColors.neutral100)
+        }
+    }
+}
+
+/// Mirrors `overviewActiveRow` with the same subtitle shape as `overviewTodoSubtitle` for a typical new todo (`NOT_STARTED`, `MEDIUM`). Spinner top-trailing inside the row.
+private struct TodoCreatingListPlaceholder: View {
+    let title: String
+
+    private var subtitleLine: String {
+        let status = "NOT_STARTED".replacingOccurrences(of: "_", with: " ").lowercased()
+        return "\(status) · MEDIUM"
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: "circle")
+                .font(.system(size: 20))
+                .foregroundStyle(CloudwrkzColors.neutral500)
+                .frame(width: 28, height: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(CloudwrkzColors.neutral100)
+                    .lineLimit(2)
+                Text(subtitleLine)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(CloudwrkzColors.neutral500)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
+                .scaleEffect(0.72)
+                .frame(width: 22, height: 22)
+                .accessibilityLabel(String(localized: "todo.creating"))
+        }
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text(title))
+    }
+}
+
 // MARK: - Todo row (glass card, status/priority badges)
 
 private struct TodoRowView: View {
     let todo: Todo
+    var isMutationPending: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -766,6 +1059,9 @@ private struct TodoRowView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .glassCard(cornerRadius: 16)
+        .blur(radius: isMutationPending ? 4 : 0)
+        .allowsHitTesting(!isMutationPending)
+        .animation(.easeInOut(duration: 0.22), value: isMutationPending)
     }
 
     private func statusPill(_ status: String) -> some View {

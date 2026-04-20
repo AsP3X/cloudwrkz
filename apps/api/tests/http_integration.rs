@@ -15,13 +15,14 @@ use cloudwrkz_api::AppConfig;
 use cloudwrkz_api::AppState;
 use cloudwrkz_api::auth::password;
 use cloudwrkz_api::build_http_app;
+use cloudwrkz_api::mutation_broker_for_config;
+use cloudwrkz_api::spawn_job_queue_supervisor;
 
 fn test_app_state(pool: PgPool) -> AppState {
-    AppState::new(
-        pool,
-        test_config(std::env::var("DATABASE_URL").expect("DATABASE_URL set by sqlx::test")),
-        Instant::now(),
-    )
+    let cfg = test_config(std::env::var("DATABASE_URL").expect("DATABASE_URL set by sqlx::test"));
+    let mb = mutation_broker_for_config(&cfg);
+    let sup = spawn_job_queue_supervisor(pool.clone(), cfg.clone(), mb.clone(), 2, 2);
+    AppState::new(pool, cfg, Instant::now(), mb, sup)
 }
 
 fn test_config(database_url: String) -> AppConfig {
@@ -47,9 +48,11 @@ fn test_config(database_url: String) -> AppConfig {
         idempotency_ttl_secs: 86_400,
         github_api_token: None,
         github_anonymous_max_requests_per_hour: 60,
+        job_queue_worker_count: 2,
         job_queue_github_max_concurrent: 1,
         job_queue_github_min_start_interval_secs: None,
         public_web_app_url: None,
+        http_request_log_enabled: false,
     }
 }
 
@@ -72,6 +75,17 @@ fn req_get_bearer(uri: &str, token: &str) -> Request<Body> {
         .unwrap()
 }
 
+fn req_patch_ticket_json(token: &str, ticket_id: &str, json_body: &str) -> Request<Body> {
+    Request::builder()
+        .method("PATCH")
+        .uri(format!("/api/v1/tickets/{ticket_id}"))
+        .header("x-forwarded-for", "203.0.113.42")
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .body(Body::from(json_body.to_string()))
+        .unwrap()
+}
+
 fn req_post_tickets_json(
     token: &str,
     json_body: &str,
@@ -87,6 +101,50 @@ fn req_post_tickets_json(
         b = b.header("idempotency-key", k);
     }
     b.body(Body::from(json_body.to_string())).unwrap()
+}
+
+fn req_post_todos_json(token: &str, json_body: &str) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri("/api/v1/todos")
+        .header("x-forwarded-for", "203.0.113.42")
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .body(Body::from(json_body.to_string()))
+        .unwrap()
+}
+
+fn req_patch_todo_json(token: &str, todo_id: &str, json_body: &str) -> Request<Body> {
+    Request::builder()
+        .method("PATCH")
+        .uri(format!("/api/v1/todos/{todo_id}"))
+        .header("x-forwarded-for", "203.0.113.42")
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .body(Body::from(json_body.to_string()))
+        .unwrap()
+}
+
+fn req_post_time_tracking_json(token: &str, json_body: &str) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri("/api/v1/time-tracking")
+        .header("x-forwarded-for", "203.0.113.42")
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .body(Body::from(json_body.to_string()))
+        .unwrap()
+}
+
+fn req_patch_time_entry_json(token: &str, entry_id: &str, json_body: &str) -> Request<Body> {
+    Request::builder()
+        .method("PATCH")
+        .uri(format!("/api/v1/time-tracking/{entry_id}"))
+        .header("x-forwarded-for", "203.0.113.42")
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .body(Body::from(json_body.to_string()))
+        .unwrap()
 }
 
 async fn seed_user_with_session(
@@ -225,9 +283,35 @@ async fn ticket_create_idempotent_returns_same_ticket(pool: PgPool) {
         .oneshot(req_post_tickets_json(&token, body, Some("ticket-idem-1")))
         .await
         .expect("oneshot");
-    assert_eq!(res1.status(), StatusCode::CREATED);
+    assert_eq!(res1.status(), StatusCode::ACCEPTED);
     let b1 = res1.into_body().collect().await.unwrap().to_bytes();
-    let v1: serde_json::Value = serde_json::from_slice(&b1).expect("json");
+    let q1: serde_json::Value = serde_json::from_slice(&b1).expect("json");
+    assert_eq!(q1["job_type"], "ticket_create");
+    let job1 = q1["job_id"].as_str().expect("job_id");
+    let uri = format!("/api/v1/mutation-jobs/{job1}");
+    let mut v1: Option<serde_json::Value> = None;
+    for _ in 0..100 {
+        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+        let res = app
+            .clone()
+            .oneshot(req_get_bearer(&uri, &token))
+            .await
+            .expect("poll");
+        if res.status() != StatusCode::OK {
+            continue;
+        }
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        let v: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        match v["status"].as_str() {
+            Some("completed") => {
+                v1 = Some(v["body"].clone());
+                break;
+            }
+            Some("failed") => panic!("mutation job failed: {v:?}"),
+            _ => {}
+        }
+    }
+    let v1 = v1.expect("mutation job did not complete in time");
 
     let res2 = app
         .oneshot(req_post_tickets_json(&token, body, Some("ticket-idem-1")))
@@ -252,27 +336,305 @@ async fn concurrent_ticket_creates_get_distinct_numbers(pool: PgPool) {
     let h1 = tokio::spawn(async move {
         let req = req_post_tickets_json(&t1, r#"{"title":"Concurrent A"}"#, None);
         let res = (*app1).clone().oneshot(req).await.expect("oneshot");
-        let st = res.status();
+        assert_eq!(res.status(), StatusCode::ACCEPTED);
         let b = res.into_body().collect().await.unwrap().to_bytes();
-        (st, b)
+        let q: serde_json::Value = serde_json::from_slice(&b).expect("json");
+        assert_eq!(q["job_type"], "ticket_create");
+        let job_id = q["job_id"].as_str().expect("job_id").to_string();
+        let uri = format!("/api/v1/mutation-jobs/{job_id}");
+        let mut out: Option<serde_json::Value> = None;
+        for _ in 0..100 {
+            tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+            let res = (*app1)
+                .clone()
+                .oneshot(req_get_bearer(&uri, &t1))
+                .await
+                .expect("poll");
+            if res.status() != StatusCode::OK {
+                continue;
+            }
+            let body = res.into_body().collect().await.unwrap().to_bytes();
+            let v: serde_json::Value = serde_json::from_slice(&body).expect("json");
+            match v["status"].as_str() {
+                Some("completed") => {
+                    out = Some(v["body"].clone());
+                    break;
+                }
+                Some("failed") => panic!("mutation job failed: {v:?}"),
+                _ => {}
+            }
+        }
+        out.expect("mutation job did not complete in time")
     });
     let t2 = token.clone();
     let app2 = app.clone();
     let h2 = tokio::spawn(async move {
         let req = req_post_tickets_json(&t2, r#"{"title":"Concurrent B"}"#, None);
         let res = (*app2).clone().oneshot(req).await.expect("oneshot");
-        let st = res.status();
+        assert_eq!(res.status(), StatusCode::ACCEPTED);
         let b = res.into_body().collect().await.unwrap().to_bytes();
-        (st, b)
+        let q: serde_json::Value = serde_json::from_slice(&b).expect("json");
+        assert_eq!(q["job_type"], "ticket_create");
+        let job_id = q["job_id"].as_str().expect("job_id").to_string();
+        let uri = format!("/api/v1/mutation-jobs/{job_id}");
+        let mut out: Option<serde_json::Value> = None;
+        for _ in 0..100 {
+            tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+            let res = (*app2)
+                .clone()
+                .oneshot(req_get_bearer(&uri, &t2))
+                .await
+                .expect("poll");
+            if res.status() != StatusCode::OK {
+                continue;
+            }
+            let body = res.into_body().collect().await.unwrap().to_bytes();
+            let v: serde_json::Value = serde_json::from_slice(&body).expect("json");
+            match v["status"].as_str() {
+                Some("completed") => {
+                    out = Some(v["body"].clone());
+                    break;
+                }
+                Some("failed") => panic!("mutation job failed: {v:?}"),
+                _ => {}
+            }
+        }
+        out.expect("mutation job did not complete in time")
     });
     let (r1, r2) = tokio::join!(h1, h2);
-    let (st1, b1) = r1.expect("task1");
-    let (st2, b2) = r2.expect("task2");
-    assert_eq!(st1, StatusCode::CREATED);
-    assert_eq!(st2, StatusCode::CREATED);
-    let v1: serde_json::Value = serde_json::from_slice(&b1).expect("json");
-    let v2: serde_json::Value = serde_json::from_slice(&b2).expect("json");
+    let v1 = r1.expect("task1");
+    let v2 = r2.expect("task2");
     assert_ne!(v1["ticket_number"], v2["ticket_number"]);
+}
+
+/// Regression: ticket create must insert `background_jobs` so the admin Jobs page and workers see it.
+#[sqlx::test(migrations = "./migrations")]
+async fn post_ticket_inserts_ticket_create_background_job(pool: PgPool) {
+    let token = seed_user_with_session(&pool, "ticket-bg-job@example.com", "USER")
+        .await
+        .expect("seed");
+    let app = build_http_app(test_app_state(pool.clone()));
+    let res = app
+        .oneshot(req_post_tickets_json(
+            &token,
+            r#"{"title":"Background job row check"}"#,
+            None,
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::ACCEPTED);
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    let q: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    assert_eq!(q["job_type"], "ticket_create");
+    let job_id = q["job_id"].as_str().expect("job_id");
+
+    let jt: String = sqlx::query_scalar("SELECT job_type FROM background_jobs WHERE id = $1")
+        .bind(job_id)
+        .fetch_one(&pool)
+        .await
+        .expect("background_jobs row");
+    assert_eq!(jt, "ticket_create");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn patch_ticket_enqueues_ticket_update_background_job(pool: PgPool) {
+    let token = seed_user_with_session(&pool, "ticket-patch-bg@example.com", "USER")
+        .await
+        .expect("seed");
+    let app = build_http_app(test_app_state(pool.clone()));
+
+    let res = app
+        .clone()
+        .oneshot(req_post_tickets_json(
+            &token,
+            r#"{"title":"Ticket for patch job row"}"#,
+            None,
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::ACCEPTED);
+    let b = res.into_body().collect().await.unwrap().to_bytes();
+    let q: serde_json::Value = serde_json::from_slice(&b).expect("json");
+    let create_job = q["job_id"].as_str().expect("job_id").to_string();
+    let uri = format!("/api/v1/mutation-jobs/{create_job}");
+    let mut ticket_id: Option<String> = None;
+    for _ in 0..100 {
+        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+        let res = app
+            .clone()
+            .oneshot(req_get_bearer(&uri, &token))
+            .await
+            .expect("poll");
+        if res.status() != StatusCode::OK {
+            continue;
+        }
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        let v: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        match v["status"].as_str() {
+            Some("completed") => {
+                ticket_id = v["body"]["id"].as_str().map(String::from);
+                break;
+            }
+            Some("failed") => panic!("mutation job failed: {v:?}"),
+            _ => {}
+        }
+    }
+    let ticket_id = ticket_id.expect("create job did not complete in time");
+
+    let res = app
+        .oneshot(req_patch_ticket_json(
+            &token,
+            &ticket_id,
+            r#"{"title":"Updated via background job"}"#,
+        ))
+        .await
+        .expect("patch");
+    assert_eq!(res.status(), StatusCode::ACCEPTED);
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    let q: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    assert_eq!(q["job_type"], "ticket_update");
+    let job_id = q["job_id"].as_str().expect("job_id");
+
+    let jt: String = sqlx::query_scalar("SELECT job_type FROM background_jobs WHERE id = $1")
+        .bind(job_id)
+        .fetch_one(&pool)
+        .await
+        .expect("background_jobs row");
+    assert_eq!(jt, "ticket_update");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn patch_todo_enqueues_todo_update_background_job(pool: PgPool) {
+    let token = seed_user_with_session(&pool, "todo-patch-bg@example.com", "USER")
+        .await
+        .expect("seed");
+    let app = build_http_app(test_app_state(pool.clone()));
+
+    let res = app
+        .clone()
+        .oneshot(req_post_todos_json(
+            &token,
+            r#"{"title":"Task for patch job row"}"#,
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::ACCEPTED);
+    let b = res.into_body().collect().await.unwrap().to_bytes();
+    let q: serde_json::Value = serde_json::from_slice(&b).expect("json");
+    assert_eq!(q["job_type"], "todo_create");
+    let create_job = q["job_id"].as_str().expect("job_id").to_string();
+    let uri = format!("/api/v1/mutation-jobs/{create_job}");
+    let mut todo_id: Option<String> = None;
+    for _ in 0..100 {
+        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+        let res = app
+            .clone()
+            .oneshot(req_get_bearer(&uri, &token))
+            .await
+            .expect("poll");
+        if res.status() != StatusCode::OK {
+            continue;
+        }
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        let v: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        match v["status"].as_str() {
+            Some("completed") => {
+                todo_id = v["body"]["id"].as_str().map(String::from);
+                break;
+            }
+            Some("failed") => panic!("mutation job failed: {v:?}"),
+            _ => {}
+        }
+    }
+    let todo_id = todo_id.expect("create job did not complete in time");
+
+    let res = app
+        .oneshot(req_patch_todo_json(
+            &token,
+            &todo_id,
+            r#"{"title":"Updated todo via background job"}"#,
+        ))
+        .await
+        .expect("patch");
+    assert_eq!(res.status(), StatusCode::ACCEPTED);
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    let q: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    assert_eq!(q["job_type"], "todo_update");
+    let job_id = q["job_id"].as_str().expect("job_id");
+
+    let jt: String = sqlx::query_scalar("SELECT job_type FROM background_jobs WHERE id = $1")
+        .bind(job_id)
+        .fetch_one(&pool)
+        .await
+        .expect("background_jobs row");
+    assert_eq!(jt, "todo_update");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn patch_time_entry_enqueues_time_entry_update_background_job(pool: PgPool) {
+    let token = seed_user_with_session(&pool, "time-patch-bg@example.com", "USER")
+        .await
+        .expect("seed");
+    let app = build_http_app(test_app_state(pool.clone()));
+
+    let res = app
+        .clone()
+        .oneshot(req_post_time_tracking_json(
+            &token,
+            r#"{"name":"Timer for patch job row"}"#,
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::ACCEPTED);
+    let b = res.into_body().collect().await.unwrap().to_bytes();
+    let q: serde_json::Value = serde_json::from_slice(&b).expect("json");
+    assert_eq!(q["job_type"], "time_entry_create_timer");
+    let create_job = q["job_id"].as_str().expect("job_id").to_string();
+    let uri = format!("/api/v1/mutation-jobs/{create_job}");
+    let mut entry_id: Option<String> = None;
+    for _ in 0..100 {
+        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+        let res = app
+            .clone()
+            .oneshot(req_get_bearer(&uri, &token))
+            .await
+            .expect("poll");
+        if res.status() != StatusCode::OK {
+            continue;
+        }
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        let v: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        match v["status"].as_str() {
+            Some("completed") => {
+                entry_id = v["body"]["id"].as_str().map(String::from);
+                break;
+            }
+            Some("failed") => panic!("mutation job failed: {v:?}"),
+            _ => {}
+        }
+    }
+    let entry_id = entry_id.expect("create job did not complete in time");
+
+    let res = app
+        .oneshot(req_patch_time_entry_json(
+            &token,
+            &entry_id,
+            r#"{"name":"Updated timer via background job"}"#,
+        ))
+        .await
+        .expect("patch");
+    assert_eq!(res.status(), StatusCode::ACCEPTED);
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    let q: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+    assert_eq!(q["job_type"], "time_entry_update");
+    let job_id = q["job_id"].as_str().expect("job_id");
+
+    let jt: String = sqlx::query_scalar("SELECT job_type FROM background_jobs WHERE id = $1")
+        .bind(job_id)
+        .fetch_one(&pool)
+        .await
+        .expect("background_jobs row");
+    assert_eq!(jt, "time_entry_update");
 }
 
 #[sqlx::test(migrations = "./migrations")]

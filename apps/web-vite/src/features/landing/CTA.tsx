@@ -1,60 +1,65 @@
 import { Button } from "@/components/ui/Button";
+import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
-import { ScrollAnimation } from "./ScrollAnimation";
+import { cn } from "@/lib/utils/cn";
 
-export function CTA() {
+type CTAProps = {
+  className?: string;
+};
+
+/**
+ * Closing band under `#main-content`. Content is direct children of `section`
+ * (only the glow layer is an extra non-semantic wrapper for positioning).
+ */
+export function CTA({ className }: CTAProps) {
   return (
     <section
-      className="py-20 bg-gradient-to-br from-primary-600 to-secondary-600 relative overflow-hidden"
+      className={cn(
+        "relative isolate w-full overflow-hidden border-t border-white/10 bg-gradient-to-b from-neutral-950 via-[#0a0f1a] to-neutral-950 py-24 dark:border-white/10 sm:py-28",
+        "flex flex-col items-center px-4 text-center sm:px-6 lg:px-8",
+        className,
+      )}
       aria-label="Call to action section"
     >
-      <div className="absolute inset-0 opacity-10" aria-hidden="true">
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-          }}
-        />
+      <div className="pointer-events-none absolute inset-0" aria-hidden>
+        <div className="absolute -left-24 top-0 h-80 w-80 rounded-full bg-primary-500/18 blur-3xl" />
+        <div className="absolute -right-28 bottom-0 h-96 w-96 rounded-full bg-secondary-500/14 blur-3xl" />
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent" />
       </div>
 
-      <div className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8">
-        <ScrollAnimation direction="fade" delay={200}>
-          <div className="max-w-4xl mx-auto text-center">
-            <h2 className="text-4xl sm:text-5xl font-bold text-white mb-6">
-              Ready to Get Started?
-            </h2>
-            <p className="text-xl text-white/90 mb-10 max-w-2xl mx-auto">
-              Join thousands of developers and teams who are already building
-              amazing things with our platform. Start your free trial today.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Button
-                size="lg"
-                variant="secondary"
-                className="bg-white text-primary-600 dark:bg-white dark:text-primary-600 hover:bg-neutral-100 dark:hover:bg-neutral-100"
-                asChild
-                href={ROUTES.REGISTER}
-                aria-label="Start your free trial - no credit card required"
-              >
-                Start Free Trial
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="border-white text-white hover:bg-white/10"
-                asChild
-                href={ROUTES.CONTACT}
-                aria-label="Contact our sales team"
-              >
-                Contact Sales
-              </Button>
-            </div>
-            <p className="mt-8 text-white/80 text-sm" role="note">
-              No credit card required • 14-day free trial • Cancel anytime
-            </p>
-          </div>
-        </ScrollAnimation>
+      <p className="relative z-10 text-xs font-semibold uppercase tracking-[0.2em] text-primary-300/95">Next step</p>
+      <h2 className="relative z-10 mt-4 max-w-3xl text-4xl font-bold tracking-tight text-white sm:text-5xl">
+        Ready to get started?
+      </h2>
+      <p className="relative z-10 mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-neutral-300">
+        Spin up a trial or talk to us about rollout, security review, and how teams adopt{" "}
+        <span className="text-neutral-200">{APP_CONFIG.name}</span> without another shelfware slog.
+      </p>
+      <div className="relative z-10 mt-10 flex w-full max-w-xl flex-col items-center justify-center gap-4 sm:flex-row sm:max-w-none">
+        <Button
+          size="lg"
+          variant="primary"
+          className="min-w-[200px] shadow-lg shadow-primary-900/40"
+          asChild
+          href={ROUTES.REGISTER}
+          aria-label="Start your free trial - no credit card required"
+        >
+          Start free trial
+        </Button>
+        <Button
+          size="lg"
+          variant="outline"
+          className="min-w-[200px] border-white/25 bg-transparent text-white hover:bg-white/10 hover:text-white"
+          asChild
+          href={ROUTES.CONTACT}
+          aria-label="Contact our sales team"
+        >
+          Contact sales
+        </Button>
       </div>
+      <p className="relative z-10 mt-10 text-sm text-neutral-400" role="note">
+        No credit card required · 14-day trial · Cancel anytime
+      </p>
     </section>
   );
 }

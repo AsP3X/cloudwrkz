@@ -23,15 +23,15 @@ export const CollapsibleNavSection = ({
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between gap-3 px-4 py-2 rounded-lg text-sm font-semibold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900"
+        className="w-full flex items-center justify-between gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900"
       >
-        <div className="flex items-center gap-3">
-          <span className="text-neutral-500 dark:text-neutral-400">{icon}</span>
-          <span>{title}</span>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="shrink-0 text-neutral-500 dark:text-neutral-400">{icon}</span>
+          <span className="min-w-0 truncate">{title}</span>
         </div>
         <svg
           className={cn(
-            "w-4 h-4 text-neutral-500 dark:text-neutral-400 transition-transform duration-200",
+            "h-4 w-4 shrink-0 text-neutral-500 dark:text-neutral-400 transition-transform duration-200",
             isExpanded ? "transform rotate-180" : ""
           )}
           fill="none"

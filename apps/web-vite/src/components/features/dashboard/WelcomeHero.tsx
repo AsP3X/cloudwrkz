@@ -29,7 +29,7 @@ export function WelcomeHero({
   return (
     <div
       className={cn(
-        "rounded-2xl border border-neutral-200/60 dark:border-neutral-800/60 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-sm shadow-sm p-6 sm:p-8 relative overflow-hidden",
+        "relative overflow-hidden rounded-2xl border border-white/25 bg-white/82 p-6 shadow-sm backdrop-blur-md sm:p-8 dark:border-white/10 dark:bg-neutral-950/55",
         className
       )}
     >

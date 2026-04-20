@@ -7,6 +7,7 @@ import { getAvatarUrl } from "@/lib/utils/users";
 import { GlobalSearch } from "@/components/features/search/GlobalSearch";
 import { NotificationBell } from "@/components/features/notifications/NotificationBell";
 import type { User } from "@/lib/auth/types";
+import { cn } from "@/lib/utils/cn";
 
 interface DashboardHeaderProps {
   user: User;
@@ -17,7 +18,7 @@ export const DashboardHeader = ({ user }: DashboardHeaderProps) => {
   const pathname = useLocation().pathname;
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
-  const { isMobileOpen, setIsMobileOpen } = useSidebar();
+  const { isMobileOpen, setIsMobileOpen, toolbarCompact: headerCompact } = useSidebar();
   const menuButtonRef = React.useRef<HTMLButtonElement>(null);
   const [menuPosition, setMenuPosition] = React.useState<{ top: number; right: number } | null>(
     null
@@ -47,21 +48,38 @@ export const DashboardHeader = ({ user }: DashboardHeaderProps) => {
     } else {
       setMenuPosition(null);
     }
-  }, [isMenuOpen]);
+  }, [isMenuOpen, headerCompact]);
 
   return (
-    <header className="sticky top-0 z-30 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm border-b border-neutral-200/50 dark:border-neutral-800/50 shadow-sm">
-      <div className="px-4 sm:px-6 lg:px-8">
-        <div className="flex h-16 items-center justify-between gap-4">
+    <header className="sticky top-0 z-30 border-b border-white/20 bg-white/75 shadow-sm backdrop-blur-md transition-[box-shadow] duration-300 ease-out dark:border-white/10 dark:bg-neutral-950/75">
+      <div
+        className={cn(
+          "transition-[padding] duration-300 ease-out",
+          headerCompact ? "px-3 sm:px-4 lg:px-6" : "px-4 sm:px-6 lg:px-8",
+        )}
+      >
+        <div
+          className={cn(
+            "flex items-center justify-between transition-[height,gap] duration-300 ease-out",
+            headerCompact ? "h-12 gap-2.5" : "h-16 gap-4",
+          )}
+        >
           <div className="flex items-center gap-2 lg:flex-none">
             {!isMobileOpen && (
               <button
                 onClick={() => setIsMobileOpen(true)}
-                className="lg:hidden p-2 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+                className={cn(
+                  "rounded-lg transition-all duration-300 ease-out lg:hidden",
+                  headerCompact ? "p-1.5" : "p-2",
+                  "hover:bg-neutral-50 dark:hover:bg-neutral-800",
+                )}
                 aria-label="Open sidebar"
               >
                 <svg
-                  className="w-6 h-6 text-neutral-700 dark:text-neutral-300"
+                  className={cn(
+                    "text-neutral-700 transition-[width,height] duration-300 ease-out dark:text-neutral-300",
+                    headerCompact ? "h-[1.125rem] w-[1.125rem]" : "h-6 w-6",
+                  )}
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -77,17 +95,31 @@ export const DashboardHeader = ({ user }: DashboardHeaderProps) => {
             )}
           </div>
 
-          <div className="flex items-center gap-1 sm:gap-4 flex-1 lg:flex-initial justify-end min-w-0">
-            <GlobalSearch />
-            <NotificationBell />
+          <div
+            className={cn(
+              "flex min-w-0 flex-1 items-center justify-end transition-[gap] duration-300 ease-out lg:flex-initial",
+              headerCompact ? "gap-2 sm:gap-3" : "gap-1 sm:gap-4",
+            )}
+          >
+            <GlobalSearch compact={headerCompact} />
+            <NotificationBell compact={headerCompact} />
 
             <div className="relative">
               <button
                 ref={menuButtonRef}
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+                className={cn(
+                  "flex items-center rounded-lg transition-all duration-300 ease-out",
+                  headerCompact ? "gap-2 px-2.5 py-1" : "gap-3 px-3 py-2",
+                  "hover:bg-neutral-50 dark:hover:bg-neutral-800",
+                )}
               >
-                <div className="w-8 h-8 rounded-full flex items-center justify-center overflow-hidden bg-primary-100 dark:bg-primary-900 flex-shrink-0">
+                <div
+                  className={cn(
+                    "flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-100 transition-[width,height] duration-300 ease-out dark:bg-primary-900",
+                    headerCompact ? "h-7 w-7" : "h-8 w-8",
+                  )}
+                >
                   {(() => {
                     const avatarUrl = getAvatarUrl(user.avatar);
                     return avatarUrl ? (
@@ -97,22 +129,38 @@ export const DashboardHeader = ({ user }: DashboardHeaderProps) => {
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      <span className="text-sm font-semibold text-primary-700 dark:text-primary-300">
+                      <span
+                        className={cn(
+                          "font-semibold text-primary-700 transition-[font-size] duration-300 ease-out dark:text-primary-300",
+                          headerCompact ? "text-[0.8125rem]" : "text-sm",
+                        )}
+                      >
                         {user.name?.[0]?.toUpperCase() || user.email[0].toUpperCase()}
                       </span>
                     );
                   })()}
                 </div>
-                <div className="hidden sm:block text-left">
-                  <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                    {user.name || user.email.split("@")[0]}
-                  </p>
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400 capitalize">
-                    {user.role.toLowerCase()}
-                  </p>
-                </div>
+                {headerCompact ? (
+                  <div className="hidden min-w-0 max-w-[7.5rem] text-left sm:block md:max-w-[11rem]">
+                    <p className="truncate text-xs font-medium leading-tight text-neutral-900 dark:text-neutral-100">
+                      {user.name || user.email.split("@")[0]}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="hidden text-left sm:block">
+                    <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                      {user.name || user.email.split("@")[0]}
+                    </p>
+                    <p className="text-xs capitalize text-neutral-500 dark:text-neutral-400">
+                      {user.role.toLowerCase()}
+                    </p>
+                  </div>
+                )}
                 <svg
-                  className="w-4 h-4 text-neutral-500 dark:text-neutral-400"
+                  className={cn(
+                    "text-neutral-500 transition-[width,height] duration-300 ease-out dark:text-neutral-400",
+                    headerCompact ? "h-3.5 w-3.5" : "h-4 w-4",
+                  )}
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -134,13 +182,13 @@ export const DashboardHeader = ({ user }: DashboardHeaderProps) => {
                     onClick={() => setIsMenuOpen(false)}
                   />
                   <div
-                    className="fixed w-56 bg-white dark:bg-neutral-900 rounded-xl shadow-lg border border-neutral-200 dark:border-neutral-800 py-2 z-[100]"
+                    className="fixed z-[100] w-56 rounded-xl border border-white/20 bg-white/92 py-2 shadow-lg backdrop-blur-md dark:border-white/10 dark:bg-neutral-950/90"
                     style={{
                       top: `${menuPosition.top}px`,
                       right: `${menuPosition.right}px`,
                     }}
                   >
-                    <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800 flex items-center gap-3">
+                    <div className="flex items-center gap-3 border-b border-white/15 px-4 py-3 dark:border-white/10">
                       <div className="w-10 h-10 rounded-full overflow-hidden bg-primary-100 dark:bg-primary-900 flex-shrink-0 flex items-center justify-center">
                         {(() => {
                           const avatarUrl = getAvatarUrl(user.avatar);
@@ -182,7 +230,7 @@ export const DashboardHeader = ({ user }: DashboardHeaderProps) => {
                         Settings
                       </Link>
                     </div>
-                    <div className="border-t border-neutral-200 dark:border-neutral-800 pt-2">
+                    <div className="border-t border-white/15 pt-2 dark:border-white/10">
                       <button
                         onClick={handleLogout}
                         disabled={isLoggingOut}

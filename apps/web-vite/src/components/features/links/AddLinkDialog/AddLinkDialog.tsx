@@ -171,8 +171,10 @@ export function AddLinkDialog({ open, onOpenChange, selectedCollectionId, select
 
   React.useEffect(() => {
     if (showCollectionDialog) {
-      api.get<Array<{ id: string; name: string; color: string | null }>>("/collections")
-        .then((cols) => {
+      api
+        .get<{ collections: Array<{ id: string; name: string; color: string | null }> }>("/collections")
+        .then((res) => {
+          const cols = res.collections ?? [];
           setCollections(cols.map((c) => ({ id: c.id, name: c.name, color: c.color })));
         })
         .catch(() => {});

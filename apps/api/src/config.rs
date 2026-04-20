@@ -48,12 +48,16 @@ pub struct AppConfig {
     pub github_api_token: Option<String>,
     /// Max anonymous GitHub REST requests per rolling hour for this process (GitHub allows 60/hour per IP without auth).
     pub github_anonymous_max_requests_per_hour: u32,
+    /// Number of background job dispatcher loops in this process (each polls `background_jobs`; budgets are shared).
+    pub job_queue_worker_count: u32,
     /// Max concurrent `github_link_metadata` jobs the global worker will run (each job still rate-limits HTTP internally).
     pub job_queue_github_max_concurrent: u32,
     /// Optional minimum seconds between *starting* two `github_link_metadata` jobs (pacing on top of concurrency).
     pub job_queue_github_min_start_interval_secs: Option<u64>,
     /// Public web app origin for QR payloads (e.g. `https://app.example.com`). If unset, `Host` / `X-Forwarded-*` from the API request is used (may point at the API host).
     pub public_web_app_url: Option<String>,
+    /// When false, skip inserts into `http_request_logs` (useful for noisy tests).
+    pub http_request_log_enabled: bool,
 }
 
 impl AppConfig {
@@ -136,6 +140,11 @@ impl AppConfig {
             .and_then(|s| s.parse::<u32>().ok())
             .unwrap_or(60)
             .clamp(1, 100_000),
+            job_queue_worker_count: std::env::var("JOB_QUEUE_WORKER_COUNT")
+                .ok()
+                .and_then(|s| s.parse::<u32>().ok())
+                .unwrap_or(1)
+                .clamp(1, 32),
             job_queue_github_max_concurrent: std::env::var("JOB_QUEUE_GITHUB_MAX_CONCURRENT")
                 .ok()
                 .and_then(|s| s.parse::<u32>().ok())
@@ -158,6 +167,17 @@ impl AppConfig {
                 .ok()
                 .map(|s| s.trim().trim_end_matches('/').to_string())
                 .filter(|s| !s.is_empty()),
+            http_request_log_enabled: env::var("HTTP_REQUEST_LOG_ENABLED")
+                .ok()
+                .map(|s| {
+                    let t = s.trim();
+                    if t.is_empty() {
+                        return true;
+                    }
+                    let t = t.to_ascii_lowercase();
+                    !(t == "0" || t == "false" || t == "no")
+                })
+                .unwrap_or(true),
         }
     }
 

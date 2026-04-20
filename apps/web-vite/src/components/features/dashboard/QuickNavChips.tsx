@@ -19,7 +19,7 @@ export function QuickNavChips({ items, className }: QuickNavChipsProps) {
   return (
     <div
       className={cn(
-        "rounded-xl border border-neutral-200/60 dark:border-neutral-800/60 bg-white/70 dark:bg-neutral-900/70 backdrop-blur-sm px-4 py-3 flex items-center gap-3 overflow-x-auto",
+        "flex items-center gap-3 overflow-x-auto rounded-xl border border-white/25 bg-white/75 px-4 py-3 backdrop-blur-md dark:border-white/10 dark:bg-neutral-950/50",
         "scrollbar-thin scrollbar-thumb-neutral-300 dark:scrollbar-thumb-neutral-700 scrollbar-track-transparent",
         className,
       )}

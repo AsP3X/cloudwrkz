@@ -12,11 +12,17 @@ struct AddTodoView: View {
     /// When set, creates a subtodo under this parent.
     var parentTodoId: String?
     var parentTodoTitle: String?
-    var onSaved: () -> Void
+    /// When non-nil, mutation job callbacks run on the **parent** screen (e.g. Todo list), not in this sheet.
+    var mutationHooks: MutationJobTitleHooks? = nil
+    /// Called on the main thread before the sheet dismisses so the parent can show optimistic row(s). `UUID` correlates with `onSaved` / `onCreateFailed`.
+    var onCreateStarted: ((UUID, String, String?) -> Void)? = nil
+    /// Invoked with the new todo id after create succeeds (after mutation job completes when API returns 202).
+    var onSaved: (String, UUID) -> Void
+    /// Called when create fails after the sheet was dismissed (errors can no longer show in-sheet).
+    var onCreateFailed: ((String, UUID) -> Void)? = nil
 
     @State private var titleText = ""
     @State private var descriptionText = ""
-    @State private var isSaving = false
     @State private var errorMessage: String?
     @FocusState private var focusedField: Field?
 
@@ -123,8 +129,8 @@ struct AddTodoView: View {
                         Task { await save() }
                     }
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(canSave && !isSaving ? CloudwrkzColors.primary400 : CloudwrkzColors.neutral500)
-                    .disabled(!canSave || isSaving)
+                    .foregroundStyle(canSave ? CloudwrkzColors.primary400 : CloudwrkzColors.neutral500)
+                    .disabled(!canSave)
                 }
             }
             .tint(CloudwrkzColors.primary400)
@@ -138,24 +144,40 @@ struct AddTodoView: View {
 
     private func save() async {
         errorMessage = nil
-        isSaving = true
+        guard canSave else { return }
         let title = titleText.trimmingCharacters(in: .whitespacesAndNewlines)
         let description = descriptionText.trimmingCharacters(in: .whitespacesAndNewlines)
         let descriptionOpt = description.isEmpty ? nil : description
+        let config = appState.config
+        let parentId = parentTodoId
+        let hooks = mutationHooks
+        let onSavedClosure = onSaved
+        let onCreateFailedClosure = onCreateFailed
+        let onCreateStartedClosure = onCreateStarted
+        let correlationId = UUID()
+
+        await MainActor.run {
+            onCreateStartedClosure?(correlationId, title, descriptionOpt)
+            dismiss()
+        }
+
+        // Brief yield so the sheet can dismiss; parent nav must be visible for mutation banner.
+        try? await Task.sleep(nanoseconds: 80_000_000)
+
         let result = await TodoService.createTodo(
-            config: appState.config,
+            config: config,
             title: title,
             description: descriptionOpt,
-            parentTodoId: parentTodoId
+            parentTodoId: parentId,
+            mutationHooks: hooks
         )
+
         await MainActor.run {
-            isSaving = false
             switch result {
-            case .success:
-                onSaved()
-                dismiss()
+            case .success(let newId):
+                onSavedClosure(newId, correlationId)
             case .failure(let err):
-                errorMessage = message(for: err)
+                onCreateFailedClosure?(message(for: err), correlationId)
             }
         }
     }
@@ -175,7 +197,7 @@ struct AddTodoView: View {
     AddTodoView(
         parentTodoId: nil,
         parentTodoTitle: nil,
-        onSaved: {}
+        onSaved: { _, _ in }
     )
 }
 
@@ -183,6 +205,6 @@ struct AddTodoView: View {
     AddTodoView(
         parentTodoId: "parent-1",
         parentTodoTitle: "Implement todo view for the iOS app",
-        onSaved: {}
+        onSaved: { _, _ in }
     )
 }

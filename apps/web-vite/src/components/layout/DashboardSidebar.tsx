@@ -120,14 +120,12 @@ type NavSection = {
   readonly title: string;
   readonly icon: () => JSX.Element;
   readonly items: ReadonlyArray<NavItem>;
-  readonly defaultExpanded?: boolean;
 };
 
 const NAV_SECTIONS = Object.freeze([
   Object.freeze({
     title: "Work",
     icon: TicketsIcon,
-    defaultExpanded: true,
     items: Object.freeze([
       Object.freeze({
         name: "Tickets",
@@ -148,7 +146,6 @@ const NAV_SECTIONS = Object.freeze([
   Object.freeze({
     title: "Time tracking",
     icon: TimeTrackingIcon,
-    defaultExpanded: true,
     items: Object.freeze([
       Object.freeze({
         name: "My time",
@@ -161,7 +158,6 @@ const NAV_SECTIONS = Object.freeze([
   Object.freeze({
     title: "Personal",
     icon: SettingsIcon,
-    defaultExpanded: true,
     items: Object.freeze([
       Object.freeze({
         name: "My statistics",
@@ -206,7 +202,7 @@ export const DashboardSidebar = ({
   navCounts,
 }: DashboardSidebarProps) => {
   const pathname = useLocation().pathname;
-  const { isMobileOpen, setIsMobileOpen } = useSidebar();
+  const { isMobileOpen, setIsMobileOpen, toolbarCompact } = useSidebar();
 
   const enabledModulesSet = new Set(enabledModuleKeys);
 
@@ -230,7 +226,7 @@ export const DashboardSidebar = ({
     <>
       <aside
         className={cn(
-          "fixed top-0 left-0 z-40 h-screen w-64 bg-white dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800 transition-transform duration-300 ease-in-out",
+          "fixed top-0 left-0 z-40 h-screen w-64 bg-white/92 backdrop-blur-md transition-transform duration-300 ease-in-out dark:bg-neutral-950/90",
           "lg:translate-x-0",
           isMobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
@@ -238,7 +234,7 @@ export const DashboardSidebar = ({
         {isMobileOpen && (
           <button
             onClick={() => setIsMobileOpen(false)}
-            className="lg:hidden fixed top-4 z-50 p-2 rounded-lg bg-white dark:bg-neutral-900 shadow-lg border border-neutral-200 dark:border-neutral-800"
+            className="lg:hidden fixed top-4 z-50 rounded-lg border border-white/20 bg-white/92 p-2 shadow-lg backdrop-blur-md dark:border-white/10 dark:bg-neutral-950/90"
             aria-label="Close sidebar"
             style={{ left: "calc(16rem + 1rem)" }}
           >
@@ -258,16 +254,25 @@ export const DashboardSidebar = ({
           </button>
         )}
         <div className="flex flex-col h-full">
-          <div className="flex items-center h-16 px-6 border-b border-neutral-200 dark:border-neutral-800">
+          <div
+            className={cn(
+              "flex items-center border-b border-white/15 px-6 transition-[height,padding] duration-300 ease-out dark:border-white/10",
+              toolbarCompact ? "h-12 px-5" : "h-16 px-6",
+            )}
+          >
             <Link
               to={ROUTES.DASHBOARD}
-              className="text-xl font-bold bg-gradient-to-r from-primary-600 to-secondary-600 bg-clip-text text-transparent"
+              className={cn(
+                "min-w-0 truncate font-bold bg-gradient-to-r from-primary-600 to-secondary-600 bg-clip-text text-transparent transition-[font-size] duration-300 ease-out",
+                toolbarCompact ? "text-lg" : "text-xl",
+              )}
             >
               {APP_CONFIG.name}
             </Link>
           </div>
 
-          <nav className="flex-1 px-4 py-6 space-y-4 overflow-y-auto">
+          <div className="flex min-h-0 flex-1 flex-col border-r border-white/20 dark:border-white/10">
+          <nav className="flex-1 space-y-4 overflow-y-auto px-4 py-6 scrollbar-sidebar">
             {filteredStandalone.map((item) => {
               const isActive =
                 item.href === ROUTES.DASHBOARD
@@ -309,7 +314,7 @@ export const DashboardSidebar = ({
                   key={`section-${sectionIndex}-${section.title}`}
                   title={section.title}
                   icon={<SectionIcon />}
-                  defaultExpanded={section.defaultExpanded ?? hasActiveItem}
+                  defaultExpanded={section.title === "Work" || hasActiveItem}
                 >
                   {section.items.map((item, itemIndex) => {
                     const isActive =
@@ -358,7 +363,7 @@ export const DashboardSidebar = ({
             })}
           </nav>
 
-          <div className="px-4 py-4 border-t border-neutral-200 dark:border-neutral-800">
+          <div className="border-t border-neutral-200 px-4 py-4 dark:border-neutral-800">
             <Link
               to={ROUTES.HOME}
               className="flex items-center gap-2 px-4 py-2 text-sm text-neutral-600 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
@@ -373,6 +378,7 @@ export const DashboardSidebar = ({
               </svg>
               Back to Home
             </Link>
+          </div>
           </div>
         </div>
       </aside>

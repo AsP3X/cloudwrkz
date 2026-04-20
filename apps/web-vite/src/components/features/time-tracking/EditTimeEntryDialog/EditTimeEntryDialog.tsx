@@ -4,6 +4,7 @@ import { TimeEntryEditForm } from "../TimeEntryEditForm";
 import { api } from "@/api/client";
 import type { UpdateTimeEntryInput } from "@/lib/validations/time-tracking";
 import type { TimeEntry as ViteTimeEntry } from "@/lib/types";
+import { parseApiDate } from "@/lib/utils/date";
 
 interface EditTimeEntryDialogProps {
   open: boolean;
@@ -26,16 +27,16 @@ export function EditTimeEntryDialog({ open, onOpenChange, entry, userTimezone = 
     billable: entry.billable,
     location: entry.location,
     timezone: entry.timezone,
-    startedAt: new Date(entry.started_at),
-    stoppedAt: entry.stopped_at ? new Date(entry.stopped_at) : null,
+    startedAt: parseApiDate(entry.started_at),
+    stoppedAt: entry.stopped_at ? parseApiDate(entry.stopped_at) : null,
     ticket: entry.ticket_id ? { id: entry.ticket_id, ticketNumber: "", title: "" } : null,
   }), [entry]);
 
   const formBreaks = React.useMemo(() =>
     (entry.breaks ?? []).map((b) => ({
       id: b.id,
-      startedAt: new Date(b.started_at),
-      endedAt: b.ended_at ? new Date(b.ended_at) : null,
+      startedAt: parseApiDate(b.started_at),
+      endedAt: b.ended_at ? parseApiDate(b.ended_at) : null,
       duration: b.duration,
       description: b.description,
       createdAt: new Date(b.created_at),
@@ -55,8 +56,8 @@ export function EditTimeEntryDialog({ open, onOpenChange, entry, userTimezone = 
         billable: data.billable,
         location: data.location || null,
         timezone: data.timezone === "" ? null : (data.timezone ?? null),
-        startedAt: data.startedAt ? data.startedAt.toISOString() : undefined,
-        stoppedAt: data.stoppedAt ? data.stoppedAt.toISOString() : null,
+        started_at: data.startedAt ? data.startedAt.toISOString() : undefined,
+        stopped_at: data.stoppedAt ? data.stoppedAt.toISOString() : null,
       });
       onOpenChange(false);
       onUpdated?.();

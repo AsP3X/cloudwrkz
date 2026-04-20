@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import type { SearchResult } from "../types";
+import { recordSearchResultAccess } from "../recordSearchAccess";
 import { getTicketTypeLabel, type TicketType } from "@/lib/utils/tickets";
 import { formatDate, formatDateTime } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
@@ -510,6 +511,7 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                       {group.ticket.type === "ticket" && group.ticket.metadata?.ticketNumber ? (
                         <Link
                           to={group.ticket.url}
+                          onClick={() => recordSearchResultAccess(group.ticket)}
                           className="text-sm font-mono font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
                         >
                           {group.ticket.metadata.ticketNumber}
@@ -517,6 +519,7 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                       ) : group.ticket.type === "task" ? (
                         <Link
                           to={group.ticket.url}
+                          onClick={() => recordSearchResultAccess(group.ticket)}
                           className="text-sm font-mono font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300"
                         >
                           {group.ticket.metadata?.taskNumber || group.ticket.id.slice(0, 8) + "..."}
@@ -528,6 +531,7 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                       ) : group.ticket.type === "timeentry" && group.ticket.metadata?.timerNumber ? (
                         <Link
                           to={group.ticket.url}
+                          onClick={() => recordSearchResultAccess(group.ticket)}
                           className="text-sm font-mono font-semibold text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300"
                         >
                           {group.ticket.metadata.timerNumber}
@@ -549,6 +553,7 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                     <td className="px-6 py-4">
                       <Link
                         to={group.ticket.url}
+                        onClick={() => recordSearchResultAccess(group.ticket)}
                         className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400"
                       >
                         <div className="max-w-md">
@@ -834,6 +839,7 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                               {isSubtask && comment.metadata?.parentTaskTitle ? (
                                 <Link
                                   to={comment.url}
+                                  onClick={() => recordSearchResultAccess(comment)}
                                   className="text-xs font-mono text-neutral-500 dark:text-neutral-400 hover:text-indigo-600 dark:hover:text-indigo-400"
                                 >
                                   {group.ticket.metadata?.taskNumber || "Task"}
@@ -841,6 +847,7 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                               ) : comment.metadata?.ticketNumber ? (
                                 <Link
                                   to={comment.url}
+                                  onClick={() => recordSearchResultAccess(comment)}
                                   className="text-xs font-mono text-neutral-500 dark:text-neutral-400 hover:text-primary-600 dark:hover:text-primary-400"
                                 >
                                   {comment.metadata.ticketNumber}
@@ -850,6 +857,7 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                             <td className="px-6 py-2">
                               <Link
                                 to={comment.url}
+                                onClick={() => recordSearchResultAccess(comment)}
                                 className="text-sm text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400"
                               >
                                 <div className="max-w-md">
@@ -959,6 +967,7 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                                   <td className="px-6 py-2 whitespace-nowrap">
                                     <Link
                                       to={level2Subtask.url}
+                                      onClick={() => recordSearchResultAccess(level2Subtask)}
                                       className="text-xs font-mono text-neutral-500 dark:text-neutral-400 hover:text-indigo-600 dark:hover:text-indigo-400"
                                     >
                                       {group.ticket.metadata?.taskNumber || "Task"}
@@ -967,6 +976,7 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                                   <td className="px-6 py-2">
                                     <Link
                                       to={level2Subtask.url}
+                                      onClick={() => recordSearchResultAccess(level2Subtask)}
                                       className="text-sm text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400"
                                     >
                                       <div className="max-w-md">
@@ -1043,6 +1053,7 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                                       <td className="px-6 py-2 whitespace-nowrap">
                                         <Link
                                           to={level3Subtask.url}
+                                          onClick={() => recordSearchResultAccess(level3Subtask)}
                                           className="text-xs font-mono text-neutral-500 dark:text-neutral-400 hover:text-indigo-600 dark:hover:text-indigo-400"
                                         >
                                           {group.ticket.metadata?.taskNumber || "Task"}
@@ -1051,6 +1062,7 @@ export const SearchResultsTable = ({ results, searchQuery = "" }: SearchResultsT
                                       <td className="px-6 py-2">
                                         <Link
                                           to={level3Subtask.url}
+                                          onClick={() => recordSearchResultAccess(level3Subtask)}
                                           className="text-sm text-neutral-700 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400"
                                         >
                                         <div className="max-w-md">

@@ -481,7 +481,10 @@
 "todo.list_view" = "В виде списка";
 "todo.load_error" = "Не удалось загрузить задачи";
 "todo.loading" = "Загрузка задач…";
+"todo.creating" = "Создание…";
 "todo.nav_title" = "Задачи";
+"mutation.job_queued" = "Задача в очереди";
+"mutation.job_completed" = "Задача выполнена";
 "todo.no_server" = "Сервер не настроен.";
 "todo.no_todos" = "Нет задач";
 "todo.please_sign_in" = "Войдите снова.";

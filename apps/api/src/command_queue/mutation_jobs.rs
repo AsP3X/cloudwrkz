@@ -6,7 +6,6 @@ use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use axum::http::StatusCode;
 use serde::Serialize;
 use sqlx::PgPool;
 use tokio::sync::Mutex as AsyncMutex;
@@ -26,6 +25,9 @@ pub struct MutationQueuedResponse {
     pub queued: bool,
     pub job_id: String,
     pub retry_deadline_secs: u32,
+    /// When set, the work is tracked in `background_jobs` under this `job_type` (admin Jobs page).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub job_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -187,6 +189,7 @@ where
                 queued: true,
                 job_id,
                 retry_deadline_secs: MUTATION_DB_RETRY_MAX.as_secs() as u32,
+                job_type: None,
             }))
         }
         Err(e) => Err(e),
@@ -244,13 +247,5 @@ async fn mutation_db_retry_loop<FMaker, F, Fut>(
                 break;
             }
         }
-    }
-}
-
-pub fn mutation_response(out: MutationHandlerOutput) -> axum::response::Response {
-    use axum::response::IntoResponse;
-    match out {
-        MutationHandlerOutput::Ready(jr) => (jr.status, axum::Json(jr.body)).into_response(),
-        MutationHandlerOutput::Queued(q) => (StatusCode::ACCEPTED, axum::Json(q)).into_response(),
     }
 }

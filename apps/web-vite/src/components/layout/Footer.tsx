@@ -7,7 +7,7 @@ export const Footer = () => {
   const [currentYear] = useState<number>(() => new Date().getFullYear());
 
   const footerLinks = {
-    Product: [{ label: "Features", href: "#features" }],
+    Product: [{ label: "Features", href: `${ROUTES.HOME}#features` }],
     Company: [
       { label: "About", href: ROUTES.ABOUT },
       { label: "Contact", href: ROUTES.CONTACT },

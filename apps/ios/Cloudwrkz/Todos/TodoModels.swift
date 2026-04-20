@@ -111,7 +111,7 @@ struct TodoFilters: Equatable {
     var priority: TodoPriorityFilter = .all
     var sort: TodoSortOption = .newestFirst
     var archive: TodoArchiveFilter = .unarchived
-    /// When false (default), list shows only top-level todos. When true, includes subtodos.
+    /// Used for API list queries. Main overview forces `false`; archive loads may set `true` to find archived subtodos.
     var includeSubtodos: Bool = false
 
     enum TodoStatusFilter: String, CaseIterable, Identifiable {

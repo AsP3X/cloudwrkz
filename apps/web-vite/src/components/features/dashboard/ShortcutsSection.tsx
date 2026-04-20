@@ -37,10 +37,10 @@ export function ShortcutsSection({
               key={item.href}
               to={item.href}
               className={cn(
-                "group flex items-start gap-3 p-4 rounded-xl border transition-all duration-200 text-left",
-                "border-neutral-200/60 dark:border-neutral-800/60 bg-white/80 dark:bg-neutral-900/80 hover:border-primary-300 dark:hover:border-primary-700 hover:shadow-md",
+                "group flex items-start gap-3 rounded-xl border p-4 text-left transition-all duration-200",
+                "border-white/25 bg-white/75 backdrop-blur-md hover:border-primary-300/80 hover:shadow-md dark:border-white/10 dark:bg-neutral-950/50 dark:hover:border-primary-600/40",
                 isPrimary &&
-                  "sm:col-span-2 lg:col-span-1 border-primary-200 dark:border-primary-800 bg-primary-50/50 dark:bg-primary-950/30"
+                  "border-primary-200/80 bg-primary-50/60 sm:col-span-2 lg:col-span-1 dark:border-primary-800/60 dark:bg-primary-950/35"
               )}
             >
               <span

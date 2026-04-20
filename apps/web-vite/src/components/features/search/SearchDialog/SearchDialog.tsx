@@ -14,6 +14,7 @@ import {
   ENHANCED_SEARCH_PARAM_NAMES,
 } from "@/lib/utils/enhanced-search";
 import { SearchPreviewPanel } from "../SearchPreviewPanel";
+import { recordSearchResultAccess } from "../recordSearchAccess";
 
 interface SearchDialogProps {
   open: boolean;
@@ -285,6 +286,7 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
   };
 
   const handleResultClick = (result: SearchResult) => {
+    recordSearchResultAccess(result);
     navigate(result.url);
     onOpenChange(false);
     setQuery("");
@@ -721,18 +723,18 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
       {/* Backdrop */}
       <div
         role="presentation"
-        className="fixed inset-0 bg-black/30 dark:bg-black/50 backdrop-blur-md z-[100] animate-fade-in"
+        className="fixed inset-0 z-[100] animate-fade-in bg-neutral-950/40 backdrop-blur-sm dark:bg-black/60"
         onClick={() => {
           onOpenChange(false);
           setQuery("");
           setResults([]);
         }}
       />
-      
+
       {/* Dialog */}
       <div
         role="presentation"
-        className="fixed inset-0 z-[101] flex items-start justify-center pt-20 px-4 pointer-events-none"
+        className="fixed inset-0 z-[101] flex items-start justify-center overflow-y-auto px-4 pb-8 pt-[max(4.5rem,env(safe-area-inset-top))] sm:px-6 sm:pt-24 pointer-events-none"
         onClick={(e) => {
           if (e.target === e.currentTarget) {
             onOpenChange(false);
@@ -743,9 +745,10 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
       >
         <div
           className={cn(
-            "bg-white dark:bg-neutral-900 rounded-xl shadow-2xl border border-neutral-200 dark:border-neutral-800",
-            "w-full max-h-[80vh] overflow-hidden flex flex-col",
-            selectedIndex >= 0 && results.length > 0 ? "max-w-5xl" : "max-w-4xl",
+            "w-full overflow-hidden flex flex-col rounded-2xl border border-white/25 bg-white/90 shadow-2xl ring-1 ring-black/5 backdrop-blur-xl",
+            "dark:border-white/10 dark:bg-neutral-950/90 dark:ring-white/5",
+            "max-h-[min(85vh,calc(100vh-5rem))]",
+            selectedIndex >= 0 && results.length > 0 ? "max-w-5xl" : "max-w-3xl",
             "animate-slide-in pointer-events-auto"
           )}
           onKeyDown={(e) => e.stopPropagation()}
@@ -754,13 +757,48 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
           aria-modal="true"
           aria-label="Search"
         >
-          {/* Search Input */}
-          <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 overflow-visible">
-            <div className="relative overflow-visible">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          {/* Chrome header */}
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-neutral-200/80 px-5 py-3 dark:border-white/10">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary-500/15 to-secondary-500/10 ring-1 ring-primary-500/20 dark:from-primary-400/10 dark:to-secondary-400/10 dark:ring-primary-400/20">
+                <svg
+                  className="h-4 w-4 text-primary-600 dark:text-primary-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  aria-hidden
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+              </span>
+              <div className="min-w-0">
+                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-neutral-500 dark:text-neutral-400">
+                  Workspace search
+                </p>
+                <p className="truncate text-sm font-medium text-neutral-800 dark:text-neutral-100">
+                  Find tickets, people, and records
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <kbd className="hidden rounded-md border border-neutral-200/90 bg-neutral-100/90 px-2 py-1 font-mono text-[0.65rem] text-neutral-500 shadow-sm dark:border-white/10 dark:bg-neutral-900/80 dark:text-neutral-400 sm:inline">
+                Esc
+              </kbd>
+            </div>
+          </div>
+
+          {/* Search + structured suggestions (flow layout — never clipped) */}
+          <div className="shrink-0 border-b border-neutral-200/80 bg-gradient-to-b from-white/50 to-neutral-50/30 px-4 py-4 dark:border-white/10 dark:from-neutral-950/40 dark:to-neutral-950/80 sm:px-5">
+            <div className="relative">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
                 {isLoading ? (
                   <svg
-                    className="animate-spin h-5 w-5 text-primary-600 dark:text-primary-400"
+                    className="h-5 w-5 animate-spin text-primary-600 dark:text-primary-400"
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
                     viewBox="0 0 24 24"
@@ -781,7 +819,7 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                   </svg>
                 ) : (
                   <svg
-                    className="w-5 h-5 text-neutral-400"
+                    className="h-5 w-5 text-neutral-400 dark:text-neutral-500"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -807,26 +845,19 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                     : "Search tickets, users, time entries, settings..."
                 }
                 className={cn(
-                  "w-full pl-10 pr-10 py-3 rounded-lg border-2 transition-all duration-200",
-                  "bg-white text-neutral-900 border-neutral-200",
-                  "dark:bg-neutral-900 dark:text-neutral-100 dark:border-neutral-800",
-                  "placeholder:text-neutral-400 dark:placeholder:text-neutral-500",
-                  "focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2",
-                  "focus:border-primary-500 dark:focus:ring-offset-neutral-900 dark:focus:border-primary-400"
+                  "w-full rounded-xl border-2 border-neutral-200/90 bg-white/90 py-3 pl-11 pr-11 text-neutral-900 shadow-sm transition-all duration-200",
+                  "placeholder:text-neutral-400 dark:border-white/10 dark:bg-neutral-900/60 dark:text-neutral-100 dark:placeholder:text-neutral-500",
+                  "focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30 dark:focus:border-primary-400 dark:focus:ring-primary-400/25"
                 )}
               />
-              {query && (
+              {query ? (
                 <button
+                  type="button"
                   onClick={handleClear}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-neutral-400 transition-colors hover:text-neutral-600 dark:hover:text-neutral-300"
                   aria-label="Clear search"
                 >
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -835,18 +866,30 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                     />
                   </svg>
                 </button>
-              )}
-              {/* Enhanced search autocomplete */}
-              {enhancedSuggestions.length > 0 && (
+              ) : null}
+            </div>
+
+            {query.trim().length > 0 && query.trim().length < 2 && !isEnhancedSearchQuery(query) && (
+              <p className="mt-3 text-xs text-neutral-500 dark:text-neutral-400">
+                Type at least 2 characters to search the index.
+              </p>
+            )}
+
+            {enhancedSuggestions.length > 0 && (
+              <div className="mt-3">
+                <p className="mb-1.5 text-[0.7rem] text-neutral-400 dark:text-neutral-500">
+                  Structured fields · Tab to apply · ↑↓ to move
+                </p>
                 <div
                   ref={autocompleteListRef}
-                  className="absolute left-0 right-0 top-full mt-1 z-[200] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl py-1 overflow-y-auto max-h-[min(16rem,70vh)]"
+                  className="max-h-[calc(10*2.25rem+9px)] divide-y divide-neutral-200/90 overflow-y-auto rounded-lg border border-neutral-200/80 dark:divide-white/10 dark:border-white/10 scrollbar-thin"
                   role="listbox"
-                  aria-activedescendant={enhancedSuggestions[autocompleteIndex] ? `autocomplete-option-${autocompleteIndex}` : undefined}
+                  aria-activedescendant={
+                    enhancedSuggestions[autocompleteIndex]
+                      ? `autocomplete-option-${autocompleteIndex}`
+                      : undefined
+                  }
                 >
-                  <p className="px-3 py-1.5 text-xs font-medium text-neutral-500 dark:text-neutral-400 border-b border-neutral-100 dark:border-neutral-800 sticky top-0 bg-white dark:bg-neutral-900">
-                    Tab to apply · ↑↓ to navigate
-                  </p>
                   {enhancedSuggestions.map((param, idx) => (
                     <button
                       key={param.key}
@@ -858,31 +901,40 @@ export const SearchDialog = ({ open, onOpenChange }: SearchDialogProps) => {
                       role="option"
                       aria-selected={idx === autocompleteIndex}
                       className={cn(
-                        "w-full text-left px-3 py-2 text-sm transition-colors",
-                        idx === autocompleteIndex
-                          ? "bg-primary-50 dark:bg-primary-950 text-primary-800 dark:text-primary-200"
-                          : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                        "flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors",
+                        "hover:bg-neutral-100/80 dark:hover:bg-white/5",
+                        idx === autocompleteIndex &&
+                          "bg-primary-50/90 dark:bg-primary-950/50"
                       )}
                       onMouseDown={(e) => {
                         e.preventDefault();
                         applySuggestion(param.snippet);
                       }}
                     >
-                      <span className="font-medium">{param.label}</span>
-                      <span className="text-neutral-500 dark:text-neutral-400 ml-2 text-xs">
-                        {param.key === "type" ? "tickets, todo, links, users, …" : `"value"`}
-                        {param.kind === "fuzzy" && " · fuzzy"}
-                        {param.kind === "strict" && " · strict (exact)"}
+                      <span
+                        className={cn(
+                          "min-w-0 truncate font-medium",
+                          idx === autocompleteIndex
+                            ? "text-primary-900 dark:text-primary-100"
+                            : "text-neutral-800 dark:text-neutral-200"
+                        )}
+                      >
+                        {param.label}
+                      </span>
+                      <span
+                        className={cn(
+                          "shrink-0 text-xs",
+                          idx === autocompleteIndex
+                            ? "text-primary-600/75 dark:text-primary-300/80"
+                            : "text-neutral-400 dark:text-neutral-500"
+                        )}
+                      >
+                        {param.kind === "fuzzy" ? "fuzzy" : "exact"}
                       </span>
                     </button>
                   ))}
                 </div>
-              )}
-            </div>
-            {query.trim().length > 0 && query.trim().length < 2 && !isEnhancedSearchQuery(query) && (
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2">
-                Type at least 2 characters to search
-              </p>
+              </div>
             )}
           </div>
 

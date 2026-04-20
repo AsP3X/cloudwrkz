@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
+import { MouseSpotlightSurface } from "@/components/ui/MouseSpotlightSurface";
 import { SkipToContent } from "@/components/ui/SkipToContent";
 import { Button } from "@/components/ui/Button";
 import { APP_CONFIG } from "@/lib/constants/config";
@@ -294,26 +295,25 @@ export default function HealthPage() {
     <>
       <SkipToContent />
       <Header />
-      <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-white to-indigo-50 pb-20 pt-16 dark:from-neutral-950 dark:via-neutral-900 dark:to-indigo-950/40">
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute left-1/4 top-24 h-72 w-72 rounded-full bg-indigo-400/15 blur-3xl dark:bg-indigo-600/10" />
-          <div className="absolute bottom-32 right-1/4 h-80 w-80 rounded-full bg-violet-400/15 blur-3xl dark:bg-violet-600/10" />
-        </div>
-
-        <div className="relative z-10 w-full px-4 py-10 sm:px-6 lg:px-8 xl:px-10 2xl:px-14">
+      <main id="main-content">
+        <MouseSpotlightSurface
+          variant="content"
+          className="min-h-screen bg-gradient-to-br from-neutral-200/90 via-neutral-100 to-neutral-50 pt-16 pb-20 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950"
+        >
+        <div className="w-full px-4 py-10 sm:px-6 lg:px-8 xl:px-10 2xl:px-14">
           <div className="mx-auto w-full max-w-[1920px]">
             <div className="mb-8 flex flex-col gap-6 text-center lg:mb-10 lg:flex-row lg:items-end lg:justify-between lg:text-left">
               <div className="min-w-0 lg:max-w-3xl">
                 <Link
                   to={ROUTES.HOME}
-                  className="mb-3 inline-block text-xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent dark:from-indigo-400 dark:to-violet-400"
+                  className="mb-3 inline-block bg-gradient-to-r from-primary-600 to-secondary-600 bg-clip-text text-xl font-bold text-transparent dark:from-primary-400 dark:to-secondary-400"
                 >
                   {APP_CONFIG.name}
                 </Link>
-                <h1 className="text-3xl font-bold tracking-tight text-neutral-900 dark:text-white sm:text-4xl">
+                <h1 className="text-3xl font-bold tracking-tight text-neutral-950 dark:text-neutral-50 sm:text-4xl">
                   Service status
                 </h1>
-                <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+                <p className="mt-2 text-sm text-neutral-700 dark:text-neutral-300">
                   See whether our systems are up, how your data store is doing, and how quickly this page responds from
                   your network. This view is public—no sign-in required.
                 </p>
@@ -322,14 +322,14 @@ export default function HealthPage() {
                 <Button type="button" variant="primary" disabled={refreshing} onClick={() => void fetchHealth(true)}>
                   {refreshing ? "Updating…" : "Refresh"}
                 </Button>
-                <span className="text-xs text-neutral-500 dark:text-neutral-500">
+                <span className="text-xs text-neutral-600 dark:text-neutral-400">
                   Refreshes automatically every {POLL_MS / 1000} seconds
                 </span>
               </div>
             </div>
 
             {loading && !health ? (
-              <div className="h-64 animate-pulse rounded-2xl bg-neutral-200/70 dark:bg-neutral-800/60" />
+              <div className="h-64 animate-pulse rounded-2xl bg-white/40 dark:bg-white/5" />
             ) : error ? (
               <div className="rounded-2xl border border-error-200 bg-error-50/90 p-8 text-center dark:border-error-900/50 dark:bg-error-950/30">
                 <p className="font-semibold text-error-800 dark:text-error-200">We couldn’t load this page</p>
@@ -362,7 +362,7 @@ export default function HealthPage() {
                       <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
                         Current status
                       </p>
-                      <p className="text-xl font-bold text-neutral-900 dark:text-white">
+                      <p className="text-xl font-bold text-neutral-950 dark:text-neutral-50">
                         {health.status === "healthy"
                           ? "All systems operational"
                           : health.status === "unhealthy"
@@ -383,11 +383,11 @@ export default function HealthPage() {
 
                 {/* Metrics row */}
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  <div className="rounded-2xl border border-neutral-200/80 bg-white/80 p-6 shadow-soft-md backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/70">
+                  <div className="rounded-2xl border border-white/25 bg-white/82 p-6 shadow-soft-md backdrop-blur-sm dark:border-white/10 dark:bg-neutral-950/50">
                     <p className="text-xs font-bold uppercase tracking-widest text-indigo-600 dark:text-indigo-400">
                       Capacity
                     </p>
-                    <p className="mt-3 text-4xl font-bold tabular-nums text-neutral-900 dark:text-white">
+                    <p className="mt-3 text-4xl font-bold tabular-nums text-neutral-950 dark:text-neutral-50">
                       {nodesAvailable ?? "—"}
                     </p>
                     <p className="mt-2 text-sm font-medium text-neutral-800 dark:text-neutral-200">
@@ -402,7 +402,7 @@ export default function HealthPage() {
                     </p>
                   </div>
 
-                  <div className="rounded-2xl border border-neutral-200/80 bg-white/80 p-6 shadow-soft-md backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/70">
+                  <div className="rounded-2xl border border-white/25 bg-white/82 p-6 shadow-soft-md backdrop-blur-sm dark:border-white/10 dark:bg-neutral-950/50">
                     <p className="text-xs font-bold uppercase tracking-widest text-violet-600 dark:text-violet-400">
                       Data storage
                     </p>
@@ -442,11 +442,11 @@ export default function HealthPage() {
                     )}
                   </div>
 
-                  <div className="rounded-2xl border border-neutral-200/80 bg-white/80 p-6 shadow-soft-md backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/70 sm:col-span-2 xl:col-span-1">
+                  <div className="rounded-2xl border border-white/25 bg-white/82 p-6 shadow-soft-md backdrop-blur-sm dark:border-white/10 dark:bg-neutral-950/50 sm:col-span-2 xl:col-span-1">
                     <p className="text-xs font-bold uppercase tracking-widest text-sky-600 dark:text-sky-400">
                       Uptime
                     </p>
-                    <p className="mt-3 text-4xl font-bold tabular-nums text-neutral-900 dark:text-white">
+                    <p className="mt-3 text-4xl font-bold tabular-nums text-neutral-950 dark:text-neutral-50">
                       {formatUptime(health.api.uptime_seconds)}
                     </p>
                     <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
@@ -458,21 +458,21 @@ export default function HealthPage() {
 
                 {/* Latency charts — database and API measured separately */}
                 {chartData.length < 2 ? (
-                  <div className="overflow-hidden rounded-2xl border border-neutral-200/80 bg-white/90 p-6 shadow-soft-lg backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/80">
-                    <h2 className="text-lg font-bold text-neutral-900 dark:text-white">Response time trends</h2>
+                  <div className="overflow-hidden rounded-2xl border border-white/25 bg-white/88 p-6 shadow-soft-lg backdrop-blur-md dark:border-white/10 dark:bg-neutral-950/55">
+                    <h2 className="text-lg font-bold text-neutral-950 dark:text-neutral-50">Response time trends</h2>
                     <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
                       Charts for data storage and your connection will appear after a couple of automatic checks.
                     </p>
-                    <div className="mt-6 flex h-48 items-center justify-center rounded-xl border border-dashed border-neutral-200 bg-neutral-50/50 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-950/30 dark:text-neutral-400 px-4 text-center">
+                    <div className="mt-6 flex h-48 items-center justify-center rounded-xl border border-dashed border-white/25 bg-white/30 px-4 text-center text-sm text-neutral-600 dark:border-white/10 dark:bg-white/5 dark:text-neutral-400">
                       Gathering readings… keep this tab open for a few seconds.
                     </div>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-                    <div className="overflow-hidden rounded-2xl border border-neutral-200/80 bg-white/90 p-4 shadow-soft-lg backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/80 sm:p-6">
+                    <div className="overflow-hidden rounded-2xl border border-white/25 bg-white/88 p-4 shadow-soft-lg backdrop-blur-md dark:border-white/10 dark:bg-neutral-950/55 sm:p-6">
                       <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                         <div>
-                          <h2 className="text-lg font-bold text-neutral-900 dark:text-white">Data storage response time</h2>
+                          <h2 className="text-lg font-bold text-neutral-950 dark:text-neutral-50">Data storage response time</h2>
                           <p className="text-xs text-neutral-500 dark:text-neutral-400">
                             How quickly our systems can reach your data on each check (recent {LATENCY_HISTORY_MAX}{" "}
                             readings, newest on the right).
@@ -585,10 +585,10 @@ export default function HealthPage() {
                       </div>
                     </div>
 
-                    <div className="overflow-hidden rounded-2xl border border-neutral-200/80 bg-white/90 p-4 shadow-soft-lg backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/80 sm:p-6">
+                    <div className="overflow-hidden rounded-2xl border border-white/25 bg-white/88 p-4 shadow-soft-lg backdrop-blur-md dark:border-white/10 dark:bg-neutral-950/55 sm:p-6">
                       <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                         <div>
-                          <h2 className="text-lg font-bold text-neutral-900 dark:text-white">API ping</h2>
+                          <h2 className="text-lg font-bold text-neutral-950 dark:text-neutral-50">API ping</h2>
                           <p className="text-xs text-neutral-500 dark:text-neutral-400">
                             Each point uses{" "}
                             <code className="rounded bg-neutral-100 px-1 py-0.5 font-mono text-[10px] dark:bg-neutral-800">
@@ -718,18 +718,19 @@ export default function HealthPage() {
                     This page shows essentials only. Deeper diagnostics (for example server memory or disk use) are
                     available to your IT or support team through their usual tools.
                   </p>
-                  <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50/60 p-4 text-center dark:border-neutral-700 dark:bg-neutral-950/40 lg:text-left">
+                  <div className="rounded-xl border border-dashed border-white/30 bg-white/40 p-4 text-center dark:border-white/15 dark:bg-white/5 lg:text-left">
                     <p className="text-xs text-neutral-600 dark:text-neutral-400">
-                      <span className="font-semibold text-neutral-700 dark:text-neutral-300">Technical reference:</span>{" "}
+                      <span className="font-semibold text-neutral-800 dark:text-neutral-200">Technical reference:</span>{" "}
                       machine-readable status: full check with DB at{" "}
-                      <code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px] dark:bg-neutral-900">
+                      <code className="rounded border border-neutral-200/80 bg-white/90 px-1.5 py-0.5 font-mono text-[11px] dark:border-white/10 dark:bg-neutral-950/60">
                         {apiBase}/health
                       </code>{" "}
-                      (and <code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px] dark:bg-neutral-900">
+                      (and{" "}
+                      <code className="rounded border border-neutral-200/80 bg-white/90 px-1.5 py-0.5 font-mono text-[11px] dark:border-white/10 dark:bg-neutral-950/60">
                         /api/health
                       </code>
                       ); process-only ping at{" "}
-                      <code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px] dark:bg-neutral-900">
+                      <code className="rounded border border-neutral-200/80 bg-white/90 px-1.5 py-0.5 font-mono text-[11px] dark:border-white/10 dark:bg-neutral-950/60">
                         {apiBase}/ping
                       </code>
                       .
@@ -742,7 +743,7 @@ export default function HealthPage() {
             <div className="mt-8 text-center lg:text-left">
               <Link
                 to={ROUTES.HOME}
-                className="inline-flex items-center text-indigo-600 transition-colors hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+                className="inline-flex items-center font-medium text-primary-700 transition-colors hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
               >
                 <svg className="mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -752,6 +753,7 @@ export default function HealthPage() {
             </div>
           </div>
         </div>
+        </MouseSpotlightSurface>
       </main>
       <Footer />
     </>
