@@ -509,6 +509,37 @@ struct TimeTrackingOverviewView: View {
     private func performBulkDelete() async {
         await MainActor.run { bulkActionInProgress = true }
         let ids = Array(selectedEntryIds)
+        let succeededIds: Set<String> = await bulkDeleteTimeEntryIds(ids)
+        await MainActor.run {
+            entries.removeAll { succeededIds.contains($0.id) }
+            selectedEntryIds.subtract(succeededIds)
+            if selectedEntryIds.isEmpty { selectionMode = false }
+            bulkActionInProgress = false
+        }
+    }
+
+    /// Uses one Rust `POST …/bulk-delete` job when deleting 2+ entries (202 + poll). Single selection keeps `DELETE …/[id]` (one `time_entry_delete` job).
+    /// If `bulk-delete` is missing (legacy server), falls back to parallel per-id deletes.
+    private func bulkDeleteTimeEntryIds(_ ids: [String]) async -> Set<String> {
+        guard !ids.isEmpty else { return [] }
+        if ids.count == 1, let id = ids.first {
+            switch await TimeTrackingService.deleteTimeEntry(config: appState.config, id: id) {
+            case .success: return Set([id])
+            case .failure: return []
+            }
+        }
+        switch await TimeTrackingService.bulkDeleteTimeEntries(config: appState.config, ids: ids) {
+        case .success:
+            return Set(ids)
+        case .failure(let err):
+            if case .notFound = err {
+                return await parallelDeleteTimeEntryIds(ids)
+            }
+            return []
+        }
+    }
+
+    private func parallelDeleteTimeEntryIds(_ ids: [String]) async -> Set<String> {
         var succeededIds: Set<String> = []
         await withTaskGroup(of: (String, Bool).self) { group in
             for id in ids {
@@ -524,12 +555,7 @@ struct TimeTrackingOverviewView: View {
                 if success { succeededIds.insert(id) }
             }
         }
-        await MainActor.run {
-            entries.removeAll { succeededIds.contains($0.id) }
-            selectedEntryIds.subtract(succeededIds)
-            if selectedEntryIds.isEmpty { selectionMode = false }
-            bulkActionInProgress = false
-        }
+        return succeededIds
     }
 
     private func performBulkStop() async {

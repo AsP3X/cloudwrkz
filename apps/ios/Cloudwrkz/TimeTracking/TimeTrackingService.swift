@@ -276,6 +276,27 @@ enum TimeTrackingService {
         return await executeVoid(request: request, config: config)
     }
 
+    /// POST /api/time-tracking/bulk-delete — one `time_entry_bulk_delete` background job on the Rust API (202 + poll).
+    /// Callers without this route (e.g. legacy Next handlers) get `notFound` and should fall back to per-id deletes.
+    static func bulkDeleteTimeEntries(config: ServerConfig, ids: [String]) async -> Result<Void, TimeTrackingServiceError> {
+        let trimmed = ids.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        guard !trimmed.isEmpty else { return .success(()) }
+        guard let url = buildURL(config: config, extraSegments: ["bulk-delete"]) else { return .failure(.noServerURL) }
+        guard let token = AuthTokenStorage.getToken(), !token.isEmpty else { return .failure(.noToken) }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = timeout
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        AppIdentity.apply(to: &request)
+        struct BulkIdsBody: Encodable { let ids: [String] }
+        request.httpBody = try? JSONEncoder().encode(BulkIdsBody(ids: trimmed))
+
+        return await executeVoid(request: request, config: config)
+    }
+
     // MARK: - POST /api/time-tracking/[id]/pause
 
     static func pauseTimeEntry(config: ServerConfig, id: String) async -> Result<Void, TimeTrackingServiceError> {
