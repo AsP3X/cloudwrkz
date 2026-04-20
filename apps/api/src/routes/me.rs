@@ -13,6 +13,7 @@ const MODULE_VIEW_PERMISSION: &[(&str, &str)] = &[
     ("timetracking", "modules.timetracking.view"),
     ("todos", "modules.todos.view"),
     ("links", "modules.links.view"),
+    ("employees", "modules.employees.view"),
 ];
 
 pub fn router() -> Router<AppState> {
@@ -51,6 +52,7 @@ async fn me(
                     "timetracking" => Some("time_tracking".to_string()),
                     "todos" => Some("todos".to_string()),
                     "links" => Some("links".to_string()),
+                    "employees" => Some("employees".to_string()),
                     _ => None,
                 }
             } else {

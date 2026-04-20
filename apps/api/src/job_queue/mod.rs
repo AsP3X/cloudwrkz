@@ -14,9 +14,9 @@
 //! `LOG_VERBOSITY=debug` (default filter includes `jobs=debug`) or `RUST_LOG=info,jobs=debug`.
 
 mod budget;
+pub mod entity_creates;
 pub mod supervisor;
 mod time_entry_mutations;
-pub mod entity_creates;
 
 pub use supervisor::{resolve_initial_worker_count, spawn_job_queue_supervisor};
 
@@ -125,6 +125,16 @@ pub(super) fn policies_from_config(config: &AppConfig) -> HashMap<String, JobTyp
         entity_creates::JOB_TYPE_COLLECTION_CREATE,
         entity_creates::JOB_TYPE_COLLECTION_UPDATE,
         entity_creates::JOB_TYPE_COLLECTION_DELETE,
+        entity_creates::JOB_TYPE_EMPLOYEE_CREATE,
+        entity_creates::JOB_TYPE_EMPLOYEE_UPDATE,
+        entity_creates::JOB_TYPE_EMPLOYEE_DELETE,
+        entity_creates::JOB_TYPE_EMPLOYEE_COMPENSATION_UPSERT,
+        entity_creates::JOB_TYPE_EMPLOYEE_ASSET_ASSIGN,
+        entity_creates::JOB_TYPE_EMPLOYEE_SKILL_UPSERT,
+        entity_creates::JOB_TYPE_EMPLOYEE_CERTIFICATION_UPSERT,
+        entity_creates::JOB_TYPE_EMPLOYEE_PERFORMANCE_REVIEW_CREATE,
+        entity_creates::JOB_TYPE_EMPLOYEE_GOAL_CREATE,
+        entity_creates::JOB_TYPE_EMPLOYEE_LIFECYCLE_EVENT_CREATE,
     ] {
         m.insert(
             t.to_string(),
@@ -281,7 +291,17 @@ async fn run_one_job(
         | entity_creates::JOB_TYPE_LINK_DELETE
         | entity_creates::JOB_TYPE_COLLECTION_CREATE
         | entity_creates::JOB_TYPE_COLLECTION_UPDATE
-        | entity_creates::JOB_TYPE_COLLECTION_DELETE => {
+        | entity_creates::JOB_TYPE_COLLECTION_DELETE
+        | entity_creates::JOB_TYPE_EMPLOYEE_CREATE
+        | entity_creates::JOB_TYPE_EMPLOYEE_UPDATE
+        | entity_creates::JOB_TYPE_EMPLOYEE_DELETE
+        | entity_creates::JOB_TYPE_EMPLOYEE_COMPENSATION_UPSERT
+        | entity_creates::JOB_TYPE_EMPLOYEE_ASSET_ASSIGN
+        | entity_creates::JOB_TYPE_EMPLOYEE_SKILL_UPSERT
+        | entity_creates::JOB_TYPE_EMPLOYEE_CERTIFICATION_UPSERT
+        | entity_creates::JOB_TYPE_EMPLOYEE_PERFORMANCE_REVIEW_CREATE
+        | entity_creates::JOB_TYPE_EMPLOYEE_GOAL_CREATE
+        | entity_creates::JOB_TYPE_EMPLOYEE_LIFECYCLE_EVENT_CREATE => {
             entity_creates::run_entity_create_job(
                 pool,
                 client,
@@ -466,8 +486,7 @@ pub(super) async fn run_job_queue_dispatcher_loop(
 ) {
     info!(
         event = "job_queue.worker_start",
-        worker_id,
-        "background job dispatcher started"
+        worker_id, "background job dispatcher started"
     );
     logs.append(
         worker_id,

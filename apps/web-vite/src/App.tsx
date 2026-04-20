@@ -36,6 +36,9 @@ import {
   LinkDetailPage,
   LinkEditPage,
   CollectionDetailPage,
+  EmployeesPage,
+  EmployeeDetailPage,
+  EmployeeEditPage,
   TimeTrackingPage,
   TimeEntryDetailPage,
   ProfilePage,
@@ -165,6 +168,9 @@ export default function App() {
                   <Route path="links/:id" element={<LinkDetailPage />} />
                   <Route path="links/:id/edit" element={<LinkEditPage />} />
                   <Route path="links/collections/:id" element={<CollectionDetailPage />} />
+                  <Route path="employees" element={<EmployeesPage />} />
+                  <Route path="employees/:id" element={<EmployeeDetailPage />} />
+                  <Route path="employees/:id/edit" element={<EmployeeEditPage />} />
                   <Route path="time-tracking" element={<TimeTrackingPage />} />
                   <Route path="time-tracking/:id" element={<TimeEntryDetailPage />} />
                   <Route path="profile" element={<ProfilePage />} />

@@ -28,5 +28,6 @@ export const ROUTES = {
   LINKS: "/dashboard/links",
   LINKS_ARCHIVE: "/dashboard/links/archive",
   LINKS_COLLECTION: "/dashboard/links/collections",
+  EMPLOYEES: "/dashboard/employees",
   ARCHIVE: "/dashboard/archive",
 } as const;

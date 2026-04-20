@@ -99,6 +99,17 @@ const LinksIcon = () => (
   </svg>
 );
 
+const EmployeesIcon = () => (
+  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M17 20h5v-2a4 4 0 00-5-3.87M9 20H4v-2a4 4 0 015-3.87m8-6.13a4 4 0 11-8 0 4 4 0 018 0zm6 2a3 3 0 11-6 0 3 3 0 016 0zM6 10a3 3 0 11-6 0 3 3 0 016 0z"
+    />
+  </svg>
+);
+
 type NavItem = {
   readonly name: string;
   readonly href: string;
@@ -170,6 +181,12 @@ const NAV_SECTIONS = Object.freeze([
         href: ROUTES.LINKS,
         icon: LinksIcon,
         moduleKey: "links",
+      }),
+      Object.freeze({
+        name: "Employees",
+        href: ROUTES.EMPLOYEES,
+        icon: EmployeesIcon,
+        moduleKey: "employees",
       }),
       Object.freeze({
         name: "Settings",

@@ -299,6 +299,25 @@ export interface Module {
   createdAt: string;
 }
 
+export interface Employee {
+  id: string;
+  employee_code: string;
+  first_name: string;
+  last_name: string;
+  display_name: string | null;
+  work_email: string | null;
+  department: string | null;
+  job_title: string | null;
+  location: string | null;
+  status: string;
+  employment_type: string;
+  hire_date: string;
+  termination_date: string | null;
+  manager_employee_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AdminSession {
   id: string;
   userId: string;
