@@ -84,6 +84,9 @@ async function pollMutationJobUntilDone<T>(
 ): Promise<T> {
   const maxWaitSecs = retryDeadlineSecs + 5;
   const deadline = Date.now() + maxWaitSecs * 1000;
+  // Human: `ok` tells listeners the background job finished successfully (vs failed, timeout, or HTTP error from job body).
+  // Agent: SETS mutationFinishedOk true only before successful return from completed status; FINALLY EMITS detail.ok.
+  let mutationFinishedOk = false;
   try {
     while (Date.now() < deadline) {
       await sleepMs(800);
@@ -99,6 +102,7 @@ async function pollMutationJobUntilDone<T>(
             typeof st.message === "string" ? st.message : "Request failed";
           throw new ApiError(code, msg, st.body);
         }
+        mutationFinishedOk = true;
         return st.body as T;
       }
       if (st.status === "failed") {
@@ -115,7 +119,11 @@ async function pollMutationJobUntilDone<T>(
       undefined,
     );
   } finally {
-    window.dispatchEvent(new CustomEvent("cloudwrkz:mutation-finished", { detail: { path, jobId } }));
+    window.dispatchEvent(
+      new CustomEvent("cloudwrkz:mutation-finished", {
+        detail: { path, jobId, ok: mutationFinishedOk },
+      }),
+    );
   }
 }
 

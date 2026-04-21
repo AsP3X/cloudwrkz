@@ -126,6 +126,9 @@ pub fn is_entity_create_job_type(job_type: &str) -> bool {
             | JOB_TYPE_EMPLOYEE_LEAVE_REQUEST_UPDATE
             | JOB_TYPE_EMPLOYEE_DOCUMENT_CREATE
             | JOB_TYPE_EMPLOYEE_DOCUMENT_DELETE
+            | JOB_TYPE_DEPARTMENT_CREATE
+            | JOB_TYPE_DEPARTMENT_UPDATE
+            | JOB_TYPE_DEPARTMENT_DELETE
     )
 }
 

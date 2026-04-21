@@ -1,8 +1,9 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "@/api/client";
 import { ROUTES } from "@/lib/constants/routes";
 import { Button } from "@/components/ui/Button";
+import { Dialog } from "@/components/ui/Dialog";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { useAuth } from "@/components/providers/AuthProvider";
 import type { Employee } from "@/lib/types";
@@ -19,6 +20,12 @@ type EditableEmployee = {
   manager_employee_id: string;
   notes: string;
 };
+
+interface CwUser {
+  id: string;
+  name: string | null;
+  email: string;
+}
 
 const EMPTY_FORM: EditableEmployee = {
   first_name: "",
@@ -42,6 +49,9 @@ const EMPLOYMENT_TYPE_OPTIONS = [
   "TEMPORARY",
 ] as const;
 
+const inputClass =
+  "mt-1 w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500";
+
 export default function EmployeeEditPage() {
   const { can } = useAuth();
   const canEdit = can("employees.update");
@@ -49,15 +59,24 @@ export default function EmployeeEditPage() {
   const navigate = useNavigate();
   const [form, setForm] = useState<EditableEmployee>(EMPTY_FORM);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [users, setUsers] = useState<CwUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Linked cloudwrkz user
+  const [linkedUserId, setLinkedUserId] = useState<string | null>(null);
+
+  // User picker dialog state
+  const [userPickerOpen, setUserPickerOpen] = useState(false);
+  const [userPickerSearch, setUserPickerSearch] = useState("");
+  const [userPickerDraft, setUserPickerDraft] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
     try {
       const [empData, listData] = await Promise.all([
-        api.get<{ employee: Partial<EditableEmployee & { manager_employee_id?: string | null }> }>(`/employees/${id}`),
+        api.get<{ employee: Partial<EditableEmployee & { manager_employee_id?: string | null; user_id?: string | null }> }>(`/employees/${id}`),
         api.get<{ employees: Employee[] }>("/employees"),
       ]);
       const e = empData.employee ?? {};
@@ -73,6 +92,7 @@ export default function EmployeeEditPage() {
         manager_employee_id: String(e.manager_employee_id ?? ""),
         notes: String(e.notes ?? ""),
       });
+      setLinkedUserId(e.user_id ?? null);
       setEmployees((listData.employees ?? []).filter((emp) => emp.id !== id));
       setError(null);
     } catch (e) {
@@ -82,9 +102,17 @@ export default function EmployeeEditPage() {
     }
   }, [id]);
 
+  const loadUsers = useCallback(async () => {
+    try {
+      const data = await api.get<{ users: CwUser[] }>("/users");
+      setUsers(data.users ?? []);
+    } catch { /* non-fatal */ }
+  }, []);
+
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadUsers();
+  }, [load, loadUsers]);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -95,6 +123,7 @@ export default function EmployeeEditPage() {
       await api.patch(`/employees/${id}`, {
         ...form,
         manager_employee_id: form.manager_employee_id || null,
+        ...(linkedUserId !== null ? { user_id: linkedUserId } : {}),
       });
       navigate(`${ROUTES.EMPLOYEES}/${id}`);
     } catch (err) {
@@ -103,6 +132,36 @@ export default function EmployeeEditPage() {
       setSaving(false);
     }
   };
+
+  const openUserPicker = useCallback(() => {
+    setUserPickerDraft(linkedUserId);
+    setUserPickerSearch("");
+    setUserPickerOpen(true);
+  }, [linkedUserId]);
+
+  const applyUserPicker = useCallback(() => {
+    setLinkedUserId(userPickerDraft);
+    setUserPickerOpen(false);
+    setUserPickerSearch("");
+  }, [userPickerDraft]);
+
+  const filteredUsers = useMemo(() => {
+    const q = userPickerSearch.trim().toLowerCase();
+    const sorted = [...users].sort((a, b) =>
+      (a.name ?? a.email).localeCompare(b.name ?? b.email)
+    );
+    if (!q) return sorted;
+    return sorted.filter(
+      (u) =>
+        (u.name ?? "").toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q)
+    );
+  }, [users, userPickerSearch]);
+
+  const linkedUser = useMemo(
+    () => (linkedUserId ? users.find((u) => u.id === linkedUserId) ?? null : null),
+    [linkedUserId, users]
+  );
 
   if (!canEdit) {
     return (
@@ -149,7 +208,7 @@ export default function EmployeeEditPage() {
         <label className="block">
           <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">Superior (manager)</span>
           <select
-            className="mt-1 w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 px-3 py-2 text-sm"
+            className={inputClass}
             value={form.manager_employee_id}
             onChange={(e) => setForm((p) => ({ ...p, manager_employee_id: e.target.value }))}
           >
@@ -167,6 +226,62 @@ export default function EmployeeEditPage() {
         </label>
         <Field label="Notes" value={form.notes} onChange={(v) => setForm((p) => ({ ...p, notes: v }))} multiline />
 
+        {/* Linked cloudwrkz user */}
+        <div>
+          <span className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+            Linked cloudwrkz user
+          </span>
+          <div className="rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 overflow-hidden">
+            <div className="px-3 py-2.5 min-h-[40px] flex items-center gap-2">
+              {linkedUser ? (
+                <>
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-bold text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
+                    {(linkedUser.name ?? linkedUser.email).charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    {linkedUser.name && (
+                      <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                        {linkedUser.name}
+                      </p>
+                    )}
+                    <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
+                      {linkedUser.email}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setLinkedUserId(null)}
+                    className="shrink-0 text-xs text-neutral-400 hover:text-red-500 dark:text-neutral-500 dark:hover:text-red-400 transition-colors"
+                    aria-label="Remove link"
+                  >
+                    Remove
+                  </button>
+                </>
+              ) : linkedUserId ? (
+                <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                  Linked to user <span className="font-mono text-xs">{linkedUserId}</span>
+                </p>
+              ) : (
+                <p className="text-sm text-neutral-400 dark:text-neutral-500">No user linked yet.</p>
+              )}
+            </div>
+            <div className="border-t border-neutral-200 dark:border-neutral-800 px-2 py-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 w-full text-sm font-normal"
+                onClick={openUserPicker}
+              >
+                {linkedUserId ? "Change linked user…" : "Link a user…"}
+              </Button>
+            </div>
+          </div>
+          <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+            Connect this employee record to a cloudwrkz login account.
+          </p>
+        </div>
+
         <div className="flex gap-2 pt-2">
           <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Save changes"}</Button>
           <Button asChild variant="outline" type="button">
@@ -174,6 +289,115 @@ export default function EmployeeEditPage() {
           </Button>
         </div>
       </form>
+
+      {/* User picker dialog */}
+      <Dialog
+        nested
+        open={userPickerOpen}
+        onOpenChange={(open) => {
+          setUserPickerOpen(open);
+          if (!open) setUserPickerSearch("");
+        }}
+        title="Link cloudwrkz user"
+        description="Search and select the cloudwrkz account to link to this employee."
+      >
+        <div className="space-y-4 p-5 sm:p-7">
+          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+            Search users
+            <input
+              type="search"
+              className={inputClass}
+              value={userPickerSearch}
+              onChange={(e) => setUserPickerSearch(e.target.value)}
+              placeholder="Name or email…"
+              autoComplete="off"
+            />
+          </label>
+
+          <div className="max-h-[min(50vh,320px)] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-800">
+            {users.length === 0 ? (
+              <p className="p-4 text-sm text-neutral-600 dark:text-neutral-400">No users loaded.</p>
+            ) : filteredUsers.length === 0 ? (
+              <p className="p-4 text-sm text-neutral-600 dark:text-neutral-400">No users match your search.</p>
+            ) : (
+              <ul className="divide-y divide-neutral-200 dark:divide-neutral-800">
+                {filteredUsers.map((user) => {
+                  const selected = userPickerDraft === user.id;
+                  return (
+                    <li key={user.id}>
+                      <button
+                        type="button"
+                        onClick={() => setUserPickerDraft(selected ? null : user.id)}
+                        className={
+                          "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors " +
+                          (selected
+                            ? "bg-primary-50 dark:bg-primary-900/20"
+                            : "hover:bg-neutral-50 dark:hover:bg-neutral-800/80")
+                        }
+                      >
+                        <div
+                          className={
+                            "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold " +
+                            (selected
+                              ? "bg-primary-100 text-primary-700 dark:bg-primary-800/60 dark:text-primary-300"
+                              : "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400")
+                          }
+                        >
+                          {(user.name ?? user.email).charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          {user.name && (
+                            <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                              {user.name}
+                            </p>
+                          )}
+                          <p className="truncate text-xs text-neutral-500 dark:text-neutral-400">
+                            {user.email}
+                          </p>
+                        </div>
+                        {selected && (
+                          <svg
+                            className="h-4 w-4 shrink-0 text-primary-600 dark:text-primary-400"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={2.5}
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200 pt-4 dark:border-neutral-800">
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">
+              {userPickerDraft
+                ? `Selected: ${users.find((u) => u.id === userPickerDraft)?.name ?? users.find((u) => u.id === userPickerDraft)?.email ?? userPickerDraft}`
+                : "No user selected"}
+            </p>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setUserPickerOpen(false);
+                  setUserPickerSearch("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="button" onClick={applyUserPicker}>
+                Apply
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }

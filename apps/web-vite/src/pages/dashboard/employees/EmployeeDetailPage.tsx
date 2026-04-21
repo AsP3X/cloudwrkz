@@ -15,6 +15,7 @@ type Tab = "profile" | "compensation" | "vacation" | "leave" | "assets" | "skill
 interface EmployeeDetail {
   id: string;
   employee_code: string;
+  user_id: string | null;
   first_name: string | null;
   last_name: string | null;
   display_name: string | null;
@@ -72,6 +73,12 @@ interface ReviewRecord { id: string; cycle_name: string; rating: number | null; 
 interface GoalRecord { id: string; title: string; status: string; progress_percent: number; target_date: string | null; }
 interface LifecycleRecord { id: string; event_type: string; status: string; title: string; due_at: string | null; }
 
+interface CwUser {
+  id: string;
+  name: string | null;
+  email: string;
+}
+
 const STATUS_STYLE: Record<string, string> = {
   ACTIVE:     "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
   ON_LEAVE:   "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
@@ -119,7 +126,7 @@ const inputClass = "w-full rounded-lg border border-neutral-300 bg-white px-3 py
 export default function EmployeeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { can } = useAuth();
+  const { can, user: authUser } = useAuth();
 
   const canView        = can("employees.view") || can("employees.view_all");
   const canUpdate      = can("employees.update");
@@ -140,6 +147,7 @@ export default function EmployeeDetailPage() {
 
   // Leave tab state
   const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
+  const [cwUsers, setCwUsers] = useState<CwUser[]>([]);
 
   // Leave tab state
   const [leaveRequests, setLeaveRequests] = useState<EmployeeLeaveRequest[]>([]);
@@ -192,6 +200,13 @@ export default function EmployeeDetailPage() {
     } catch { /* non-fatal */ }
   }, []);
 
+  const loadCwUsers = useCallback(async () => {
+    try {
+      const data = await api.get<{ users: CwUser[] }>("/users");
+      setCwUsers(data.users ?? []);
+    } catch { /* non-fatal */ }
+  }, []);
+
   const loadLeave = useCallback(async () => {
     if (!id) return;
     try {
@@ -208,7 +223,11 @@ export default function EmployeeDetailPage() {
     } catch { setDocuments([]); }
   }, [id]);
 
-  useEffect(() => { void loadEmployee(); void loadAllEmployees(); }, [loadEmployee, loadAllEmployees]);
+  useEffect(() => {
+    void loadEmployee();
+    void loadAllEmployees();
+    void loadCwUsers();
+  }, [loadEmployee, loadAllEmployees, loadCwUsers]);
   useEffect(() => { if (tab === "leave" || tab === "vacation") void loadLeave(); }, [tab, loadLeave]);
   useEffect(() => { if (tab === "documents") void loadDocs(); }, [tab, loadDocs]);
 
@@ -261,6 +280,23 @@ export default function EmployeeDetailPage() {
     : employee.manager_employee_id
       ? employee.manager_employee_id  // fallback: show raw ID while employees load
       : null;
+
+  const linkedCwUser = employee.user_id
+    ? cwUsers.find((u) => u.id === employee.user_id) ?? null
+    : null;
+  const linkedUserLabel = linkedCwUser
+    ? [linkedCwUser.name?.trim() || null, linkedCwUser.email].filter(Boolean).join(" · ")
+    : employee.user_id
+      ? employee.user_id
+      : null;
+
+  const linkedUserHref = employee.user_id
+    ? can("admin.users.view")
+      ? `${ROUTES.ADMIN_USERS}/${employee.user_id}`
+      : authUser?.role === "ADMIN" || authUser?.id === employee.user_id
+        ? `${ROUTES.DASHBOARD}/users/${employee.user_id}`
+        : `${ROUTES.EMPLOYEES}/${employee.id}/edit`
+    : "";
 
   const TABS: { key: Tab; label: string }[] = [
     { key: "profile",      label: "Profile" },
@@ -353,6 +389,33 @@ export default function EmployeeDetailPage() {
               <Row label="Full name" value={fallbackName} />
               <Row label="Display name" value={employee.display_name} />
               <Row label="Date of birth" value={employee.date_of_birth} />
+              <div className="flex items-start gap-4 py-2 border-b border-neutral-100 dark:border-neutral-800 last:border-0">
+                <dt className="w-36 shrink-0 text-xs font-medium text-neutral-500 dark:text-neutral-400 pt-1.5">
+                  Linked cloudwrkz user
+                </dt>
+                <dd className="min-w-0 flex-1">
+                  {employee.user_id ? (
+                    <Button asChild variant="outline" size="sm" className="h-auto max-w-full justify-start py-1.5 font-normal">
+                      <Link to={linkedUserHref} title="Open linked cloudwrkz account">
+                        <span
+                          className={
+                            "truncate text-left " +
+                            (linkedCwUser ? "" : "font-mono text-xs")
+                          }
+                        >
+                          {linkedUserLabel}
+                        </span>
+                      </Link>
+                    </Button>
+                  ) : canUpdate ? (
+                    <Button asChild variant="outline" size="sm">
+                      <Link to={`${ROUTES.EMPLOYEES}/${employee.id}/edit`}>Link a cloudwrkz user…</Link>
+                    </Button>
+                  ) : (
+                    <span className="text-sm text-neutral-900 dark:text-neutral-100">—</span>
+                  )}
+                </dd>
+              </div>
             </dl>
           </section>
           <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-soft-lg dark:border-neutral-800 dark:bg-neutral-900">
