@@ -12,6 +12,9 @@
 //!   cloudwrkz-cli diagnostics-token generate   Store hashed token in DB; print plaintext once (for GET …/health/detailed).
 //!                                                Prefer this in CI/deploy when you standardize on the CLI binary (equivalent to `cloudwrkz-api diagnostics-token generate`).
 
+// Human: One binary covers scripted DB maintenance, headless admin bootstrap, token login printing, and the full ratatui operator console.
+// Agent: CLAP subcommands Login Db Admin DiagnosticsToken; NO args -> run_interactive; DB cmds USE sqlx + migrations dir; TUI USES api::ApiClient + tui::run_tui.
+
 mod api;
 mod tui;
 
@@ -35,6 +38,9 @@ const FALLBACK_COLS: usize = 80;
 const FALLBACK_ROWS: usize = 24;
 
 /// Terminal dimensions (cols, rows). Cached for layout; use when drawing.
+// Human: Help banners and separators need a width even when stdout is not a real tty (e.g. CI) so wrapping stays stable.
+// Agent: CALLS crossterm::terminal::size; MAP u16->usize; FALLBACK 80x24.
+
 fn terminal_size() -> (usize, usize) {
     crossterm::terminal::size()
         .map(|(c, r)| (c as usize, r as usize))
@@ -42,6 +48,9 @@ fn terminal_size() -> (usize, usize) {
 }
 
 /// Width for separators and layout (responsive to terminal).
+// Human: Separator lines in help text stretch to the full terminal width so the CLI looks intentional in wide consoles.
+// Agent: READS terminal_size().0 only.
+
 fn terminal_cols() -> usize {
     terminal_size().0
 }
@@ -55,10 +64,16 @@ struct PermissionOption {
 }
 
 impl std::fmt::Display for PermissionOption {
+    // Human: Grant/revoke lists show key, human title, and category on one line so dense permission trees stay scannable in the TUI.
+    // Agent: write! key — name (category) with spacing.
+
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "  {}  —  {}  ({})", self.key, self.name, self.category)
     }
 }
+
+// Human: Admin permission JSON uses loose `serde_json::Value` rows; this normalizes missing fields to empty strings for stable menu sorting.
+// Agent: READS key name category string fields with unwrap_or ""; BUILDS PermissionOption.
 
 fn permission_option_from_json(p: &serde_json::Value) -> PermissionOption {
     PermissionOption {
@@ -84,6 +99,9 @@ const BACK_LABEL: &str = "← Back";
 
 /// Filter items by case-insensitive substring; returns (filtered_items, original_indices).
 /// The last item is always included if it is "← Back" so navigation remains possible.
+// Human: Global search should never hide the back row, or operators could get trapped in a leaf screen with no exit affordance.
+// Agent: FILTER to_lowercase contains q; TRACK original indices; IF BACK_LABEL last AND missing APPEND back row + index.
+
 fn filter_by_search(items: &[String], query: &str) -> (Vec<String>, Vec<usize>) {
     if query.is_empty() {
         return (items.to_vec(), (0..items.len()).collect());
@@ -109,6 +127,9 @@ fn filter_by_search(items: &[String], query: &str) -> (Vec<String>, Vec<usize>) 
 }
 
 /// Unique categories from permissions, sorted.
+// Human: Grant/revoke sidebars group keys by product area; empty categories from malformed JSON are dropped before sorting.
+// Agent: COLLECT category into HashSet remove ""; INTO Vec SORT.
+
 fn categories_from_permissions(perms: &[PermissionOption]) -> Vec<String> {
     let mut cats: std::collections::HashSet<String> =
         perms.iter().map(|p| p.category.clone()).collect();
@@ -204,6 +225,9 @@ enum DbCommand {
     },
 }
 
+// Human: Packaged binaries may run outside the repo, so `MIGRATIONS_DIR` overrides the default `apps/api/migrations` next to cwd.
+// Agent: USE given OR cwd.join apps/api/migrations OR static fallback PathBuf.
+
 fn migrations_dir(given: Option<PathBuf>) -> PathBuf {
     given.unwrap_or_else(|| {
         std::env::current_dir()
@@ -218,6 +242,9 @@ fn migrations_dir(given: Option<PathBuf>) -> PathBuf {
 /// 2. Blank `CLOUDWRKZ_*` values are removed so a later file can fill them (`from_path` never overrides).
 /// 3. `apps/api/.env` — shared with `cloudwrkz-api` (`DATABASE_URL`, `API_PORT`, optional `CLOUDWRKZ_TOKEN`).
 /// 4. `apps/cli/.env` — **overrides** (recommended place for `CLOUDWRKZ_TOKEN` so it always wins).
+// Human: Layered env loading mirrors the API server so `DATABASE_URL` can live in `apps/api/.env` while the CLI token overrides from `apps/cli/.env`.
+// Agent: dotenv root; unset blank CLOUDWRKZ_TOKEN/API_URL; from_path apps/api/.env; from_path_override apps/cli/.env.
+
 fn load_dotenv() {
     dotenvy::dotenv().ok();
     unset_env_if_blank("CLOUDWRKZ_TOKEN");
@@ -229,6 +256,9 @@ fn load_dotenv() {
         let _ = dotenvy::from_path_override(path);
     }
 }
+
+// Human: Empty-string env vars block later files from supplying real values because dotenv refuses to override set keys.
+// Agent: IF var exists AND trim empty unsafe remove_var; CALLED only from main thread before spawn.
 
 fn unset_env_if_blank(key: &str) {
     match std::env::var(key) {
@@ -244,6 +274,9 @@ fn unset_env_if_blank(key: &str) {
 }
 
 /// Walks up from cwd, then from the executable directory, to find `relative_path` under a workspace root.
+// Human: Developers run the CLI from subfolders or `target/release`, so we walk parents from cwd and from the exe path to find nested `.env` files.
+// Agent: WALK cwd.parent chain test is_file; ELSE WALK exe.parent chain; RETURNS first match Option.
+
 fn find_workspace_file(relative_path: &str) -> Option<PathBuf> {
     if let Ok(cwd) = std::env::current_dir() {
         let mut dir = Some(cwd.as_path());
@@ -267,6 +300,9 @@ fn find_workspace_file(relative_path: &str) -> Option<PathBuf> {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Human: Parses clap commands for headless workflows, otherwise drops into the ratatui operator console used for day-two admin tasks.
+    // Agent: load_dotenv; IF argc<=1 run_interactive; ELSE Cli::parse match Login|Db|Admin|DiagnosticsToken; EACH branch READS DATABASE_URL as needed.
+
     load_dotenv();
 
     // No arguments → interactive mode (port of Node CLI's "pnpm cli")
@@ -348,6 +384,9 @@ async fn run_diagnostics_token_generate(
     database_url: &str,
     migrations_dir: &PathBuf,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Human: Mirrors `cloudwrkz-api diagnostics-token generate` so CI can ship one binary; migrates first so `system_settings` exists.
+    // Agent: run_migrate; CONNECT pool max 2; OsRng 32 bytes hex cwzd_; hash_password Argon2; UPSERT system_settings key diagnostics_health_token_hash; PRINT token once.
+
     run_migrate(database_url, migrations_dir).await?;
 
     let pool = PgPoolOptions::new()
@@ -388,6 +427,9 @@ async fn run_login(
     email: Option<String>,
     password: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Human: Headless login prompts when flags/env are missing, then prints shell export hints so operators can paste `CLOUDWRKZ_TOKEN` safely.
+    // Agent: api_config + ApiClient::new; inquire Text/Password fallback; client.login; SUCCESS print token; ERR api::user_message exit 1.
+
     let (base_url, _) = api::api_config();
     let client = api::ApiClient::new(base_url.clone(), None);
 
@@ -452,6 +494,9 @@ async fn run_login(
 }
 
 /// Generate a CUID-like id (same format as API) for new user.
+// Human: Bootstrap `create-admin` inserts rows compatible with Prisma-style string ids used everywhere else in the product.
+// Agent: SAME algorithm as API id.rs: millis base36 + 16 random base36 chars prefixed c.
+
 fn new_cuid() -> String {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -470,6 +515,9 @@ fn new_cuid() -> String {
     format!("c{}{}", base36(timestamp as u64), random_part)
 }
 
+// Human: Encodes the timestamp portion of the synthetic CUID without pulling in extra crates.
+// Agent: DIV loop base 36 digits; SPECIAL n==0; REVERSE bytes to string.
+
 fn base36(mut n: u64) -> String {
     if n == 0 {
         return "0".to_string();
@@ -485,6 +533,9 @@ fn base36(mut n: u64) -> String {
 }
 
 /// Hash password with Argon2 (same as API) so the user can log in via API.
+// Human: The bootstrap admin must use the same Argon2 parameters as the API’s `hash_password` or first login would always fail verification.
+// Agent: SaltString::generate OsRng; Argon2::default hash_password; RETURN PHC string.
+
 fn hash_password(password: &str) -> Result<String, argon2::password_hash::Error> {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
@@ -498,6 +549,9 @@ async fn run_create_admin(
     password: &str,
     name: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Human: Creates only the very first `ADMIN` row in an empty install; later admins must go through the product so this stays a guarded bootstrap.
+    // Agent: REQUIRES CLOUDWRKZ_BOOTSTRAP_SECRET non-empty; VALIDATES email+password length; CHECK no existing ADMIN; INSERT users role ADMIN; HANDLE unique violation.
+
     // Require bootstrap secret so DATABASE_URL alone is not enough (e.g. in CI or leaked env).
     let secret = std::env::var("CLOUDWRKZ_BOOTSTRAP_SECRET").unwrap_or_default();
     if secret.trim().is_empty() {
@@ -578,6 +632,9 @@ async fn run_create_admin(
 }
 
 /// Current TUI screen (and its data). All sub-UIs use the same sidebar + content layout.
+// Human: A navigation stack of `AppScreen` values models nested menus without separate ratatui routes—pop equals Back.
+// Agent: ENUM variants carry JSON blobs or selection state for users/groups/permissions/db output; Main is root.
+
 #[derive(Clone)]
 enum AppScreen {
     Main,
@@ -649,6 +706,9 @@ enum AppScreen {
 }
 
 /// Main menu: right-panel action list for each sidebar row (must stay in sync with `AppScreen::Main`).
+// Human: Sidebar index 0–6 maps to Users…Quit; tokenless rows show placeholders instead of calling APIs that would 401.
+// Agent: MATCH section+has_token; RETURNS vec of localized action labels.
+
 fn main_section_submenu(section: usize, has_token: bool) -> Vec<String> {
     match section {
         0 if !has_token => vec!["(Login required — set CLOUDWRKZ_TOKEN)".to_string()],
@@ -676,6 +736,9 @@ fn main_section_submenu(section: usize, has_token: bool) -> Vec<String> {
     }
 }
 
+// Human: Labels feed both the main sidebar emoji row and the breadcrumb-style parent row on sub-screens.
+// Agent: STATIC str match section index.
+
 fn main_section_parent_label(section: usize) -> &'static str {
     match section {
         0 => "Users",
@@ -690,11 +753,17 @@ fn main_section_parent_label(section: usize) -> &'static str {
 }
 
 /// Left sidebar on sub-screens: parent section title + the same submenu entries as on the main menu.
+// Human: Child screens keep the same left column structure so muscle memory from the home menu still applies one level deeper.
+// Agent: PREPEND main_section_parent_label string; EXTEND with main_section_submenu(section, has_token).
+
 fn sidebar_parent_plus_submenu(section: usize, has_token: bool) -> Vec<String> {
     let mut v = vec![main_section_parent_label(section).to_string()];
     v.extend(main_section_submenu(section, has_token));
     v
 }
+
+// Human: One string per user row keeps the ratatui list simple while still showing email, optional name, role, and status columns.
+// Agent: MAP serde_json fields email name role status; FORMAT single line each.
 
 fn user_list_rows(users: &[serde_json::Value]) -> Vec<String> {
     users
@@ -711,6 +780,9 @@ fn user_list_rows(users: &[serde_json::Value]) -> Vec<String> {
 }
 
 /// Right-panel list for the current screen and sidebar selection (keeps sidebar + content in sync in the TUI).
+// Human: This giant match is the single source of truth for what the right column shows for every `AppScreen` and sidebar index pair.
+// Agent: MATCH AppScreen variant; COMPOSE main_section_submenu rows OR user lists OR permission pickers OR db/help text chunks; APPEND BACK_LABEL where navigation applies.
+
 fn panel_content(screen: &AppScreen, sidebar_idx: usize, has_token: bool) -> Vec<String> {
     match screen {
         AppScreen::Main => main_section_submenu(sidebar_idx, has_token),
@@ -967,6 +1039,9 @@ fn panel_content(screen: &AppScreen, sidebar_idx: usize, has_token: bool) -> Vec
         }
     }
 }
+
+// Human: Maps abstract `AppScreen` + focus state into the four strings ratatui needs: left title, sidebar rows, right title, content rows, optional header block.
+// Agent: MATCH screen; BUILD emoji sidebar for Main; OTHER screens CALL sidebar_parent_plus_submenu + panel_content; RETURN optional header tuple.
 
 fn build_ui(
     screen: &AppScreen,
@@ -1264,6 +1339,9 @@ fn build_ui(
     }
 }
 
+// Human: Full-screen prompts between TUI and println modes avoid leaving ratatui debris on the scrollback when we drop to line mode.
+// Agent: crossterm execute Clear All MoveTo 0,0 on stdout.
+
 fn clear_screen() {
     let _ = crossterm::execute!(
         std::io::stdout(),
@@ -1271,6 +1349,9 @@ fn clear_screen() {
         crossterm::cursor::MoveTo(0, 0),
     );
 }
+
+// Human: Non-TUI messages still share a consistent branded banner width with the terminal ruler line.
+// Agent: PRINT separator line terminal_cols; PRINT APP_NAME CLI title colored.
 
 fn header(title: &str, subtitle: &str) {
     let w = terminal_cols();
@@ -1282,6 +1363,9 @@ fn header(title: &str, subtitle: &str) {
     println!("{}\n", subtitle.bright_black());
 }
 
+// Human: After informational println screens we block on stdin so fast operators can read the text before it scrolls away.
+// Agent: READ_LINE stdin discard result.
+
 fn wait_for_enter() {
     println!("{}", "Press Enter to continue...".bright_black());
     let mut buf = String::new();
@@ -1289,6 +1373,9 @@ fn wait_for_enter() {
 }
 
 async fn run_interactive() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Human: The interactive shell is a stack machine: each `tui::run_tui` pass may push/pop `AppScreen` values and optionally filter both panes via search.
+    // Agent: REQUIRE DATABASE_URL; BUILD api_client; LOOP build_ui+panel_content; APPLY search_filter mapping; MATCH TuiExit dispatch_tui_action; BREAK Quit.
+
     let database_url = match std::env::var("DATABASE_URL") {
         Ok(u) => u,
         Err(_) => {
@@ -1488,6 +1575,9 @@ enum DispatchResult {
     Continue,
     Quit,
 }
+
+// Human: Every Enter/Space on a menu row is interpreted here—this is where API calls, stack pushes, and destructive confirms are centralized.
+// Agent: READ panel_content for BACK detection; MATCH screen variant; AWAIT api_client or sqlx helpers; MUTATE stack + tui_state.sidebar_index; RETURN Continue|Quit.
 
 async fn dispatch_tui_action(
     tui_state: &mut tui::TuiState,
@@ -2043,6 +2133,9 @@ async fn dispatch_tui_action(
 }
 
 /// Run a DB action and return output as a string (for TUI display).
+// Human: Database menu indexes align with the non-interactive `db` subcommands so the TUI shows the same operations in order.
+// Agent: MATCH index 0-3 -> run_status_string run_migrate_string run_seed_string run_stats_string.
+
 async fn run_db_action_capture(
     database_url: &str,
     index: usize,
@@ -2060,6 +2153,9 @@ async fn run_db_action_capture(
 async fn run_status_string(
     database_url: &str,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    // Human: Compact text panel proves connectivity and gives a rough sense of whether the database already has seed users.
+    // Agent: pool; SELECT 1; COUNT users; close pool; FORMAT two-line string.
+
     let pool = pool(database_url).await?;
     let _: (i32,) = sqlx::query_as("SELECT 1").fetch_one(&pool).await?;
     let users: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
@@ -2072,7 +2168,13 @@ async fn run_status_string(
 async fn run_stats_string(
     database_url: &str,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    // Human: Table counts help operators sanity-check a restore or seed without opening a SQL shell; all queries run in parallel for speed.
+    // Agent: try_join COUNT on fixed table names; NOTE table names are literals not user input.
+
     let pool = pool(database_url).await?;
+    // Human: Inner helper formats `SELECT COUNT(*)` for a known-safe table name chosen by this CLI, not remote users.
+    // Agent: query_as dynamic format string with table identifier; FETCH_ONE i64.
+
     async fn count(pool: &PgPool, table: &str) -> Result<i64, sqlx::Error> {
         let row: (i64,) = sqlx::query_as(&format!("SELECT COUNT(*) FROM {}", table))
             .fetch_one(pool)
@@ -2096,6 +2198,9 @@ async fn run_stats_string(
     ))
 }
 
+// Human: TUI capture path wraps the same `run_seed` implementation as the `db seed` subcommand so output stays consistent.
+// Agent: AWAIT run_seed; RETURNS static "Seed complete." string.
+
 async fn run_seed_string(
     database_url: &str,
     migrations_dir: &PathBuf,
@@ -2103,6 +2208,9 @@ async fn run_seed_string(
     run_seed(database_url, migrations_dir).await?;
     Ok("Seed complete.".to_string())
 }
+
+// Human: String wrapper exists so the database menu can show the same migrate result text as the CLI prints to stdout.
+// Agent: AWAIT run_migrate; OK static migrations message.
 
 async fn run_migrate_string(
     database_url: &str,
@@ -2112,6 +2220,9 @@ async fn run_migrate_string(
     Ok("Migrations complete.".to_string())
 }
 
+// Human: TUI reset confirmation already happened in `AppScreen::ConfirmDbReset`, so this string helper skips prompts (`yes: true`).
+// Agent: run_reset skip_confirm true; RETURNS completion string.
+
 async fn run_reset_string(
     database_url: &str,
     migrations_dir: &PathBuf,
@@ -2119,6 +2230,9 @@ async fn run_reset_string(
     run_reset(database_url, migrations_dir, true).await?;
     Ok("Database reset complete.".to_string())
 }
+
+// Human: Help screen text is generated so the horizontal rule width tracks the current terminal instead of hard-wrapping at 80 columns.
+// Agent: READ terminal_cols; format! multi-section static help string with APP_NAME and repeated line separators.
 
 fn help_text() -> String {
     let w = terminal_cols();
@@ -2128,6 +2242,9 @@ fn help_text() -> String {
         APP_NAME, line, line, line, line
     )
 }
+
+// Human: When `CLOUDWRKZ_TOKEN` is missing we block with a full-screen explainer instead of failing each API call cryptically from deep menus.
+// Agent: clear_screen + header; PRINT token/env instructions; wait_for_enter.
 
 fn show_login_required() {
     clear_screen();
@@ -2154,6 +2271,9 @@ fn show_login_required() {
     wait_for_enter();
 }
 
+// Human: CLI commands are short-lived, so a two-connection cap avoids holding a large pool during one-off scripts.
+// Agent: PgPoolOptions max_connections 2 connect database_url.
+
 async fn pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
     PgPoolOptions::new()
         .max_connections(2)
@@ -2165,6 +2285,9 @@ async fn run_seed(
     database_url: &str,
     migrations_dir: &PathBuf,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Human: Seeds ship as raw multi-statement SQL beside migrations so operators can diff them like any other migration artifact.
+    // Agent: READ 002_seed_data.sql; raw_sql execute on acquired conn; COUNT modules+permissions; close pool.
+
     let seed_file = migrations_dir.join("002_seed_data.sql");
     let sql = std::fs::read_to_string(&seed_file).map_err(|e| {
         format!(
@@ -2200,6 +2323,9 @@ async fn run_migrate(
     database_url: &str,
     migrations_dir: &PathBuf,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Human: Uses the same folder layout as `sqlx migrate` so CI and devs only maintain one migrations tree under `apps/api/migrations`.
+    // Agent: EXISTS check migrations_dir; Migrator::new RUN; println complete.
+
     if !migrations_dir.exists() {
         return Err(format!(
             "Migrations directory not found: {}. Set MIGRATIONS_DIR or run from repo root.",
@@ -2219,6 +2345,9 @@ async fn run_migrate(
     Ok(())
 }
 
+// Human: Non-interactive `db status` is the quickest smoke test that credentials reach Postgres and the `users` table is reachable.
+// Agent: pool SELECT 1 + COUNT users println; pool.close.
+
 async fn run_status(database_url: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let pool = pool(database_url).await?;
 
@@ -2234,7 +2363,13 @@ async fn run_status(database_url: &str) -> Result<(), Box<dyn std::error::Error 
 }
 
 async fn run_stats(database_url: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Human: Same parallel COUNT strategy as the TUI string variant but prints line-by-line for terminal `db stats` usage.
+    // Agent: try_join eight fixed tables; println each; pool.close.
+
     let pool = pool(database_url).await?;
+
+    // Human: Identical to `run_stats_string` inner helper—table names are CLI-controlled literals, not user SQL.
+    // Agent: format SELECT COUNT FROM table; query_as fetch_one.
 
     async fn count(pool: &PgPool, table: &str) -> Result<i64, sqlx::Error> {
         let row: (i64,) = sqlx::query_as(&format!("SELECT COUNT(*) FROM {}", table))
@@ -2272,6 +2407,9 @@ async fn run_reset(
     migrations_dir: &PathBuf,
     skip_confirm: bool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Human: Reset is intentionally destructive: it drops `public`, recreates grants, then replays migrations so the schema matches this binary.
+    // Agent: inquire Confirm unless skip_confirm; DROP SCHEMA CASCADE; CREATE SCHEMA; GRANT best-effort; run_migrate.
+
     if !skip_confirm {
         let confirmed = Confirm::new(
             "WARNING: Reset database will delete all data in schema public. Continue?",
@@ -2313,6 +2451,9 @@ async fn run_reset(
     println!("Database reset complete.");
     Ok(())
 }
+
+// Human: TUI “verify email” bypasses the mailer and simply flips the flag for operators fixing stuck onboarding in dev environments.
+// Agent: UPDATE users SET email_verified true WHERE id bind; pool.close.
 
 async fn run_verify_email(
     database_url: &str,
