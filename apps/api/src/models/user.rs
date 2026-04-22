@@ -1,3 +1,8 @@
+//! User-facing auth and profile DTOs shared by HTTP handlers, extractors, and queued login/register jobs.
+
+// Human: These types mirror the `users` and `sessions` tables closely enough that handlers can serialize responses without ad-hoc maps.
+// Agent: serde + sqlx::FromRow on UserRow; LoginRequest/RegisterRequest for POST bodies; LoginQueuedResponse for HTTP 202 auth queue.
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

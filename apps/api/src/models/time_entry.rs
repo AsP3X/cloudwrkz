@@ -1,3 +1,8 @@
+//! Time tracking rows, nested breaks, and create/update payloads used by REST routes and `job_queue/time_entry_mutations`.
+
+// Human: `TimeEntryWithBreaks` flattens the parent entry plus ordered breaks so timers match how the mobile app models state.
+// Agent: TimeEntryRow sqlx::FromRow; TimeEntryBreakRow; CreateTimeEntryRequest/Update* mirror handler validation types.
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
