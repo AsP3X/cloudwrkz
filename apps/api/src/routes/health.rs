@@ -220,6 +220,9 @@ fn build_target_triple() -> String {
     format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS)
 }
 
+// Human: Detailed health pulls memory, load average, and disk totals via `sysinfo`, which must not run on the async runtime thread.
+// Agent: collect_host_blocking + collect_process_cpu_blocking run inside spawn_blocking; RETURNS None when metrics would be empty noise.
+
 fn collect_host_blocking() -> Option<HostSnapshot> {
     let mut sys = System::new();
     sys.refresh_memory();
@@ -296,6 +299,9 @@ async fn collect_process_cpu() -> Option<f32> {
         .unwrap_or(None)
 }
 
+// Human: Public `/health` only proves Postgres answers `SELECT 1` and reports pool sizing—no host secrets or process lists.
+// Agent: build_health_json AWAIT sqlx fetch_one; SETS overall healthy/unhealthy; INCLUDES pool size + idle counts from PgPool stats.
+
 async fn build_health_json(
     pool: &PgPool,
     api_started_at: Instant,
@@ -344,6 +350,9 @@ async fn build_health_json(
         },
     }
 }
+
+// Human: Detailed JSON adds Postgres version, CPU usage, host snapshot, and wall-clock timings for operators debugging slow probes.
+// Agent: tokio::spawn host_task cpu_task; SELECT version() when DB up; AWAIT snapshots; FILLS HealthTimings handler_wall_ms metrics_tail_ms.
 
 async fn build_detailed_health_json(
     pool: &PgPool,
@@ -437,6 +446,9 @@ async fn build_detailed_health_json(
     }
 }
 
+// Human: Maps the public health DTO to HTTP 200 vs 503 so probes fail when Postgres is down even though the JSON still describes the failure.
+// Agent: CALLS build_health_json; SETS StatusCode OK or SERVICE_UNAVAILABLE from services.database.connected.
+
 async fn respond_health(
     pool: &PgPool,
     api_started_at: Instant,
@@ -452,6 +464,9 @@ async fn respond_health(
     (status_code, Json(body))
 }
 
+// Human: Same status-code rule as public health but for the larger `DetailedHealthResponse` payload used only after diagnostics auth.
+// Agent: CALLS build_detailed_health_json; StatusCode from database.connected.
+
 async fn respond_health_detailed(
     pool: &PgPool,
     api_started_at: Instant,
@@ -466,6 +481,9 @@ async fn respond_health_detailed(
     };
     (status_code, Json(body))
 }
+
+// Human: Legacy and v1 health handlers only differ in which state type carries pool and region—response bodies stay identical.
+// Agent: health_check_* CALL respond_health with pool+uptime+nodes+region from HealthRouterState or AppState.config.
 
 async fn health_check_legacy(State(state): State<HealthRouterState>) -> impl IntoResponse {
     respond_health(
@@ -486,6 +504,9 @@ async fn health_check_v1(State(state): State<super::AppState>) -> impl IntoRespo
     )
     .await
 }
+
+// Human: Detailed routes require `Authorization: Bearer` validated against the DB hash or env override so random callers cannot scrape host metrics.
+// Agent: extract_token_from_headers; diagnostics_token::validate_presented_token; THEN respond_health_detailed OR 401 AppError.
 
 async fn health_detailed_legacy(
     State(state): State<HealthRouterState>,
@@ -512,6 +533,9 @@ async fn health_detailed_legacy(
     .await)
 }
 
+// Human: The v1 path is identical to legacy detailed auth except the plaintext token override comes from `AppConfig` on `AppState`.
+// Agent: validate_presented_token pool + state.config.diagnostics_health_token; respond_health_detailed with config api_nodes/region.
+
 async fn health_detailed_v1(
     State(state): State<super::AppState>,
     headers: HeaderMap,
@@ -537,6 +561,9 @@ async fn health_detailed_v1(
     .await)
 }
 
+// Human: `ping` is the lightest possible JSON round-trip for synthetic monitoring without touching the database pool.
+// Agent: RETURNS json ok true + trivial server_processing_ms from Instant::now elapsed.
+
 async fn ping() -> Json<serde_json::Value> {
     let start = std::time::Instant::now();
     let server_processing_ms = start.elapsed().as_secs_f64() * 1000.0;
@@ -545,6 +572,9 @@ async fn ping() -> Json<serde_json::Value> {
         "server_processing_ms": server_processing_ms,
     }))
 }
+
+// Human: Kubernetes readiness differs from liveness: we only flip ready when a real SQL round-trip succeeds on the shared pool.
+// Agent: SELECT 1 fetch_one; RETURNS 200 ready true OR 503 ready false on Err.
 
 async fn readiness(State(state): State<HealthRouterState>) -> impl IntoResponse {
     match sqlx::query_scalar::<_, i32>("SELECT 1")
