@@ -4,6 +4,16 @@ import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 import { useSidebar } from "../SidebarContext";
 import { CollapsibleNavSection } from "@/components/ui/CollapsibleNavSection";
+import {
+  IconDepartments,
+  IconDirectory,
+  IconDocuments,
+  IconLeave,
+  IconMyTime,
+  IconOrgChart,
+  IconPerformance,
+  IconVacation,
+} from "../sidebarNavIcons";
 
 const DashboardIcon = () => (
   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -20,12 +30,6 @@ const TicketsIcon = () => (
 const TodosIcon = () => (
   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-  </svg>
-);
-
-const TimeTrackingIcon = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
   </svg>
 );
 
@@ -137,21 +141,26 @@ export function AdminSidebar({
   const moduleWorkItems = [
     { name: "Links", href: ROUTES.LINKS, icon: LinksIcon, key: "links" },
     { name: "Tickets", href: "/dashboard/tickets", icon: TicketsIcon, key: "tickets" },
-    { name: "My time", href: "/dashboard/time-tracking", icon: TimeTrackingIcon, key: "time_tracking" },
     { name: "ToDo", href: "/dashboard/todos", icon: TodosIcon, key: "todos" },
   ].filter((item) => enabledSet.has(item.key));
 
   // Human: Employees sub-nav items are admin-visible regardless of module key so admin can always reach the section.
   // Agent: adminVisible items bypass enabledSet check; employees section shows all sub-pages.
   const employeeItems = [
-    { name: "Directory",   href: ROUTES.EMPLOYEES,              icon: EmployeesIcon,    key: "employees", adminVisible: true },
-    { name: "Org Chart",   href: ROUTES.EMPLOYEES_ORG_CHART,    icon: EmployeesIcon,    key: "employees", adminVisible: true },
-    { name: "Leave",             href: ROUTES.EMPLOYEES_LEAVE,             icon: TimeTrackingIcon, key: "employees", adminVisible: true },
-    { name: "Vacation Planner",  href: ROUTES.EMPLOYEES_VACATION,          icon: TimeTrackingIcon, key: "employees", adminVisible: true },
-    { name: "Departments",       href: ROUTES.EMPLOYEES_DEPARTMENTS,       icon: ChartIcon,        key: "employees", adminVisible: true },
-    { name: "Performance",       href: ROUTES.EMPLOYEES_PERFORMANCE,       icon: ChartIcon,        key: "employees", adminVisible: true },
-    { name: "Documents",   href: ROUTES.EMPLOYEES_DOCUMENTS,    icon: ClipboardIcon,    key: "employees", adminVisible: true },
+    { name: "Directory", href: ROUTES.EMPLOYEES, icon: IconDirectory, key: "employees", adminVisible: true },
+    { name: "Org Chart", href: ROUTES.EMPLOYEES_ORG_CHART, icon: IconOrgChart, key: "employees", adminVisible: true },
+    { name: "Departments", href: ROUTES.EMPLOYEES_DEPARTMENTS, icon: IconDepartments, key: "employees", adminVisible: true },
+    { name: "Performance", href: ROUTES.EMPLOYEES_PERFORMANCE, icon: IconPerformance, key: "employees", adminVisible: true },
+    { name: "Documents", href: ROUTES.EMPLOYEES_DOCUMENTS, icon: IconDocuments, key: "employees", adminVisible: true },
   ].filter((item) => item.adminVisible || enabledSet.has(item.key));
+
+  const timeAndLeaveMyTime = enabledSet.has("time_tracking")
+    ? { name: "My time", href: ROUTES.TIME_TRACKING, icon: IconMyTime }
+    : null;
+  const timeAndLeaveItems = [
+    { name: "Leave", href: ROUTES.EMPLOYEES_LEAVE, icon: IconLeave, adminVisible: true },
+    { name: "Vacation Planner", href: ROUTES.EMPLOYEES_VACATION, icon: IconVacation, adminVisible: true },
+  ].filter((item) => item.adminVisible || enabledSet.has("employees"));
 
   const workItems = [
     ...moduleWorkItems,
@@ -180,14 +189,23 @@ export function AdminSidebar({
     canViewBackgroundJobs && { name: "Jobs", href: ROUTES.ADMIN_BACKGROUND_JOBS, icon: QueueIcon },
   ].filter(Boolean) as { name: string; href: string; icon: () => JSX.Element }[];
 
-  const hrefIsActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  const hrefIsActive = (href: string) => {
+    if (href === ROUTES.EMPLOYEES) {
+      return pathname === href;
+    }
+    return pathname === href || pathname.startsWith(`${href}/`);
+  };
 
   const userMgmtHasActive = userMgmtItems.some((item) => hrefIsActive(item.href));
   const permissionsHasActive = permissionsItems.some((item) => hrefIsActive(item.href));
   const systemHasActive = systemItems.some((item) => hrefIsActive(item.href));
+  const employeeHasActive = employeeItems.some((item) => hrefIsActive(item.href));
+  const timeAndLeaveHasActive =
+    Boolean(timeAndLeaveMyTime && hrefIsActive(timeAndLeaveMyTime.href)) ||
+    timeAndLeaveItems.some((item) => hrefIsActive(item.href));
 
   const NavLink = ({ item, icon: Icon }: { item: { name: string; href: string }; icon: () => JSX.Element }) => {
-    const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+    const isActive = hrefIsActive(item.href);
     return (
       <Link
         to={item.href}
@@ -271,7 +289,7 @@ export function AdminSidebar({
             </Link>
 
             {workItems.length > 0 && (
-              <CollapsibleNavSection title="Work" icon={<TicketsIcon />} defaultExpanded>
+              <CollapsibleNavSection title="Work" icon={<TicketsIcon />} defaultExpanded={workItems.some((item) => hrefIsActive(item.href))}>
                 {workItems.map((item) => (
                   <NavLink key={item.href} item={item} icon={item.icon} />
                 ))}
@@ -279,10 +297,37 @@ export function AdminSidebar({
             )}
 
             {employeeItems.length > 0 && (
-              <CollapsibleNavSection title="Employees" icon={<EmployeesIcon />} defaultExpanded={employeeItems.some((item) => hrefIsActive(item.href))}>
+              <CollapsibleNavSection title="HR - Employees" icon={<EmployeesIcon />} defaultExpanded={employeeHasActive}>
                 {employeeItems.map((item) => (
                   <NavLink key={item.href} item={item} icon={item.icon} />
                 ))}
+              </CollapsibleNavSection>
+            )}
+
+            {(timeAndLeaveMyTime != null || timeAndLeaveItems.length > 0) && (
+              <CollapsibleNavSection title="Time & leave" icon={<IconMyTime />} defaultExpanded={timeAndLeaveHasActive}>
+                {[...(timeAndLeaveMyTime ? [timeAndLeaveMyTime] : []), ...timeAndLeaveItems].map((item, index) => {
+                  const isActive = hrefIsActive(item.href);
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={`${item.href}-${index}`}
+                      to={item.href}
+                      onClick={() => setIsMobileOpen(false)}
+                      className={cn(
+                        "flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
+                        isActive
+                          ? "bg-primary-50 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-800"
+                          : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:text-primary-600 dark:hover:text-primary-400"
+                      )}
+                    >
+                      <span className={cn(isActive ? "text-primary-600 dark:text-primary-400" : "text-neutral-500 dark:text-neutral-400")}>
+                        <Icon />
+                      </span>
+                      <span className="flex-1 truncate">{item.name}</span>
+                    </Link>
+                  );
+                })}
               </CollapsibleNavSection>
             )}
 

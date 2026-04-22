@@ -4,6 +4,16 @@ import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 import { useSidebar } from "./SidebarContext";
 import { CollapsibleNavSection } from "@/components/ui/CollapsibleNavSection";
+import {
+  IconDepartments,
+  IconDirectory,
+  IconDocuments,
+  IconLeave,
+  IconMyTime,
+  IconOrgChart,
+  IconPerformance,
+  IconVacation,
+} from "./sidebarNavIcons";
 
 const DashboardIcon = () => (
   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -45,17 +55,6 @@ const TodosIcon = () => (
       strokeLinejoin="round"
       strokeWidth={2}
       d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
-    />
-  </svg>
-);
-
-const TimeTrackingIcon = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
     />
   </svg>
 );
@@ -127,14 +126,62 @@ const STANDALONE_NAV_ITEMS = Object.freeze([
   }),
 ]) as ReadonlyArray<NavItem>;
 
-type NavSection = {
+type NavSectionFlat = {
+  readonly kind: "flat";
   readonly title: string;
   readonly icon: () => JSX.Element;
   readonly items: ReadonlyArray<NavItem>;
 };
 
+type NavSectionTimeLeave = {
+  readonly kind: "timeAndLeave";
+  readonly title: string;
+  readonly icon: () => JSX.Element;
+  readonly myTime: NavItem;
+  readonly timeOff: ReadonlyArray<NavItem>;
+};
+
+type NavSectionConfig = NavSectionFlat | NavSectionTimeLeave;
+
+type NavSectionTimeLeaveResolved = {
+  readonly kind: "timeAndLeave";
+  readonly title: string;
+  readonly icon: () => JSX.Element;
+  readonly myTime: NavItem | null;
+  readonly timeOff: ReadonlyArray<NavItem>;
+};
+
+type FilteredNavSection = NavSectionFlat | NavSectionTimeLeaveResolved;
+
+function hrefMatchesNav(pathname: string, href: string): boolean {
+  if (href === ROUTES.EMPLOYEES) {
+    return pathname === href;
+  }
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function filterNavSection(
+  section: NavSectionConfig,
+  filterItem: (item: NavItem) => boolean
+): FilteredNavSection | null {
+  if (section.kind === "flat") {
+    const items = section.items.filter(filterItem);
+    if (items.length === 0) {
+      return null;
+    }
+    return { kind: "flat", title: section.title, icon: section.icon, items };
+  }
+  const myTime = filterItem(section.myTime) ? section.myTime : null;
+  const timeOff = section.timeOff.filter(filterItem);
+  if (myTime == null && timeOff.length === 0) {
+    return null;
+  }
+  return { kind: "timeAndLeave", title: section.title, icon: section.icon, myTime, timeOff };
+}
+
 const NAV_SECTIONS = Object.freeze([
   Object.freeze({
+    kind: "flat" as const,
     title: "Work",
     icon: TicketsIcon,
     items: Object.freeze([
@@ -155,66 +202,69 @@ const NAV_SECTIONS = Object.freeze([
     ]),
   }),
   Object.freeze({
-    title: "Employees",
+    kind: "flat" as const,
+    title: "HR - Employees",
     icon: EmployeesIcon,
     items: Object.freeze([
       Object.freeze({
         name: "Directory",
         href: ROUTES.EMPLOYEES,
-        icon: EmployeesIcon,
+        icon: IconDirectory,
         moduleKey: "employees",
       }),
       Object.freeze({
         name: "Org Chart",
         href: ROUTES.EMPLOYEES_ORG_CHART,
-        icon: EmployeesIcon,
-        moduleKey: "employees",
-      }),
-      Object.freeze({
-        name: "Leave",
-        href: ROUTES.EMPLOYEES_LEAVE,
-        icon: TimeTrackingIcon,
-        moduleKey: "employees",
-      }),
-      Object.freeze({
-        name: "Vacation Planner",
-        href: ROUTES.EMPLOYEES_VACATION,
-        icon: TimeTrackingIcon,
+        icon: IconOrgChart,
         moduleKey: "employees",
       }),
       Object.freeze({
         name: "Departments",
         href: ROUTES.EMPLOYEES_DEPARTMENTS,
-        icon: StatisticsIcon,
+        icon: IconDepartments,
         moduleKey: "employees",
       }),
       Object.freeze({
         name: "Performance",
         href: ROUTES.EMPLOYEES_PERFORMANCE,
-        icon: StatisticsIcon,
+        icon: IconPerformance,
         moduleKey: "employees",
       }),
       Object.freeze({
         name: "Documents",
         href: ROUTES.EMPLOYEES_DOCUMENTS,
-        icon: ArchiveIcon,
+        icon: IconDocuments,
         moduleKey: "employees",
       }),
     ]),
   }),
   Object.freeze({
-    title: "Time tracking",
-    icon: TimeTrackingIcon,
-    items: Object.freeze([
+    kind: "timeAndLeave" as const,
+    title: "Time & leave",
+    icon: IconMyTime,
+    myTime: Object.freeze({
+      name: "My time",
+      href: ROUTES.TIME_TRACKING,
+      icon: IconMyTime,
+      moduleKey: "time_tracking",
+    }),
+    timeOff: Object.freeze([
       Object.freeze({
-        name: "My time",
-        href: "/dashboard/time-tracking",
-        icon: TimeTrackingIcon,
-        moduleKey: "time_tracking",
+        name: "Leave",
+        href: ROUTES.EMPLOYEES_LEAVE,
+        icon: IconLeave,
+        moduleKey: "employees",
+      }),
+      Object.freeze({
+        name: "Vacation Planner",
+        href: ROUTES.EMPLOYEES_VACATION,
+        icon: IconVacation,
+        moduleKey: "employees",
       }),
     ]),
   }),
   Object.freeze({
+    kind: "flat" as const,
     title: "Personal",
     icon: SettingsIcon,
     items: Object.freeze([
@@ -242,7 +292,7 @@ const NAV_SECTIONS = Object.freeze([
       }),
     ]),
   }),
-]) as ReadonlyArray<NavSection>;
+]) as ReadonlyArray<NavSectionConfig>;
 
 export interface NavCounts {
   tickets?: number;
@@ -276,10 +326,9 @@ export const DashboardSidebar = ({
   };
 
   const filteredStandalone = STANDALONE_NAV_ITEMS.filter(filterItem);
-  const filteredSections = NAV_SECTIONS.map((section) => ({
-    ...section,
-    items: section.items.filter(filterItem),
-  })).filter((section) => section.items.length > 0);
+  const filteredSections = NAV_SECTIONS.map((s) => filterNavSection(s, filterItem)).filter(
+    (s): s is FilteredNavSection => s != null
+  );
 
   return (
     <>
@@ -363,21 +412,62 @@ export const DashboardSidebar = ({
             })}
 
             {filteredSections.map((section, sectionIndex) => {
-              const SectionIcon = section.icon;
-              const hasActiveItem = section.items.some((item) => {
-                return pathname === item.href || pathname.startsWith(item.href + "/");
-              });
+              if (section.kind === "timeAndLeave") {
+                const SectionIcon = section.icon;
+                const hasActive =
+                  Boolean(section.myTime && hrefMatchesNav(pathname, section.myTime.href)) ||
+                  section.timeOff.some((item) => hrefMatchesNav(pathname, item.href));
 
+                return (
+                  <CollapsibleNavSection
+                    key={`section-${sectionIndex}-${section.title}`}
+                    title={section.title}
+                    icon={<SectionIcon />}
+                    defaultExpanded={hasActive}
+                  >
+                    {[...(section.myTime ? [section.myTime] : []), ...section.timeOff].map((item, index) => {
+                      const isActive = hrefMatchesNav(pathname, item.href);
+                      const IconComponent = item.icon;
+                      return (
+                        <Link
+                          key={`nav-tl-${item.href}-${index}`}
+                          to={item.href}
+                          onClick={() => setIsMobileOpen(false)}
+                          className={cn(
+                            "flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
+                            isActive
+                              ? "bg-primary-50 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-800"
+                              : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:text-primary-600 dark:hover:text-primary-400"
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              isActive
+                                ? "text-primary-600 dark:text-primary-400"
+                                : "text-neutral-500 dark:text-neutral-400"
+                            )}
+                          >
+                            <IconComponent />
+                          </span>
+                          <span className="flex-1 truncate">{item.name}</span>
+                        </Link>
+                      );
+                    })}
+                  </CollapsibleNavSection>
+                );
+              }
+
+              const SectionIcon = section.icon;
+              const hasActiveItem = section.items.some((item) => hrefMatchesNav(pathname, item.href));
               return (
                 <CollapsibleNavSection
                   key={`section-${sectionIndex}-${section.title}`}
                   title={section.title}
                   icon={<SectionIcon />}
-                  defaultExpanded={section.title === "Work" || hasActiveItem}
+                  defaultExpanded={hasActiveItem}
                 >
                   {section.items.map((item, itemIndex) => {
-                    const isActive =
-                      pathname === item.href || pathname.startsWith(item.href + "/");
+                    const isActive = hrefMatchesNav(pathname, item.href);
                     const IconComponent = item.icon;
                     const count = item.countKey ? (navCounts?.[item.countKey] ?? 0) : 0;
                     return (

@@ -27,6 +27,9 @@ use crate::models::employee::{
     EmployeeSkillUpsertRequest, EmployeeUpdateRequest, LeaveRequestCreateRequest,
     LeaveRequestUpdateRequest,
 };
+use crate::models::employee_code::{
+    employee_code_identity_expr_sql, employee_code_identity_key, parse_employee_code,
+};
 use crate::models::link::{CreateLinkRequest, UpdateLinkRequest};
 use crate::models::ticket::{TicketCommentCreateRequest, TicketCreateRequest, TicketUpdateRequest};
 use crate::models::time_entry::{AddTimeEntryRequest, CreateTimeEntryRequest};
@@ -2607,7 +2610,7 @@ async fn exec_employee_create(
             return JobExecOutcome::Fail(AppError::bad_request("Missing request in job payload"));
         }
     };
-    let body: EmployeeCreateRequest = match serde_json::from_value(body_val) {
+    let mut body: EmployeeCreateRequest = match serde_json::from_value(body_val) {
         Ok(v) => v,
         Err(e) => {
             return JobExecOutcome::Fail(AppError::bad_request(format!(
@@ -2615,12 +2618,9 @@ async fn exec_employee_create(
             )));
         }
     };
-    if body.employee_code.trim().is_empty()
-        || body.first_name.trim().is_empty()
-        || body.last_name.trim().is_empty()
-    {
+    if body.first_name.trim().is_empty() || body.last_name.trim().is_empty() {
         return JobExecOutcome::Fail(AppError::bad_request(
-            "employee_code, first_name and last_name are required",
+            "first_name and last_name are required",
         ));
     }
     let hire_date = match chrono::NaiveDate::parse_from_str(body.hire_date.trim(), "%Y-%m-%d") {
@@ -2631,6 +2631,12 @@ async fn exec_employee_create(
             ));
         }
     };
+    let employee_code = match parse_employee_code(&body.employee_code) {
+        Ok(s) => s,
+        Err(m) => return JobExecOutcome::Fail(AppError::bad_request(m)),
+    };
+    body.employee_code = employee_code.clone();
+    let identity_key = employee_code_identity_key(&employee_code);
 
     let mut tx = match pool.begin().await {
         Ok(v) => v,
@@ -2639,6 +2645,28 @@ async fn exec_employee_create(
     if let Err(e) = apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await {
         let _ = tx.rollback().await;
         return map_sqlx_ticket(e);
+    }
+
+    let dup_sql = format!(
+        "SELECT EXISTS(SELECT 1 FROM employees WHERE {} = $1)",
+        employee_code_identity_expr_sql()
+    );
+    let taken: bool = match sqlx::query_scalar(&dup_sql)
+        .bind(&identity_key)
+        .fetch_one(&mut *tx)
+        .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    };
+    if taken {
+        let _ = tx.rollback().await;
+        return JobExecOutcome::Fail(AppError::bad_request(
+            "An employee with this employee code already exists",
+        ));
     }
 
     let id = new_cuid();
@@ -2654,7 +2682,7 @@ async fn exec_employee_create(
         )"#,
     )
     .bind(&id)
-    .bind(body.employee_code.trim())
+    .bind(&body.employee_code)
     .bind(&body.user_id)
     .bind(body.first_name.trim())
     .bind(body.last_name.trim())
@@ -2681,6 +2709,13 @@ async fn exec_employee_create(
     .await;
     if let Err(e) = res {
         let _ = tx.rollback().await;
+        if let sqlx::Error::Database(ref db) = e {
+            if db.code().as_deref() == Some("23505") {
+                return JobExecOutcome::Fail(AppError::bad_request(
+                    "An employee with this employee code already exists",
+                ));
+            }
+        }
         return map_sqlx_ticket(e);
     }
 

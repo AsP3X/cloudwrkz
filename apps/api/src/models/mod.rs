@@ -1,5 +1,6 @@
 pub mod audit_log;
 pub mod employee;
+pub mod employee_code;
 pub mod link;
 pub mod notification;
 pub mod ticket;

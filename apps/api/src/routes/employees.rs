@@ -6,7 +6,7 @@ use axum::{
     routing::{delete, get, patch, post},
 };
 use serde_json::json;
-use sqlx::Row;
+use sqlx::{PgPool, Row};
 
 use crate::auth::extractors::AuthUser;
 use crate::command_queue::{MutationQueuedResponse, MutationRunContext};
@@ -19,6 +19,9 @@ use crate::models::employee::{
     EmployeeGoalCreateRequest, EmployeeLifecycleEventCreateRequest, EmployeeListItem,
     EmployeeListParams, EmployeePerformanceReviewCreateRequest, EmployeeSkillUpsertRequest,
     EmployeeUpdateRequest, LeaveRequestCreateRequest, LeaveRequestUpdateRequest,
+};
+use crate::models::employee_code::{
+    employee_code_identity_expr_sql, employee_code_identity_key, parse_employee_code,
 };
 use crate::routes::AppState;
 use crate::routes::helpers::{
@@ -501,11 +504,23 @@ async fn queue_employee_mutation<T: serde::Serialize>(
     Ok((StatusCode::ACCEPTED, Json(q)).into_response())
 }
 
+async fn employee_code_identity_in_use(pool: &PgPool, identity_key: &str) -> Result<bool, AppError> {
+    let sql = format!(
+        "SELECT EXISTS(SELECT 1 FROM employees WHERE {} = $1)",
+        employee_code_identity_expr_sql()
+    );
+    sqlx::query_scalar(&sql)
+        .bind(identity_key)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::from)
+}
+
 async fn create_employee(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     headers: HeaderMap,
-    Json(body): Json<EmployeeCreateRequest>,
+    Json(mut body): Json<EmployeeCreateRequest>,
 ) -> Result<Response, AppError> {
     require_employee_module(&state.pool).await?;
     if !check_permission(&state.pool, &user.id, "employees.create").await {
@@ -513,12 +528,18 @@ async fn create_employee(
             "You don't have permission to create employees",
         ));
     }
-    if body.employee_code.trim().is_empty()
-        || body.first_name.trim().is_empty()
-        || body.last_name.trim().is_empty()
-    {
+    let code = parse_employee_code(&body.employee_code).map_err(AppError::bad_request)?;
+    let identity = employee_code_identity_key(&code);
+    if employee_code_identity_in_use(&state.pool, &identity).await? {
         return Err(AppError::bad_request(
-            "employee_code, first_name and last_name are required",
+            "An employee with this employee code already exists",
+        ));
+    }
+    body.employee_code = code;
+
+    if body.first_name.trim().is_empty() || body.last_name.trim().is_empty() {
+        return Err(AppError::bad_request(
+            "first_name and last_name are required",
         ));
     }
 

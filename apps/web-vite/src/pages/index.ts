@@ -26,7 +26,6 @@ export { default as LinkDetailPage } from "./dashboard/LinkDetailPage";
 export { default as LinkEditPage } from "./dashboard/LinkEditPage";
 export { default as CollectionDetailPage } from "./dashboard/CollectionDetailPage";
 export { default as EmployeesPage } from "./dashboard/EmployeesPage";
-export { default as EmployeeCreatePage } from "./dashboard/EmployeeCreatePage";
 export { default as EmployeeDetailPage } from "./dashboard/employees/EmployeeDetailPage";
 export { default as EmployeeEditPage } from "./dashboard/EmployeeEditPage";
 export { default as EmployeeOrgChartPage } from "./dashboard/employees/EmployeeOrgChartPage";

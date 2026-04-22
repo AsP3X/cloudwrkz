@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
@@ -37,7 +37,6 @@ import {
   LinkEditPage,
   CollectionDetailPage,
   EmployeesPage,
-  EmployeeCreatePage,
   EmployeeDetailPage,
   EmployeeEditPage,
   EmployeeOrgChartPage,
@@ -176,7 +175,7 @@ export default function App() {
                   <Route path="links/:id/edit" element={<LinkEditPage />} />
                   <Route path="links/collections/:id" element={<CollectionDetailPage />} />
                   <Route path="employees" element={<EmployeesPage />} />
-                  <Route path="employees/new" element={<EmployeeCreatePage />} />
+                  <Route path="employees/new" element={<Navigate to={ROUTES.EMPLOYEES} replace />} />
                   <Route path="employees/org-chart" element={<EmployeeOrgChartPage />} />
                   <Route path="employees/leave" element={<EmployeeLeavePage />} />
                   <Route path="employees/performance" element={<EmployeePerformancePage />} />

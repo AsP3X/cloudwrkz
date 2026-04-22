@@ -85,6 +85,7 @@ export default function EmployeeDepartmentsPage() {
 
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [search, setSearch]             = useState("");
+  const [viewMode, setViewMode]         = useState<"list" | "table">("list");
   const [showCreate, setShowCreate]     = useState(false);
   const [editingId, setEditingId]       = useState<string | null>(null);
   const [deleteId, setDeleteId]         = useState<string | null>(null);
@@ -583,24 +584,50 @@ export default function EmployeeDepartmentsPage() {
         </Dialog>
       )}
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <input
-          type="search"
-          placeholder="Search departments…"
-          className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <select
-          className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 focus:outline-none"
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-        >
-          <option value="ALL">All statuses</option>
-          <option value="ACTIVE">Active</option>
-          <option value="INACTIVE">Inactive</option>
-        </select>
+      {/* Filters + view mode */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-3">
+          <input
+            type="search"
+            placeholder="Search departments…"
+            className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <select
+            className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 focus:outline-none"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="ALL">All statuses</option>
+            <option value="ACTIVE">Active</option>
+            <option value="INACTIVE">Inactive</option>
+          </select>
+        </div>
+        <div className="inline-flex rounded-lg border border-neutral-300 p-1 dark:border-neutral-700">
+          <button
+            type="button"
+            onClick={() => setViewMode("list")}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+              viewMode === "list"
+                ? "bg-primary-600 text-white"
+                : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            }`}
+          >
+            List
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("table")}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+              viewMode === "table"
+                ? "bg-primary-600 text-white"
+                : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            }`}
+          >
+            Table
+          </button>
+        </div>
       </div>
 
       {/* Delete confirmation modal */}
@@ -650,80 +677,140 @@ export default function EmployeeDepartmentsPage() {
             </button>
           )}
         </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      ) : viewMode === "list" ? (
+        <div className="space-y-3">
           {visible.map((dept) => {
-            const parentName = departments.find((d) => d.id === dept.parent_department_id)?.name;
+            const parentName = departments.find((d) => d.id === dept.parent_department_id)?.name ?? "—";
             return (
               <div
                 key={dept.id}
-                className="group rounded-xl border border-neutral-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900"
+                className="group rounded-xl border border-neutral-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900"
               >
-                {/* Card header */}
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    {/* Color swatch */}
-                    <span
-                      className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-base shadow-sm"
-                      style={{ backgroundColor: dept.color ?? "#6366f1" }}
-                    >
-                      {dept.name[0]?.toUpperCase()}
-                    </span>
-                    <div className="min-w-0">
-                      <h3 className="font-semibold text-neutral-900 dark:text-neutral-100 truncate">
-                        {dept.name}
-                      </h3>
-                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[dept.status] ?? STATUS_STYLE.INACTIVE}`}>
-                        {dept.status}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-3">
+                      <span
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-base font-bold text-white shadow-sm"
+                        style={{ backgroundColor: dept.color ?? "#6366f1" }}
+                      >
+                        {dept.name[0]?.toUpperCase()}
                       </span>
+                      <div className="min-w-0">
+                        <h3 className="truncate text-base font-semibold text-neutral-900 dark:text-neutral-100">{dept.name}</h3>
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[dept.status] ?? STATUS_STYLE.INACTIVE}`}>
+                          {dept.status}
+                        </span>
+                      </div>
                     </div>
+                    {dept.description && (
+                      <p className="mt-2 line-clamp-2 text-sm text-neutral-600 dark:text-neutral-400">{dept.description}</p>
+                    )}
+                    <dl className="mt-3 grid grid-cols-1 gap-x-4 gap-y-1 text-sm sm:grid-cols-3">
+                      <MetaRow label="Employees" value={String(dept.employee_count)} />
+                      <MetaRow label="Heads" value={dept.manager_labels.length > 0 ? dept.manager_labels.join(", ") : "—"} />
+                      <MetaRow label="Parent" value={parentName} />
+                    </dl>
                   </div>
                   {canManage && (
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                    <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                       <button
                         type="button"
                         onClick={() => openEdit(dept)}
-                        className="p-1.5 rounded text-neutral-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors"
+                        className="rounded p-1.5 text-neutral-500 transition-colors hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-950/40"
                         title="Edit"
                       >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                         </svg>
                       </button>
                       <button
                         type="button"
                         onClick={() => setDeleteId(dept.id)}
-                        className="p-1.5 rounded text-neutral-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                        className="rounded p-1.5 text-neutral-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40"
                         title="Delete"
                       >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
                       </button>
                     </div>
                   )}
                 </div>
-
-                {/* Description */}
-                {dept.description && (
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-3 line-clamp-2">
-                    {dept.description}
-                  </p>
-                )}
-
-                {/* Meta rows */}
-                <dl className="space-y-1.5 text-sm">
-                  <MetaRow label="Employees" value={String(dept.employee_count)} />
-                  {dept.manager_labels.length > 0 && (
-                    <MetaRow label="Heads" value={dept.manager_labels.join(", ")} />
-                  )}
-                  {parentName && (
-                    <MetaRow label="Parent" value={parentName} />
-                  )}
-                </dl>
               </div>
             );
           })}
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-neutral-200 bg-neutral-50 text-left dark:border-neutral-700 dark:bg-neutral-800/60">
+                <th className="px-4 py-3 font-semibold">Department</th>
+                <th className="px-4 py-3 font-semibold">Status</th>
+                <th className="px-4 py-3 font-semibold text-center">Employees</th>
+                <th className="px-4 py-3 font-semibold">Heads</th>
+                <th className="px-4 py-3 font-semibold">Parent</th>
+                {canManage && <th className="px-4 py-3 font-semibold text-right">Actions</th>}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
+              {visible.map((dept) => {
+                const parentName = departments.find((d) => d.id === dept.parent_department_id)?.name ?? "—";
+                return (
+                  <tr key={dept.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <span
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-sm font-bold text-white"
+                          style={{ backgroundColor: dept.color ?? "#6366f1" }}
+                        >
+                          {dept.name[0]?.toUpperCase()}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-neutral-900 dark:text-neutral-100">{dept.name}</p>
+                          {dept.description && <p className="truncate text-xs text-neutral-500">{dept.description}</p>}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[dept.status] ?? STATUS_STYLE.INACTIVE}`}>
+                        {dept.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center text-neutral-700 dark:text-neutral-300">{dept.employee_count}</td>
+                    <td className="px-4 py-3 text-neutral-700 dark:text-neutral-300">{dept.manager_labels.join(", ") || "—"}</td>
+                    <td className="px-4 py-3 text-neutral-700 dark:text-neutral-300">{parentName}</td>
+                    {canManage && (
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => openEdit(dept)}
+                            className="rounded p-1.5 text-neutral-500 transition-colors hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-950/40"
+                            title="Edit"
+                          >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteId(dept.id)}
+                            className="rounded p-1.5 text-neutral-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40"
+                            title="Delete"
+                          >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

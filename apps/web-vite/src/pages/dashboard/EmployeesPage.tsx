@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { EmployeeStatsBar } from "@/components/features/employees/EmployeeStatsBar";
+import { CreateEmployeeDialog } from "@/components/features/employees/CreateEmployeeDialog/CreateEmployeeDialog";
 
 export default function EmployeesPage() {
   const { can } = useAuth();
@@ -18,6 +19,7 @@ export default function EmployeesPage() {
   const [departmentFilter, setDepartmentFilter] = useState("ALL");
   const [locationFilter, setLocationFilter] = useState("ALL");
   const [loading, setLoading] = useState(true);
+  const [createEmployeeOpen, setCreateEmployeeOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -82,11 +84,19 @@ export default function EmployeesPage() {
           </p>
         </div>
         {canCreate ? (
-          <Button asChild>
-            <Link to={`${ROUTES.EMPLOYEES}/new`}>Add employee</Link>
+          <Button type="button" onClick={() => setCreateEmployeeOpen(true)}>
+            Add employee
           </Button>
         ) : null}
       </div>
+
+      {canCreate ? (
+        <CreateEmployeeDialog
+          open={createEmployeeOpen}
+          onOpenChange={setCreateEmployeeOpen}
+          onSuccess={() => void load()}
+        />
+      ) : null}
 
       {!loading ? (
         <EmployeeStatsBar
@@ -150,9 +160,14 @@ export default function EmployeesPage() {
         <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-10 text-center">
           <p className="text-neutral-600 dark:text-neutral-400">No employees found.</p>
           {canCreate ? (
-            <p className="text-sm text-neutral-500 dark:text-neutral-500 mt-2">
-              Use your HR import or API integration to add employees.
-            </p>
+            <div className="mt-5 flex flex-col items-center gap-3">
+              <p className="text-sm text-neutral-500 dark:text-neutral-500 max-w-md">
+                Add your first record here, or use your HR import and API integrations for bulk data.
+              </p>
+              <Button type="button" onClick={() => setCreateEmployeeOpen(true)}>
+                Add employee
+              </Button>
+            </div>
           ) : null}
         </div>
       ) : (
