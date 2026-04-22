@@ -519,10 +519,16 @@ async fn audit_events(
     Ok(Json(serde_json::json!({ "events": events })))
 }
 
+// Human: Raw SQL endpoints power the emergency admin console—they are gated by `admin.db.*` permissions and still only allow constrained operations.
+// Agent: SECTION db_query db_tables db_row_update db_row_delete; VALIDATES SQL prefixes / allowed statements before execution.
+
 #[derive(Deserialize)]
 struct DbQueryRequest {
     query: String,
 }
+
+// Human: `db_query` runs read-only inspection SQL chosen by admins; misuse could exfiltrate data so permission checks precede any `sqlx::query`.
+// Agent: REQUIRES admin.db.view_entries OR role ADMIN; BINDS arbitrary text to sqlx; RETURNS JSON rows columns.
 
 async fn db_query(
     State(state): State<AppState>,
@@ -745,6 +751,9 @@ async fn require_admin_jobs_view(pool: &sqlx::PgPool, user_id: &str) -> Result<(
     Err(AppError::forbidden("admin.jobs.view required"))
 }
 
+// Human: Job worker routes let operators scale dispatcher count, read ring-buffer logs, and tail new lines over SSE without SSH access.
+// Agent: SECTION list_job_queue_workers patch desired post_add restart delete dismiss get log SSE; CALLS JobWorkerSupervisor + persist_worker_count.
+
 async fn list_job_queue_workers(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -896,6 +905,9 @@ async fn delete_dismiss_job_worker(
     ))
 }
 
+// Human: Polling returns a snapshot of the ring-buffer lines for one dispatcher id without opening an SSE connection.
+// Agent: require_admin_jobs_view; CALLS WorkerLogRegistry.lines_for(worker_id); JSON workerId + lines.
+
 async fn get_job_worker_log(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -908,6 +920,9 @@ async fn get_job_worker_log(
         "lines": lines,
     })))
 }
+
+// Human: SSE keeps the admin UI log panel live while still enforcing `admin.jobs.view` on the initial handshake.
+// Agent: require_admin_jobs_view; BroadcastStream filter worker_id; Event::default().data(line); KeepAlive.
 
 async fn job_worker_log_sse(
     State(state): State<AppState>,
@@ -1170,6 +1185,9 @@ struct UserListParams {
     limit: Option<i64>,
     offset: Option<i64>,
 }
+
+// Human: User/group administration covers CRUD, bans, password resets, and explicit permission rows—moderators get a subset, admins get full control.
+// Agent: SECTION list_users create_user get_user update_user delete_user ban unban reset_password permissions* groups* modules sessions statistics dashboard.
 
 async fn list_users(
     State(state): State<AppState>,
