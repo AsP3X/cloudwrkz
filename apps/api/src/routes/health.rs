@@ -1,3 +1,8 @@
+//! Public and detailed health endpoints: lightweight `/health` for probes, richer JSON for dashboards, gated `/health/detailed`.
+
+// Human: Legacy paths live under `/api/` while v1 duplicates sit under `/api/v1` so older clients and new SPA builds share one implementation.
+// Agent: router merges legacy routes; v1_router nests under AppState; detailed checks REQUIRE Bearer diagnostics token OR env override; sysinfo for host snapshot.
+
 use axum::{
     Json, Router,
     extract::{FromRef, State},
@@ -18,6 +23,9 @@ const API_NAME: &str = "cloudwrkz-api";
 const API_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Unversioned health routes mounted at /api/ (outside v1 prefix).
+// Human: Load balancers and k8s probes still hit `/api/health` from older deploy docs, so we keep these routes stable alongside v1 aliases.
+// Agent: Router GET /api/health /api/health/detailed /api/ping /api/ready; USES HealthRouterState FromRef AppState.
+
 pub fn router() -> Router<super::AppState> {
     Router::new()
         .route("/api/health", get(health_check_legacy))
@@ -48,6 +56,9 @@ impl FromRef<super::AppState> for HealthRouterState {
 }
 
 /// Health routes available under the v1 prefix for web client convenience.
+// Human: The SPA prefers relative `/api/v1/health` calls so CORS and cookie paths align with the rest of the authenticated API surface.
+// Agent: Router GET /health /health/detailed /ping on AppState directly without HealthRouterState wrapper where not needed.
+
 pub fn v1_router() -> Router<super::AppState> {
     Router::new()
         .route("/health", get(health_check_v1))
