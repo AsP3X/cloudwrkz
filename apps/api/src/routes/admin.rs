@@ -1,3 +1,8 @@
+//! Admin-only HTTP surface: RBAC, audit log, dangerous SQL explorer, system settings, job queue workers, and in-app notifications.
+
+// Human: Every handler checks explicit admin-style permissions (or `ADMIN` role for legacy paths) before exposing sensitive data or destructive operations.
+// Agent: router MERGES /admin/* + /notifications; USES check_permission + audit write_audit_log; job queue routes CALL persist_worker_count / supervisor; SSE worker logs BroadcastStream.
+
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -136,6 +141,9 @@ pub fn router() -> Router<AppState> {
         .route("/notifications", get(list_notifications))
         .route("/notifications/{id}/read", post(mark_notification_read))
 }
+
+// Human: Audit listing and CSV export share tight query limits so an admin cannot accidentally download the entire log in one request.
+// Agent: SECTION audit_entries audit_actions audit_export audit_events; CONST MAX_AUDIT_PAGE_LIMIT AUDIT_EXPORT_LIMIT; dynamic WHERE filters with user_search ILIKE.
 
 const MAX_AUDIT_PAGE_LIMIT: i64 = 200;
 const AUDIT_EXPORT_LIMIT: i64 = 10_000;

@@ -1,3 +1,8 @@
+//! `GET /me` returns the current user, enabled module identifiers for the shell UI, and profile metadata.
+
+// Human: Module visibility is explicit-permission based—missing permission keys hide entire product areas instead of defaulting to “show all”.
+// Agent: get_user_permission_keys; QUERY modules enabled; MAP MODULE_VIEW_PERMISSION; INJECT archive when tickets or links visible.
+
 use axum::{Json, Router, extract::State, routing::get};
 use sqlx::Row;
 
@@ -16,9 +21,15 @@ const MODULE_VIEW_PERMISSION: &[(&str, &str)] = &[
     ("employees", "modules.employees.view"),
 ];
 
+// Human: Single authenticated endpoint mounted under the v1 router for session bootstrap after login.
+// Agent: Router GET /me WITH_STATE AppState.
+
 pub fn router() -> Router<AppState> {
     Router::new().route("/me", get(me))
 }
+
+// Human: Builds `MeResponse` by intersecting enabled modules with the caller’s permission set and normalizing client module ids (`time_tracking` vs `timetracking`).
+// Agent: READ users created_at bio last_login; RETURNS MeResponse Json OR sqlx mapped errors as AppError upstream.
 
 async fn me(
     State(state): State<AppState>,
