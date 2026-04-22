@@ -55,6 +55,9 @@ fn route_category(path: &str) -> &'static str {
 }
 
 /// Map status code to a coarse outcome label for dashboards and alerts.
+// Human: Buckets HTTP status into short strings so operators can aggregate success vs client vs server failures without raw codes only.
+// Agent: MAPS u16 ranges to success|redirect|client_error|server_error|not_found|unknown; READS status.as_u16().
+
 fn outcome_from_status(status: StatusCode) -> &'static str {
     let s = status.as_u16();
     match s {
@@ -108,6 +111,9 @@ fn client_class(path: &str, user_agent: Option<&str>) -> &'static str {
 }
 
 /// Heuristic tags for later SQL / alerting (e.g. UniFi traffic hitting this API).
+// Human: Extra tags highlight odd traffic patterns (UniFi hitting wrong host, unmatched paths) without failing the request.
+// Agent: PUSHES unmatched_path, unifi_inform_traffic, unifi_inform_mismatch based on category/outcome/client_class combos.
+
 fn anomaly_signals(category: &str, outcome: &str, client_class: &str) -> Vec<String> {
     let mut out = Vec::new();
     if outcome == "not_found" && category == "other" {
@@ -122,6 +128,9 @@ fn anomaly_signals(category: &str, outcome: &str, client_class: &str) -> Vec<Str
     out
 }
 
+// Human: Paths and query strings are capped so a malicious client cannot allocate multi-megabyte log rows.
+// Agent: RETURNS full s if len<=max; ELSE collects chars up to max (char boundary safe).
+
 fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()
@@ -131,6 +140,9 @@ fn truncate(s: &str, max: usize) -> String {
 }
 
 /// Build a log row from the request/response metadata.
+// Human: Pulls together category, outcome, client class, and anomaly tags before the async insert runs in the background.
+// Agent: CALLS route_category, outcome_from_status, client_class, anomaly_signals; COPIES strings into HttpRequestLogRow.
+
 fn build_row(
     request_id: String,
     method: axum::http::Method,
@@ -165,6 +177,9 @@ fn build_row(
 }
 
 /// Persist one row; errors are logged only (same contract as audit logging).
+// Human: Inserts never propagate to the client; failures emit a tracing warning with the request id for later correlation.
+// Agent: INSERT INTO http_request_logs all row fields; BINDS Json array for anomaly_signals; LOGS warn on sqlx Err only.
+
 async fn insert_http_request_log(pool: &PgPool, row: HttpRequestLogRow) {
     let HttpRequestLogRow {
         request_id,
@@ -261,6 +276,8 @@ pub(crate) async fn middleware(
     );
 
     let pool = Arc::new(state.pool.clone());
+    // Human: Logging runs after the response is ready so a slow `http_request_logs` table never delays the user-visible latency.
+    // Agent: SPAWNS tokio task owning Arc<Pool> + row; CALLS insert_http_request_log; DROPS result except internal warn!.
     tokio::spawn(async move {
         insert_http_request_log(pool.as_ref(), row).await;
     });

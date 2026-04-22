@@ -1,3 +1,8 @@
+//! In-memory idempotency cache: same user + key + route + body hash returns the prior HTTP JSON outcome within TTL.
+
+// Human: Clients that retry POSTs on network blips get the same response body without double-applying side effects when they send `Idempotency-Key`.
+// Agent: Mutex HashMap key user_id:key; get MATCHES route body_hash ttl; put EVICTS oldest when at max_entries; prune_locked on each access.
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -21,6 +26,9 @@ struct CachedEntry {
 }
 
 impl IdempotencyStore {
+    // Human: Capacity floor prevents accidental `0` max from creating an unusable store in tests.
+    // Agent: inner Arc Mutex new; max_entries.max(16); STORES ttl Duration.
+
     pub fn new(max_entries: usize, ttl: Duration) -> Self {
         Self {
             inner: Arc::new(Mutex::new(HashMap::new())),
@@ -28,6 +36,9 @@ impl IdempotencyStore {
             ttl,
         }
     }
+
+    // Human: A cache hit only counts when the route and body hash match so the same key on different endpoints or payloads cannot replay stale JSON.
+    // Agent: LOCK inner; prune_locked; GET map_key; FILTER route body_hash elapsed < ttl; CLONE JsonMutationResult.
 
     pub async fn get(
         &self,
@@ -47,6 +58,9 @@ impl IdempotencyStore {
             }
         })
     }
+
+    // Human: When the map is full we drop the single oldest entry by insertion time, which is coarse but avoids unbounded RAM growth.
+    // Agent: prune_locked; IF len >= max_entries REMOVE min inserted_at key; INSERT CachedEntry Instant::now.
 
     pub async fn put(
         &self,
@@ -78,6 +92,9 @@ impl IdempotencyStore {
             },
         );
     }
+
+    // Human: Expired entries are removed eagerly on every read/write so hot keys do not leave dead rows behind forever.
+    // Agent: retain inserted_at elapsed < ttl.
 
     fn prune_locked(map: &mut HashMap<String, CachedEntry>, ttl: Duration) {
         let now = Instant::now();

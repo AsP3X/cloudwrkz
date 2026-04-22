@@ -2,6 +2,9 @@
 //! Used by [`crate::auth::login_queue`] and [`crate::auth::register_queue`] background jobs
 //! (in addition to always-async POST /auth/login and /auth/register).
 
+// Human: Only specific driver/Postgres signals count as transient so we do not retry deterministic SQL mistakes forever.
+// Agent: MATCHES sqlx::Error variants PoolTimedOut, Io, Tls, Protocol; DB branch READS db.code() against SQLSTATE retry list.
+
 pub fn is_transient_sqlx(err: &sqlx::Error) -> bool {
     match err {
         sqlx::Error::PoolTimedOut | sqlx::Error::Io(_) => true,

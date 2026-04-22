@@ -13,6 +13,9 @@
 //! `jobs.daemon_ready`, `jobs.daemon_wake`, `jobs.job_start`, `jobs.job_done`). Enable with
 //! `LOG_VERBOSITY=debug` (default filter includes `jobs=debug`) or `RUST_LOG=info,jobs=debug`.
 
+// Human: Background workers dequeue `background_jobs` rows, enforce per-type concurrency budgets, and dispatch to typed handlers (GitHub, QR, entity creates).
+// Agent: OWNS policies_from_config, try_claim_next FOR UPDATE SKIP LOCKED, run_one_job match on job_type, supervised wall-timeout wrapper, dispatcher loop + stale reclaim.
+
 mod budget;
 pub mod entity_creates;
 pub mod supervisor;
@@ -67,6 +70,9 @@ impl Default for JobTypePolicy {
         }
     }
 }
+
+// Human: Each job type gets max concurrency and optional pacing so GitHub or ticket bursts cannot starve unrelated work.
+// Agent: BUILDS HashMap from AppConfig github max + fixed QR limits + entity_creates JOB_TYPE_* keys default max_concurrent 8.
 
 pub(super) fn policies_from_config(config: &AppConfig) -> HashMap<String, JobTypePolicy> {
     let mut m = HashMap::new();
@@ -154,6 +160,9 @@ pub(super) fn policies_from_config(config: &AppConfig) -> HashMap<String, JobTyp
     m
 }
 
+// Human: When a job cannot complete, we still try to flip the row to failed so operators see an error_message instead of a stuck pending row.
+// Agent: UPDATE background_jobs SET status failed, error_message, completed_at WHERE id = job_id; IGNORES sqlx result at call sites.
+
 async fn mark_job_failed(pool: &PgPool, job_id: &str, msg: &str) {
     let _ = sqlx::query(
         r#"UPDATE background_jobs SET status = 'failed', error_message = $2, updated_at = clock_timestamp(), completed_at = clock_timestamp() WHERE id = $1"#,
@@ -166,6 +175,9 @@ async fn mark_job_failed(pool: &PgPool, job_id: &str, msg: &str) {
 
 /// Fails jobs stuck in `processing` (e.g. process crash or task panic before `mark_job_failed`).
 /// Excludes long-running GitHub metadata and auth login/register rows (updated by auth retry loops).
+// Human: Crashed workers can leave rows in `processing` forever; this periodic sweep marks old ones failed except long GitHub/auth jobs.
+// Agent: UPDATE background_jobs WHERE processing AND started_at older than STALE_PROCESSING_AFTER_MINUTES; EXCLUDES github_link_metadata, auth_login, auth_register.
+
 pub(super) async fn reclaim_stale_processing_jobs(pool: &PgPool) {
     let res = sqlx::query(
         r#"UPDATE background_jobs
@@ -195,6 +207,9 @@ pub(super) async fn reclaim_stale_processing_jobs(pool: &PgPool) {
 }
 
 /// Enqueue GitHub link metadata refresh if none pending/processing for this link.
+// Human: Link saves trigger at most one pending GitHub metadata refresh per link so retries do not flood the queue.
+// Agent: SELECT existing pending/processing by dedupe_key; OR INSERT new row with payload {link_id}; RETURNS (id, reused bool).
+
 pub async fn enqueue_github_link_metadata_job(
     pool: &PgPool,
     link_id: &str,
@@ -230,9 +245,15 @@ pub async fn enqueue_github_link_metadata_job(
     Ok((id, false))
 }
 
+// Human: GitHub metadata jobs only need the link id string from their JSON payload.
+// Agent: READS payload["link_id"] as str; RETURNS Some owned String or None.
+
 fn payload_link_id(payload: &serde_json::Value) -> Option<String> {
     payload.get("link_id")?.as_str().map(String::from)
 }
+
+// Human: One claimed row becomes a dispatched async call into the right subsystem; unknown types become immediate failures.
+// Agent: MATCH job_type string; CALLS github_metadata, qr_login_execute, qr_finalize_queue, or entity_creates::run_entity_create_job; ELSE mark_job_failed unknown type.
 
 async fn run_one_job(
     pool: &PgPool,
@@ -337,6 +358,9 @@ async fn run_one_job(
     }
 }
 
+// Human: Panics or infinite hangs should not wedge the budget slot forever, so we wrap the inner task with a wall timeout and abort handle.
+// Agent: SPAWNS run_one_job with BudgetReleaseOnDrop; ON panic OR timeout CALLS mark_job_failed with distinct messages; AWAITS timeout(RUN_ONE_JOB_WALL_TIMEOUT).
+
 async fn run_one_job_supervised(
     pool: PgPool,
     client: Client,
@@ -410,6 +434,9 @@ async fn run_one_job_supervised(
 /// never block waiting on another transaction's lock; if the per-type budget rejects the job,
 /// the row is returned to `pending` with a short `run_after` deferral so the same worker does not
 /// spin on an ineligible head-of-queue row.
+// Human: Workers compete fairly for the next runnable job; if a type’s budget rejects a freshly claimed row we put it back on pending with a short deferral.
+// Agent: LOOP up to MAX_TRIES; UPDATE ... FOR UPDATE SKIP LOCKED; CALLS budgets.try_acquire OR rolls row back to pending + run_after +75ms.
+
 async fn try_claim_next(
     pool: &PgPool,
     budgets: &TypeBudgets,
@@ -489,6 +516,9 @@ async fn try_claim_next(
 }
 
 /// One dequeue/spawn loop; `budgets` and `github_rate` are shared across all dispatchers in the process.
+// Human: Each dispatcher thread alternates between short sleeps when busy and exponential backoff when idle, and periodically reclaims stale processing rows.
+// Agent: LOOP sleep; MAYBE reclaim_stale_processing_jobs hourly; CLAIM batch up to MAX_CLAIMS_PER_WAKE; SPAWNS run_one_job_supervised per job; ADJUSTS sleep_ms busy vs idle.
+
 pub(super) async fn run_job_queue_dispatcher_loop(
     pool: PgPool,
     client: Client,
@@ -602,6 +632,9 @@ pub(super) async fn run_job_queue_dispatcher_loop(
 
 /// Backwards-compatible entry: spawns the supervised pool using `config.job_queue_worker_count`
 /// for both the initial desired count and the env default metadata.
+// Human: Older call sites still ask for “spawn N workers” in one helper; today that delegates to the supervisor with matching initial and default counts.
+// Agent: READS config.job_queue_worker_count; CALLS spawn_job_queue_supervisor(pool, config, broker, n, n); RETURNS Arc JobWorkerSupervisor.
+
 pub fn spawn_job_queue_worker(
     pool: PgPool,
     config: AppConfig,

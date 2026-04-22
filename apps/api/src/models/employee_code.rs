@@ -7,10 +7,16 @@
 //! single ASCII space before storage. Duplicates are prevented using a case-insensitive
 //! identity derived from that canonical string (mirrored in SQL and a unique index).
 
+// Human: Server-side validation mirrors what HR expects for badge strings so bad input is rejected before it hits SQL unique checks.
+// Agent: parse_employee_code TRIMS/collapses whitespace, enforces length and charset; employee_code_identity_key LOWERCASES for dedupe.
+
 const MAX_EMPLOYEE_CODE_CHARS: usize = 64;
 
 /// Returns the canonical `employee_code` string to persist (trimmed, internal whitespace collapsed).
 pub fn parse_employee_code(raw: &str) -> Result<String, &'static str> {
+    // Human: We normalize whitespace so visually identical codes from spreadsheets do not create duplicate rows.
+    // Agent: TRIM raw; JOIN split_whitespace with single space; CHECK char count <=64; VALIDATE each char against allowed sets; ERR static str on failure.
+
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Err("Employee code is required");
@@ -44,11 +50,17 @@ pub fn parse_employee_code(raw: &str) -> Result<String, &'static str> {
 }
 
 /// Lowercase identity used for duplicate detection (must match `employee_code_identity_expr_sql`).
+// Human: Postgres unique indexes compare the lowercased canonical form so `Acme` and `acme` cannot both exist.
+// Agent: RETURNS canonical.to_lowercase() ASCII only assumption for HR codes.
+
 pub fn employee_code_identity_key(canonical: &str) -> String {
     canonical.to_lowercase()
 }
 
 /// SQL expression that normalizes `employee_code` for comparisons and the unique index.
+// Human: The Rust parser and the database index must apply the same normalization rule or uniqueness checks drift apart.
+// Agent: RETURNS static SQL snippet lower(regexp_replace(btrim(employee_code), ...)).
+
 pub fn employee_code_identity_expr_sql() -> &'static str {
     "lower(regexp_replace(btrim(employee_code), '[[:space:]]+', ' ', 'g'))"
 }

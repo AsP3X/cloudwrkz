@@ -1,5 +1,8 @@
 //! Time entry PATCH/DELETE/timer/break/bulk mutations for `background_jobs` (invoked from `entity_creates`).
 
+// Human: Each `exec_*` function runs the same SQL mutations HTTP would run, but inside job payloads with row locks and consistent `JsonMutationResult` shapes.
+// Agent: USES apply_mutation_tx_settings; lock_time_entry_tx FOR UPDATE owner check; RETURNS JobExecOutcome via entity_creates map_sqlx_ticket patterns.
+
 use chrono::Utc;
 use serde::Deserialize;
 use serde_json::json;
@@ -13,6 +16,9 @@ use crate::models::time_entry::{
 };
 
 use super::entity_creates::{JobExecOutcome, map_sqlx_ticket};
+
+// Human: Central SELECT list keeps `row_to_entry` aligned with every column the API returns for time entries after mutations.
+// Agent: STATIC SQL fragment reused in queries; PAIRED with row_to_entry field order.
 
 const ENTRY_SELECT: &str = r#"SELECT id, name, description, status::text as status,
        started_at, paused_at, stopped_at, completed_at,
@@ -56,6 +62,9 @@ fn parse_iso_datetime_utc_naive(s: &str) -> Option<chrono::NaiveDateTime> {
         })
 }
 
+// Human: Mutations always lock the row and compare `user_id` so a forged job payload cannot change another user’s timer.
+// Agent: SELECT user_id FROM time_entries FOR UPDATE; ERRORS not_found OR forbidden when owner mismatch.
+
 async fn lock_time_entry_tx(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     id: &str,
@@ -98,6 +107,9 @@ struct BulkUpdateTimeEntriesRequest {
 struct BulkIdsRequest {
     ids: Vec<String>,
 }
+
+// Human: Single-entry mutations (update through break delete) deserialize payloads like the REST handlers and enforce per-row ownership inside a transaction.
+// Agent: exec_time_entry_* READ payload user_id + ids; BEGIN tx apply_mutation_tx_settings; lock_time_entry_tx; UPDATE/DELETE time_entries time_entry_breaks; COMMIT JsonMutationResult.
 
 pub(super) async fn exec_time_entry_update(
     pool: &PgPool,
@@ -957,6 +969,9 @@ pub(super) async fn exec_time_entry_break_delete(
 
     JobExecOutcome::Ok(JsonMutationResult::ok(json!({ "success": true })))
 }
+
+// Human: Bulk jobs apply the same validation as PATCH list endpoints but iterate ids in one transaction where possible to amortize commit overhead.
+// Agent: exec_time_entry_bulk_* PARSE BulkUpdateTimeEntriesRequest/BulkIdsRequest; LOOP ids with lock_time_entry_tx or batched UPDATE; RETURNS counts/success JSON.
 
 pub(super) async fn exec_time_entry_bulk_update(
     pool: &PgPool,

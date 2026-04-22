@@ -1,5 +1,8 @@
 //! CloudWrkz HTTP API — shared by the `cloudwrkz-api` binary and integration tests.
 
+// Human: This crate wires Axum, tracing, CORS, migrations, and the background job supervisor into one process entrypoint used by binaries and tests.
+// Agent: EXPORTS run/build_http_app/AppConfig/AppState/job supervisor helpers; COMPOSES nested /api/v1 + legacy health + QR public routes + middleware stack.
+
 mod audit;
 pub mod auth;
 mod auth_governor;
@@ -28,6 +31,9 @@ pub use routes::AppState;
 pub use routes::mutation_broker_for_config;
 
 /// Start the PostgreSQL-backed job worker pool (same as `run()` after migrations). For integration tests.
+// Human: Integration tests need the same dispatcher pool as production without starting the full HTTP listener stack.
+// Agent: DELEGATES to job_queue::spawn_job_queue_worker(pool, config, mutation_broker); RETURNS Arc<JobWorkerSupervisor>.
+
 pub fn spawn_background_job_worker(
     pool: sqlx::PgPool,
     config: AppConfig,
@@ -60,6 +66,9 @@ enum LogVerbosity {
 }
 
 static LOG_VERBOSITY: OnceLock<LogVerbosity> = OnceLock::new();
+
+// Human: After `run()` initializes the `OnceLock`, every middleware log line reads the same enum without re-parsing environment strings.
+// Agent: READS LOG_VERBOSITY.get(); FALLBACK LogVerbosity::Prod when run() has not initialized yet (should be rare).
 
 fn log_verbosity() -> LogVerbosity {
     *LOG_VERBOSITY.get().unwrap_or(&LogVerbosity::Prod)
@@ -103,6 +112,9 @@ Environment: LOG_VERBOSITY (debug|prod), LOG_FORMAT (json), RUST_LOG, DATABASE_U
 "#;
 
 /// Parse `-v` / `-v debug` / `-v prod` and `-h` from env::args(). CLI overrides LOG_VERBOSITY env.
+// Human: Developers pass `-v` on the command line to temporarily widen HTTP span fields without editing `.env` files.
+// Agent: SCANS std::env::args after argv0; MATCHES -v/--verbose optional next token prod|debug; RETURNS Some(LogVerbosity).
+
 fn parse_verbosity_from_args() -> Option<LogVerbosity> {
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -122,6 +134,9 @@ fn parse_verbosity_from_args() -> Option<LogVerbosity> {
 struct ApiOnResponse;
 
 impl<B> OnResponse<B> for ApiOnResponse {
+    // Human: Prod logs stay minimal for cost; debug adds content-length so oversized responses are obvious during profiling.
+    // Agent: READS log_verbosity(); EMITS tracing::info with status+latency_ms; OPTIONAL content_length header lookup.
+
     fn on_response(
         self,
         response: &axum::http::Response<B>,
@@ -145,6 +160,9 @@ impl<B> OnResponse<B> for ApiOnResponse {
         }
     }
 }
+
+// Human: Operators choose JSON vs pretty text via `LOG_FORMAT`, and RUST_LOG still overrides the default filter when set.
+// Agent: READS LOG_FORMAT json; BUILDS EnvFilter from env or default info,jobs=debug; INITIALIZES tracing_subscriber fmt layer once.
 
 fn init_logging() {
     let default_directive = match log_verbosity() {
@@ -174,6 +192,9 @@ fn init_logging() {
 }
 
 /// Builds a span for each HTTP request. Prod: request_id, method, uri (path). Debug: + client_ip, path_and_query, user_agent.
+// Human: Request ids propagate from `X-Request-Id` so upstream gateways and this API’s logs agree on correlation keys.
+// Agent: CALLS request_id_from_headers; READS URI path vs path_and_query; EXTRACTS x-forwarded-for first hop or x-real-ip; BRANCHES span fields by verbosity.
+
 fn make_request_span(request: &axum::http::Request<Body>) -> tracing::Span {
     let request_id = crate::audit::request_id_from_headers(request.headers());
     let path = request.uri().path();
@@ -218,6 +239,9 @@ fn make_request_span(request: &axum::http::Request<Body>) -> tracing::Span {
     }
 }
 
+// Human: Empty `CORS_ORIGINS` means “allow any origin without credentials” for quick local dev; non-empty lists enable credentialed browser calls.
+// Agent: IF cors_origins empty USE Any origin no credentials; ELSE PARSE list AllowOrigin exact origins + allow_credentials true + method/header allowlists.
+
 fn build_cors(config: &AppConfig) -> CorsLayer {
     let (methods, headers) = if config.cors_origins.is_empty() {
         (AllowMethods::any(), AllowHeaders::any())
@@ -256,6 +280,9 @@ fn build_cors(config: &AppConfig) -> CorsLayer {
 }
 
 /// Full HTTP stack (v1 + legacy health, security headers, CORS, trace, body limit) — used in production and tests.
+// Human: Layers apply outer-to-inner as Axum merges routers: security headers, CORS, trace, body cap, then async request logging middleware.
+// Agent: MERGES health + nest /api/v1 v1_router + public QR nest; WITH_STATE AppState; LAYERS SetResponseHeader, Cors, TraceLayer, RequestBodyLimit, request_tracking.
+
 pub fn build_http_app(state: AppState) -> Router {
     let cors = build_cors(&state.config);
     let max_body = state.config.max_body_size;
@@ -296,6 +323,9 @@ pub fn build_http_app(state: AppState) -> Router {
         ))
 }
 
+// Human: Graceful shutdown waits for Ctrl+C on all platforms and SIGTERM on Unix so orchestrators can drain connections cleanly.
+// Agent: tokio::select ctrl_c vs unix terminate OR pending on non-Unix; LOGS shutdown event with signal name.
+
 async fn shutdown_signal() {
     let ctrl_c = async {
         tokio::signal::ctrl_c()
@@ -321,6 +351,9 @@ async fn shutdown_signal() {
 }
 
 /// Server entry: load env, migrations, bind, serve. Used by `cloudwrkz-api` binary.
+// Human: Startup loads `.env` from common paths, applies migrations with retries, boots job dispatchers, then binds TCP and serves with connect info for rate limits.
+// Agent: PARSES CLI help; dotenv DATABASE_URL hunt; init_logging; AppConfig::from_env + CLI overrides; create_pool_lazy; run_migrations; spawn_job_queue_supervisor; axum::serve with graceful_shutdown.
+
 pub async fn run() {
     for arg in std::env::args().skip(1) {
         if arg == "-h" || arg == "--help" {

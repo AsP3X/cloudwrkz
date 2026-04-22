@@ -12,6 +12,9 @@ use crate::auth::extractors::AuthUser;
 use crate::error::AppError;
 use crate::routes::AppState;
 
+// Human: Stores and suggests recent typed addresses (e.g. for time entry location fields) per authenticated user.
+// Agent: ROUTER /location-history GET list + POST save; BOTH REQUIRE AuthUser; READS/WRITES location_history table.
+
 pub fn router() -> Router<AppState> {
     Router::new().route("/location-history", get(list_locations).post(save_location))
 }
@@ -31,6 +34,8 @@ async fn list_locations(
     AuthUser(user): AuthUser,
     Query(params): Query<LocationParams>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    // Human: Autocomplete uses a substring filter; omitting `q` returns the first 50 distinct addresses alphabetically.
+    // Agent: READS location_history WHERE user_id AND address ILIKE pattern; pattern is %{q}% or '%'; LIMIT 50 DISTINCT.
     let pattern = params
         .q
         .map(|q| format!("%{q}%"))
@@ -58,12 +63,16 @@ async fn save_location(
 ) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
     let address = body.address.trim();
     if address.is_empty() {
-        return Ok((
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": "Address is required" })),
+        // Human: Empty saves are validation failures and must use the standard `AppError` JSON shape expected by the Vite client.
+        // Agent: RETURNS AppError::validation BAD_REQUEST code VALIDATION_ERROR; FIELDS address required marker; NO DB write.
+        return Err(AppError::validation(
+            "Address is required",
+            serde_json::json!({ "address": ["required"] }),
         ));
     }
 
+    // Human: Upsert keeps one row per user and normalized address while refreshing `updated_at` when the same address is saved again.
+    // Agent: INSERT location_history ON CONFLICT (user_id, address) DO UPDATE updated_at NOW; BINDS new id uuid, user_id, trimmed address.
     sqlx::query(
         r#"INSERT INTO location_history (id, user_id, address)
            VALUES ($1, $2, $3)

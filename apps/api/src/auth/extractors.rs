@@ -1,3 +1,8 @@
+//! Axum extractors that turn `Authorization: Bearer` or `session=` cookies into a validated [`CurrentUser`].
+
+// Human: Authenticated routes use `AuthUser` so handlers do not duplicate bearer-vs-cookie parsing or session expiry checks.
+// Agent: FromRequestParts READS headers; CALLS validate_session on PgPool; RETURNS 401 AppError on missing/invalid/expired/inactive user.
+
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use sqlx::Row;
@@ -8,6 +13,9 @@ use crate::routes::AppState;
 
 #[derive(Debug, Clone)]
 pub struct AuthUser(pub CurrentUser);
+
+// Human: Browser clients may send either a bearer API token or the `session` cookie set by the login response, whichever is present first.
+// Agent: extract_bearer_token OR extract_cookie_token; validate_session; REJECTION unauthorized missing token or DB/session rules.
 
 impl FromRequestParts<AppState> for AuthUser {
     type Rejection = AppError;
@@ -25,10 +33,16 @@ impl FromRequestParts<AppState> for AuthUser {
     }
 }
 
+// Human: Parses a standard `Bearer` prefix case-sensitively so accidental `bearer` typos do not authenticate.
+// Agent: READS authorization header UTF-8; STRIPS prefix Bearer ; TRIMS token.
+
 fn extract_bearer_token(parts: &Parts) -> Option<String> {
     let auth = parts.headers.get("authorization")?.to_str().ok()?;
     auth.strip_prefix("Bearer ").map(|t| t.trim().to_string())
 }
+
+// Human: Cookie auth walks the raw `Cookie` header because Axum does not assume a cookie jar for API-style clients.
+// Agent: READS cookie header; SPLITS on ; ; FINDS session= value; RETURNS first match.
 
 fn extract_cookie_token(parts: &Parts) -> Option<String> {
     let cookies = parts.headers.get("cookie")?.to_str().ok()?;
@@ -40,6 +54,9 @@ fn extract_cookie_token(parts: &Parts) -> Option<String> {
     }
     None
 }
+
+// Human: Sessions must exist, not be expired, and belong to an active verified user before any protected handler runs.
+// Agent: SELECT sessions JOIN users WHERE token; CHECK expires_at naive_utc; REJECT DELETED/non-ACTIVE/unverified; MAPS CurrentUser defaults timezone/theme.
 
 async fn validate_session(pool: &sqlx::PgPool, token: &str) -> Result<CurrentUser, AppError> {
     let row = sqlx::query(
@@ -91,6 +108,9 @@ async fn validate_session(pool: &sqlx::PgPool, token: &str) -> Result<CurrentUse
 }
 
 /// Extract the raw bearer token from a request's headers (for use outside the extractor).
+// Human: Some flows (logout, token refresh helpers) need the bearer string without building a full `AuthUser` extractor context.
+// Agent: READS Authorization header; STRIPS Bearer ; TRIMS; RETURNS Option same as extract_bearer_token logic.
+
 pub fn extract_token_from_headers(headers: &axum::http::HeaderMap) -> Option<String> {
     let auth = headers.get("authorization")?.to_str().ok()?;
     auth.strip_prefix("Bearer ").map(|t| t.trim().to_string())

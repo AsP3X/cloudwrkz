@@ -11,6 +11,8 @@ use crate::config::AppConfig;
 /// Layer limiting brute-force traffic to auth endpoints. Keyed by client IP
 /// (`X-Forwarded-For` / `X-Real-IP` / `Forwarded` when present, else peer IP — requires
 /// [`axum::serve`] with [`axum::extract::connect_info::IntoMakeServiceWithConnectInfo`]).
+// Human: Login and register stay cheap to attack without this; burst + refill window come from env-backed `AppConfig`.
+// Agent: READS auth_rate_limit_refill_period and auth_rate_limit_burst; BUILDS GovernorConfigBuilder with SmartIpKeyExtractor; RETURNS GovernorLayer.
 pub fn auth_rate_limit_layer(
     config: &AppConfig,
 ) -> GovernorLayer<SmartIpKeyExtractor, NoOpMiddleware, Body> {

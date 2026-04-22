@@ -1,3 +1,8 @@
+//! FIFO mutation broker: one async worker per shard key, bounded mpsc, wall-clock timeout, optional idempotent replay cache.
+
+// Human: Mutations for the same user shard serialize through one task so row locks and business invariants are not interleaved across concurrent requests.
+// Agent: MutationBroker HOLDS shards Mutex HashMap -> mpsc::Sender<Job>; run CHECKS idempotency get; SPAWNS shard_worker on first shard; AWAIT oneshot result; put on 2xx.
+
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -64,6 +69,9 @@ pub struct MutationBroker {
 }
 
 impl MutationBroker {
+    // Human: Constructor clamps timeouts and queue capacity so a bad env cannot allocate a channel larger than memory allows.
+    // Agent: STORES idempotency + mutation_tx_max_ms lock_timeout_ms statement_timeout_ms queue_capacity each CLAMPED to safe ranges.
+
     pub fn new(
         idempotency: IdempotencyStore,
         mutation_tx_max_ms: u64,
@@ -81,6 +89,9 @@ impl MutationBroker {
         }
     }
 
+    // Human: First touch of a shard spins up a dedicated worker task that drains that shard’s channel forever (until process exit).
+    // Agent: LOCK shards; GET or INSERT mpsc channel capacity queue_capacity; tokio::spawn shard_worker(rx, max_ms); RETURNS Sender clone.
+
     async fn sender_for_shard(&self, key: String) -> Result<mpsc::Sender<Job>, AppError> {
         let mut map = self.shards.lock().await;
         if let Some(tx) = map.get(&key) {
@@ -93,6 +104,9 @@ impl MutationBroker {
         map.insert(key, tx_ret.clone());
         Ok(tx_ret)
     }
+
+    // Human: The caller’s closure receives a cloned `PgPool` and runs under `tokio::time::timeout` so hung SQL cannot block the shard forever.
+    // Agent: idempotency fast-path; BUILD boxed fut timeout max_ms; send Job to shard channel; RECV oneshot; idempotency put on success 2xx/3xx? only is_success.
 
     pub async fn run<F, Fut>(
         &self,
@@ -174,6 +188,9 @@ impl MutationBroker {
         result
     }
 }
+
+// Human: Each shard worker processes jobs strictly in receive order, which is the per-shard serialization guarantee.
+// Agent: LOOP mpsc recv; AWAIT fut; SEND oneshot result ignore Err if receiver dropped.
 
 async fn shard_worker(mut rx: mpsc::Receiver<Job>, _max_ms: u64) {
     while let Some(Job { fut, done }) = rx.recv().await {

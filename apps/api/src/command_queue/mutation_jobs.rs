@@ -1,6 +1,9 @@
 //! When a queued mutation hits a transient database error, accept the work like auth login/register:
 //! return HTTP 202 + `job_id`, retry in the background, and expose `GET …/mutation-jobs/{job_id}`.
 
+// Human: When the mutation broker surfaces a transient DB error, we keep the client contract by polling a job id instead of blocking the HTTP thread for 30s of retries.
+// Agent: run_mutation_defer SPAWNS mutation_db_retry_loop; MutationJobs Mutex tracks per job_id user_id; get_status_for_user enforces owner.
+
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::{Arc, Mutex};
@@ -67,6 +70,9 @@ struct MutationJobOutcome {
     http_status: Option<u16>,
     body: Option<serde_json::Value>,
 }
+
+// Human: Status polling is keyed by job id but must not leak other users’ outcomes, so each record carries the owning `user_id`.
+// Agent: Mutex HashMap job_id MutationJobRecord; insert_pending; set_completed/set_failed mutate state; get_status_for_user CHECKS user_id equality.
 
 impl MutationJobs {
     pub fn insert_pending(&self, job_id: String, user_id: String) {
@@ -144,6 +150,9 @@ pub enum MutationHandlerOutput {
 }
 
 /// Run a mutation once; on transient DB failure, enqueue background retries and return [`MutationHandlerOutput::Queued`].
+// Human: `make_arc` rebuilds the closure for each retry attempt because the inner `FnOnce` semantics require a fresh future after each run.
+// Agent: make_arc.lock await g(); broker.run ON Err transient_database spawn mutation_db_retry_loop RETURN Queued; ELSE propagate Err.
+
 pub async fn run_mutation_defer<FMaker, F, Fut>(
     broker: MutationBroker,
     pool: PgPool,
@@ -195,6 +204,9 @@ where
         Err(e) => Err(e),
     }
 }
+
+// Human: Same deadline pattern as auth queues: sleep 400ms between transient failures until success or timeout message for the poller.
+// Agent: LOOP deadline MUTATION_DB_RETRY_MAX; broker.run shard ctx; ON transient sleep; ON Ok set_completed BREAK; ON fatal set_failed BREAK.
 
 async fn mutation_db_retry_loop<FMaker, F, Fut>(
     broker: MutationBroker,

@@ -7,6 +7,9 @@ use sqlx::types::Json;
 use std::sync::Arc;
 use tracing::warn;
 
+// Human: Callers bundle everything needed for one audit row so the async write does not borrow request state across await points.
+// Agent: HOLDS optional user_id, action string, resource_type/id, context JSON, ip, user_agent; PASSED by clone into spawned insert.
+
 #[derive(Clone)]
 pub struct WriteAuditParams {
     pub user_id: Option<String>,
@@ -19,6 +22,9 @@ pub struct WriteAuditParams {
 }
 
 /// Prefer `X-Request-Id` when present; otherwise a fresh UUID (matches trace spans).
+// Human: Reuses the gateway-provided request id when valid UTF-8 so logs and traces line up across services.
+// Agent: READS header x-request-id case-sensitive; FALLBACK uuid::new_v4 string.
+
 pub fn request_id_from_headers(headers: &HeaderMap) -> String {
     headers
         .get("x-request-id")
@@ -28,6 +34,9 @@ pub fn request_id_from_headers(headers: &HeaderMap) -> String {
 }
 
 /// Extract client IP from headers (X-Forwarded-For, X-Real-IP, or empty).
+// Human: Behind proxies the first `X-Forwarded-For` hop is treated as the original client; otherwise we fall back to `X-Real-IP`.
+// Agent: READS x-forwarded-for first comma segment OR x-real-ip trimmed; RETURNS None if absent/unparseable.
+
 pub fn client_ip_from_headers(headers: &HeaderMap) -> Option<String> {
     if let Some(v) = headers.get("x-forwarded-for") {
         if let Ok(s) = v.to_str() {
@@ -43,6 +52,9 @@ pub fn client_ip_from_headers(headers: &HeaderMap) -> Option<String> {
 }
 
 /// Write an audit log entry. Fire-and-forget: spawns a task; errors are logged only.
+// Human: Audit writes never block the HTTP response; failures are warn-only so compliance logging cannot take down requests.
+// Agent: SPAWNS tokio task; INSERT audit_logs with new_cuid id; CLONES all params into task; LOGS warn on sqlx Err.
+
 pub fn write_audit_log(pool: &PgPool, params: WriteAuditParams) {
     let pool = Arc::new(pool.clone());
     let id = crate::id::new_cuid();

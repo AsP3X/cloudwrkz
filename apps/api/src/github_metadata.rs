@@ -12,8 +12,14 @@ use url::Url;
 
 use crate::github_rate_limit::GithubRestRateLimit;
 
+// Human: Parses GitHub URLs and calls the REST API to enrich link rows with stars, license, branch counts, etc., respecting the shared anonymous rate limiter.
+// Agent: READS links.url metadata; CALLS github_get / github_get_parallel_pair with GithubRestRateLimit; WRITES links.metadata + background_jobs status in execute_github_link_metadata_job.
+
 const GITHUB_ACCEPT: &str = "application/vnd.github+json";
 const GITHUB_UA: &str = "Cloudwrkz-API (link metadata enrichment; public repos only)";
+
+// Human: Accepts bare `github.com/owner/repo` or full URLs and normalizes to owner/repo strings for API paths.
+// Agent: PARSES Url with optional https prefix; REQUIRES host github.com; READS first two path segments; STRIPS .git suffix.
 
 pub(crate) fn parse_github_owner_repo(raw_url: &str) -> Option<(String, String)> {
     let trimmed = raw_url.trim();
@@ -36,6 +42,9 @@ pub(crate) fn parse_github_owner_repo(raw_url: &str) -> Option<(String, String)>
 }
 
 /// True when `metadata` already includes GitHub REST enrichment for the same `owner/repo` as `url`.
+// Human: Skips re-fetching GitHub when the stored JSON already names the same owner and repo as the current link URL (case-insensitive).
+// Agent: READS metadata.githubOwner githubRepo; COMPARES to parse_github_owner_repo(url); RETURNS false if parse fails.
+
 pub(crate) fn link_github_enrichment_matches_repo(metadata: &Option<Value>, url: &str) -> bool {
     let Some((url_owner, url_repo)) = parse_github_owner_repo(url) else {
         return false;
@@ -54,6 +63,9 @@ pub(crate) fn link_github_enrichment_matches_repo(metadata: &Option<Value>, url:
     owner_ok && repo_ok
 }
 
+// Human: GitHub paginated responses expose total pages in the `Link` header; we regex out the `rel="last"` page number when present.
+// Agent: OnceLock Regex; CAPTURES page=N from Link header; PARSES i64.
+
 fn parse_last_page_from_link_header(link_header: Option<&str>) -> Option<i64> {
     static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
     let re = RE.get_or_init(|| Regex::new(r#"[?&]page=(\d+)>;\s*rel="last""#).expect("regex"));
@@ -61,6 +73,9 @@ fn parse_last_page_from_link_header(link_header: Option<&str>) -> Option<i64> {
     let cap = re.captures(h)?;
     cap.get(1)?.as_str().parse().ok()
 }
+
+// Human: Every REST call acquires one anonymous slot (when no token) before sending so parallel jobs cannot bypass the limiter.
+// Agent: CALLS rate.acquire(1); GET url; SETS Accept + User-Agent; apply_auth optional Bearer; MAPS reqwest Err to String.
 
 async fn github_get(
     client: &Client,
@@ -76,6 +91,9 @@ async fn github_get(
 }
 
 /// Two parallel GETs after reserving two slots in the anonymous hourly window.
+// Human: Paired requests reserve two budget slots up front so the rolling window stays accurate even when both fire concurrently.
+// Agent: CALLS rate.acquire(2); tokio::join two apply_auth GETs; RETURNS (Response, Response) or first reqwest Err string.
+
 async fn github_get_parallel_pair(
     client: &Client,
     url_a: &str,
@@ -104,6 +122,9 @@ async fn github_get_parallel_pair(
     Ok((ra, rb))
 }
 
+// Human: New GitHub keys overwrite only `github*` fields in the JSON blob so unrelated metadata from HTML extraction stays intact.
+// Agent: MERGES existing object or empty; REMOVES keys starting github from github_fields into base object; RETURNS Value.
+
 fn merge_github_metadata(existing: Option<Value>, mut github_fields: Value) -> Value {
     let mut base = match existing {
         Some(Value::Object(o)) => Value::Object(o),
@@ -131,6 +152,9 @@ fn repo_api_url(owner: &str, repo: &str) -> String {
 
 /// List branches (up to `BRANCH_LIST_PER_PAGE` names) and total branch count using at most two requests.
 const BRANCH_LIST_PER_PAGE: i64 = 100;
+
+// Human: Branch names come from the first page while total count may require fetching the last page when GitHub paginates beyond 100 branches.
+// Agent: GET branches per_page 100; READS Link last page; OPTIONAL second GET page=last; RETURNS (names_json, count_json) or None on HTTP non-success.
 
 async fn fetch_branches_metadata(
     client: &Client,
@@ -183,6 +207,9 @@ async fn fetch_branches_metadata(
     let count_json = count.map(|n| json!(n));
     Ok((names_json, count_json))
 }
+
+// Human: Builds the `github*` JSON fields for one repo by combining the repo endpoint with branch, release, and commit pagination metadata.
+// Agent: GET /repos/{owner}/{repo}; fetch_branches_metadata; github_get_parallel_pair releases + commits; POPULATES stars forks license topics etc.
 
 async fn fetch_github_enrichment(
     client: &Client,
@@ -302,6 +329,9 @@ async fn fetch_github_enrichment(
     Ok(out)
 }
 
+// Human: Failed jobs still need a terminal status so the dispatcher does not retry forever; errors are best-effort logged only.
+// Agent: UPDATE background_jobs SET status failed error_message completed_at; IGNORES sqlx Err.
+
 async fn mark_background_job_failed(pool: &PgPool, job_id: &str, msg: &str) {
     let _ = sqlx::query(
         r#"UPDATE background_jobs SET status = 'failed', error_message = $2, updated_at = clock_timestamp(), completed_at = clock_timestamp() WHERE id = $1"#,
@@ -313,6 +343,9 @@ async fn mark_background_job_failed(pool: &PgPool, job_id: &str, msg: &str) {
 }
 
 /// Runs GitHub enrichment for `link_id` and updates `links` + `background_jobs` (`job_id`).
+// Human: One background job row drives a transaction that writes merged metadata back to `links` and marks the job completed, or marks failed on any validation/API error.
+// Agent: SELECT links; validate github URL; fetch_github_enrichment; BEGIN tx; UPDATE links metadata; UPDATE background_jobs completed/failed; COMMIT.
+
 pub async fn execute_github_link_metadata_job(
     pool: &PgPool,
     client: &Client,

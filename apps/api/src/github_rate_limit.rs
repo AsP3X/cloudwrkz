@@ -3,6 +3,9 @@
 //!
 //! See repository doc: `docs/background-jobs-and-github.md`.
 
+// Human: Anonymous GitHub calls share one rolling-hour counter so we stay under GitHub’s 60/hour rule; a configured token bypasses the local cap.
+// Agent: MUTATES Mutex<VecDeque<Instant>> window; SKIPS acquire when token Some; READS AppConfig github_anonymous_max_requests_per_hour.
+
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -14,6 +17,9 @@ use crate::config::AppConfig;
 const GITHUB_ANONYMOUS_WINDOW: Duration = Duration::from_secs(3600);
 
 /// Tracks anonymous GitHub REST calls in a rolling hour window. Skips limiting when a token is configured.
+// Human: The struct wraps optional bearer auth plus the deque of recent request timestamps used as a leaky bucket over one hour.
+// Agent: HOLDS token Arc<str>, max_anonymous_per_hour, window Mutex<VecDeque<Instant>>; GITHUB_ANONYMOUS_WINDOW 3600s.
+
 pub struct GithubRestRateLimit {
     token: Option<Arc<str>>,
     max_anonymous_per_hour: u32,
@@ -21,6 +27,9 @@ pub struct GithubRestRateLimit {
 }
 
 impl GithubRestRateLimit {
+    // Human: Trims whitespace from the token env so accidental newlines do not disable auth headers while still looking “set”.
+    // Agent: READS config.github_api_token; MAPS empty trim to None; ARC wraps Self for cheap clones across jobs.
+
     pub fn from_config(config: &AppConfig) -> Arc<Self> {
         let token: Option<Arc<str>> = config.github_api_token.as_ref().and_then(|s| {
             let t = s.trim();
@@ -37,6 +46,9 @@ impl GithubRestRateLimit {
         })
     }
 
+    // Human: Injects `Authorization: Bearer` when a token exists so the same request builder works for anonymous and authenticated traffic.
+    // Agent: READS self.token; SETS header AUTHORIZATION Bearer; RETURNS unchanged RequestBuilder when token None.
+
     pub fn apply_auth(&self, req: RequestBuilder) -> RequestBuilder {
         match &self.token {
             Some(t) => req.header(
@@ -48,6 +60,9 @@ impl GithubRestRateLimit {
     }
 
     /// Reserve `n` slots in the anonymous hourly window (no-op when a GitHub token is configured).
+    // Human: Under load we may need to sleep until the oldest timestamp ages out so parallel jobs do not burst past the hourly ceiling.
+    // Agent: LOOPS tokio::sleep; POPs expired Instants from front; PUSHes n now when capacity; WAITS until oldest+window when full.
+
     pub async fn acquire(&self, n: u32) {
         if self.token.is_some() || n == 0 {
             return;
