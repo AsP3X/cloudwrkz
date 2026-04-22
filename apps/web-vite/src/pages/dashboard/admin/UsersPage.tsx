@@ -13,6 +13,27 @@ import { formatDate } from "@/lib/utils/date";
 import { OverviewContextMenu, type OverviewContextMenuItem } from "@/components/ui/OverviewContextMenu";
 import { cn } from "@/lib/utils/cn";
 
+const EMPLOYMENT_TYPE_OPTIONS = [
+  { value: "FULL_TIME", label: "Full time" },
+  { value: "PART_TIME", label: "Part time" },
+  { value: "CONTRACTOR", label: "Contractor" },
+  { value: "INTERN", label: "Intern" },
+  { value: "TEMPORARY", label: "Temporary" },
+] as const;
+
+interface EmployeeCreatePayload {
+  employee_code: string;
+  first_name: string;
+  last_name: string;
+  display_name: string;
+  work_email: string;
+  job_title: string;
+  department: string;
+  location: string;
+  hire_date: string;
+  employment_type: string;
+}
+
 const getRoleBadgeVariant = (role: string) => {
   switch (role) {
     case "ADMIN": return "error" as const;
@@ -136,11 +157,32 @@ export default function UsersPage() {
     setIsLoading(false);
   };
 
-  const handleCreate = async (data: { email: string; name?: string; password: string; role: string; status: string }) => {
+  const handleCreate = async (
+    data: { email: string; name?: string; password: string; role: string; status: string },
+    empData?: EmployeeCreatePayload,
+  ) => {
     setIsLoading(true);
     setCreateUserError(null);
     try {
-      await api.post("/admin/users", data);
+      const resp = await api.post<{ user?: { id?: string } }>("/admin/users", data);
+      if (empData) {
+        const userId = resp?.user?.id;
+        if (userId) {
+          await api.post("/employees", {
+            employee_code: empData.employee_code,
+            first_name: empData.first_name,
+            last_name: empData.last_name,
+            display_name: empData.display_name || null,
+            work_email: empData.work_email || null,
+            job_title: empData.job_title || null,
+            department: empData.department || null,
+            location: empData.location || null,
+            hire_date: empData.hire_date,
+            employment_type: empData.employment_type,
+            user_id: userId,
+          });
+        }
+      }
       setCreateDialogOpen(false);
       fetchUsers();
     } catch (e) {
@@ -484,7 +526,7 @@ export default function UsersPage() {
           setCreateDialogOpen(open);
           if (!open) setCreateUserError(null);
         }}
-        onSubmit={handleCreate}
+        onSubmit={(data, empData) => handleCreate(data, empData)}
         isLoading={isLoading}
         submitError={createUserError}
       />
@@ -536,7 +578,10 @@ export default function UsersPage() {
 function UserCreateDialog({ open, onOpenChange, onSubmit, isLoading, submitError }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (data: { email: string; name?: string; password: string; role: string; status: string }) => void | Promise<void>;
+  onSubmit: (
+    data: { email: string; name?: string; password: string; role: string; status: string },
+    empData?: EmployeeCreatePayload,
+  ) => void | Promise<void>;
   isLoading: boolean;
   submitError: string | null;
 }) {
@@ -546,21 +591,89 @@ function UserCreateDialog({ open, onOpenChange, onSubmit, isLoading, submitError
   const [role, setRole] = useState("USER");
   const [status, setStatus] = useState("ACTIVE");
 
+  const [createEmployee, setCreateEmployee] = useState(false);
+  const [empCode, setEmpCode] = useState("");
+  const [empFirst, setEmpFirst] = useState("");
+  const [empLast, setEmpLast] = useState("");
+  const [empDisplay, setEmpDisplay] = useState("");
+  const [empEmail, setEmpEmail] = useState("");
+  const [empTitle, setEmpTitle] = useState("");
+  const [empDept, setEmpDept] = useState("");
+  const [empLocation, setEmpLocation] = useState("");
+  const [empHire, setEmpHire] = useState(() => new Date().toISOString().slice(0, 10));
+  const [empType, setEmpType] = useState("FULL_TIME");
+
+  // When the user types their name, pre-fill the employee first/last fields.
+  const handleNameChange = (val: string) => {
+    setName(val);
+    if (createEmployee) {
+      const parts = val.trim().split(/\s+/);
+      setEmpFirst(parts[0] ?? "");
+      setEmpLast(parts.slice(1).join(" "));
+      setEmpDisplay(val.trim());
+    }
+  };
+
+  // When the user types their email, pre-fill the employee work email.
+  const handleEmailChange = (val: string) => {
+    setEmail(val);
+    if (createEmployee) setEmpEmail(val);
+  };
+
+  // Toggling the checkbox pre-fills from current name/email values.
+  const handleToggleEmployee = (checked: boolean) => {
+    setCreateEmployee(checked);
+    if (checked) {
+      const parts = name.trim().split(/\s+/);
+      setEmpFirst(parts[0] ?? "");
+      setEmpLast(parts.slice(1).join(" "));
+      setEmpDisplay(name.trim());
+      setEmpEmail(email);
+    }
+  };
+
+  // Reset all local state when the dialog closes.
+  const handleOpenChange = (next: boolean) => {
+    if (!next) {
+      setEmail(""); setName(""); setPassword(""); setRole("USER"); setStatus("ACTIVE");
+      setCreateEmployee(false);
+      setEmpCode(""); setEmpFirst(""); setEmpLast(""); setEmpDisplay("");
+      setEmpEmail(""); setEmpTitle(""); setEmpDept(""); setEmpLocation("");
+      setEmpHire(new Date().toISOString().slice(0, 10)); setEmpType("FULL_TIME");
+    }
+    onOpenChange(next);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    void onSubmit({ email, name: name || undefined, password, role, status });
+    const empData: EmployeeCreatePayload | undefined = createEmployee
+      ? {
+          employee_code: empCode,
+          first_name: empFirst,
+          last_name: empLast,
+          display_name: empDisplay,
+          work_email: empEmail,
+          job_title: empTitle,
+          department: empDept,
+          location: empLocation,
+          hire_date: empHire,
+          employment_type: empType,
+        }
+      : undefined;
+    void onSubmit({ email, name: name || undefined, password, role, status }, empData);
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} title="Create User" description="Create a new system user">
+    <Dialog open={open} onOpenChange={handleOpenChange} title="Create User" description="Create a new system user">
       <form onSubmit={handleSubmit} className="p-6 space-y-4">
         {submitError ? (
           <div className="p-3 rounded-lg bg-error-50 dark:bg-error-950/80 border border-error-200/80 dark:border-error-800/80 text-error-700 dark:text-error-300 text-sm">
             {submitError}
           </div>
         ) : null}
-        <Input label="Email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-        <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} />
+
+        <Input label="Email" type="email" required value={email} onChange={(e) => handleEmailChange(e.target.value)} />
+        <Input label="Name" value={name} onChange={(e) => handleNameChange(e.target.value)} />
         <Input label="Password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
         <Select label="Role" options={[
           { value: "USER", label: "User" },
@@ -572,9 +685,119 @@ function UserCreateDialog({ open, onOpenChange, onSubmit, isLoading, submitError
           { value: "ACTIVE", label: "Active" },
           { value: "PENDING", label: "Pending" },
         ]} value={status} onChange={(e) => setStatus(e.target.value)} />
+
+        {/* Employee record toggle */}
+        <div className="pt-2 border-t border-neutral-200 dark:border-neutral-800">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-neutral-300 text-primary-600 focus:ring-primary-500 dark:border-neutral-600 dark:bg-neutral-950"
+              checked={createEmployee}
+              onChange={(e) => handleToggleEmployee(e.target.checked)}
+              disabled={isLoading}
+            />
+            <div>
+              <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                Also create an employee record
+              </span>
+              <span className="block text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                Creates a linked employee record in the HR module for this account.
+              </span>
+            </div>
+          </label>
+        </div>
+
+        {createEmployee && (
+          <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950/50 p-4 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+              Employee details
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <Input
+                  label="Employee code *"
+                  value={empCode}
+                  onChange={(e) => setEmpCode(e.target.value)}
+                  placeholder="e.g. EMP-001"
+                  required={createEmployee}
+                  disabled={isLoading}
+                />
+              </div>
+              <Input
+                label="First name *"
+                value={empFirst}
+                onChange={(e) => setEmpFirst(e.target.value)}
+                required={createEmployee}
+                disabled={isLoading}
+              />
+              <Input
+                label="Last name *"
+                value={empLast}
+                onChange={(e) => setEmpLast(e.target.value)}
+                required={createEmployee}
+                disabled={isLoading}
+              />
+              <div className="sm:col-span-2">
+                <Input
+                  label="Display name"
+                  value={empDisplay}
+                  onChange={(e) => setEmpDisplay(e.target.value)}
+                  disabled={isLoading}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <Input
+                  label="Work email"
+                  type="email"
+                  value={empEmail}
+                  onChange={(e) => setEmpEmail(e.target.value)}
+                  disabled={isLoading}
+                />
+              </div>
+              <Input
+                label="Job title"
+                value={empTitle}
+                onChange={(e) => setEmpTitle(e.target.value)}
+                disabled={isLoading}
+              />
+              <Input
+                label="Department"
+                value={empDept}
+                onChange={(e) => setEmpDept(e.target.value)}
+                disabled={isLoading}
+              />
+              <Input
+                label="Location"
+                value={empLocation}
+                onChange={(e) => setEmpLocation(e.target.value)}
+                disabled={isLoading}
+              />
+              <Input
+                label="Hire date *"
+                type="date"
+                value={empHire}
+                onChange={(e) => setEmpHire(e.target.value)}
+                required={createEmployee}
+                disabled={isLoading}
+              />
+              <div className="sm:col-span-2">
+                <Select
+                  label="Employment type"
+                  options={EMPLOYMENT_TYPE_OPTIONS}
+                  value={empType}
+                  onChange={(e) => setEmpType(e.target.value)}
+                  disabled={isLoading}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center justify-end gap-3 pt-4 border-t border-neutral-200 dark:border-neutral-800">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>Cancel</Button>
-          <Button type="submit" variant="primary" loading={isLoading}>Create User</Button>
+          <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={isLoading}>Cancel</Button>
+          <Button type="submit" variant="primary" loading={isLoading}>
+            {createEmployee ? "Create user & employee" : "Create User"}
+          </Button>
         </div>
       </form>
     </Dialog>
