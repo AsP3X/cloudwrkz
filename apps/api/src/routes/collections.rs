@@ -1,3 +1,8 @@
+//! Link collection CRUD, membership roles, and async deletes via `background_jobs` when mutations defer.
+
+// Human: Collections group bookmarks for sharing; mutating membership requires link-module permissions and often runs through the mutation broker for idempotency.
+// Agent: router /collections* ; check_permission modules.links.*; entity_creates enqueue on transient DB; validates hex color on create.
+
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -24,6 +29,9 @@ fn is_hex_color(value: &str) -> bool {
     let b = value.as_bytes();
     b.len() == 7 && b[0] == b'#' && b[1..].iter().all(|x| x.is_ascii_hexdigit())
 }
+
+// Human: Standard REST surface for collection entities plus member management routes nested under `/collections/{id}`.
+// Agent: MERGE get put delete members leave routes; uses MutationRunContext for writes.
 
 pub fn router() -> Router<AppState> {
     Router::new()

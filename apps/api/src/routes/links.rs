@@ -1,3 +1,8 @@
+//! Bookmark links: list/create/update/delete, HTML metadata extraction, tag suggestions, GitHub metadata refresh jobs.
+
+// Human: Writes often go through `run_mutation_defer` so transient DB errors become 202 + mutation job polling like other heavy modules.
+// Agent: router /links* + metadata routes; entity_creates for async creates/updates/deletes; link_preview extract_metadata; job_queue enqueue github refresh.
+
 use std::sync::Arc;
 
 use axum::{
@@ -23,6 +28,9 @@ use crate::link_preview;
 use crate::models::link::*;
 use crate::routes::AppState;
 use crate::routes::helpers::{hash_json_for_idempotency, idempotency_key_from_headers};
+
+// Human: Routes stay backward compatible by keeping both `/links/metadata` and the older `/links/extract-metadata` alias used by the Vite client.
+// Agent: Router GET list POST create; PUT/PATCH/DELETE by id; POST metadata x2; GET tag-suggestions; POST github-metadata refresh.
 
 pub fn router() -> Router<AppState> {
     Router::new()

@@ -1,3 +1,8 @@
+//! Time entry CRUD, timers, breaks, tag suggestions, and bulk maintenance endpoints.
+
+// Human: Timer flows split across many POST subroutes (`stop`, `pause`, `resume`, `complete`) so mobile clients hit explicit state transitions instead of ambiguous PATCH bodies.
+// Agent: router /time-tracking* many routes; entity_creates time entry job types; run_mutation_defer on bulk + write operations.
+
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -16,6 +21,9 @@ use crate::job_queue::entity_creates;
 use crate::models::time_entry::*;
 use crate::routes::AppState;
 use crate::routes::helpers::{hash_json_for_idempotency, idempotency_key_from_headers};
+
+// Human: Bulk routes are first-class POST endpoints so large batch operations can share one idempotency key and mutation deferral policy.
+// Agent: Router includes /time-tracking/bulk-update bulk-archive bulk-delete plus per-entry break subroutes.
 
 pub fn router() -> Router<AppState> {
     Router::new()

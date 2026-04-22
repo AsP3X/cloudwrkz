@@ -1,6 +1,9 @@
 //! Parameter order for search SQL: `$1` = user id, `$2` = query string, `$3` = per-type row cap.
 //! Link visibility is owner or collection access only (no global “all links” search).
 
+// Human: Each const embeds the full SQL so search handlers can bind `(user_id, query, limit, …)` consistently across entity types.
+// Agent: EXPORTS TICKET_SEARCH_SQL TODO_SEARCH_SQL LINK_SEARCH_SQL TIME_ENTRY_SEARCH_SQL with pg_trgm similarity + permission predicates.
+
 pub const TICKET_SEARCH_SQL: &str = r#"
 SELECT id, ticket_number, title, description, status::text AS status, priority::text AS priority,
   GREATEST(

@@ -1,5 +1,8 @@
 //! Ranking helpers: combine pg_trgm match strength with recent access frequency.
 
+// Human: Access boosts are sublinear so a single obsessively clicked item cannot drown out better textual matches indefinitely.
+// Agent: access_boost sqrt capped; final_score clamps; fetch_recent_access_counts batches UNNEST pairs into one SQL round-trip.
+
 use std::collections::HashMap;
 
 use sqlx::{PgPool, Row};

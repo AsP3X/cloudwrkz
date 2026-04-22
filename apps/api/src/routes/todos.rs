@@ -1,3 +1,8 @@
+//! Todo list/detail/update with hierarchical list items and background job enqueue for writes.
+
+// Human: Todo handlers mirror tickets: permission-gated reads and mutation broker paths that can return 202 for DB retries during bursts.
+// Agent: router /todos; row_to_item maps recursive list shape; entity_creates JOB_TYPE_TODO_* on transient failures.
+
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -18,8 +23,11 @@ use crate::models::todo::{
 };
 use crate::routes::AppState;
 use crate::routes::helpers::{
-    check_permission, fetch_user_summary, hash_json_for_idempotency, idempotency_key_from_headers,
+    check_permission, fetch_user_summary, hash_json_for_idempotency,     idempotency_key_from_headers,
 };
+
+// Human: The router only exposes collection-level routes; nested subtodos are represented inside `TodoListItem` payloads from list/get.
+// Agent: Router GET/POST /todos; GET/PATCH/DELETE /todos/{id}.
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -29,6 +37,9 @@ pub fn router() -> Router<AppState> {
             get(get_todo).patch(update_todo).delete(delete_todo),
         )
 }
+
+// Human: `row_to_item` builds a `TodoListItem` shell from a raw SQL row; nested relations stay empty here and are hydrated in richer code paths.
+// Agent: READS flat columns from PgRow; SETS assigned_to subtodos parent ticket dependencies to None/empty defaults.
 
 fn row_to_item(r: &sqlx::postgres::PgRow) -> TodoListItem {
     TodoListItem {

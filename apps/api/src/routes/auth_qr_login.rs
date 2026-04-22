@@ -1,3 +1,8 @@
+//! QR login public routes (nested under `/api/auth/qr-login` with stricter rate limits than generic auth).
+
+// Human: Mobile/desktop flow creates short-lived `qr_login_requests`, approves from an authenticated session, then finalizes in the browser with background job polling.
+// Agent: scoped_router /request /status /approve /finalize + job status routes; INSERT background_jobs JOB_TYPE_QR_*; READS system_settings for QR rate limits.
+
 use axum::extract::Query;
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
@@ -20,6 +25,9 @@ use crate::routes::AppState;
 const QR_LOGIN_EXPIRY_MINUTES: i64 = 5;
 const MIN_QR_REQUESTS_PER_MINUTE: i32 = 1;
 const MAX_QR_REQUESTS_PER_MINUTE: i32 = 120;
+
+// Human: This router is mounted outside the main v1 merge so it can sit on its own rate-limit layer tuned for QR abuse patterns.
+// Agent: Router POST request approve finalize; GET status poll endpoints with job_id or request_id query.
 
 pub fn scoped_router() -> Router<AppState> {
     Router::new()

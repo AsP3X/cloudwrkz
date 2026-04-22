@@ -1,9 +1,17 @@
+//! Authenticated user profile PATCH endpoints for display name, bio, and UI preferences.
+
+// Human: Profile updates are small single-row writes on `users`—they stay synchronous simple SQL without the mutation broker.
+// Agent: router PATCH /profile and /profile/preferences; VALIDATES string lengths; UPDATE users columns.
+
 use axum::{Json, Router, extract::State, routing::patch};
 use serde::Deserialize;
 
 use crate::auth::extractors::AuthUser;
 use crate::error::AppError;
 use crate::routes::AppState;
+
+// Human: Two endpoints separate “identity” fields from JSON preference blobs so partial PATCH payloads stay easy to reason about.
+// Agent: Router PATCH /profile /profile/preferences.
 
 pub fn router() -> Router<AppState> {
     Router::new()

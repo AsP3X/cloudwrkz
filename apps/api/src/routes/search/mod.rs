@@ -1,3 +1,8 @@
+//! Global and advanced search across tickets, todos, links, and time entries with access-aware SQL.
+
+// Human: Search merges pg_trgm similarity scores with recent click history so frequently opened items bubble up without ignoring text relevance.
+// Agent: router /search /search/advanced /search/access; CALLS queries::*_SEARCH_SQL; engine rank_and_truncate + fetch_recent_access_counts; check_permission gates.
+
 mod engine;
 mod queries;
 
@@ -17,6 +22,9 @@ use crate::routes::helpers::{check_permission, get_user_permission_keys};
 
 use engine::{ScoredHit, fetch_recent_access_counts, rank_and_truncate};
 use queries::{LINK_SEARCH_SQL, TICKET_SEARCH_SQL, TIME_ENTRY_SEARCH_SQL, TODO_SEARCH_SQL};
+
+// Human: `POST /search/access` records lightweight telemetry used only for ranking boosts inside the sliding window.
+// Agent: Router GET search + advanced; POST record_search_access.
 
 pub fn router() -> Router<AppState> {
     Router::new()
