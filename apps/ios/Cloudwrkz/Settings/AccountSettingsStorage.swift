@@ -7,6 +7,9 @@
 
 import Foundation
 
+// Human: Lightweight prefs (appearance, digest, biometric lock) belong in UserDefaults—not Keychain—since they are not secrets.
+// Agent: READS WRITES UserDefaults keys cloudwrkz.account.*; notifications emailDigest appearance biometricLock displayLanguage timeTracking thirdPartyLocation.
+
 struct AccountSettingsStorage {
     private static let notificationsEnabledKey = "cloudwrkz.account.notificationsEnabled"
     private static let emailDigestKey = "cloudwrkz.account.emailDigest"

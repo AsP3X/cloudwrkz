@@ -8,6 +8,9 @@
 
 import SwiftUI
 
+// Human: Date-bounded filters match payroll questions (“what did I log this week?”) better than infinite scroll alone.
+// Agent: TimeTrackingFilterView Binding TimeTrackingFilters; status sort from-to dates reset; glass sections toolbar Done dismiss.
+
 struct TimeTrackingFilterView: View {
     @Binding var filters: TimeTrackingFilters
     @Environment(\.dismiss) private var dismiss

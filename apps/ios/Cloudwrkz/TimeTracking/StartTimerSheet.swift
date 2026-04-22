@@ -8,6 +8,9 @@
 
 import SwiftUI
 
+// Human: Starting a timer should be low friction—defaults and optional fields mirror the web dialog so desk workers don’t fight mobile.
+// Agent: StartTimerSheet POST TimeTrackingService.start; tags chip input billable toggle; location string; onCreated dismiss NavigationStack.
+
 struct StartTimerSheet: View {
     var onCreated: (() -> Void)?
     @Environment(\.dismiss) private var dismiss

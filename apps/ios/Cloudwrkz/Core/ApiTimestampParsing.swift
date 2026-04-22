@@ -8,6 +8,9 @@
 
 import Foundation
 
+// Human: Central place to turn cloudwrkz-api JSON date strings into `Date`, including naive timestamps treated as UTC.
+// Agent: READS RFC3339 Z and fractional ISO8601; FALLBACK fixed-format naive UTC patterns; THROWS NSError domain ApiTimestampParsing; USED BY JSON Date decoding.
+
 enum ApiTimestampParsing {
     /// Parses API date/time strings for JSON `Date` decoding. Naive values are interpreted as UTC.
     static func decode(_ raw: String) throws -> Date {

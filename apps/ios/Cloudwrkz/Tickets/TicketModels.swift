@@ -7,12 +7,17 @@
 
 import Foundation
 
+// Human: Ticket rows and filter enums for the tickets list, mirroring the server’s ticket filters and archive flags.
+// Agent: Decodable GET /api/tickets TicketsResponse; Ticket nested TicketUser TicketGroup commentCount; TicketFilters status sort archive date ranges TicketStatusFilter TicketSortOption.
+
 // MARK: - API response
 
 struct TicketsResponse: Decodable {
     let tickets: [Ticket]
 }
 
+// Human: Support ticket summary for list and navigation: status, priority, assignment, archive state, and comment count.
+// Agent: STRUCT Ticket Identifiable Decodable Hashable; FIELDS ticketNumber type status priority archivedAt timestamps assignedTo assignedToGroup createdBy commentCount; USED TicketService TicketDetailView.
 struct Ticket: Identifiable, Decodable, Hashable {
     let id: String
     let ticketNumber: String
@@ -45,6 +50,8 @@ struct Ticket: Identifiable, Decodable, Hashable {
 
 // MARK: - Filter state (mirrors TicketFilterConfig)
 
+// Human: All ticket list filter knobs: unresolved vs specific statuses, sort, archive mode, and created/updated date windows.
+// Agent: STRUCT TicketFilters Equatable; TicketArchiveFilter unarchived|archived; TicketStatusFilter raw API values; TicketSortOption createdAt updatedAt; QUERY BUILD TicketService.
 struct TicketFilters: Equatable {
     var status: TicketStatusFilter = .unresolved
     var sort: TicketSortOption = .newestFirst

@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Todo filters include archive dimension because completed work still matters for audits without cluttering the default inbox.
+// Agent: TodoFiltersView Binding TodoFilters status priority sort archive; glass form sections; dismiss toolbar Done.
+
 struct TodoFiltersView: View {
     @Binding var filters: TodoFilters
     @Environment(\.dismiss) private var dismiss

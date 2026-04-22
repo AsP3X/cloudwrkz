@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Ticket filters mirror web semantics (status, date windows) so saved muscle memory from the browser still applies on phone.
+// Agent: TicketFiltersView Binding TicketFilters; glass sections date pickers reset; toolbar Done dismiss.
+
 struct TicketFiltersView: View {
     @Binding var filters: TicketFilters
     @Environment(\.dismiss) private var dismiss

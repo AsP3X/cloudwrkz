@@ -9,6 +9,9 @@
 
 import Foundation
 
+// Human: Time entries and live timers are safety-sensitive—wrong state after resume is worse than a slow spinner, so calls are explicit per action.
+// Agent: TimeTrackingService buildURL timeTrackingPath; GET list POST create PATCH DELETE; POST pause resume stop complete; Bearer 20s timeout.
+
 enum TimeTrackingServiceError: Equatable, Error {
     case noServerURL
     case noToken
@@ -19,6 +22,9 @@ enum TimeTrackingServiceError: Equatable, Error {
 }
 
 enum TimeTrackingService {
+    // Human: Timer actions share the same URL builder so `/api/v1` vs custom loginPath prefixes cannot drift between start and stop.
+    // Agent: pathSegments appends extraSegments; JSON encode/decode; notFound on 404.
+
     private static let timeout: TimeInterval = 20
 
     private static func timeTrackingPath(loginPath: String) -> String {

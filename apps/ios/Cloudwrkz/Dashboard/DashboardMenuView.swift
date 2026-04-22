@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Overflow menu holds infra actions (server, logout) so the main nav stays focused on work modules.
+// Agent: DashboardMenuView NavigationStack ScrollView glass rows; dismissMenu onDismiss||environment dismiss; onOpenServerConfig onLogout callbacks.
+
 struct DashboardMenuView: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -25,6 +28,9 @@ struct DashboardMenuView: View {
             dismiss()
         }
     }
+
+    // Human: Same chrome as ServerConfigView so settings surfaces read as one family, not random system forms.
+    // Agent: ZStack background ScrollView VStack links; toolbar dismiss; buttons call dismissMenu then callbacks.
 
     var body: some View {
         NavigationStack {

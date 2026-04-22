@@ -7,6 +7,9 @@
 
 import XCTest
 
+// Human: XCTest UI harness for black-box flows—launches the app bundle and will host interaction tests as they are added.
+// Agent: XCTestCase CloudwrkzUITests; setUp continueAfterFailure false; testExample XCUIApplication launch; testLaunchPerformance measure XCTApplicationLaunchMetric.
+
 final class CloudwrkzUITests: XCTestCase {
 
     override func setUpWithError() throws {

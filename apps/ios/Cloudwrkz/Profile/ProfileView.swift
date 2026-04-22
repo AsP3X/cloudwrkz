@@ -8,6 +8,9 @@
 
 import SwiftUI
 
+// Human: Profile sheet is the “who am I?” anchor: avatar, membership context, and paths into deeper settings without cluttering the home grid.
+// Agent: ProfileView READS props firstName lastName username email imageData; sheets ProfileEditView AccountSettingsView; onLogout onProfileUpdated callbacks.
+
 struct ProfileView: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -44,6 +47,9 @@ struct ProfileView: View {
         f.unitsStyle = .full
         return f.localizedString(for: date, relativeTo: Date())
     }
+
+    // Human: NavigationStack keeps toolbar actions consistent with other modals; gradient matches auth so the app feels one brand.
+    // Agent: ZStack hero ProfileAvatarView memberSince quick actions; toolbar dismiss; sheets edit account.
 
     var body: some View {
         NavigationStack {

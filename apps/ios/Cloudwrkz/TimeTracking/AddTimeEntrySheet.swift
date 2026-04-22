@@ -8,6 +8,9 @@
 
 import SwiftUI
 
+// Human: Manual time entry form: name, duration (H/M/S), start instant, tags, billable flag, optional location—submitted as a completed block of work.
+// Agent: AddTimeEntrySheet POST TimeTrackingService create manual entry; @State duration fields startDate tags billable location; onCreated dismiss; READS appState ServerConfig.
+
 struct AddTimeEntrySheet: View {
     var onCreated: (() -> Void)?
     @Environment(\.dismiss) private var dismiss

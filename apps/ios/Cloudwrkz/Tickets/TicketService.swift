@@ -7,6 +7,9 @@
 
 import Foundation
 
+// Human: Ticket threads are the heaviest objects in the app—this client keeps paging, filters, and detail fetch in one place.
+// Agent: TicketService Bearer tickets path derivation; list detail comments attachments; dateDecoder ApiTimestampParsing; 401 notify.
+
 enum TicketServiceError: Equatable, Error {
     case noServerURL
     case noToken
@@ -16,6 +19,9 @@ enum TicketServiceError: Equatable, Error {
 }
 
 enum TicketService {
+    // Human: Ticket lists can be large JSON arrays; slightly generous timeout reduces false “offline” during peak hours.
+    // Agent: timeout 20s; ticketsPathSegments; mutation job polling where API returns 202.
+
     private static let timeout: TimeInterval = 20
 
     /// Path for GET tickets: derived from login path (api/auth/login → api/auth/tickets, api/login → api/tickets).

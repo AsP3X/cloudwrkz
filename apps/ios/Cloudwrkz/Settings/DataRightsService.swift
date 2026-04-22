@@ -9,6 +9,9 @@
 
 import Foundation
 
+// Human: GDPR-style export/delete are explicit POSTs so the user’s intent is auditable server-side, not buried in a generic DELETE profile.
+// Agent: DataRightsService POST api/v1/account/export-data and request-deletion Bearer AppIdentity; returns true on HTTP response path (2xx branch and fallthrough); false on throw or missing base/token.
+
 enum DataRightsService {
 
     /// Request a data export (DSGVO Art. 20). Returns true if the server accepted the request.

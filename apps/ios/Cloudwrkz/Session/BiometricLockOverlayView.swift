@@ -7,9 +7,15 @@
 
 import SwiftUI
 
+// Human: When the user backgrounds the app with lock enabled, returning should require explicit biometrics—not just swiping back.
+// Agent: BiometricLockOverlayView; onRetry async Task; isEvaluating shows CloudwrkzSpinner else unlock button; READS BiometricService.biometricTypeName.
+
 struct BiometricLockOverlayView: View {
     var onRetry: () async -> Void
     var isEvaluating: Bool = false
+
+    // Human: Retry is async so callers can chain LAContext evaluation and avoid double-tapping while the sheet is up.
+    // Agent: Button Task await onRetry; gradient lock icon localized biometric.use_to_unlock.
 
     var body: some View {
         ZStack {

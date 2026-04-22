@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: A compact pill on settings/login surfaces answers “is this host up?” without opening the full health modal every time.
+// Agent: TenantStatusView; onAppear Task TenantHealthChecker.check; displays TenantHealthResult; optional Button onTap.
+
 struct TenantStatusView: View {
     let config: ServerConfig
     var onTap: (() -> Void)? = nil

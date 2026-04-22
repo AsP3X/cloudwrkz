@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Global search is its own full-screen mode so results can use list density without fighting the dashboard’s section chrome.
+// Agent: DashboardSearchView; debounced Task SearchService.search; pagination initialPageSize pageSize; enhanced query disables paging; onSelectResult.
+
 struct DashboardSearchView: View {
     @Environment(\.appState) private var appState
     var onDismiss: () -> Void
@@ -35,6 +38,9 @@ struct DashboardSearchView: View {
         }
         return results.count < total
     }
+
+    // Human: ZStack keeps the dimmed background behind the sheet-like header so focus stays on the query and first hits.
+    // Agent: ZStack background VStack header searchBar resultsContent; onChange query debounce cancel searchTask; infinite scroll loadMore.
 
     var body: some View {
         ZStack {
@@ -329,6 +335,9 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
 }
 
 // MARK: - Result row (enterprise card)
+
+// Human: Each hit is a tappable card with type glyph so tickets vs todos are distinguishable without reading fine print.
+// Agent: SearchResultRow Button; typeIcon title description highlights; onTap closure.
 
 private struct SearchResultRow: View {
     let result: SearchResult

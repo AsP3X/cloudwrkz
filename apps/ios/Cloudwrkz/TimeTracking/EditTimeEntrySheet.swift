@@ -9,6 +9,9 @@
 
 import SwiftUI
 
+// Human: Full edit sheet for an existing entry: identity, timing window, tags, billable, breaks add/remove, and PATCH save with change detection.
+// Agent: EditTimeEntrySheet @State currentEntry mirrors entry; TimeTrackingService PATCH update POST delete break; showAddBreakSheet; onSaved dismiss; tracks hasChanges vs server snapshot.
+
 struct EditTimeEntrySheet: View {
     @Environment(\.dismiss) private var dismiss
     let entry: TimeEntry

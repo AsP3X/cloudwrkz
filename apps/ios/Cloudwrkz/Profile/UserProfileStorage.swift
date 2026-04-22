@@ -8,6 +8,9 @@
 import Foundation
 import UIKit
 
+// Human: Cached profile fields let the dashboard show a name/avatar immediately on cold start without waiting on `/me` again.
+// Agent: UserDefaults keys cloudwrkz.userProfile.*; firstName lastName email username profileImageData JPEG Data; firstLoginAt lastSignedInAt allowedModuleIds.
+
 struct UserProfileStorage {
     private static let firstNameKey = "cloudwrkz.userProfile.firstName"
     private static let lastNameKey = "cloudwrkz.userProfile.lastName"

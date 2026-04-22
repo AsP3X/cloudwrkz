@@ -7,11 +7,16 @@
 
 import Foundation
 
+// Human: Decodable shapes for global search results returned by the Cloudwrkz search API (tickets, todos, links, etc.).
+// Agent: Decodable GET /api/search or /api/auth/search; SearchResponse results total; SearchResult type id title url metadata AnyCodable; parentTicketId context contextHighlight CodingKeys.
+
 struct SearchResponse: Decodable {
     let results: [SearchResult]
     let total: Int
 }
 
+// Human: One hit in the unified search list, including deep-link `url` and optional highlight snippets for the UI.
+// Agent: STRUCT SearchResult Identifiable Decodable; FIELDS type id title url; OPTIONAL description metadata parentTicketId context contextHighlight; CUSTOM init(from decoder:).
 struct SearchResult: Identifiable, Decodable {
     let type: String
     let id: String
@@ -42,6 +47,8 @@ struct SearchResult: Identifiable, Decodable {
 }
 
 /// Type-erased Codable for metadata dictionary values.
+// Human: Lossy JSON value bag so heterogeneous `metadata` objects from the API decode without per-key Swift types.
+// Agent: STRUCT AnyCodable Decodable; singleValueContainer Bool Int Double String Array Dictionary recursion; ELSE NSNull.
 struct AnyCodable: Decodable {
     let value: Any
 

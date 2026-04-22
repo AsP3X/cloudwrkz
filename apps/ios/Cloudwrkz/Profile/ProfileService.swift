@@ -7,6 +7,9 @@
 
 import Foundation
 
+// Human: Avatar upload is multipart like the web—keeps server-side validation (size/type) identical across clients.
+// Agent: ProfileService POST api/v1/profile/upload-avatar multipart file field; Bearer; DECODES UploadAvatarResponse url; 401 SessionExpiredNotifier.
+
 enum ProfileServiceError: Equatable, Error {
     case noServerURL
     case noToken
@@ -21,6 +24,9 @@ private struct UploadAvatarResponse: Decodable {
 }
 
 enum ProfileService {
+    // Human: Photo compression can still yield large bodies—longer timeout than JSON reads avoids false failures on slow uplinks.
+    // Agent: timeout 30s uploadPathSegments; URLRequest multipart boundary encode.
+
     private static let timeout: TimeInterval = 30
     private static let uploadPathSegments = ["api", "v1", "profile", "upload-avatar"]
 

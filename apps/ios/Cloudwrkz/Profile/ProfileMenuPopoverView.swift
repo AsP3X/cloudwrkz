@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Header menu needs dense identity (avatar + name) plus the few actions people use daily—profile, QR approve, sign out.
+// Agent: ProfileMenuPopoverView displayName resolution order name username emailPrefix; buttons onViewProfile onQrLogin onLogout; glass card.
+
 struct ProfileMenuPopoverView: View {
     var firstName: String?
     var lastName: String?
@@ -43,6 +46,9 @@ struct ProfileMenuPopoverView: View {
         guard let at = email.firstIndex(of: "@") else { return email }
         return String(email[..<at]).trimmingCharacters(in: .whitespaces)
     }
+
+    // Human: Popover is intentionally narrow—only high-frequency actions—so it stays readable on small phones in landscape.
+    // Agent: ZStack gradient VStack ProfileAvatarView displayName email row; menu rows call onViewProfile onQrLogin onLogout.
 
     var body: some View {
         ZStack {

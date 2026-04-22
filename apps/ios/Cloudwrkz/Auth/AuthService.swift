@@ -11,6 +11,9 @@
 
 import Foundation
 
+// Human: All password auth and `/me` traffic goes through URLSession with the same JSON shapes as the Rust API (including 202 login polling).
+// Agent: ENUM namespace static methods; login/register/changePassword/me/extendSession; BUILDS URL from ServerConfig.loginPath; DECODES success+error envelopes; POLLS login job.
+
 // MARK: - Request / Response types
 
 private struct LoginRequest: Encodable {
@@ -132,6 +135,9 @@ private struct MeResponse: Decodable {
 }
 
 enum AuthService {
+    // Human: Centralizes timeouts and poll limits so login UX stays bounded if the background job never completes.
+    // Agent: timeout 15s; loginPollInterval 0.5s; loginPollMaxAttempts 70; URLSession.shared async data.
+
     private static let timeout: TimeInterval = 15
     private static let loginPollIntervalNanoseconds: UInt64 = 500_000_000
     private static let loginPollMaxAttempts = 70

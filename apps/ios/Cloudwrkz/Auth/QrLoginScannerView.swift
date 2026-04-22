@@ -8,6 +8,9 @@
 import SwiftUI
 import AVFoundation
 
+// Human: Lets a logged-in phone approve desktop login by scanning; shows a staged checklist so the wait feels intentional.
+// Agent: QrLoginScannerView AVFoundation scan parse r=; QrLoginService.approve; status scanning|processing|success|failure; dismiss.
+
 struct QrLoginScannerView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appState) private var appState
@@ -112,6 +115,9 @@ struct QrLoginScannerView: View {
             }
         }
     }
+
+    // Human: Camera runs only while scanning/processing; success and failure swap the preview for messaging without leaving the stack.
+    // Agent: NavigationStack ZStack; QrCameraView onCodeScanned→handleScannedCode; checklistView when processing; toolbar dismiss.
 
     var body: some View {
         NavigationStack {

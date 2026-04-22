@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Tenant URL builder lives in `ServerConfig`; this screen is the guided editor so mistakes like wrong port/scheme are harder.
+// Agent: ServerConfigView Binding config; fields domain port loginPath useHTTPS; saves UserDefaults; TenantHealthChecker optional feedback; glass UI.
+
 // MARK: - Tenant card metadata (for UI only)
 
 private extension TenantType {
@@ -26,6 +29,9 @@ private extension TenantType {
 }
 
 struct ServerConfigView: View {
+    // Human: Port is edited as text then coerced so empty field means “default” instead of surprising zero binding churn.
+    // Agent: @FocusState Field; portText sync onAppear onChange; dismiss saves binding back to caller.
+
     @Binding var config: ServerConfig
     @Environment(\.dismiss) private var dismiss
     @FocusState private var focusedField: Field?

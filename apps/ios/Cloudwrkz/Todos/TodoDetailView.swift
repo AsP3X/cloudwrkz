@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Subtasks inherit the same optimistic patterns as top-level todos so nested work doesn’t feel “second class” in the UI.
+// Agent: TodoDetailView @State todo; subtodos list SubtodoListItem; creatingPlaceholder; sheets add/edit; TodoService mutations appState.
+
 private struct OptimisticPendingSubtodo: Identifiable {
     let id: UUID
     let title: String
@@ -29,6 +32,9 @@ private enum SubtodoListItem: Identifiable {
 }
 
 struct TodoDetailView: View {
+    // Human: Detail keeps its own copy of `todo` in `@State` so optimistic PATCH responses can animate without popping navigation.
+    // Agent: @State todo mutations refresh; showAddTodo sheet; sidebar info toggle; scroll sections priority status dates.
+
     @Environment(\.appState) private var appState
     @State private var todo: Todo
     @State private var showTodoInfoSidebar = false
@@ -48,6 +54,9 @@ struct TodoDetailView: View {
         f.timeStyle = .short
         return f
     }()
+
+    // Human: Safe area inset hosts the sticky header/actions so long todo bodies scroll while controls stay reachable on small phones.
+    // Agent: ZStack ScrollView headerSection contentGrid; safeAreaInset top toolbar; sheets showAddTodo; subtodos section mutations TodoService.
 
     var body: some View {
         ZStack {

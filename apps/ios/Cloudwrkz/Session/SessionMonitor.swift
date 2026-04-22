@@ -8,6 +8,9 @@
 import Foundation
 import SwiftUI
 
+// Human: Background `/me` pings catch revoked tokens early; a global notification still wins when any request sees a hard 401.
+// Agent: SessionMonitor @Observable; LISTENS .sessionExpired; Timer 30s validate→AuthService.fetchCurrentUser; showSessionExpired; onSessionExpired callback.
+
 @Observable
 final class SessionMonitor {
     /// When true, show session-expired overlay. Set when .sessionExpired notification is received.

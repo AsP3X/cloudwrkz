@@ -7,6 +7,9 @@
 
 import Foundation
 
+// Human: Support and power users open the full health sheet to see DB connectivity and timings—not just a traffic-light boolean.
+// Agent: Decodable ServerHealthResponse Services DatabaseHealth; ServerHealthDetail.fetch GET api/v1/health timeout 10s AppIdentity.
+
 /// Full health response from GET /api/health (References/cloudwrkz).
 struct ServerHealthResponse: Decodable {
     let status: String?
@@ -32,6 +35,9 @@ struct DatabaseHealth: Decodable {
 }
 
 enum ServerHealthDetail {
+    // Human: Full health fetch skips aggressive caching so stale “healthy” never hides a DB outage the user just triggered.
+    // Agent: GET api/v1/health timeout 10s reloadIgnoringLocalCacheData; DECODE ServerHealthResponse; nil on non-HTTP or decode failure.
+
     private static let timeout: TimeInterval = 10
 
     /// Fetches full health from config.baseURL/api/health. Returns nil on failure.

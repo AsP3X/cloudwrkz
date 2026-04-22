@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Sidebar labels mirror the web IA so muscle memory transfers; `moduleId` ties each row to `/me` module allowlists.
+// Agent: ENUM DashboardSection rawValue id; moduleId tickets|todos|links|time_tracking|archive|home; menuSections excludes home; iconName title subtitle.
+
 /// Sections shown in the dashboard sidebar. Order and icons align with the web app.
 enum DashboardSection: String, CaseIterable, Identifiable {
     case home = "Home"

@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Records a pause segment on a timer by choosing start/end instants and optional note, then POSTs a break onto the entry.
+// Agent: AddBreakSheet timeEntryId; TimeTrackingService add break POST; @State startDate endDate descriptionText; validates durationSeconds; onAdded dismiss; READS appState.
+
 struct AddBreakSheet: View {
     let timeEntryId: String
     var onAdded: (() -> Void)?

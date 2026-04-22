@@ -9,6 +9,9 @@
 import SwiftUI
 import Combine
 
+// Human: Time tracking mixes live timers and historical rows—Combine-driven refreshes keep running clocks honest without manual pull-to-refresh spam.
+// Agent: TimeTrackingOverviewView TimeTrackingService list; filters sheet; start/add sheets; selection bulk delete; live timer polling subscriptions.
+
 struct TimeTrackingOverviewView: View {
     @State private var entries: [TimeEntry] = []
     @State private var isLoading = true
@@ -33,6 +36,9 @@ struct TimeTrackingOverviewView: View {
     @State private var refreshErrorMessage: String?
 
     @Environment(\.appState) private var appState
+
+    // Human: Action menu groups “start timer” vs “add manual entry” so two different API shapes aren’t confused behind one ambiguous plus button.
+    // Agent: ZStack loading error empty entryList; toolbar filter FAB menu; sheets StartTimerSheet AddTimeEntrySheet EditTimeEntrySheet.
 
     var body: some View {
         ZStack {

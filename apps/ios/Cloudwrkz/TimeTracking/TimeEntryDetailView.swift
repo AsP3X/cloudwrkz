@@ -9,6 +9,9 @@
 import SwiftUI
 import Combine
 
+// Human: Running timers need local `liveEntry` state so pause/resume feedback is instant while the server catches up.
+// Agent: TimeEntryDetailView current = liveEntry ?? entry; TimeTrackingService actions pause resume stop complete; sheets edit delete add break; Combine tick.
+
 struct TimeEntryDetailView: View {
     let entry: TimeEntry
     @State private var liveEntry: TimeEntry?
@@ -23,6 +26,9 @@ struct TimeEntryDetailView: View {
     @Environment(\.appState) private var appState
 
     private var current: TimeEntry { liveEntry ?? entry }
+
+    // Human: Active entries surface pause/stop prominently; completed ones emphasize audit fields (duration, breaks) instead.
+    // Agent: ZStack ScrollView headerCard timerCard conditional actionCard breaks; toolbar edit delete; dismiss on delete success.
 
     var body: some View {
         ZStack {

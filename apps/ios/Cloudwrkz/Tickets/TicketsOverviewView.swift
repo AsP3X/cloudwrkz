@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Ticket queue is the daily driver—filters, archive, and mutation title hooks keep long-running server jobs visible without blocking the list.
+// Agent: TicketsOverviewView TicketService fetch; TicketFilters sheet; archive delete dialogs; MutationTitleCarouselState toolbar hooks; refresh banner.
+
 struct TicketsOverviewView: View {
     @State private var tickets: [Ticket] = []
     @State private var isLoading = true
@@ -29,6 +32,9 @@ struct TicketsOverviewView: View {
     }
 
     @Environment(\.appState) private var appState
+
+    // Human: Same three-state pattern as links (loading/error/empty/list) so muscle memory transfers across modules.
+    // Agent: ZStack background ticketList safeAreaInset refreshErrorMessage; toolbar filter; navigation to TicketDetailView.
 
     var body: some View {
         ZStack {

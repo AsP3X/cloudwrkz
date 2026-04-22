@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: If a module is gated off or still loading routes, a calm placeholder beats a blank white panel or a crash.
+// Agent: DashboardSectionPlaceholderView READS section.iconName title subtitle; ZStack gradient centered icon text.
+
 struct DashboardSectionPlaceholderView: View {
     let section: DashboardSection
 

@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Collects account details plus privacy consent before POST register; mirrors login layout for visual continuity.
+// Agent: RegisterView; READS appState.config; CALLS AuthService.register; success splits name into UserProfileStorage then onSuccess; onBack.
+
 struct RegisterView: View {
     @Environment(\.appState) private var appState
     @State private var name = ""
@@ -23,6 +26,9 @@ struct RegisterView: View {
     var onBack: () -> Void = {}
 
     enum Field { case name, email, password, confirmPassword }
+
+    // Human: Privacy gate blocks submit until the user explicitly accepts—keeps the flow honest without a separate modal step.
+    // Agent: privacyConsentRow sheet showPrivacyPolicy; submit disabled until isFormValid; same gradient/back as LoginView.
 
     var body: some View {
         ZStack {
@@ -211,6 +217,9 @@ struct RegisterView: View {
     }
 
     private func submit() {
+        // Human: Client-side rules (name length, password match, min length) reduce noisy 400s and give localized errors fast.
+        // Agent: validates trimmed fields privacyAccepted; Task MainActor AuthService.register; success WRITES UserProfileStorage name parts email onSuccess.
+
         errorMessage = nil
         focusedField = nil
 

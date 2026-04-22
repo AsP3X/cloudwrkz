@@ -9,6 +9,9 @@
 
 import Foundation
 
+// Human: Many tabs can 401 at once—without debounce the user would see multiple competing logout flows and flicker.
+// Agent: SessionExpiredNotifier.notify debounce 2s; posts Notification.Name.sessionExpired main queue; CALLED from services on HTTP 401.
+
 extension Notification.Name {
     static let sessionExpired = Notification.Name("com.cloudwrkz.sessionExpired")
 }

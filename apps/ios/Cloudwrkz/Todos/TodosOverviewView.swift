@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Todos need optimistic create placeholders because POST can return 202—the list should reflect intent before the job finishes.
+// Agent: TodosOverviewView TodoService; TodoFilters sheet; @AppStorage todoOverviewViewStyle card|list; optimisticCreatingTodos MutationTitleCarouselState.
+
 enum TodoOverviewViewStyle: String, CaseIterable {
     case card = "card"
     case list = "list"
@@ -74,6 +77,9 @@ struct TodosOverviewView: View {
     }
 
     @Environment(\.appState) private var appState
+
+    // Human: Card vs list toggle is persisted so commuters keep their preferred density across launches.
+    // Agent: ZStack branches loading error empty list; viewStyle switches card grid vs list; toolbar add filter.
 
     var body: some View {
         ZStack {

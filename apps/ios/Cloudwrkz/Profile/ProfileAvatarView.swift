@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Avatars should degrade gracefully to initials so lists never show empty circles when image fetch fails.
+// Agent: ProfileAvatarView; Image(uiImage:) if profileImageData; ELSE Text initials from first last username UserProfileStorage fallback; Circle clip.
+
 struct ProfileAvatarView: View {
     var firstName: String?
     var lastName: String?
@@ -39,6 +42,9 @@ struct ProfileAvatarView: View {
         }
         return first
     }
+
+    // Human: Circle clip + stroke keeps avatars visually aligned with glass buttons even when source photos are rectangular.
+    // Agent: Group UIImage vs Text initials; frame size clipShape Circle overlay stroke; accessibilityLabel derived from names.
 
     var body: some View {
         Group {

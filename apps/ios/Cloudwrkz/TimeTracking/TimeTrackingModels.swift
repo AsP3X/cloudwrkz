@@ -8,22 +8,33 @@
 
 import Foundation
 
+// Human: Time entry entities, status machine, duration math for live counters, and filter/date-range defaults tied to account settings.
+// Agent: Decodable time entry API wrappers; TimeEntryStatus RUNNING|PAUSED|STOPPED|COMPLETED; TimeEntry breaks user ticketId; TimeTrackingUtils elapsed/break seconds; TimeTrackingFilters READS AccountSettingsStorage default period UserDefaults-backed.
+
 // MARK: - API responses
 
+// Human: List endpoint payload wrapping many time entries for the overview screen.
+// Agent: STRUCT TimeEntriesResponse Decodable timeEntries [TimeEntry]; HTTP list GET time-entries family.
 struct TimeEntriesResponse: Decodable {
     let timeEntries: [TimeEntry]
 }
 
+// Human: Single-entry fetch wrapper used after detail refresh or mutations that return one row.
+// Agent: STRUCT SingleTimeEntryResponse Decodable timeEntry TimeEntry; USED TimeTrackingService detail reload.
 struct SingleTimeEntryResponse: Decodable {
     let timeEntry: TimeEntry
 }
 
+// Human: Create response carrying only the new row id for navigation or optimistic follow-up.
+// Agent: STRUCT CreateTimeEntryResponse Decodable id String; POST create time entry path.
 struct CreateTimeEntryResponse: Decodable {
     let id: String
 }
 
 // MARK: - TimeEntry status
 
+// Human: Server-side timer phase for a time entry, with UI labels and which actions (pause/resume/stop/complete) apply.
+// Agent: ENUM TimeEntryStatus String Codable RUNNING PAUSED STOPPED COMPLETED; PROPERTIES canPause canResume canStop canComplete isActive displayName iconName.
 enum TimeEntryStatus: String, Codable, CaseIterable, Identifiable {
     case running = "RUNNING"
     case paused = "PAUSED"
@@ -59,6 +70,8 @@ enum TimeEntryStatus: String, Codable, CaseIterable, Identifiable {
 
 // MARK: - TimeEntry
 
+// Human: A tracked block of work: name, billable flag, optional ticket link, breaks, archive state, and timer timestamps from the API.
+// Agent: STRUCT TimeEntry Identifiable Decodable Hashable; FIELDS status totalDuration startedAt pausedAt stoppedAt completedAt lastResumedAt archivedAt; OPTIONAL breaks user ticketId location timezone; UTC instants.
 struct TimeEntry: Identifiable, Decodable, Hashable {
     let id: String
     let name: String
@@ -94,6 +107,8 @@ struct TimeEntry: Identifiable, Decodable, Hashable {
 
 // MARK: - TimeEntryBreak
 
+// Human: A pause segment inside a time entry, with optional end time, computed duration, and notes.
+// Agent: STRUCT TimeEntryBreak Identifiable Decodable Hashable; FIELDS startedAt endedAt duration description timestamps; USED TimeTrackingUtils.calculateTotalBreakDuration.
 struct TimeEntryBreak: Identifiable, Decodable, Hashable {
     let id: String
     let startedAt: Date
@@ -106,6 +121,8 @@ struct TimeEntryBreak: Identifiable, Decodable, Hashable {
 
 // MARK: - Duration helpers
 
+// Human: Formats seconds for lists and live counters, and computes elapsed time minus open breaks using server totals plus local clock.
+// Agent: ENUM TimeTrackingUtils namespace; formatDuration formatDurationHuman; calculateElapsedTime READS entry.status lastResumedAt startedAt totalDuration Date(); SUBTRACTS open break seconds.
 enum TimeTrackingUtils {
     /// Format seconds to HH:MM:SS or MM:SS
     static func formatDuration(_ seconds: Int) -> String {
@@ -174,6 +191,8 @@ enum TimeTrackingUtils {
 
 // MARK: - Filter state
 
+// Human: Time tracking list filters including default date windows (week/month/quarter/year/custom) sourced from saved account preferences.
+// Agent: STRUCT TimeTrackingFilters Equatable; init() READS AccountSettingsStorage timeTrackingDefaultPeriod timeTrackingCustomDays; static defaultDateRange* Calendar current; isDefaultDateRange; nested status sort archive enums; TimeTrackingService query params.
 struct TimeTrackingFilters: Equatable {
     var status: TimeTrackingStatusFilter = .all
     var sort: TimeTrackingSortOption = .newestFirst

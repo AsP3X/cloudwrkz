@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Holds the active `ServerConfig` (API base URL, etc.) for the whole UI tree via SwiftUI environment.
+// Agent: @Observable class config ServerConfig; init DEFAULT load; reloadFromStorage REASSIGNS from UserDefaults.
+
 @Observable
 final class AppState {
     var config: ServerConfig
@@ -28,6 +31,9 @@ private struct AppStateKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
+    // Human: Views reach for `@Environment(\.appState)` instead of singletons so previews/tests can swap configuration cleanly.
+    // Agent: GET/SET EnvironmentKey AppStateKey on EnvironmentValues.
+
     var appState: AppState {
         get { self[AppStateKey.self] }
         set { self[AppStateKey.self] = newValue }

@@ -8,6 +8,9 @@
 import Foundation
 import Security
 
+// Human: Bearer tokens never live in UserDefaults—Keychain keeps them out of backups and shared with minimal attack surface.
+// Agent: kSecClassGenericPassword service com.cloudwrkz.auth account loginToken; save getToken clear use SecItemAdd CopyMatching Delete.
+
 enum AuthTokenStorage {
     private static let service = "com.cloudwrkz.auth"
     private static let account = "loginToken"

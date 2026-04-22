@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Email/password screen on the gradient stack; success persists token + profile hints then hands off to the parent flow.
+// Agent: LoginView; READS appState.config; CALLS AuthService.login; WRITES AuthTokenStorage UserProfileStorage; onSuccess closure.
+
 struct LoginView: View {
     @Environment(\.appState) private var appState
     @State private var email = ""
@@ -19,6 +22,9 @@ struct LoginView: View {
     var onBack: () -> Void = {}
 
     enum Field { case email, password }
+
+    // Human: Same glass chrome as splash/register so auth feels like one continuous surface, not a separate app skin.
+    // Agent: ZStack gradient; back chevron onBack; formFields TextField SecureField; submit glassButtonPrimary disabled when empty/loading.
 
     var body: some View {
         ZStack {
@@ -137,6 +143,9 @@ struct LoginView: View {
     }
 
     private func submit() {
+        // Human: We only hit the network after local empties and server URL checks so users get immediate validation feedback.
+        // Agent: Task MainActor AuthService.login; success save token profile timestamps onSuccess; failure maps AuthLoginFailure to string.
+
         errorMessage = nil
         focusedField = nil
         if email.isEmpty || password.isEmpty {

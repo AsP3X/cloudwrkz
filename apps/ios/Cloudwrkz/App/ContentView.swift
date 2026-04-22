@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Post-login home is a single-column dashboard with navigation into tickets, todos, links, time tracking, and archive when modules allow it.
+// Agent: NavigationStack path; toolbar search + profile popover; sheets profile QR search; onAppear REFRESH profile + /me modules; navigationDestination per model type.
+
 struct ContentView: View {
     @Environment(\.appState) private var appState
     @State private var path = NavigationPath()
@@ -37,6 +40,9 @@ struct ContentView: View {
     @State private var pendingSearchAfterDismiss = false
     /// Search result selected before dismissing; handled in fullScreenCover onDismiss to open detail in-app or Safari.
     @State private var pendingSearchResult: SearchResult?
+
+    // Human: Gradient background, optional “no modules” gate, scroll menu, pull-down search overlay, and stacked modals share one navigation stack for deep links.
+    // Agent: ZStack ScrollView menu; overlay PullDownToSearchView; toolbar buttons; sheet fullScreenCover bindings; onAppear AuthService.fetchCurrentUser.
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -287,6 +293,9 @@ struct ContentView: View {
         }
     }
 
+    // Human: Toolbar avatar reads cached profile fields from `UserProfileStorage` so it updates immediately after edits without another network round-trip.
+    // Agent: COPY firstName lastName email username profileImageData from UserProfileStorage into @State mirrors.
+
     private func refreshProfileFromStorage() {
         profileFirstName = UserProfileStorage.firstName
         profileLastName = UserProfileStorage.lastName
@@ -296,6 +305,9 @@ struct ContentView: View {
     }
 
     /// Presents search, or defers it until profile sheet has dismissed to avoid "already presenting".
+    // Human: iOS forbids presenting two sheets at once, so search waits if the profile editor is still up.
+    // Agent: IF showProfileSheet SET pendingSearchAfterDismiss and dismiss sheet; ELSE showSearch true.
+
     private func requestSearch() {
         if showProfileSheet {
             pendingSearchAfterDismiss = true
@@ -306,6 +318,9 @@ struct ContentView: View {
     }
 
     /// Opens the selected search result in-app when a native detail exists; otherwise Safari.
+    // Human: Search hits may be deep links to web-only entities—when native fetch fails we fall back to Safari on the same tenant base URL.
+    // Agent: SWITCH result.type; CALL TodoService TicketService etc fetch; ON success path.append model; ON failure OR unknown openSearchResultInSafari.
+
     @MainActor
     private func openSearchResult(_ result: SearchResult) async {
         let config = appState.config
