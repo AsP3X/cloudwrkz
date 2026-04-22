@@ -160,6 +160,9 @@ pub async fn fetch_group_summary(pool: &PgPool, group_id: &str) -> Option<GroupS
 }
 
 /// User summary with role for comment author (e.g. role badge in UI).
+// Human: Comment threads show moderator vs user roles, so this variant includes `role` unlike the slimmer `UserSummary`.
+// Agent: SELECT id name email status role FROM users; MAPS CommentAuthor.
+
 pub async fn fetch_comment_author(pool: &PgPool, user_id: &str) -> Option<CommentAuthor> {
     sqlx::query("SELECT id, name, email, status::text as status, role::text as role FROM users WHERE id = $1")
         .bind(user_id)
@@ -176,6 +179,9 @@ pub async fn fetch_comment_author(pool: &PgPool, user_id: &str) -> Option<Commen
         })
 }
 
+// Human: Reads the standard `Idempotency-Key` header case-sensitively per HTTP spec usage in our clients.
+// Agent: READS header idempotency-key; TRIMS non-empty string.
+
 pub fn idempotency_key_from_headers(headers: &HeaderMap) -> Option<String> {
     headers
         .get("idempotency-key")
@@ -183,6 +189,9 @@ pub fn idempotency_key_from_headers(headers: &HeaderMap) -> Option<String> {
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
 }
+
+// Human: Idempotency entries key off a stable hash of the JSON body so retries with identical payloads replay cached responses.
+// Agent: serde_json::to_vec; DefaultHasher HASH bytes; finish u64.
 
 pub fn hash_json_for_idempotency<T: serde::Serialize>(value: &T) -> u64 {
     let bytes = serde_json::to_vec(value).unwrap_or_default();
