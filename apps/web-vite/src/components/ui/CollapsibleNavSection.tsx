@@ -1,3 +1,5 @@
+// Human: Sidebar group with an icon heading and child links indented under a left border; expand state mirrors `CollapsibleSection` grid trick.
+// Agent: STATE isExpanded; RENDERS button + nested link stack; READS defaultExpanded.
 import React from "react";
 import { cn } from "@/lib/utils/cn";
 

@@ -3,6 +3,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { api } from "@/api/client";
 import { cn } from "@/lib/utils/cn";
 
+// Human: React UI for `NotificationBell` in in-app notification affordances: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE notifications; BELL unread; EXPORTS NotificationBell; REACT component; READS props hooks; MAY CALL api client.
 interface NotificationEntry {
   id: string;
   title: string;

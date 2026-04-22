@@ -1,3 +1,6 @@
+// Human: Client-side password quality heuristics for signup and the strength meter, including common-password and pattern checks.
+// Agent: READS TOP_1000 set; analyzePasswordStrength USES pwnedCount optional; registerPasswordIssues RETURNS string[] issues.
+
 import { TOP_1000_COMMON_PASSWORDS } from "@/lib/auth/top1000Passwords";
 
 const COMMON_PASSWORD_SET = new Set(
@@ -68,6 +71,9 @@ function hasRepeatingRun(password: string): boolean {
   return /(.)\1{2,}/.test(password);
 }
 
+// Human: Fast membership check against the bundled top-1,000 password list (case-insensitive).
+// Agent: READS COMMON_PASSWORD_SET; NORMALIZES trim toLowerCase; RETURNS boolean.
+
 export function isCommonPassword(password: string): boolean {
   const key = password.trim().toLowerCase();
   return key.length > 0 && COMMON_PASSWORD_SET.has(key);
@@ -93,6 +99,9 @@ type StrengthOpts = {
  * Heuristic strength for UI bar: length, mixed character classes, and penalties for
  * leaked-password lists and predictable patterns.
  */
+// Human: Produces a 0–100 score, human label, and bar color class for the password meter, factoring in HIBP breach counts when known.
+// Agent: READS password string opts.pwnedCount; COMPUTES score penalties common sequential keyboard; RETURNS PasswordStrengthAnalysis.
+
 export function analyzePasswordStrength(
   password: string,
   opts?: StrengthOpts,
@@ -158,6 +167,9 @@ export function analyzePasswordStrength(
 
   return { score, label, barColorClass };
 }
+
+// Human: Enumerates registration-blocking password problems for Zod `superRefine` and inline field hints.
+// Agent: READS password; CALLS isCommonPassword has* helpers; RETURNS string[] messages; ORDER length rules first.
 
 export function registerPasswordIssues(password: string): string[] {
   const issues: string[] = [];

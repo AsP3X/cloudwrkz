@@ -1,3 +1,5 @@
+// Human: TipTap-based rich text control with toolbar, image upload hook, HTML/plain output on change, and guarded external `value` syncing to avoid cursor jumps.
+// Agent: useEditor with StarterKit, Link, Image, CodeBlock, Highlight, Placeholder; onUpdate CALLS onChange(html, plain); EFFECT setContent when controlled value diverges.
 import React from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -79,6 +81,8 @@ export const RichTextEditor = React.forwardRef<HTMLDivElement, RichTextEditorPro
       },
     });
 
+    // Human: External `value` updates (for example after save or reset) should replace editor content, but we skip redundant sets when both sides normalize to empty or equivalent HTML.
+    // Agent: READS value, editor; CALLS clearContent or setContent only on normalized mismatch.
     React.useEffect(() => {
       if (!editor) return;
       const current = editor.getHTML();

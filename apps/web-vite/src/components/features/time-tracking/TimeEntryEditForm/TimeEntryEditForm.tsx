@@ -11,6 +11,8 @@ import { TimeEntryBreaks } from "../TimeEntryBreaks";
 import { COMMON_TIMEZONES } from "@/lib/constants/timezones";
 import { LocationAutocompleteInput } from "@/components/ui/LocationAutocompleteInput";
 
+// Human: React UI for `TimeEntryEditForm` in time entries and live timers: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE time-tracking; ENTRIES breaks floating-timer; EXPORTS TimeEntryEditForm; REACT component; READS props hooks; MAY CALL api client.
 type TimeEntry = {
   id: string;
   name: string;

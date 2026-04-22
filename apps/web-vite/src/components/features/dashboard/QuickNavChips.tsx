@@ -1,6 +1,8 @@
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils/cn";
 
+// Human: React UI for `QuickNavChips` in the signed-in home dashboard: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE dashboard; WIDGETS shortcuts activity todos; EXPORTS QuickNavChips; REACT component; READS props hooks; MAY CALL api client.
 export interface QuickNavItem {
   label: string;
   href: string;

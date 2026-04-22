@@ -1,3 +1,5 @@
+// Human: Card section whose header toggles body visibility using a CSS grid row animation for smooth height transitions.
+// Agent: STATE isExpanded; TOGGLES grid-rows and opacity; DEFAULT defaultExpanded true.
 import React from "react";
 import { cn } from "@/lib/utils/cn";
 

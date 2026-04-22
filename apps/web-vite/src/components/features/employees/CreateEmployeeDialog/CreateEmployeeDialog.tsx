@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { api, ApiError } from "@/api/client";
 import { parseEmployeeCode } from "@/lib/employeeCode";
 
+// Human: React UI for `CreateEmployeeDialog` in employee roster workflows: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE employees; HR-style lists dialogs; EXPORTS CreateEmployeeDialog; REACT component; READS props hooks; MAY CALL api client.
 type CreateEmployeeForm = {
   employee_code: string;
   first_name: string;

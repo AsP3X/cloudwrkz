@@ -5,6 +5,9 @@ import { MouseSpotlightSurface } from "@/components/ui/MouseSpotlightSurface";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 
+// Human: Terms of service marketing page with structured sections and navigation back to the home route.
+// Agent: STATIC legal copy; LINK ROUTES.HOME; NO runtime state beyond layout.
+
 export default function TermsPage() {
   return (
     <>

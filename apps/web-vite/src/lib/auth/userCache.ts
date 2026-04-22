@@ -1,3 +1,6 @@
+// Human: Lightweight localStorage mirror of the authenticated user for faster first paint before `/me` completes.
+// Agent: KEY auth_user_cache; readCachedUser JSON.parse validates id email; write clear SWALLOW errors; TYPES User.
+
 import type { User } from "@/lib/auth/types";
 
 export const AUTH_USER_CACHE_KEY = "auth_user_cache";

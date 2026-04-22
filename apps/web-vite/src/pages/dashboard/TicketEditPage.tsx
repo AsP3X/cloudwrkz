@@ -36,6 +36,9 @@ const STATUS_OPTIONS = [
   { value: "CANCELLED", label: "Cancelled" },
 ];
 
+// Human: Agent/editor form for changing ticket fields, rich descriptions, and lifecycle metadata with validation.
+// Agent: useForm+zod updateTicketSchema; GET/PATCH /tickets/:id; READS permissions; navigate on success.
+
 export default function TicketEditPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();

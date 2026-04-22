@@ -21,6 +21,9 @@ import { SubtasksSection } from "@/components/features/tasks/SubtasksSection/Sub
 import { updateTodoSchema, type UpdateTodoInput } from "@/lib/validations/todos";
 import { cn } from "@/lib/utils/cn";
 
+// Human: Full task (todo) detail workspace with sidebar layout, rich text, subtasks, and guarded mutations.
+// Agent: GET/PATCH todos/:id; react-hook-form+zod; SidebarContext; REQUIRES todos permissions; URL searchParams tab.
+
 /* ─── Constants ─── */
 
 const STATUS_OPTIONS = [
@@ -36,6 +39,9 @@ const PRIORITY_OPTIONS = [
   { value: "HIGH", label: "High" },
   { value: "URGENT", label: "Urgent" },
 ];
+
+// Human: Maps todo workflow statuses to Tailwind badge classes for consistent chips in the header and list.
+// Agent: SWITCH status NOT_STARTED|IN_PROGRESS|BLOCKED|COMPLETED|CANCELLED|default; RETURNS className string.
 
 function getStatusColor(status: string): string {
   switch (status) {
@@ -54,6 +60,9 @@ function getStatusColor(status: string): string {
   }
 }
 
+// Human: Color-codes priority levels so urgent work stands out visually next to status metadata.
+// Agent: SWITCH priority URGENT|HIGH|MEDIUM|LOW|default; RETURNS Tailwind utility bundle string.
+
 function getPriorityColor(priority: string): string {
   switch (priority) {
     case "URGENT":
@@ -70,6 +79,9 @@ function getPriorityColor(priority: string): string {
 }
 
 /* ─── Sidebar context (mirrors Next.js TaskDetailWrapper + TaskDetailLayout) ─── */
+
+// Human: Lightweight React context mirroring the legacy layout so collapsible sidebar state is shared locally.
+// Agent: createContext isOpen+setIsOpen; export useSidebar READS SidebarContext; REQUIRES provider in TaskDetailPage tree.
 
 const SidebarContext = createContext<{ isOpen: boolean; setIsOpen: (o: boolean) => void }>({
   isOpen: true,
@@ -91,6 +103,9 @@ const ChevronLeftIcon = (props: React.SVGProps<SVGSVGElement>) => (
 );
 
 /* ─── Page ─── */
+
+// Human: Main task route coordinating fetches, permission gates, form submission, and sidebar-driven navigation.
+// Agent: STATE task,loading,forms; useParams id; useSearchParams tab; MUTATES via api; PROVIDES SidebarContext.
 
 export default function TaskDetailPage() {
   const { id } = useParams<{ id: string }>();

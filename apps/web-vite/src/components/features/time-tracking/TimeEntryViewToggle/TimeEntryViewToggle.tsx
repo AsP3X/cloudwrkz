@@ -1,6 +1,8 @@
 import React from "react";
 import { cn } from "@/lib/utils/cn";
 
+// Human: React UI for `TimeEntryViewToggle` in time entries and live timers: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE time-tracking; ENTRIES breaks floating-timer; EXPORTS TimeEntryViewToggle; REACT component; READS props hooks; MAY CALL api client.
 export type TimeEntryViewMode = "table" | "card";
 
 const VIEW_MODE_STORAGE_KEY = "time-entry-view-mode";

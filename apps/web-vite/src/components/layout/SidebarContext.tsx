@@ -1,3 +1,5 @@
+// Human: Holds mobile drawer open state and a compact-toolbar flag derived from window scroll so dashboard chrome can shrink consistently.
+// Agent: CONTEXT isMobileOpen, setIsMobileOpen, toolbarCompact; LISTENS window scroll passive; THROWS if useSidebar outside provider.
 import React from "react";
 
 /** Same threshold as dashboard chrome (header + sidebar rails). */

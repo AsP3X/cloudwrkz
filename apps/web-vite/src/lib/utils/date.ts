@@ -1,4 +1,10 @@
+// Human: UTC-safe parsing and formatting for API timestamps plus helpers for `<input type="datetime-local">` and user timezones.
+// Agent: parseApiDate APPENDS Z for naive ISO; format* USES UTC getters; formatDateInTimezone USES Intl DateTimeFormat IANA tz.
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// Human: Normalizes values from the API so date-only strings without offsets are interpreted as UTC instants, not local midnight.
+// Agent: READS Date|string; APPENDS Z when no offset suffix; RETURNS Date; USED BY all formatters in this module.
 
 export function parseApiDate(date: Date | string): Date {
   if (date instanceof Date) return date;

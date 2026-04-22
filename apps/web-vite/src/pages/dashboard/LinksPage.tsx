@@ -17,6 +17,9 @@ import { CreateCollectionDialog } from "@/components/features/links/CreateCollec
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { AccessIssueTicketDialog } from "@/components/features/tickets/AccessIssueTicketDialog";
 
+// Human: Primary links hub listing paginated bookmarks with filters, collections, and add/create dialogs.
+// Agent: FETCH /links + collections; SYNC searchParams pagination; LinkViewProvider; GATED by modules.links.view.
+
 function LinksPageContent() {
   const { user, can } = useAuth();
   const { viewMode } = useLinkView();
@@ -197,6 +200,9 @@ function LinksPageContent() {
     </div>
   );
 }
+
+// Human: Permission wrapper that either shows the access warning or mounts the link list inside the view provider.
+// Agent: READS can("modules.links.view"); RENDERS AccessDeniedWarning OR LinkViewProvider>LinksPageContent.
 
 export default function LinksPage() {
   const { can } = useAuth();

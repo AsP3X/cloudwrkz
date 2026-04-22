@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { SearchDialog } from "../SearchDialog";
 import { cn } from "@/lib/utils/cn";
 
+// Human: React UI for `GlobalSearch` in global search UX and result handling: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE search; QUERY results preview; EXPORTS GlobalSearch; REACT component; READS props hooks; MAY CALL api client.
 type GlobalSearchProps = {
   /** ~75%-scale control when the dashboard header is compact while scrolled. */
   compact?: boolean;

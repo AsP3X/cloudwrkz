@@ -2,6 +2,8 @@ import React from "react";
 import { cn } from "@/lib/utils/cn";
 import { sanitizeHtml } from "@/lib/utils/html-sanitizer";
 
+// Human: React UI for `RichTextDisplay` in support tickets and related tooling: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE tickets; COMMENTS bulk filters timers; EXPORTS RichTextDisplay; REACT component; READS props hooks; MAY CALL api client.
 export interface RichTextDisplayProps {
   content: string;
   className?: string;

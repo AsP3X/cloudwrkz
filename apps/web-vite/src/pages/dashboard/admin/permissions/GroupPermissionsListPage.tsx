@@ -9,6 +9,12 @@ import type { AdminGroup } from "@/lib/types";
 import { ROUTES } from "@/lib/constants/routes";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 
+// Human: Lists admin groups with search so operators can open group-level permission editors from one overview.
+// Agent: FETCH /admin/groups when canView; STATE groups,loading,localSearch; useMemo filter; useEffect cancel guard.
+
+// Human: Default export renders the gated table experience and wires navigation into per-group permission routes.
+// Agent: DEFAULT export; READS can(admin.permissions.*); EARLY AccessDeniedWarning; Link ROUTES admin paths.
+
 export default function GroupPermissionsListPage() {
   const { can } = useAuth();
   const canView = can("admin.permissions.view") || can("admin.permissions.manage");

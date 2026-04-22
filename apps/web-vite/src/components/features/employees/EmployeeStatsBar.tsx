@@ -1,3 +1,5 @@
+// Human: React UI for `EmployeeStatsBar` in employee roster workflows: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE employees; HR-style lists dialogs; EXPORTS EmployeeStatsBar; REACT component; READS props hooks; MAY CALL api client.
 type EmployeeStatsBarProps = {
   total: number;
   active: number;

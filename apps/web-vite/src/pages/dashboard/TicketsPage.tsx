@@ -13,6 +13,9 @@ import { TicketListView } from "@/components/features/tickets/TicketListView";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { AccessIssueTicketDialog } from "@/components/features/tickets/AccessIssueTicketDialog";
 
+// Human: Ticket inbox with filters, bulk actions, view modes, and permission-aware empty states.
+// Agent: FETCH tickets list; TicketViewProvider; READS canViewTickets,canCreateTicket; REFRESH via callbacks.
+
 export default function TicketsPage() {
   const { user, can } = useAuth();
   const canViewTickets = can("modules.tickets.view");

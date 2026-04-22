@@ -1,5 +1,7 @@
 import type { FilterConfig } from "@/components/ui/FilterDialog";
 
+// Human: Shared TypeScript shapes for support tickets and related tooling, keeping props and API payloads consistent across the `tickets` UI.
+// Agent: SCOPE tickets; COMMENTS bulk filters timers; DEFINES types only; NO React; NO IO.
 export interface TicketFilterConfigOptions {
   users?: Array<{
     id: string;

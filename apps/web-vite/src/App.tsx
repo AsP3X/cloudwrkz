@@ -1,3 +1,6 @@
+// Human: Top-level React Router map for marketing pages, authentication, and the nested dashboard layout with admin subtree.
+// Agent: BrowserRouter AuthProvider DatabaseHealthProvider; ROUTES import from ROUTES; AppBanners READS health+navigator.onLine.
+
 import { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/components/providers/AuthProvider";
@@ -72,6 +75,9 @@ import {
   GroupPermissionDetailPage,
 } from "@/pages";
 
+// Human: Sticky offline and database health notices that sit under the main header without pushing routed content.
+// Agent: LISTENS online/offline; READS useDatabaseHealthContext; RENDERS OfflineWarning DatabaseWarning; RETRIES health.checkHealth.
+
 function AppBanners() {
   const [isOnline, setIsOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
   const [isRetryingHealth, setIsRetryingHealth] = useState(false);
@@ -135,6 +141,9 @@ function AppBanners() {
     </>
   );
 }
+
+// Human: Wraps the full route tree in theme, auth, health, and error boundaries so every page shares consistent providers.
+// Agent: ErrorBoundary ThemeProvider BrowserRouter AuthProvider DatabaseHealthProvider Routes nested DashboardLayout admin.
 
 export default function App() {
   return (

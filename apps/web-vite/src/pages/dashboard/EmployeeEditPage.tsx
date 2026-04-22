@@ -8,6 +8,9 @@ import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { useAuth } from "@/components/providers/AuthProvider";
 import type { Employee } from "@/lib/types";
 
+// Human: HR employee editor that loads a record, validates fields, links cloudwrkz users, and persists PATCH updates.
+// Agent: ROUTE /employees/:id/edit; HTTP GET/PATCH /employees/*; DIALOG user picker; REQUIRES employees.update permission.
+
 type EditableEmployee = {
   first_name: string;
   last_name: string;
@@ -51,6 +54,9 @@ const EMPLOYMENT_TYPE_OPTIONS = [
 
 const inputClass =
   "mt-1 w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500";
+
+// Human: Form-heavy page coordinating employee identity fields, manager linkage, and optional CW user association.
+// Agent: STATE form+linkedUserId+picker; useParams id; navigate on success; MUTATES via api client with error surface.
 
 export default function EmployeeEditPage() {
   const { can } = useAuth();

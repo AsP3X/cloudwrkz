@@ -6,12 +6,18 @@ import { SearchFilters } from "@/components/features/search/SearchFilters";
 import { SearchResultsTable } from "@/components/features/search/SearchResultsTable";
 import type { SearchResult } from "@/components/features/search/types";
 
+// Human: Global search surface combining text query parameters, agent-only user filters, and grouped result tables.
+// Agent: READS searchParams q; CONDITIONAL GET /admin/users for agents; POST/GET search endpoint via performSearch.
+
 interface UserSummary {
   id: string;
   name: string | null;
   email: string;
   role: string;
 }
+
+// Human: Coordinates debounced or param-driven searches and renders filter chips plus the results data grid.
+// Agent: STATE results,total,loading,users; useCallback performSearch; READS isAgent from user.role.
 
 export default function SearchPage() {
   const { user } = useAuth();

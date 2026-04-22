@@ -9,6 +9,8 @@ import { formatDate } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
 import { isYouTubeUrl } from "@/lib/utils/links";
 
+// Human: React UI for `AddLinkDialog` in saved links and collections: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE links; COLLECTIONS metadata GitHub YouTube; EXPORTS AddLinkDialog; REACT component; READS props hooks; MAY CALL api client.
 function validateUrl(url: string): boolean {
   if (!url || typeof url !== "string") return false;
   try {

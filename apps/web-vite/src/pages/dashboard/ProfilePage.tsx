@@ -6,6 +6,12 @@ import { ProfileCompleteness } from "@/components/features/settings/ProfileCompl
 import { formatDateTime } from "@/lib/utils/date";
 import { getAvatarUrl } from "@/lib/utils/users";
 
+// Human: Signed-in profile overview with avatar, role/status badges, completeness, and editable profile sections.
+// Agent: READS useAuth user; RENDERS ProfileForm + ProfileCompleteness; LOCAL badge helpers for role/status chips.
+
+// Human: Turns RBAC roles into readable pill labels with distinct color treatments in the profile header.
+// Agent: SWITCH role AGENT|ADMIN|MODERATOR|default; RETURNS {label,className}; PURE presentation.
+
 function getRoleBadge(role: string) {
   switch (role) {
     case "AGENT":
@@ -34,6 +40,9 @@ function getRoleBadge(role: string) {
       };
   }
 }
+
+// Human: Maps account lifecycle states to colored badges so suspension/pending states read clearly in the header.
+// Agent: SWITCH status ACTIVE|PENDING|SUSPENDED|default; RETURNS {label,className}; PURE presentation.
 
 function getStatusBadge(status: string) {
   switch (status) {
@@ -74,6 +83,9 @@ const SectionIcon = ({ d }: { d: string }) => (
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={d} />
   </svg>
 );
+
+// Human: Layout shell that stitches hero metrics, collapsible sections, and profile editing flows together.
+// Agent: CALLS refreshUser after child saves; DERIVES displayName,avatarUrl; CONDITIONAL render if !user.
 
 export default function ProfilePage() {
   const { user, refreshUser } = useAuth();

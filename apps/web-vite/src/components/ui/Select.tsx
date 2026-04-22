@@ -1,3 +1,5 @@
+// Human: Native `<select>` with label, validation styling, optional `options` array, or slot `children` for custom option markup.
+// Agent: READS options vs children; RENDERS placeholder option when given; SAME a11y ids as Input for errors and helpers.
 import React from "react";
 import { cn } from "@/lib/utils/cn";
 

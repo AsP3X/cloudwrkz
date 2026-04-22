@@ -1,3 +1,5 @@
+// Human: Authenticated dashboard shell: sidebar provider, role-specific sidebars, header, optional mutation queue notice, and guards that bounce anonymous users while honoring cached tokens.
+// Agent: READS useAuth; HTTP GET /todos for nav badge when todos module; RENDERS Outlet; NAVIGATES unauthenticated users to login with return path.
 import { useCallback, useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/components/providers/AuthProvider";

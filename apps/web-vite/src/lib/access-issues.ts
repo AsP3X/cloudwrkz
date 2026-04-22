@@ -2,6 +2,9 @@
  * Access-issue ticket context config (mirrors Next.js server/actions/access-issues.ts).
  * Used when creating a ticket from the "Access Denied" dialog.
  */
+// Human: Maps where an access denial happened to canned support-ticket copy so users can report permission problems quickly.
+// Agent: READS CONTEXT_CONFIG; EXPORTS AccessIssueContext union; BUILDs title+description strings for ticket POST.
+
 export type AccessIssueContext =
   | "todos_overview"
   | "todo_create"
@@ -154,9 +157,15 @@ const CONTEXT_CONFIG: Record<AccessIssueContext, ContextConfig> = {
   },
 };
 
+// Human: Looks up the template for a given context key when building an access-issue ticket from the UI.
+// Agent: READS CONTEXT_CONFIG Record; RETURNS ContextConfig or null for unknown context strings.
+
 export function getAccessIssueConfig(context: string): ContextConfig | null {
   return (CONTEXT_CONFIG as Record<string, ContextConfig>)[context] ?? null;
 }
+
+// Human: Assembles the full ticket body text from the template, optional entity id, and the user's explanation.
+// Agent: CALLS getAccessIssueConfig; READS userEmail reason entityId; RETURNS {title,description} or null.
 
 export function buildAccessIssueDescription(
   context: string,

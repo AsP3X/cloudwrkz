@@ -1,3 +1,6 @@
+// Human: IntersectionObserver-driven entrance animation wrapper used across landing sections for consistent motion design.
+// Agent: REF div; useEffect IntersectionObserver threshold 0.1; STATE isVisible; APPLIES translate/opacity classes via cn.
+
 import React, { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 

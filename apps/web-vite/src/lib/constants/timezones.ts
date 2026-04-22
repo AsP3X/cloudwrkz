@@ -3,6 +3,9 @@
  * Sorted by UTC offset for easier selection
  * Labels use proper timezone names with UTC offsets
  */
+// Human: Curated IANA timezone list for profile/settings pickers with human-readable labels and rough UTC ordering.
+// Agent: EXPORT COMMON_TIMEZONES array {value,label}; STATIC data; NO network; CONSUMED by timezone selects.
+
 export const COMMON_TIMEZONES = [
   { value: "UTC", label: "UTC (Coordinated Universal Time)" },
   { value: "America/New_York", label: "Eastern Time (ET) - New York" },

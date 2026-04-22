@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { updateProfileSchema, type UpdateProfileInput } from "@/lib/validations/settings";
 import { api } from "@/api/client";
 
+// Human: React UI for `ProfileForm` in end-user profile editing: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE profile; FORM user fields; EXPORTS ProfileForm; REACT component; READS props hooks; MAY CALL api client.
 interface ProfileFormProps {
   initialData: {
     name: string | null;

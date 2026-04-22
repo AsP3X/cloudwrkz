@@ -1,4 +1,6 @@
 /** Inline SVG icons for sidebar and employee hub — one distinct icon per destination. */
+// Human: Tiny inline SVG components so nav labels never depend on external icon fonts and stay tree-shakeable per route group.
+// Agent: RENDERS only static path SVGs; NO props; NO side effects.
 
 export const IconDirectory = () => (
   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

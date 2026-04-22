@@ -6,6 +6,8 @@ import { formatDateTime } from "@/lib/utils/date";
 import type { TicketActivity, TicketComment } from "@/lib/types";
 import { TicketActivity as TicketActivityList } from "../TicketActivity/TicketActivity";
 
+// Human: React UI for `TicketCommentsAndActivity` in support tickets and related tooling: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE tickets; COMMENTS bulk filters timers; EXPORTS TicketCommentsAndActivity; REACT component; READS props hooks; MAY CALL api client.
 function getRoleBadge(role: string) {
   switch (role) {
     case "AGENT":

@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils/cn";
 
+// Human: React UI for `RecentActivityPanel` in the signed-in home dashboard: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE dashboard; WIDGETS shortcuts activity todos; EXPORTS RecentActivityPanel; REACT component; READS props hooks; MAY CALL api client.
 export interface RecentItem {
   id: string;
   title: string;

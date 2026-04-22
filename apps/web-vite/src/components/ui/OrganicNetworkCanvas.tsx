@@ -1,3 +1,5 @@
+// Human: Full-bleed canvas animation of drifting nodes and edges; respects reduced motion with a single static frame, and avoids resizing the canvas buffer unless dimensions or DPR actually change to prevent flicker loops.
+// Agent: useLayoutEffect OWNS rAF loop, ResizeObserver, nodes/particles; READS usePrefersReducedMotion; WRITES canvas 2d context; CLEANS up rAF and RO on unmount.
 import { useLayoutEffect, useRef } from "react";
 import { cn } from "@/lib/utils/cn";
 import { usePrefersReducedMotion } from "@/lib/hooks/usePrefersReducedMotion";

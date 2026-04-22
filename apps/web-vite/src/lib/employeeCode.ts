@@ -1,4 +1,7 @@
 /** Mirrors API `parse_employee_code` for client-side validation before POST /employees. */
+// Human: Validates employee code input client-side so obvious mistakes fail fast before hitting the API.
+// Agent: READS raw string; RETURNS ok/value or message; ENFORCES length 64 and Unicode letter/digit/punct allowlist.
+
 export function parseEmployeeCode(
   raw: string,
 ): { ok: true; value: string } | { ok: false; message: string } {

@@ -15,6 +15,9 @@ import { LinksPagination } from "@/components/features/links/LinksPagination";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { AccessIssueTicketDialog } from "@/components/features/tickets/AccessIssueTicketDialog";
 
+// Human: Archived-only links view mirroring the main links UI but forcing archived=true in API queries.
+// Agent: FETCH with archived param; LinkViewProvider; Pagination; SAME permission gate as LinksPage.
+
 function LinksArchiveContent() {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
@@ -109,6 +112,9 @@ function LinksArchiveContent() {
     </div>
   );
 }
+
+// Human: Route shell that enforces links module access before showing archived bookmarks in the shared layout.
+// Agent: READS can("modules.links.view"); EARLY AccessDeniedWarning OR LinkViewProvider>LinksArchiveContent.
 
 export default function LinksArchivePage() {
   const { can } = useAuth();

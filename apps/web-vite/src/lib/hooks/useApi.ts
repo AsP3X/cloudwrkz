@@ -1,3 +1,6 @@
+// Human: Lightweight GET hook, async form submit helper, and shared date/duration helpers reused across dashboard views.
+// Agent: useApi USES api.get; useFormSubmit USES mounted ref; formatters PURE locale string builders; NO routing.
+
 import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "@/api/client";
 
@@ -6,6 +9,9 @@ interface UseApiState<T> {
   loading: boolean;
   error: string | null;
 }
+
+// Human: Loads JSON from a GET path whenever the path or dependency list changes, surfacing errors as plain strings.
+// Agent: STATE {data,loading,error}; useEffect DEPENDS reload; CALLS api.get<T>(path); RETURNS reload callback.
 
 export function useApi<T>(path: string | null, deps: unknown[] = []) {
   const [state, setState] = useState<UseApiState<T>>({
@@ -33,6 +39,9 @@ export function useApi<T>(path: string | null, deps: unknown[] = []) {
 
   return { ...state, reload };
 }
+
+// Human: Wraps arbitrary async submit handlers so buttons can show a shared submitting flag without duplicating try/catch.
+// Agent: REF mounted lifecycle; MUTATES submitting error; submit AWAITS fn; SKIPS state if unmounted; RETURNS result|null.
 
 export function useFormSubmit() {
   const [submitting, setSubmitting] = useState(false);
@@ -64,6 +73,9 @@ export function useFormSubmit() {
   return { submitting, error, setError, submit };
 }
 
+// Human: Formats API timestamps for tables using the visitor locale, using an em dash when data is missing or invalid.
+// Agent: READS ISO dateStr; RETURNS toLocaleDateString or "—"; PURE; NO timezone conversion beyond Date parsing.
+
 export function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return "—";
   const d = new Date(dateStr);
@@ -74,6 +86,9 @@ export function formatDate(dateStr: string | null | undefined): string {
     day: "numeric",
   });
 }
+
+// Human: Same as formatDate but includes time-of-day for activity feeds and audit-style rows.
+// Agent: READS dateStr; RETURNS toLocaleString datetime; INVALID RETURNS "—".
 
 export function formatDateTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "—";
@@ -88,6 +103,9 @@ export function formatDateTime(dateStr: string | null | undefined): string {
   });
 }
 
+// Human: Presents elapsed seconds as the largest sensible unit so timer widgets stay compact.
+// Agent: READS totalSeconds number; RETURNS h/m/s string; INTEGER floor division only.
+
 export function formatDuration(totalSeconds: number): string {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -96,6 +114,9 @@ export function formatDuration(totalSeconds: number): string {
   if (minutes > 0) return `${minutes}m ${seconds}s`;
   return `${seconds}s`;
 }
+
+// Human: Shows friendly relative labels for recent events and falls back to absolute dates for older items.
+// Agent: READS dateStr; COMPUTES diff vs now; RETURNS "just now"|"Nm ago"|CALLS formatDate when >30d threshold.
 
 export function relativeTime(dateStr: string): string {
   const now = Date.now();

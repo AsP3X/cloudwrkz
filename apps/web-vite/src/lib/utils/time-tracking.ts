@@ -1,3 +1,6 @@
+// Human: Timer-facing duration math and labels—formats elapsed seconds, parses manual inputs, and derives live running totals.
+// Agent: parseAsUTC APPENDS Z; calculateElapsedTime READS RUNNING status breaks; STATUS helpers return tailwind labels booleans.
+
 export function formatDuration(seconds: number): string {
   if (seconds < 0) return "00:00:00";
 

@@ -1,6 +1,8 @@
 import React from "react";
 import { extractYouTubeVideoId, isYouTubeUrl } from "@/lib/utils/links";
 
+// Human: React UI for `YouTubeEmbed` in saved links and collections: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE links; COLLECTIONS metadata GitHub YouTube; EXPORTS YouTubeEmbed; REACT component; READS props hooks; MAY CALL api client.
 /**
  * Responsive YouTube iframe for link detail; memoized so parent re-renders do not reload the embed.
  */

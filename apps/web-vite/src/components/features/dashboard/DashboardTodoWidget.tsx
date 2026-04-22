@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils/cn";
 
+// Human: React UI for `DashboardTodoWidget` in the signed-in home dashboard: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE dashboard; WIDGETS shortcuts activity todos; EXPORTS DashboardTodoWidget; REACT component; READS props hooks; MAY CALL api client.
 export interface DashboardTodoItem {
   id: string;
   title: string;

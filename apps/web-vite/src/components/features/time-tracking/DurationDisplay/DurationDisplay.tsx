@@ -1,6 +1,8 @@
 import React from "react";
 import { formatDuration, calculateElapsedTime } from "@/lib/utils/time-tracking";
 
+// Human: React UI for `DurationDisplay` in time entries and live timers: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE time-tracking; ENTRIES breaks floating-timer; EXPORTS DurationDisplay; REACT component; READS props hooks; MAY CALL api client.
 interface DurationDisplayProps {
   entry: {
     status: string;

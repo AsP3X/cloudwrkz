@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils/cn";
 import { EditCollectionDialog } from "@/components/features/links/EditCollectionDialog/EditCollectionDialog";
 
+// Human: React UI for `CollectionFilterBar` in saved links and collections: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE links; COLLECTIONS metadata GitHub YouTube; EXPORTS CollectionFilterBar; REACT component; READS props hooks; MAY CALL api client.
 const SHARED_WITH_ME_COLLECTION_ID = "__shared_with_me__";
 
 interface Collection {

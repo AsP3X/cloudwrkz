@@ -1,3 +1,5 @@
+// Human: Fixed-position context menu portaled to `document.body`, clamped inside the viewport, and closed on outside click or Escape.
+// Agent: useLayoutEffect READS ref rect; ADJUSTS left/top; createPortal to body; LISTENS click + keydown Escape; DEFERS item onClick via setTimeout(0) after close.
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils/cn";
@@ -98,6 +100,8 @@ export function OverviewContextMenu({
               if (!item.disabled) {
                 const action = item.onClick;
                 onClose();
+                // Human: Closing first avoids focus traps where the menu unmounts mid-handler; the microtask lets the browser settle focus.
+                // Agent: CALLS onClose then action on next macrotask tick.
                 setTimeout(() => action(), 0);
               }
             }}

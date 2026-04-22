@@ -6,6 +6,8 @@ import { api } from "@/api/client";
 import { ROUTES } from "@/lib/constants/routes";
 import { clearUserCache } from "@/lib/auth/userCache";
 
+// Human: React UI for `DeleteAccountDialog` in account, privacy, and session settings: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE settings; SECURITY sessions delete-account; EXPORTS DeleteAccountDialog; REACT component; READS props hooks; MAY CALL api client.
 interface DeleteAccountDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;

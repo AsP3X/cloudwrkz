@@ -6,6 +6,9 @@ import { DeleteAccountSection } from "@/components/features/settings/DeleteAccou
 import { LoginSessionsSection } from "@/components/features/settings/LoginSessionsSection";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 
+// Human: Account settings hub for credentials, preferences, privacy, session review, and destructive account actions.
+// Agent: READS useAuth; RENDERS AccountSettingsForm,PreferencesForm,PrivacySecurityForm,DeleteAccountSection,LoginSessionsSection.
+
 const SectionIcon = ({ d }: { d: string }) => (
   <svg
     className="w-5 h-5 text-primary-600 dark:text-primary-400"
@@ -17,6 +20,9 @@ const SectionIcon = ({ d }: { d: string }) => (
     <path strokeLinecap="round" strokeLinejoin="round" d={d} />
   </svg>
 );
+
+// Human: Stacks collapsible setting groups and passes refreshUser hooks down to forms that mutate auth state.
+// Agent: READS refreshUser from useAuth; STATIC section chrome; CHILD forms own API mutations.
 
 export default function SettingsPage() {
   const { user, refreshUser } = useAuth();

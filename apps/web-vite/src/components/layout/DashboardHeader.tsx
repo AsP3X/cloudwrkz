@@ -1,3 +1,5 @@
+// Human: Top bar for dashboard routes: global search, notifications, mobile sidebar toggle, and an account menu positioned from the avatar button’s viewport rect.
+// Agent: READS useAuth logout; CALLS logout; STATE isMenuOpen, menuPosition from getBoundingClientRect; CLOSES menu on route change.
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/components/providers/AuthProvider";

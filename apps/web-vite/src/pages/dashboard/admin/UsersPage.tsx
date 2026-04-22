@@ -13,6 +13,9 @@ import { formatDate } from "@/lib/utils/date";
 import { OverviewContextMenu, type OverviewContextMenuItem } from "@/components/ui/OverviewContextMenu";
 import { cn } from "@/lib/utils/cn";
 
+// Human: Primary admin user grid with paging, bulk actions, creation flows, and contextual menus for account ops.
+// Agent: SYNC searchParams page; FETCH /admin/users; STATE selectedUsers; OverviewContextMenu; MULTI dialog workflows.
+
 const EMPLOYMENT_TYPE_OPTIONS = [
   { value: "FULL_TIME", label: "Full time" },
   { value: "PART_TIME", label: "Part time" },
@@ -34,6 +37,9 @@ interface EmployeeCreatePayload {
   employment_type: string;
 }
 
+// Human: Badge variant mapper for RBAC roles in the admin users table and related overview components.
+// Agent: SWITCH role ADMIN|MODERATOR|AGENT|default; RETURNS Badge variant literal; PURE const function.
+
 const getRoleBadgeVariant = (role: string) => {
   switch (role) {
     case "ADMIN": return "error" as const;
@@ -42,6 +48,9 @@ const getRoleBadgeVariant = (role: string) => {
     default: return "default" as const;
   }
 };
+
+// Human: Badge variant mapper for account statuses including suspended, banned, and soft-deleted users.
+// Agent: SWITCH status ACTIVE|PENDING|SUSPENDED|BANNED|DELETED|default; RETURNS Badge variant literal.
 
 const getStatusBadgeVariant = (status: string) => {
   switch (status) {
@@ -53,6 +62,9 @@ const getStatusBadgeVariant = (status: string) => {
     default: return "default" as const;
   }
 };
+
+// Human: Coordinates URL-driven pagination, fetches user batches, and renders filters plus bulk action toolbars.
+// Agent: STATE users,page,totalPages,loading,selectedUsers; useSearchParams; useNavigate; useMemo filtered subsets.
 
 export default function UsersPage() {
   const { user, can, permissions } = useAuth();

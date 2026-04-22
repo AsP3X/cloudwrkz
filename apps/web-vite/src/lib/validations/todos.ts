@@ -1,3 +1,6 @@
+// Human: Todo/task form schemas that sanitize rich-text descriptions and normalize optional numeric date fields.
+// Agent: CALLS sanitizeHtml on description transform; COERCES estimatedHours union; EXPORTS createTodoSchema updateTodoSchema types.
+
 import { z } from "zod";
 import { sanitizeHtml } from "@/lib/utils/html-sanitizer";
 

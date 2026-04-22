@@ -1,3 +1,6 @@
+// Human: Shared TypeScript shapes for API entities (tickets, employees, time entries, etc.) used across pages and hooks.
+// Agent: DEFINES interfaces and unions only; NO runtime exports; CONSUMED by api client and React components.
+
 export interface UserSummary {
   id: string;
   name: string | null;

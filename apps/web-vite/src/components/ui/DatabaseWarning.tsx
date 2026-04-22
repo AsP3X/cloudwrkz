@@ -1,3 +1,5 @@
+// Human: Amber banner for API or database outages, with copy that distinguishes unreachable servers from DB-only issues and optional retry.
+// Agent: READS isServerUnreachable, error, onRetry, isRetrying; LINKS ROUTES.HEALTH; CALLS onRetry when button enabled.
 import { Link } from "react-router-dom";
 import { ROUTES } from "@/lib/constants/routes";
 

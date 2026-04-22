@@ -11,6 +11,8 @@ import { api } from "@/api/client";
 import { ROUTES } from "@/lib/constants/routes";
 import { TICKET_TYPE_LABELS, type TicketType } from "@/lib/utils/tickets";
 
+// Human: React UI for `TicketForm` in support tickets and related tooling: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE tickets; COMMENTS bulk filters timers; EXPORTS TicketForm; REACT component; READS props hooks; MAY CALL api client.
 const TICKET_TYPE_OPTIONS: Array<{ value: TicketType; label: string }> = [
   { value: "BUG", label: TICKET_TYPE_LABELS.BUG },
   { value: "SUPPORT", label: TICKET_TYPE_LABELS.SUPPORT },

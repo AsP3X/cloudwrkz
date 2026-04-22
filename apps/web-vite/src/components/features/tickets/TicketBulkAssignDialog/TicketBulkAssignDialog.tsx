@@ -1,6 +1,8 @@
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 
+// Human: React UI for `TicketBulkAssignDialog` in support tickets and related tooling: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE tickets; COMMENTS bulk filters timers; EXPORTS TicketBulkAssignDialog; REACT component; READS props hooks; MAY CALL api client.
 interface TicketBulkAssignDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;

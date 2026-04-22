@@ -1,3 +1,6 @@
+// Human: React state backed by `localStorage` JSON so simple UI preferences survive reloads in the same browser.
+// Agent: READS key on init; WRITES JSON.stringify on set; LOGS errors via logger; RETURNS tuple like useState.
+
 import { useState } from "react";
 import { log } from "@/lib/logger";
 

@@ -7,6 +7,8 @@ import { api } from "@/api/client";
 import type { TimeEntry } from "@/lib/types";
 import { cn } from "@/lib/utils/cn";
 
+// Human: React UI for `FloatingTimerWidget` in time entries and live timers: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE time-tracking; ENTRIES breaks floating-timer; EXPORTS FloatingTimerWidget; REACT component; READS props hooks; MAY CALL api client.
 const WIDGET_PREF_KEY = "timer-widget-preference";
 type WidgetPreference = "floating" | "dialog";
 

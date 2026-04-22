@@ -1,3 +1,5 @@
+// Human: Application-wide authentication context: session restore, login and register flows (including queued 202 handling), permissions, and resilient behavior when the API is unreachable.
+// Agent: HTTP api /auth/* and /me; READS WRITES localStorage auth_token and user cache; EXPOSES login, logout, refreshUser, can(); NAVIGATES via useNavigate on auth events.
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError } from "@/api/client";

@@ -12,6 +12,8 @@ import {
 import { api } from "@/api/client";
 import { useAuth } from "@/components/providers/AuthProvider";
 
+// Human: React UI for `AccountSettingsForm` in account, privacy, and session settings: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE settings; SECURITY sessions delete-account; EXPORTS AccountSettingsForm; REACT component; READS props hooks; MAY CALL api client.
 interface AccountSettingsFormProps {
   currentEmail: string;
   emailVerified: boolean;

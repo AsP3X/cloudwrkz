@@ -1,3 +1,5 @@
+// Human: Nested collapsible inside `CollapsibleNavSection`; expansion resets when `defaultExpanded` changes so route-driven defaults stay in sync.
+// Agent: STATE isExpanded; EFFECT syncs from defaultExpanded; RENDERS smaller typography than parent section.
 import React, { useEffect } from "react";
 import { cn } from "@/lib/utils/cn";
 
@@ -17,6 +19,8 @@ export const SubCollapsibleNavGroup = ({
 }: SubCollapsibleNavGroupProps) => {
   const [isExpanded, setIsExpanded] = React.useState(defaultExpanded);
 
+  // Human: When the parent passes a new default (for example after navigation), we mirror it so nested groups reopen or collapse as intended.
+  // Agent: WRITES isExpanded from defaultExpanded prop on dependency change.
   useEffect(() => {
     setIsExpanded(defaultExpanded);
   }, [defaultExpanded]);

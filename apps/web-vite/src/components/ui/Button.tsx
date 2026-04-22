@@ -1,3 +1,5 @@
+// Human: Shared action control with variants, loading state, and optional React Router link rendering when both `asChild` and `href` are set.
+// Agent: RENDERS button or Link; READS variant, size, loading, disabled; MUTATES focus styles via Tailwind; CALLS onClick on button path.
 import React from "react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils/cn";
@@ -76,6 +78,8 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
     const classes = cn(baseStyles, variants[variant], sizes[size], className);
 
+    // Human: `asChild` with `href` swaps the native button for a client-side `Link` while keeping the same visual classes.
+    // Agent: BRANCH asChild+href; RENDERS Link to href; CASTS onClick for anchor handler type.
     if (asChild && href) {
       return (
         <Link

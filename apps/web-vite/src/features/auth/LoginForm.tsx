@@ -1,3 +1,6 @@
+// Human: Email/password login with react-hook-form validation, queued-login UX, and optional QR login side panel.
+// Agent: zodResolver loginSchema; CALLS useAuth login; RENDERS LoginQueuedBanner QrLoginPanel; NAVIGATES on success.
+
 import React from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";

@@ -21,6 +21,9 @@ import { RichTextDisplay } from "@/components/features/tickets/RichTextDisplay";
 import { Dialog } from "@/components/ui/Dialog";
 import { LinkMetadataDisplay } from "@/components/features/links/LinkMetadataDisplay";
 
+// Human: Deep link inspector showing metadata, rich description, optional GitHub enrichment, and edit affordances.
+// Agent: GET /links/:id; POLLS github refresh; OPENS EditLinkDialog; REQUIRES modules.links.view; HANDLES 404 state.
+
 export default function LinkDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user, can } = useAuth();

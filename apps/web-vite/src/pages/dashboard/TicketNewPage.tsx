@@ -8,6 +8,9 @@ import type { TicketFormUser, TicketFormGroup } from "@/components/features/tick
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { TipsTooltip } from "@/components/features/tickets/TipsTooltip";
 
+// Human: Ticket creation flow loading assignee metadata for agents and embedding TicketForm with access gating.
+// Agent: FETCH /admin/users + /admin/groups when isAgent; READS canCreateTicket; REDIRECT if unauthorized.
+
 export default function TicketNewPage() {
   const { user, can } = useAuth();
   const navigate = useNavigate();

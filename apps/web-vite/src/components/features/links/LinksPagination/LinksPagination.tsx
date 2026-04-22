@@ -1,6 +1,8 @@
 import { Suspense } from "react";
 import { Link, useSearchParams, useLocation } from "react-router-dom";
 
+// Human: React UI for `LinksPagination` in saved links and collections: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE links; COLLECTIONS metadata GitHub YouTube; EXPORTS LinksPagination; REACT component; READS props hooks; MAY CALL api client.
 interface LinksPaginationProps {
   page: number;
   totalPages: number;

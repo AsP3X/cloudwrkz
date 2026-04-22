@@ -1,3 +1,5 @@
+// Human: Visual-only sidebar subsection title so grouped nav links stay scannable without pretending to be an interactive control.
+// Agent: RENDERS div role=presentation; READS children string and className; NO events.
 import { cn } from "@/lib/utils/cn";
 
 interface NavGroupLabelProps {

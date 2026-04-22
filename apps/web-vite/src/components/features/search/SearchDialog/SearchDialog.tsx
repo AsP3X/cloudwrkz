@@ -16,6 +16,8 @@ import {
 import { SearchPreviewPanel } from "../SearchPreviewPanel";
 import { recordSearchResultAccess } from "../recordSearchAccess";
 
+// Human: React UI for `SearchDialog` in global search UX and result handling: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE search; QUERY results preview; EXPORTS SearchDialog; REACT component; READS props hooks; MAY CALL api client.
 interface SearchDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;

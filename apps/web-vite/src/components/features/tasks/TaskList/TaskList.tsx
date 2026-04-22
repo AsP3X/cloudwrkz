@@ -9,6 +9,8 @@ import { api } from "@/api/client";
 import { ROUTES } from "@/lib/constants/routes";
 import type { Todo } from "@/lib/types";
 
+// Human: React UI for `TaskList` in tasks and todo lists: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE tasks; BULK filters forms; EXPORTS TaskList; REACT component; READS props hooks; MAY CALL api client.
 export type TaskViewMode = "table" | "card";
 
 const getStatusColor = (status: string) => {

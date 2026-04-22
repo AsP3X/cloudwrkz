@@ -1,5 +1,7 @@
 import { FloatingTooltip } from "@/components/ui/FloatingTooltip";
 
+// Human: React UI for `TipsTooltip` in support tickets and related tooling: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE tickets; COMMENTS bulk filters timers; EXPORTS TipsTooltip; REACT component; READS props hooks; MAY CALL api client.
 export function TipsTooltip() {
   const trigger = (
     <button

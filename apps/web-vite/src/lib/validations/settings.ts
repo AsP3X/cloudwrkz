@@ -1,3 +1,6 @@
+// Human: Account settings form validation for password rotation, email change, and saved preferences fields.
+// Agent: Zod objects with refine cross-field checks; EXPORTS changePasswordSchema changeEmailSchema preferencesSchema types.
+
 import { z } from "zod";
 
 export const changePasswordSchema = z

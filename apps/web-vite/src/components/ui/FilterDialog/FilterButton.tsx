@@ -1,3 +1,5 @@
+// Human: Opens the shared `FilterDialog` and shows an “Active” badge when URL params differ from defaults or a stored preset id is still valid in localStorage.
+// Agent: READS useSearchParams; READS localStorage preset keys; LISTENS storage + localStorageChange; RENDERS FilterDialog controlled open.
 import React, { Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/Button";

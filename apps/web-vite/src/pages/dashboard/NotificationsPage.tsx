@@ -3,6 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { api } from "@/api/client";
 import { cn } from "@/lib/utils/cn";
 
+// Human: In-app notification inbox with read/unread styling, relative timestamps, and deep links to related resources.
+// Agent: FETCH notifications API; MUTATES read state; NAVIGATE via resourceUrl; MAPS type codes to labels.
+
 interface NotificationEntry {
   id: string;
   type: string;
@@ -12,6 +15,9 @@ interface NotificationEntry {
   resourceUrl?: string | null;
   createdAt: string;
 }
+
+// Human: Converts absolute timestamps into compact “time ago” strings for the notification feed.
+// Agent: PURE Date math vs now; RETURNS Just now|Xm ago|Xh ago|Xd ago; NO locale formatting beyond fixed phrases.
 
 function formatRelativeTime(date: Date | string): string {
   const now = new Date();
@@ -33,6 +39,9 @@ const typeLabel: Record<string, string> = {
   TODO_ASSIGNED: "Todo Assigned",
   UNBAN_REVIEWED: "Unban Reviewed",
 };
+
+// Human: Page controller loading the latest batch, exposing mark-all-read, and wiring row clicks to resource URLs.
+// Agent: STATE notifications,unreadCount,loading,marking; useCallback fetchNotifications; HTTP GET/PATCH /notifications*.
 
 export default function NotificationsPage() {
   const navigate = useNavigate();

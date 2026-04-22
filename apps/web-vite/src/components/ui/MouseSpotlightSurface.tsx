@@ -1,3 +1,5 @@
+// Human: Stacks the animated network canvas, a frosted scrim, and page content so marketing or auth pages share one atmospheric background treatment.
+// Agent: READS variant; RENDERS OrganicNetworkCanvas + absolute veil + relative content; VARIANT maps to veil opacity classes.
 import { OrganicNetworkCanvas } from "@/components/ui/OrganicNetworkCanvas";
 import { cn } from "@/lib/utils/cn";
 

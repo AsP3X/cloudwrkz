@@ -1,3 +1,6 @@
+// Human: Recharts overlay that animates the newest latency sample as a glowing tail without fighting axis rescale jitter.
+// Agent: USES useXAxisScale useYAxisScale; useLayoutEffect RAF animation; READS lastPoint slot value; CONFIG durationMs colors.
+
 import { useLayoutEffect, useRef, useState } from "react";
 import { useXAxisScale, useYAxisScale } from "recharts";
 

@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils/cn";
 
+// Human: React UI for `ProfileCompleteness` in account, privacy, and session settings: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE settings; SECURITY sessions delete-account; EXPORTS ProfileCompleteness; REACT component; READS props hooks; MAY CALL api client.
 interface ProfileCompletenessProps {
   hasAvatar: boolean;
   hasBio: boolean;

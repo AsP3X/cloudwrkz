@@ -1,3 +1,6 @@
+// Human: Read-only meter that visualizes `analyzePasswordStrength` plus optional HIBP breach counts passed from the parent form.
+// Agent: useMemo analyzePasswordStrength password pwnedCount; RENDERS progress bar labels; SHOWS pwnedLoading skeleton state.
+
 import { useMemo } from "react";
 import { cn } from "@/lib/utils/cn";
 import { analyzePasswordStrength } from "@/lib/auth/passwordStrength";

@@ -1,3 +1,5 @@
+// Human: On first visit to an empty-query list route, hydrates the URL from saved filter preferences (API first, then local preset fallback) without clobbering links that already include search params.
+// Agent: HTTP GET /filter-preferences/:module; READS localStorage presets; CALLS navigate replace once; uses hasAppliedRef guard.
 import { Suspense, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { FilterConfig } from "./FilterDialog";

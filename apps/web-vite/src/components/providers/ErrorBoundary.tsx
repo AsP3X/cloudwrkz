@@ -1,3 +1,5 @@
+// Human: Class error boundary that logs failures, swaps in a friendly fallback UI, and offers a reload path to recover client-only bad state.
+// Agent: IMPLEMENTS getDerivedStateFromError, componentDidCatch with log.error; RENDERS props.fallback or default red alert UI; CLEARS state on reload click.
 import { Component, type ReactNode } from "react";
 import { log } from "@/lib/logger";
 

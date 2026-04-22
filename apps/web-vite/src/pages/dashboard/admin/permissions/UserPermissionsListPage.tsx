@@ -9,6 +9,12 @@ import type { AdminUser } from "@/lib/types";
 import { ROUTES } from "@/lib/constants/routes";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 
+// Human: Entry list linking to per-user permission editors with quick badges and local search over admin users.
+// Agent: FETCH /admin/users when canView; FILTER localSearch; ROUTES to permission detail; REQUIRES admin.permissions.*.
+
+// Human: Badge variant mapper for RBAC roles in the permissions user list.
+// Agent: SWITCH role ADMIN|MODERATOR|AGENT|default; RETURNS Badge variant literal.
+
 const getRoleBadgeVariant = (role: string) => {
   switch (role) {
     case "ADMIN": return "error" as const;
@@ -18,6 +24,9 @@ const getRoleBadgeVariant = (role: string) => {
   }
 };
 
+// Human: Badge variant mapper for simplified active/banned states in the permissions user list.
+// Agent: SWITCH status ACTIVE|BANNED|default; RETURNS Badge variant literal.
+
 const getStatusBadgeVariant = (status: string) => {
   switch (status) {
     case "ACTIVE": return "success" as const;
@@ -25,6 +34,9 @@ const getStatusBadgeVariant = (status: string) => {
     default: return "default" as const;
   }
 };
+
+// Human: Loads admin users, handles permission-denied early exit, and renders the searchable overview table.
+// Agent: STATE users,loading,localSearch; useMemo filtering; useEffect guarded fetch; AccessDeniedWarning path.
 
 export default function UserPermissionsListPage() {
   const { can } = useAuth();

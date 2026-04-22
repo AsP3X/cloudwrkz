@@ -10,6 +10,9 @@ import { Input } from "@/components/ui/Input";
 import { formatDate } from "@/lib/utils/date";
 import type { AdminUser } from "@/lib/types";
 
+// Human: Admin group editor for renaming, viewing members, adding/removing users, and refreshing membership counts.
+// Agent: ROUTE /admin/groups/:id; HTTP /admin/groups/*; Dialog add/remove; refetchGroup helper; RBAC via useAuth.
+
 type GroupMemberRow = {
   id: string;
   name: string | null;
@@ -27,6 +30,9 @@ type GroupDetail = {
   members?: GroupMemberRow[];
 };
 
+// Human: Fetches the latest group payload after mutations so member lists stay in sync with optimistic UI updates.
+// Agent: GET /admin/groups/:id; RETURNS GroupDetail OR null on error; THROWS nothing—catch returns null.
+
 async function refetchGroup(id: string): Promise<GroupDetail | null> {
   try {
     const data = await api.get<{ group: GroupDetail }>(`/admin/groups/${id}`);
@@ -35,6 +41,9 @@ async function refetchGroup(id: string): Promise<GroupDetail | null> {
     return null;
   }
 }
+
+// Human: Route-level state machine for dialogs, searches, and destructive actions on a single admin group record.
+// Agent: STATE group,loading,addMemberOpen,allUsers; useParams id; CALLS refetchGroup after mutations.
 
 export default function GroupDetailPage() {
   const { id } = useParams<{ id: string }>();

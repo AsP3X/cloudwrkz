@@ -6,6 +6,9 @@
  * when the DB is flaky or under load. Requires API CORS to allow the web origin (empty
  * `CORS_ORIGINS` in dev allows any origin with credentials disabled).
  */
+// Human: Resolves whether the SPA talks to the Vite proxy path or a direct absolute API URL based on env and dev mode.
+// Agent: READS import.meta.env DEV VITE_API_URL; RETURNS normalized base without trailing slash; DEFAULT /api/v1.
+
 export function getApiBaseUrl(): string {
   const configured = import.meta.env.VITE_API_URL?.trim() || "";
   if (import.meta.env.DEV && /^https?:\/\//i.test(configured)) {
@@ -26,6 +29,9 @@ export function getApiBaseUrl(): string {
  * so `omit` is correct for cross-origin API calls (e.g. page on `http://172.25.x.x:5173` and
  * API on `http://localhost:8081`).
  */
+// Human: Chooses fetch credentials so same-origin calls can include cookies while cross-origin bearer calls avoid wildcard-CORS pitfalls.
+// Agent: READS window SSR-guarded; COMPARES URL origins; RETURNS include or omit; FALLBACK include on parse errors.
+
 export function credentialsForApiFetch(requestUrl: string): RequestCredentials {
   if (typeof window === "undefined") {
     return "same-origin";

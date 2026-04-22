@@ -6,10 +6,16 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { ROUTES } from "@/lib/constants/routes";
 
+// Human: Dangerous admin SQL browser for listing tables, previewing rows, and editing records with diff review.
+// Agent: ADMIN-only UI; FETCH table metadata + rows; Dialog edit flow; USES api /admin/db* endpoints; SHOWS DiffLines.
+
 type RowsResult = {
   columns: string[];
   rows: Array<Record<string, unknown>>;
 };
+
+// Human: Stringifies arbitrary SQL cell values for table previews, including NULL markers and JSON fallbacks.
+// Agent: READS unknown; HANDLES Date toISOString; try JSON.stringify on objects; RETURNS string; PURE.
 
 function formatCell(value: unknown): string {
   if (value === null || value === undefined) return "NULL";
@@ -27,6 +33,9 @@ function formatCell(value: unknown): string {
 }
 
 type DiffMode = "old" | "new";
+
+// Human: Side-by-side or old/new line diff renderer highlighting changed rows for proposed record edits.
+// Agent: READS oldText,newText,mode; SPLITS by newline; COMPARES per-line equality; RETURNS fragment of div rows.
 
 function DiffLines({
   oldText,
@@ -64,6 +73,9 @@ function DiffLines({
   }
   return <>{elements}</>;
 }
+
+// Human: Coordinates table pickers, row queries, mutation dialogs, and auth checks for the database console experience.
+// Agent: STATE tables,selectedTable,result,isEditOpen; READS can + user.role; MULTIPLE api calls for CRUD previews.
 
 export default function DbConsolePage() {
   const { user, can } = useAuth();

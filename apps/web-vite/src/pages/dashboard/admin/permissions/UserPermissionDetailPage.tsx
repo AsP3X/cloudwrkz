@@ -7,6 +7,9 @@ import { UserPermissionsManager } from "@/components/features/admin/UserPermissi
 import { ROUTES } from "@/lib/constants/routes";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 
+// Human: Per-user effective permission editor embedding UserPermissionsManager with navigation back to the list.
+// Agent: FETCH user summary /admin/users/:id; READS canView; STATE user,permissionCount; ROUTES ROUTES constants.
+
 interface UserData {
   id: string;
   email: string;
@@ -14,6 +17,9 @@ interface UserData {
   role: string;
   status: string;
 }
+
+// Human: Coordinates permission counts, loading gates, and the heavy manager component once the user record resolves.
+// Agent: useParams id; navigate when missing; useEffect fetch user; RENDERS UserPermissionsManager when allowed.
 
 export default function UserPermissionDetailPage() {
   const { id } = useParams<{ id: string }>();

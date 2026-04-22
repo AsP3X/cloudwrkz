@@ -1,3 +1,5 @@
+// Human: Multi-line counterpart to `Input`, sharing label, error, and helper text wiring for longer free-form answers.
+// Agent: SAME a11y pattern as Input; RENDERS textarea; READS id or name for element ids.
 import React from "react";
 import { cn } from "@/lib/utils/cn";
 

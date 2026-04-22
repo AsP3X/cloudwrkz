@@ -1,3 +1,5 @@
+// Human: Hybrid tooltip/popover: supports controlled or internal open state, click or hover triggers, fixed positioning with viewport clamping, and a full-screen transparent scrim for click mode.
+// Agent: STATE/CALLBACK open via controlledOpen; POSITION from triggerRect + scroll; LISTENS scroll/resize, mousedown outside, Escape when open.
 import React from "react";
 import { cn } from "@/lib/utils/cn";
 

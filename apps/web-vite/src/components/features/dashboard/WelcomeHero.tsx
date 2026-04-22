@@ -1,6 +1,8 @@
 import { getTimeOfDayGreeting, formatDashboardDate } from "@/lib/utils/greeting";
 import { cn } from "@/lib/utils/cn";
 
+// Human: React UI for `WelcomeHero` in the signed-in home dashboard: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE dashboard; WIDGETS shortcuts activity todos; EXPORTS WelcomeHero; REACT component; READS props hooks; MAY CALL api client.
 interface WelcomeHeroProps {
   name: string;
   title?: string;

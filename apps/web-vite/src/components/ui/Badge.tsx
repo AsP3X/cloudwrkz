@@ -1,3 +1,5 @@
+// Human: Small status or count chip with semantic color variants and optional sizing for dashboards and lists.
+// Agent: RENDERS span; READS variant, size, className; WRITES Tailwind variant map only; NO side effects.
 import React from "react";
 import { cn } from "@/lib/utils/cn";
 

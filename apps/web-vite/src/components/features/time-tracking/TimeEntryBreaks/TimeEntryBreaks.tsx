@@ -6,6 +6,8 @@ import { api } from "@/api/client";
 import { Dialog } from "@/components/ui/Dialog";
 import { Textarea } from "@/components/ui/Textarea";
 
+// Human: React UI for `TimeEntryBreaks` in time entries and live timers: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE time-tracking; ENTRIES breaks floating-timer; EXPORTS TimeEntryBreaks; REACT component; READS props hooks; MAY CALL api client.
 function toDateParts(date: Date): { day: string; month: string; year: string } {
   return {
     day: String(date.getDate()).padStart(2, "0"),

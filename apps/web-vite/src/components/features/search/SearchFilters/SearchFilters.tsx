@@ -4,6 +4,8 @@ import { Select } from "@/components/ui/Select";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 
+// Human: React UI for `SearchFilters` in global search UX and result handling: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE search; QUERY results preview; EXPORTS SearchFilters; REACT component; READS props hooks; MAY CALL api client.
 const STATUS_OPTIONS = [
   { value: "", label: "All Statuses" },
   { value: "OPEN", label: "Open" },

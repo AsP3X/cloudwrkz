@@ -9,6 +9,9 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { EmployeeStatsBar } from "@/components/features/employees/EmployeeStatsBar";
 import { CreateEmployeeDialog } from "@/components/features/employees/CreateEmployeeDialog/CreateEmployeeDialog";
 
+// Human: Directory of employees with filters, stats, and a gated create dialog for HR operators.
+// Agent: GET /employees; READS can(modules.employees.view, employees.create); LOCAL filters query/status/dept/location.
+
 export default function EmployeesPage() {
   const { can } = useAuth();
   const canView = can("modules.employees.view");

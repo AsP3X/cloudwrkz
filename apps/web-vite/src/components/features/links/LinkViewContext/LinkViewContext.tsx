@@ -1,5 +1,7 @@
 import React from "react";
 
+// Human: React UI for `LinkViewProvider` in saved links and collections: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE links; COLLECTIONS metadata GitHub YouTube; EXPORTS LinkViewProvider; REACT component; READS props hooks; MAY CALL api client.
 export type LinkViewMode = "table" | "list" | "card";
 
 const VIEW_MODE_STORAGE_KEY = "link-view-mode";

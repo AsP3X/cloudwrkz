@@ -1,3 +1,5 @@
+// Human: Primary dashboard navigation: module-gated links, collapsible HR sections, optional badge counts, and responsive mobile sheet behavior via `SidebarContext`.
+// Agent: READS useAuth modules and can(); READS useSidebar; RENDERS CollapsibleNavSection and ROUTES links; PROPS navCounts for badges.
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils/cn";
 import { APP_CONFIG } from "@/lib/constants/config";

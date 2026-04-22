@@ -20,6 +20,9 @@ import {
 import { formatDateTimeInTimezone } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
 
+// Human: Single time-entry drill-down with duration math, pause/resume/stop controls, and module permission checks.
+// Agent: GET /time-entries/:id; CALLS canPause|canResume|canStop; MUTATES entry via PATCH; READS modules.timetracking.view.
+
 export default function TimeEntryDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();

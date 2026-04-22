@@ -1,3 +1,6 @@
+// Human: Display helpers for user names, avatar initials, and mapping stored avatar paths to same-origin fetch URLs.
+// Agent: formatUserName HANDLES DELETED hash mask; getAvatarUrl BUILDS /api/profile/avatar path; READS UserLike union.
+
 type UserWithStatus = {
   id?: string;
   name: string | null;

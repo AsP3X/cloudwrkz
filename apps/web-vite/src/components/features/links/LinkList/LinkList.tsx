@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils/cn";
 import { OverviewContextMenu, type OverviewContextMenuItem } from "@/components/ui/OverviewContextMenu";
 import { EditLinkDialog } from "@/components/features/links/EditLinkDialog/EditLinkDialog";
 
+// Human: React UI for `LinkList` in saved links and collections: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE links; COLLECTIONS metadata GitHub YouTube; EXPORTS LinkList; REACT component; READS props hooks; MAY CALL api client.
 type LinkItem = {
   id: string;
   title: string;

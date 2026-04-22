@@ -12,6 +12,9 @@ import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { AccessIssueTicketDialog } from "@/components/features/tickets/AccessIssueTicketDialog";
 import { formatDate } from "@/lib/utils/date";
 
+// Human: Link collection detail route that loads a collection, shows metadata, and lists child links with view modes.
+// Agent: HTTP GET /collections/:id; WRAPS LinkViewProvider; ENFORCES modules.links.view via AccessDeniedWarning gate.
+
 type Collection = {
   id: string;
   name: string;
@@ -24,6 +27,9 @@ type Collection = {
   links?: LinkType[];
   owner?: { name: string | null; email: string };
 };
+
+// Human: Inner content that fetches the collection by route param and renders link controls plus the link grid.
+// Agent: READS useParams id + useLinkView viewMode; FETCHES /collections/:id; CANCELS on unmount; RENDERS LinkList.
 
 function CollectionDetailContent() {
   const { id } = useParams<{ id: string }>();
@@ -147,6 +153,9 @@ function CollectionDetailContent() {
     </div>
   );
 }
+
+// Human: Permission gate plus provider shell so collection detail only renders for users with links module access.
+// Agent: READS can("modules.links.view"); EARLY AccessDeniedWarning OR LinkViewProvider>CollectionDetailContent.
 
 export default function CollectionDetailPage() {
   const { can } = useAuth();

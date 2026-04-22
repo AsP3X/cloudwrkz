@@ -15,6 +15,12 @@ import { TasksSection } from "@/components/features/tasks/TasksSection/TasksSect
 import { getTicketTypeLabel, type TicketType } from "@/lib/utils/tickets";
 import type { TimeEntry } from "@/lib/types";
 
+// Human: Support ticket command center showing metadata, threaded activity, linked todos, and time tracking hooks.
+// Agent: GET /tickets/:id + related collections; LOCAL format helpers; RENDERS TicketCommentsAndActivity; RBAC gates.
+
+// Human: Normalizes nullable ISO timestamps into a locale-aware date/time string for ticket metadata rows.
+// Agent: READS iso string|null; try/catch new Date; RETURNS locale medium+short OR raw fallback; PURE.
+
 function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";
   try {
@@ -27,10 +33,16 @@ function formatDateTime(iso: string | null | undefined): string {
   }
 }
 
+// Human: Friendly display string for ticket actors when only summary objects (name/email) are available.
+// Agent: READS UserSummary|null; RETURNS name trim OR email OR em dash; PURE string helper.
+
 function formatUserName(u: UserSummary | null | undefined): string {
   if (!u) return "—";
   return u.name?.trim() ? u.name : u.email;
 }
+
+// Human: Tailwind class bundle for each ticket lifecycle status used in badges across the detail header.
+// Agent: SWITCH ticket status OPEN|IN_PROGRESS|PENDING|RESOLVED|CLOSED|CANCELLED|default; RETURNS bg/text classes.
 
 function getStatusColor(status: string): string {
   switch (status) {
@@ -50,6 +62,9 @@ function getStatusColor(status: string): string {
   }
 }
 
+// Human: Tailwind class bundle for ticket priority chips so severity reads consistently beside status badges.
+// Agent: SWITCH priority URGENT|HIGH|MEDIUM|LOW|default; RETURNS bg/text class string; PURE.
+
 function getPriorityColor(priority: string): string {
   switch (priority) {
     case "URGENT":
@@ -64,6 +79,9 @@ function getPriorityColor(priority: string): string {
       return "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300";
   }
 }
+
+// Human: Ticket detail route wiring fetches, permission checks, and composed sections for comments and worklogs.
+// Agent: STATE ticket,activities,comments; useParams id; FETCH /tickets/:id; RENDERS TasksSection+TicketTimerSection.
 
 export default function TicketDetailPage() {
   const { id } = useParams<{ id: string }>();

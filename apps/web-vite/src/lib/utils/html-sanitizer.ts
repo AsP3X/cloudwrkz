@@ -4,6 +4,9 @@ import DOMPurify from "dompurify";
  * Sanitizes HTML content to prevent XSS attacks.
  * Allows safe formatting tags and attributes for rich text (ticket descriptions, etc.).
  */
+// Human: Strips unsafe HTML from user-authored rich text while keeping basic formatting tags used in the editor.
+// Agent: CALLS DOMPurify.sanitize with ALLOWED_TAGS ATTR URI regex; RETURNS string; USED BY todo validation and editors.
+
 export function sanitizeHtml(html: string): string {
   return DOMPurify.sanitize(html, {
     ALLOWED_TAGS: [

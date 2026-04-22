@@ -1,6 +1,8 @@
 import React from "react";
 import { Button } from "@/components/ui/Button";
 
+// Human: React UI for `TodoBulkActionsToolbar` in tasks and todo lists: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE tasks; BULK filters forms; EXPORTS TodoBulkActionsToolbar; REACT component; READS props hooks; MAY CALL api client.
 interface TodoBulkActionsToolbarProps {
   selectedCount: number;
   onBulkStatusChange: (status: string) => void;

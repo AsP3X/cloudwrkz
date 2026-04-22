@@ -1,3 +1,6 @@
+// Human: Marketing contact form that posts to the public contact endpoint and shows inline success or error feedback.
+// Agent: LOCAL state fields; SUBMITS via api client; HANDLES ApiError; READS APP_CONFIG for copy; LINKS back to ROUTES.
+
 import React from "react";
 import { Link } from "react-router-dom";
 import { Input } from "@/components/ui/Input";

@@ -6,6 +6,8 @@ import type { UpdateTimeEntryInput } from "@/lib/validations/time-tracking";
 import type { TimeEntry as ViteTimeEntry } from "@/lib/types";
 import { parseApiDate } from "@/lib/utils/date";
 
+// Human: React UI for `EditTimeEntryDialog` in time entries and live timers: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE time-tracking; ENTRIES breaks floating-timer; EXPORTS EditTimeEntryDialog; REACT component; READS props hooks; MAY CALL api client.
 interface EditTimeEntryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;

@@ -14,6 +14,9 @@ import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { Checkbox } from "@/components/ui/Checkbox";
 import type { AdminGroup } from "@/lib/types";
 
+// Human: Deep admin user inspector covering bans, groups, permissions, linked HR employee records, and edits.
+// Agent: FETCH /admin/users/:id + permissions; MULTIPLE dialogs; OPTIONAL employee PATCH; REQUIRES admin.users.*.
+
 const EMPLOYMENT_TYPE_OPTIONS = [
   { value: "FULL_TIME", label: "Full time" },
   { value: "PART_TIME", label: "Part time" },
@@ -63,6 +66,9 @@ interface UserDetailData {
   }>;
 }
 
+// Human: Maps user lifecycle statuses to badge color tokens for consistent admin list/detail styling.
+// Agent: SWITCH status ACTIVE|PENDING|SUSPENDED|BANNED|DELETED|default; RETURNS Badge variant token; PURE.
+
 function getStatusBadgeVariant(status: string) {
   switch (status) {
     case "ACTIVE": return "success" as const;
@@ -74,6 +80,9 @@ function getStatusBadgeVariant(status: string) {
   }
 }
 
+// Human: Maps coarse RBAC roles to badge variants so privileged accounts pop visually in admin surfaces.
+// Agent: SWITCH role ADMIN|MODERATOR|AGENT|default; RETURNS Badge variant token; PURE.
+
 function getRoleBadgeVariant(role: string) {
   switch (role) {
     case "ADMIN": return "error" as const;
@@ -82,6 +91,9 @@ function getRoleBadgeVariant(role: string) {
     default: return "default" as const;
   }
 }
+
+// Human: Page controller loading the user record, effective permissions, and orchestrating every admin sub-action.
+// Agent: useParams id; STATE user,effectivePermissions,loading*; navigate guards; COMPOSITION of many admin sections.
 
 export default function UserDetailPage() {
   const { id } = useParams<{ id: string }>();

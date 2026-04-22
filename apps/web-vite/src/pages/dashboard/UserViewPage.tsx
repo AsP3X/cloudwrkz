@@ -10,12 +10,18 @@ import { TicketListView } from "@/components/features/tickets/TicketListView";
 import { TicketViewProvider } from "@/components/features/tickets/TicketViewContext";
 import { TicketViewControls } from "@/components/features/tickets/TicketViewControls";
 
+// Human: Staff directory view of another user’s tickets with view-mode controls and self-vs-other safeguards.
+// Agent: GET user + tickets by id; BLOCKS USER role viewing others; TicketViewProvider; NAVIGATE if missing id.
+
 type UserInfo = {
   id: string;
   email: string;
   name: string | null;
   role: string;
 };
+
+// Human: Route component that fetches the target profile, enforces RBAC, and renders the ticket list in context.
+// Agent: useEffect loads user+tickets; COMPARES currentUser.role; STATE user,tickets,loading; isOwnProfile flag.
 
 export default function UserViewPage() {
   const { id } = useParams<{ id: string }>();

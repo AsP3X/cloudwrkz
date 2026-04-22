@@ -1,5 +1,7 @@
 import { type FilterConfig } from "@/components/ui/FilterDialog";
 
+// Human: Supporting module `TIME_TRACKING_FILTER_CONFIG` for time entries and live timers: encapsulates logic helpers or small API utilities used by nearby components.
+// Agent: SCOPE time-tracking; ENTRIES breaks floating-timer; EXPORTS TIME_TRACKING_FILTER_CONFIG; TS module; SIDE_EFFECTS per implementation.
 export const TIME_TRACKING_FILTER_CONFIG: FilterConfig = {
   moduleName: "time-tracking",
   baseRoute: "/dashboard/time-tracking",

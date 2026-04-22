@@ -1,3 +1,6 @@
+// Human: Inline status chip shown while the auth layer polls a deferred login job, including elapsed time and expandable details.
+// Agent: PROPS LoginQueuedUiState; useEffect interval rerender; READS startedAt maxWaitSecs; ACCESSIBLE detailsId disclosure.
+
 import { useEffect, useId, useState } from "react";
 import type { LoginQueuedUiState } from "@/components/providers/AuthProvider";
 import { cn } from "@/lib/utils/cn";

@@ -4,6 +4,8 @@ import { api } from "@/api/client";
 import { ROUTES } from "@/lib/constants/routes";
 import { useAuth } from "@/components/providers/AuthProvider";
 
+// Human: React UI for `AdminDashboard` in administration and permission management: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE admin; UI permissions; EXPORTS AdminDashboard; REACT component; READS props hooks; MAY CALL api client.
 export type AdminStats = {
   totalUsers: number;
   usersByStatus: { ACTIVE: number; PENDING: number; SUSPENDED: number; DELETED: number };

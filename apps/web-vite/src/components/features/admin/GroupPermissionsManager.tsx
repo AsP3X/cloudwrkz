@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { api } from "@/api/client";
 
+// Human: React UI for `GroupPermissionsManager` in administration and permission management: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE admin; UI permissions; EXPORTS GroupPermissionsManager; REACT component; READS props hooks; MAY CALL api client.
 export interface Permission {
   id: string;
   key: string;

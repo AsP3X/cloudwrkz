@@ -4,6 +4,9 @@ import { api } from "@/api/client";
 import { ROUTES } from "@/lib/constants/routes";
 import type { Employee, EmployeeLeaveRequest } from "@/lib/types";
 
+// Human: Multi-view vacation planner (timeline, calendar, table) over approved leave spanning many employees.
+// Agent: FETCH employees + leave; VIEWS TimelineView|CalendarView|TableView; LOCAL date math helpers; SCALE week|month|quarter.
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type View = "table" | "calendar" | "timeline";
@@ -84,6 +87,9 @@ function rangeLabel(anchor: Date, scale: Scale): string {
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
+
+// Human: Orchestrates data loading, color mapping, and view switching for the vacation planning experience.
+// Agent: STATE view,scale,anchor,employees,vacations; useCallback load; SCROLL timelineRef; PASSES props into subviews.
 
 export default function EmployeeVacationPlannerPage() {
   const [view, setView]     = useState<View>("timeline");
@@ -239,6 +245,9 @@ export default function EmployeeVacationPlannerPage() {
 }
 
 // ─── Timeline View ────────────────────────────────────────────────────────────
+
+// Human: Horizontal timeline rendering each employee row with leave bars aligned to the scaled date range.
+// Agent: READS vacations+employees; USES scrollRef; MUTATES scale/anchor via props; COMPUTES pixel layout from DAY_PX.
 
 function TimelineView({
   employees,
@@ -532,6 +541,9 @@ function TimelineView({
 
 // ─── Calendar View ────────────────────────────────────────────────────────────
 
+// Human: Month-grid calendar highlighting overlapping leave blocks per employee with color coding.
+// Agent: STATE monthAnchor; MAP vacations into day cells; READS empById,colorOf; PURE layout besides local month nav.
+
 function CalendarView({
   vacations,
   empById,
@@ -678,6 +690,9 @@ function CalendarView({
 // ─── Table View ───────────────────────────────────────────────────────────────
 
 type SortKey = "employee" | "start" | "end" | "days" | "status";
+
+// Human: Sortable searchable table summarizing each leave request with employee context and status chips.
+// Agent: STATE search,sortKey,sortDir; DERIVES filtered rows; READS vacations+empById; CLIENT-SIDE sort only.
 
 function TableView({
   vacations,

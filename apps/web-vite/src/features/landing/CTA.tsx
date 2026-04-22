@@ -1,3 +1,6 @@
+// Human: Closing landing band with gradient glow, product pitch, and buttons routing to register or learn-more anchors.
+// Agent: SECTION aria-label CTA; USES cn APP_CONFIG ROUTES; CHILDREN direct under section per layout comment.
+
 import { Button } from "@/components/ui/Button";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
