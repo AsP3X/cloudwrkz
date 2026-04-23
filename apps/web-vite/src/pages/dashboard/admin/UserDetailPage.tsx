@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, FormEvent } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { api, ApiError } from "@/api/client";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -14,30 +14,8 @@ import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { Checkbox } from "@/components/ui/Checkbox";
 import type { AdminGroup } from "@/lib/types";
 
-// Human: Deep admin user inspector covering bans, groups, permissions, linked HR employee records, and edits.
-// Agent: FETCH /admin/users/:id + permissions; MULTIPLE dialogs; OPTIONAL employee PATCH; REQUIRES admin.users.*.
-
-const EMPLOYMENT_TYPE_OPTIONS = [
-  { value: "FULL_TIME", label: "Full time" },
-  { value: "PART_TIME", label: "Part time" },
-  { value: "CONTRACTOR", label: "Contractor" },
-  { value: "INTERN", label: "Intern" },
-  { value: "TEMPORARY", label: "Temporary" },
-] as const;
-
-const EMPTY_EMPLOYEE_FORM = {
-  employee_code: "",
-  first_name: "",
-  last_name: "",
-  display_name: "",
-  work_email: "",
-  job_title: "",
-  department: "",
-  location: "",
-  hire_date: new Date().toISOString().slice(0, 10),
-  employment_type: "FULL_TIME",
-};
-type EmployeeForm = typeof EMPTY_EMPLOYEE_FORM;
+// Human: Deep admin user inspector covering bans, groups, permissions, and account edits.
+// Agent: FETCH /admin/users/:id + permissions; MULTIPLE dialogs; REQUIRES admin.users.*.
 
 const CARD_CLASS =
   "bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6";
@@ -123,67 +101,6 @@ export default function UserDetailPage() {
   const [groupActionError, setGroupActionError] = useState<string | null>(null);
   const [verifySaving, setVerifySaving] = useState(false);
   const [verifyError, setVerifyError] = useState<string | null>(null);
-
-  // Create employee from user
-  const [createEmpOpen, setCreateEmpOpen] = useState(false);
-  const [empForm, setEmpForm] = useState<EmployeeForm>(EMPTY_EMPLOYEE_FORM);
-  const [empSaving, setEmpSaving] = useState(false);
-  const [empError, setEmpError] = useState<string | null>(null);
-  const [canManageEmployees, setCanManageEmployees] = useState(false);
-
-  useEffect(() => {
-    setCanManageEmployees(can("employees.create"));
-  }, [can]);
-
-  const openCreateEmployee = useCallback(() => {
-    if (!user) return;
-    const parts = (user.name ?? "").trim().split(/\s+/);
-    const firstName = parts[0] ?? "";
-    const lastName = parts.slice(1).join(" ");
-    setEmpForm({
-      ...EMPTY_EMPLOYEE_FORM,
-      first_name: firstName,
-      last_name: lastName,
-      display_name: user.name ?? "",
-      work_email: user.email,
-      hire_date: new Date().toISOString().slice(0, 10),
-    });
-    setEmpError(null);
-    setCreateEmpOpen(true);
-  }, [user]);
-
-  const handleCreateEmployee = useCallback(async (e: FormEvent) => {
-    e.preventDefault();
-    if (!id || !user) return;
-    setEmpSaving(true);
-    setEmpError(null);
-    try {
-      const body = {
-        employee_code: empForm.employee_code.trim(),
-        first_name: empForm.first_name.trim(),
-        last_name: empForm.last_name.trim(),
-        display_name: empForm.display_name.trim() || null,
-        work_email: empForm.work_email.trim() || null,
-        job_title: empForm.job_title.trim() || null,
-        department: empForm.department.trim() || null,
-        location: empForm.location.trim() || null,
-        hire_date: empForm.hire_date,
-        employment_type: empForm.employment_type,
-        user_id: id,
-      };
-      const result = await api.post<{ employee?: { id?: string } }>("/employees", body);
-      setCreateEmpOpen(false);
-      setEmpForm(EMPTY_EMPLOYEE_FORM);
-      const empId = result?.employee?.id;
-      if (empId) {
-        navigate(`${ROUTES.EMPLOYEES}/${empId}`);
-      }
-    } catch (err) {
-      setEmpError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Failed to create employee");
-    } finally {
-      setEmpSaving(false);
-    }
-  }, [id, user, empForm, navigate]);
 
   const reloadUser = useCallback(async () => {
     if (!id) return;
@@ -789,7 +706,6 @@ export default function UserDetailPage() {
         onOpenChange={setEditOpen}
         title="Edit User"
         description={`Edit user: ${user.email}`}
-        closeOnEscape={!createEmpOpen}
       >
         <form onSubmit={handleUpdate} className="p-6 space-y-4">
           {error && (
@@ -826,22 +742,6 @@ export default function UserDetailPage() {
             onChange={(e) => setFormData((prev) => ({ ...prev, status: e.target.value }))}
           />
 
-          {canManageEmployees && (
-            <div className="pt-2 border-t border-neutral-200 dark:border-neutral-800">
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">
-                Create an employee record linked to this cloudwrkz account.
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={openCreateEmployee}
-              >
-                + Create employee record…
-              </Button>
-            </div>
-          )}
-
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-neutral-200 dark:border-neutral-800">
             <Button type="button" variant="outline" onClick={() => setEditOpen(false)} disabled={saving}>
               Cancel
@@ -851,119 +751,6 @@ export default function UserDetailPage() {
             </Button>
           </div>
         </form>
-
-        {/* Nested: Create employee record */}
-        <Dialog
-          nested
-          open={createEmpOpen}
-          onOpenChange={(open) => {
-            setCreateEmpOpen(open);
-            if (!open) setEmpError(null);
-          }}
-          title="Create employee record"
-          description={`A new employee will be created and linked to ${user.email}.`}
-        >
-          <form onSubmit={handleCreateEmployee} className="p-6 space-y-4">
-            {empError && (
-              <div className="p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-300 text-sm">
-                {empError}
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="sm:col-span-2">
-                <Input
-                  label="Employee code *"
-                  value={empForm.employee_code}
-                  onChange={(e) => setEmpForm((p) => ({ ...p, employee_code: e.target.value }))}
-                  placeholder="e.g. EMP-001"
-                  required
-                  disabled={empSaving}
-                />
-              </div>
-              <Input
-                label="First name *"
-                value={empForm.first_name}
-                onChange={(e) => setEmpForm((p) => ({ ...p, first_name: e.target.value }))}
-                required
-                disabled={empSaving}
-              />
-              <Input
-                label="Last name *"
-                value={empForm.last_name}
-                onChange={(e) => setEmpForm((p) => ({ ...p, last_name: e.target.value }))}
-                required
-                disabled={empSaving}
-              />
-              <div className="sm:col-span-2">
-                <Input
-                  label="Display name"
-                  value={empForm.display_name}
-                  onChange={(e) => setEmpForm((p) => ({ ...p, display_name: e.target.value }))}
-                  disabled={empSaving}
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <Input
-                  label="Work email"
-                  type="email"
-                  value={empForm.work_email}
-                  onChange={(e) => setEmpForm((p) => ({ ...p, work_email: e.target.value }))}
-                  disabled={empSaving}
-                />
-              </div>
-              <Input
-                label="Job title"
-                value={empForm.job_title}
-                onChange={(e) => setEmpForm((p) => ({ ...p, job_title: e.target.value }))}
-                disabled={empSaving}
-              />
-              <Input
-                label="Department"
-                value={empForm.department}
-                onChange={(e) => setEmpForm((p) => ({ ...p, department: e.target.value }))}
-                disabled={empSaving}
-              />
-              <Input
-                label="Location"
-                value={empForm.location}
-                onChange={(e) => setEmpForm((p) => ({ ...p, location: e.target.value }))}
-                disabled={empSaving}
-              />
-              <Input
-                label="Hire date *"
-                type="date"
-                value={empForm.hire_date}
-                onChange={(e) => setEmpForm((p) => ({ ...p, hire_date: e.target.value }))}
-                required
-                disabled={empSaving}
-              />
-              <div className="sm:col-span-2">
-                <Select
-                  label="Employment type"
-                  options={EMPLOYMENT_TYPE_OPTIONS}
-                  value={empForm.employment_type}
-                  onChange={(e) => setEmpForm((p) => ({ ...p, employment_type: e.target.value }))}
-                  disabled={empSaving}
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-neutral-200 dark:border-neutral-800">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setCreateEmpOpen(false)}
-                disabled={empSaving}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" variant="primary" disabled={empSaving}>
-                {empSaving ? "Creating…" : "Create employee"}
-              </Button>
-            </div>
-          </form>
-        </Dialog>
       </Dialog>
 
       {/* Delete Dialog */}

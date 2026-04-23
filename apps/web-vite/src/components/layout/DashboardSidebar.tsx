@@ -6,16 +6,7 @@ import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 import { useSidebar } from "./SidebarContext";
 import { CollapsibleNavSection } from "@/components/ui/CollapsibleNavSection";
-import {
-  IconDepartments,
-  IconDirectory,
-  IconDocuments,
-  IconLeave,
-  IconMyTime,
-  IconOrgChart,
-  IconPerformance,
-  IconVacation,
-} from "./sidebarNavIcons";
+import { IconMyTime } from "./sidebarNavIcons";
 
 const DashboardIcon = () => (
   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -100,17 +91,6 @@ const LinksIcon = () => (
   </svg>
 );
 
-const EmployeesIcon = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M17 20h5v-2a4 4 0 00-5-3.87M9 20H4v-2a4 4 0 015-3.87m8-6.13a4 4 0 11-8 0 4 4 0 018 0zm6 2a3 3 0 11-6 0 3 3 0 016 0zM6 10a3 3 0 11-6 0 3 3 0 016 0z"
-    />
-  </svg>
-);
-
 type NavItem = {
   readonly name: string;
   readonly href: string;
@@ -156,9 +136,6 @@ type NavSectionTimeLeaveResolved = {
 type FilteredNavSection = NavSectionFlat | NavSectionTimeLeaveResolved;
 
 function hrefMatchesNav(pathname: string, href: string): boolean {
-  if (href === ROUTES.EMPLOYEES) {
-    return pathname === href;
-  }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -204,43 +181,6 @@ const NAV_SECTIONS = Object.freeze([
     ]),
   }),
   Object.freeze({
-    kind: "flat" as const,
-    title: "HR - Employees",
-    icon: EmployeesIcon,
-    items: Object.freeze([
-      Object.freeze({
-        name: "Directory",
-        href: ROUTES.EMPLOYEES,
-        icon: IconDirectory,
-        moduleKey: "employees",
-      }),
-      Object.freeze({
-        name: "Org Chart",
-        href: ROUTES.EMPLOYEES_ORG_CHART,
-        icon: IconOrgChart,
-        moduleKey: "employees",
-      }),
-      Object.freeze({
-        name: "Departments",
-        href: ROUTES.EMPLOYEES_DEPARTMENTS,
-        icon: IconDepartments,
-        moduleKey: "employees",
-      }),
-      Object.freeze({
-        name: "Performance",
-        href: ROUTES.EMPLOYEES_PERFORMANCE,
-        icon: IconPerformance,
-        moduleKey: "employees",
-      }),
-      Object.freeze({
-        name: "Documents",
-        href: ROUTES.EMPLOYEES_DOCUMENTS,
-        icon: IconDocuments,
-        moduleKey: "employees",
-      }),
-    ]),
-  }),
-  Object.freeze({
     kind: "timeAndLeave" as const,
     title: "Time & leave",
     icon: IconMyTime,
@@ -250,20 +190,7 @@ const NAV_SECTIONS = Object.freeze([
       icon: IconMyTime,
       moduleKey: "time_tracking",
     }),
-    timeOff: Object.freeze([
-      Object.freeze({
-        name: "Leave",
-        href: ROUTES.EMPLOYEES_LEAVE,
-        icon: IconLeave,
-        moduleKey: "employees",
-      }),
-      Object.freeze({
-        name: "Vacation Planner",
-        href: ROUTES.EMPLOYEES_VACATION,
-        icon: IconVacation,
-        moduleKey: "employees",
-      }),
-    ]),
+    timeOff: Object.freeze([] as const),
   }),
   Object.freeze({
     kind: "flat" as const,

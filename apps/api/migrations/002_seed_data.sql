@@ -8,8 +8,7 @@ VALUES
   (gen_random_uuid()::text, 'tickets', 'Tickets', 'Support ticket tracking', true, '{}'::jsonb, NOW(), NOW()),
   (gen_random_uuid()::text, 'timetracking', 'Time Tracking', 'Time entries and timers', true, '{}'::jsonb, NOW(), NOW()),
   (gen_random_uuid()::text, 'todos', 'Todos', 'Task and todo management', true, '{}'::jsonb, NOW(), NOW()),
-  (gen_random_uuid()::text, 'links', 'Links', 'Bookmarks and link collections', true, '{}'::jsonb, NOW(), NOW()),
-  (gen_random_uuid()::text, 'employees', 'Employees', 'ERP-ERM employee management', false, '{}'::jsonb, NOW(), NOW())
+  (gen_random_uuid()::text, 'links', 'Links', 'Bookmarks and link collections', true, '{}'::jsonb, NOW(), NOW())
 ON CONFLICT (key) DO UPDATE SET
   name = EXCLUDED.name,
   description = EXCLUDED.description,
@@ -95,20 +94,7 @@ VALUES
   (gen_random_uuid()::text, 'collections.update', 'Update Collections', 'Update existing collections', 'links', 'links', NOW(), NOW()),
   (gen_random_uuid()::text, 'collections.delete', 'Delete Collections', 'Delete collections', 'links', 'links', NOW(), NOW()),
   (gen_random_uuid()::text, 'collections.share', 'Share Collections', 'Share collections with other users', 'links', 'links', NOW(), NOW()),
-  (gen_random_uuid()::text, 'modules.links.view', 'View Links Module', 'Access to the Links module in navigation and dashboard', 'modules', 'links', NOW(), NOW()),
-  (gen_random_uuid()::text, 'modules.employees.view', 'View Employees Module', 'Access to the Employees module in navigation and dashboard', 'modules', 'employees', NOW(), NOW()),
-  (gen_random_uuid()::text, 'employees.view', 'View Employees', 'View employee records', 'employees', 'employees', NOW(), NOW()),
-  (gen_random_uuid()::text, 'employees.view_all', 'View All Employees', 'View all employee records across departments', 'employees', 'employees', NOW(), NOW()),
-  (gen_random_uuid()::text, 'employees.create', 'Create Employees', 'Create employee records', 'employees', 'employees', NOW(), NOW()),
-  (gen_random_uuid()::text, 'employees.update', 'Update Employees', 'Update employee records', 'employees', 'employees', NOW(), NOW()),
-  (gen_random_uuid()::text, 'employees.delete', 'Delete Employees', 'Delete employee records', 'employees', 'employees', NOW(), NOW()),
-  (gen_random_uuid()::text, 'employees.compensation.view', 'View Compensation', 'View compensation placeholders and bands', 'employees', 'employees', NOW(), NOW()),
-  (gen_random_uuid()::text, 'employees.compensation.manage', 'Manage Compensation', 'Manage compensation placeholders and updates', 'employees', 'employees', NOW(), NOW()),
-  (gen_random_uuid()::text, 'employees.assets.manage', 'Manage Employee Assets', 'Assign and manage employee assets and equipment', 'employees', 'employees', NOW(), NOW()),
-  (gen_random_uuid()::text, 'employees.skills.manage', 'Manage Employee Skills', 'Manage employee skills and certifications', 'employees', 'employees', NOW(), NOW()),
-  (gen_random_uuid()::text, 'employees.performance.manage', 'Manage Performance', 'Manage employee performance reviews and goals', 'employees', 'employees', NOW(), NOW()),
-  (gen_random_uuid()::text, 'employees.lifecycle.manage', 'Manage Employee Lifecycle', 'Manage onboarding and offboarding lifecycle events', 'employees', 'employees', NOW(), NOW()),
-  (gen_random_uuid()::text, 'employees.export', 'Export Employees', 'Export employee module data for reporting', 'employees', 'employees', NOW(), NOW())
+  (gen_random_uuid()::text, 'modules.links.view', 'View Links Module', 'Access to the Links module in navigation and dashboard', 'modules', 'links', NOW(), NOW())
 ON CONFLICT (key) DO UPDATE SET
   name = EXCLUDED.name,
   description = EXCLUDED.description,

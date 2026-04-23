@@ -31,12 +31,5 @@ export const ROUTES = {
   LINKS: "/dashboard/links",
   LINKS_ARCHIVE: "/dashboard/links/archive",
   LINKS_COLLECTION: "/dashboard/links/collections",
-  EMPLOYEES: "/dashboard/employees",
-  EMPLOYEES_ORG_CHART: "/dashboard/employees/org-chart",
-  EMPLOYEES_LEAVE: "/dashboard/employees/leave",
-  EMPLOYEES_PERFORMANCE: "/dashboard/employees/performance",
-  EMPLOYEES_DOCUMENTS: "/dashboard/employees/documents",
-  EMPLOYEES_VACATION: "/dashboard/employees/vacation",
-  EMPLOYEES_DEPARTMENTS: "/dashboard/employees/departments",
   ARCHIVE: "/dashboard/archive",
 } as const;

@@ -143,7 +143,6 @@ export const DashboardLayout = () => {
     /^\/dashboard\/todos\/[^/]+$/.test(path) &&
     path !== "/dashboard/todos/new" &&
     path !== "/dashboard/todos/archive";
-  const isEmployeesPage = path === ROUTES.EMPLOYEES || path.startsWith(`${ROUTES.EMPLOYEES}/`);
   const hideTopQueuedNotices = isTodoCreatePage || isTodoDetailPage;
   const showMutationQueueNotice = !hideTopQueuedNotices;
 
@@ -192,18 +191,12 @@ export const DashboardLayout = () => {
 
   return (
     <SidebarProvider>
-      {isEmployeesPage ? (
-        <div className="min-h-screen bg-gradient-to-br from-neutral-200/90 via-neutral-100 to-neutral-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950">
-          {layoutContent}
-        </div>
-      ) : (
-        <MouseSpotlightSurface
-          variant="content"
-          className="min-h-screen bg-gradient-to-br from-neutral-200/90 via-neutral-100 to-neutral-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950"
-        >
-          {layoutContent}
-        </MouseSpotlightSurface>
-      )}
+      <MouseSpotlightSurface
+        variant="content"
+        className="min-h-screen bg-gradient-to-br from-neutral-200/90 via-neutral-100 to-neutral-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950"
+      >
+        {layoutContent}
+      </MouseSpotlightSurface>
     </SidebarProvider>
   );
 };
