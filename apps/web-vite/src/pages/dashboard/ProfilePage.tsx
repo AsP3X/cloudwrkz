@@ -140,7 +140,45 @@ function EmploymentDetailsDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  employee: Employee | null;
+}) {
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Employment details"
+      description={
+        employee
+          ? "Information from your linked employee record."
+          : "Your account's employment link status."
+      }
+      className="sm:max-w-lg"
+    >
+      {employee == null ? (
+        <div className="px-5 sm:px-7 py-5 space-y-4">
+          <p className="text-sm text-neutral-600 dark:text-neutral-300">
+            No employment record is linked to your account. If you expect to see a profile here, ask
+            an administrator to link your user to an employee record.
+          </p>
+          <div className="flex justify-end pt-1">
+            <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <EmploymentDetailsDialogBody employee={employee} onOpenChange={onOpenChange} />
+      )}
+    </Dialog>
+  );
+}
+
+function EmploymentDetailsDialogBody({
+  employee,
+  onOpenChange,
+}: {
   employee: Employee;
+  onOpenChange: (open: boolean) => void;
 }) {
   const statusCfg = getEmployeeStatusConfig(employee.employeeStatus);
   const vacationTotal =
@@ -151,14 +189,7 @@ function EmploymentDetailsDialog({
       : 0;
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title="Employment details"
-      description="Information from your linked employee record."
-      className="sm:max-w-lg"
-    >
-      <div className="px-5 sm:px-7 py-4 space-y-6">
+    <div className="px-5 sm:px-7 py-4 space-y-6">
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
             {employee.firstName} {employee.lastName}
@@ -287,13 +318,12 @@ function EmploymentDetailsDialog({
             Close
           </Button>
         </div>
-      </div>
-    </Dialog>
+    </div>
   );
 }
 
-// Human: Layout shell: hero, employment CTA + dialog, personal info form, account overview.
-// Agent: FETCH linked employee via /employees/me; DERIVE displayName, avatarUrl, badges; CONDITIONAL employment button + dialog.
+// Human: Layout shell: account command center (employment CTA in hero), dialog, personal info, account overview.
+// Agent: FETCH /employees/me; always show CTA after load; EmploymentDetailsDialog for linked or empty state.
 
 export default function ProfilePage() {
   const { user, refreshUser } = useAuth();
@@ -335,11 +365,29 @@ export default function ProfilePage() {
       <div className="grid gap-6 xl:grid-cols-12">
         <section className="xl:col-span-8 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-soft-lg overflow-hidden">
           <div className="px-6 sm:px-8 py-7 bg-gradient-to-r from-primary-600 via-primary-500 to-secondary-500 text-white">
-            <p className="text-xs uppercase tracking-[0.2em] text-white/70">Profile Command Center</p>
-            <h1 className="mt-2 text-3xl sm:text-4xl font-bold leading-tight">{displayName}</h1>
-            <p className="mt-2 text-sm sm:text-base text-white/80 max-w-2xl">
-              Your identity, account health, and employment context in one place.
-            </p>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-[0.2em] text-white/70">Account command center</p>
+                <h1 className="mt-2 text-3xl sm:text-4xl font-bold leading-tight">{displayName}</h1>
+                <p className="mt-2 text-sm sm:text-base text-white/80 max-w-2xl">
+                  Your identity and account health in one place.
+                </p>
+              </div>
+              <div className="shrink-0 flex flex-col items-stretch sm:items-end justify-center gap-1">
+                {employeeLoading ? (
+                  <span className="text-sm text-white/80 py-2 sm:py-0">Checking employment link…</span>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="primary"
+                    className="!bg-white !text-primary-800 shadow-sm hover:!bg-white/95 dark:!bg-white dark:!text-primary-900"
+                    onClick={() => setEmploymentOpen(true)}
+                  >
+                    View employment details
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
           <div className="p-6 sm:p-8">
             <div className="flex flex-col sm:flex-row gap-5">
@@ -353,11 +401,6 @@ export default function ProfilePage() {
                 <div className="flex flex-wrap gap-2 mb-3">
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold uppercase tracking-wide ${roleBadge.className}`}>{roleBadge.label}</span>
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold uppercase tracking-wide ${statusBadge.className}`}>{statusBadge.label}</span>
-                  {linkedEmployee && (
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold uppercase tracking-wide ${getEmployeeStatusConfig(linkedEmployee.employeeStatus).className}`}>
-                      Employee: {getEmployeeStatusConfig(linkedEmployee.employeeStatus).label}
-                    </span>
-                  )}
                 </div>
                 <p className="text-sm text-neutral-600 dark:text-neutral-300">{user.email}</p>
                 {user.bio && <p className="mt-3 text-sm text-neutral-600 dark:text-neutral-400 max-w-2xl">{user.bio}</p>}
@@ -371,18 +414,10 @@ export default function ProfilePage() {
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-6">
+            <div className="grid grid-cols-2 gap-3 mt-6">
               <div className="rounded-xl border border-neutral-200 dark:border-neutral-700 p-3 bg-neutral-50 dark:bg-neutral-800/50">
                 <p className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">{profileScore}%</p>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400">Profile health</p>
-              </div>
-              <div className="rounded-xl border border-neutral-200 dark:border-neutral-700 p-3 bg-neutral-50 dark:bg-neutral-800/50">
-                <p className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">{linkedEmployee ? linkedEmployee.vacationAvailable : "-"}</p>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">Vacation available</p>
-              </div>
-              <div className="rounded-xl border border-neutral-200 dark:border-neutral-700 p-3 bg-neutral-50 dark:bg-neutral-800/50">
-                <p className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">{linkedEmployee ? linkedEmployee.managers.length : "-"}</p>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">Managers</p>
               </div>
               <div className="rounded-xl border border-neutral-200 dark:border-neutral-700 p-3 bg-neutral-50 dark:bg-neutral-800/50">
                 <p className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">{user.emailVerified ? "Yes" : "No"}</p>
@@ -409,40 +444,11 @@ export default function ProfilePage() {
         </aside>
       </div>
 
-      <section className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 sm:p-8">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100">Employment</h2>
-            <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-              Open a summary of your linked employment record when you need the details.
-            </p>
-          </div>
-          {employeeLoading ? (
-            <p className="text-sm text-neutral-500 dark:text-neutral-400 sm:text-right">Checking link…</p>
-          ) : linkedEmployee ? (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setEmploymentOpen(true)}
-            >
-              View employment details
-            </Button>
-          ) : null}
-        </div>
-        {!employeeLoading && !linkedEmployee && (
-          <p className="mt-4 text-sm text-neutral-500 dark:text-neutral-400 rounded-xl border border-dashed border-neutral-300 dark:border-neutral-700 px-4 py-3">
-            No linked employment record for this account.
-          </p>
-        )}
-      </section>
-
-      {linkedEmployee && (
-        <EmploymentDetailsDialog
-          open={employmentOpen}
-          onOpenChange={setEmploymentOpen}
-          employee={linkedEmployee}
-        />
-      )}
+      <EmploymentDetailsDialog
+        open={employmentOpen}
+        onOpenChange={setEmploymentOpen}
+        employee={linkedEmployee}
+      />
 
       <section className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 sm:p-8">
         <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100">Personal Information</h2>
