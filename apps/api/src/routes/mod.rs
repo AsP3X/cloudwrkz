@@ -3,6 +3,7 @@
 
 pub mod admin;
 pub mod archive;
+pub mod employees;
 pub mod auth;
 pub mod auth_qr_login;
 pub mod collections;
@@ -97,6 +98,7 @@ pub fn v1_router(config: &AppConfig) -> Router<AppState> {
         .merge(links::router())
         .merge(collections::router())
         .merge(time_tracking::router())
+        .merge(employees::router())
         .merge(search::router())
         .merge(profile::router())
         .merge(contact::router())

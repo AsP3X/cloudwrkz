@@ -60,6 +60,8 @@ import {
   AuditPage,
   DbConsolePage,
   UserDetailPage,
+  EmployeesPage,
+  EmployeeDetailPage,
   UserPermissionsListPage,
   UserPermissionDetailPage,
   GroupPermissionsListPage,
@@ -182,6 +184,8 @@ export default function App() {
                   <Route path="notifications" element={<NotificationsPage />} />
                   <Route path="statistics" element={<StatisticsPage />} />
                   <Route path="archive" element={<ArchivePage />} />
+                  <Route path="employees" element={<EmployeesPage />} />
+                  <Route path="employees/:id" element={<EmployeeDetailPage />} />
 
                   {/* Admin routes */}
                   <Route path="users/:id" element={<UserViewPage />} />

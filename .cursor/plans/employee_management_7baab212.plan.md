@@ -4,46 +4,46 @@ overview: Add a full employee management module accessible from both the admin a
 todos:
   - id: migration-employees
     content: "Write migration 016_employees.sql: enums, employees, employee_emails, employee_managers tables"
-    status: pending
+    status: completed
   - id: migration-permissions
     content: "Write migration 017_employee_permissions.sql: employees module, 5 permissions, admin group grants"
-    status: pending
+    status: completed
   - id: api-employees-rs
     content: "Write apps/api/src/routes/employees.rs: full CRUD + check-email + link-user handlers"
-    status: pending
+    status: completed
   - id: api-mod-rs
     content: Register employees module and router in apps/api/src/routes/mod.rs
-    status: pending
+    status: completed
   - id: frontend-types
     content: Add Employee, EmployeeEmail, EmployeeManager interfaces to types.ts
-    status: pending
+    status: completed
   - id: frontend-routes
     content: Add EMPLOYEES and EMPLOYEE_DETAIL to routes.ts
-    status: pending
+    status: completed
   - id: frontend-employees-page
     content: Create EmployeesPage.tsx with list, search/filter, and create/edit/delete dialogs including user-account creation/linking flow
-    status: pending
+    status: completed
   - id: frontend-employee-detail
     content: Create EmployeeDetailPage.tsx with full field display, email list, manager list, and link/unlink user action
-    status: pending
+    status: completed
   - id: frontend-pages-index
     content: Export both new page components from pages/index.ts
-    status: pending
+    status: completed
   - id: frontend-app-routes
     content: Add employees and employees/:id routes to App.tsx
-    status: pending
+    status: completed
   - id: sidebar-user
     content: "Add HR section with Employees link (moduleKey: employees) to DashboardSidebar.tsx"
-    status: pending
+    status: completed
   - id: sidebar-admin
     content: Add canViewEmployees prop and HR section to AdminSidebar.tsx
-    status: pending
+    status: completed
   - id: layout-employees
     content: Pass canViewEmployees to AdminSidebar in DashboardLayout.tsx
-    status: pending
+    status: completed
   - id: verify-build
     content: Run cargo check on api and tsc/vite build on web-vite to verify no errors
-    status: pending
+    status: completed
 isProject: false
 ---
 

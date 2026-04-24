@@ -2,6 +2,7 @@ import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils/cn";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
+
 import { useSidebar } from "../SidebarContext";
 import { CollapsibleNavSection } from "@/components/ui/CollapsibleNavSection";
 import { IconMyTime } from "../sidebarNavIcons";
@@ -84,6 +85,12 @@ const QueueIcon = () => (
   </svg>
 );
 
+const EmployeesIcon = () => (
+  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+  </svg>
+);
+
 export interface AdminSidebarProps {
   enabledModuleKeys: string[];
   canViewUsers: boolean;
@@ -98,6 +105,7 @@ export interface AdminSidebarProps {
   canManageSettings: boolean;
   /** View admin Background Jobs (queue + detail); also allow legacy access via Manage Settings. */
   canViewBackgroundJobs: boolean;
+  canViewEmployees: boolean;
 }
 
 export function AdminSidebar({
@@ -113,6 +121,7 @@ export function AdminSidebar({
   canViewDbConsole,
   canManageSettings,
   canViewBackgroundJobs,
+  canViewEmployees,
 }: AdminSidebarProps) {
   const pathname = useLocation().pathname;
   const { isMobileOpen, setIsMobileOpen, toolbarCompact } = useSidebar();
@@ -140,6 +149,10 @@ export function AdminSidebar({
     canViewSessions && { name: "Sessions", href: ROUTES.ADMIN_SESSIONS, icon: ClipboardIcon },
   ].filter(Boolean) as { name: string; href: string; icon: () => JSX.Element }[];
 
+  const hrItems = [
+    canViewEmployees && { name: "Employees", href: ROUTES.EMPLOYEES, icon: EmployeesIcon },
+  ].filter(Boolean) as { name: string; href: string; icon: () => JSX.Element }[];
+
   const permissionsItems = (canViewPermissions || canManagePermissions)
     ? [
         { name: "Groups", href: "/dashboard/admin/permissions/groups", icon: UsersIcon },
@@ -159,6 +172,7 @@ export function AdminSidebar({
   const hrefIsActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   const userMgmtHasActive = userMgmtItems.some((item) => hrefIsActive(item.href));
+  const hrHasActive = hrItems.some((item) => hrefIsActive(item.href));
   const permissionsHasActive = permissionsItems.some((item) => hrefIsActive(item.href));
   const systemHasActive = systemItems.some((item) => hrefIsActive(item.href));
   const timeAndLeaveHasActive =
@@ -287,6 +301,14 @@ export function AdminSidebar({
             {userMgmtItems.length > 0 && (
               <CollapsibleNavSection title="User Management" icon={<UsersIcon />} defaultExpanded={userMgmtHasActive}>
                 {userMgmtItems.map((item) => (
+                  <NavLink key={item.href} item={item} icon={item.icon} />
+                ))}
+              </CollapsibleNavSection>
+            )}
+
+            {hrItems.length > 0 && (
+              <CollapsibleNavSection title="HR" icon={<EmployeesIcon />} defaultExpanded={hrHasActive}>
+                {hrItems.map((item) => (
                   <NavLink key={item.href} item={item} icon={item.icon} />
                 ))}
               </CollapsibleNavSection>

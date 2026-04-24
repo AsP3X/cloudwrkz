@@ -37,6 +37,8 @@ export { default as NotificationsPage } from "./dashboard/NotificationsPage";
 export { default as StatisticsPage } from "./dashboard/StatisticsPage";
 export { default as ArchivePage } from "./dashboard/ArchivePage";
 export { default as UserViewPage } from "./dashboard/UserViewPage";
+export { default as EmployeesPage } from "./dashboard/EmployeesPage";
+export { default as EmployeeDetailPage } from "./dashboard/EmployeeDetailPage";
 
 export { default as UsersPage } from "./dashboard/admin/UsersPage";
 export { default as GroupsPage } from "./dashboard/admin/GroupsPage";
