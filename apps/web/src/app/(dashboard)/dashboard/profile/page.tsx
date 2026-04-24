@@ -88,73 +88,113 @@ export default async function ProfilePage() {
 
   return (
     <div className="space-y-6">
-      {/* Header — same pattern as Settings: icon + title + description */}
+      {/* ── Hero Card ──────────────────────────────────────────────────────── */}
       <div className="relative overflow-hidden bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800">
-        {/* Subtle gradient accent */}
-        <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 via-secondary-500/5 to-transparent pointer-events-none" />
+        {/* Top gradient accent stripe */}
+        <div className="h-1.5 w-full bg-gradient-to-r from-primary-500 via-secondary-500 to-primary-400" />
+
+        {/* Subtle body gradient */}
+        <div className="absolute inset-0 bg-gradient-to-br from-primary-500/[0.03] via-secondary-500/[0.03] to-transparent pointer-events-none" />
+
         <div className="relative p-6 sm:p-8">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-6">
-            <div className="flex items-center gap-4 flex-1">
-              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-gradient-to-br from-primary-100 to-secondary-100 dark:from-primary-900 dark:to-secondary-900 flex items-center justify-center text-2xl font-bold text-primary-700 dark:text-primary-300 flex-shrink-0 overflow-hidden ring-2 ring-white dark:ring-neutral-800 shadow-md">
-                {avatarUrl ? (
-                  <Image
-                    src={avatarUrl}
-                    alt={displayName}
-                    width={64}
-                    height={64}
-                    className="w-full h-full rounded-xl object-cover"
-                  />
-                ) : (
-                  <span>{displayName[0].toUpperCase()}</span>
+          <div className="flex flex-col sm:flex-row gap-6 sm:gap-8">
+            {/* Avatar */}
+            <div className="flex-shrink-0 self-start">
+              <div className="relative w-20 h-20 sm:w-24 sm:h-24">
+                <div className="w-full h-full rounded-2xl bg-gradient-to-br from-primary-100 to-secondary-100 dark:from-primary-900 dark:to-secondary-900 flex items-center justify-center text-3xl sm:text-4xl font-bold text-primary-700 dark:text-primary-300 overflow-hidden ring-4 ring-white dark:ring-neutral-900 shadow-lg">
+                  {avatarUrl ? (
+                    <Image
+                      src={avatarUrl}
+                      alt={displayName}
+                      width={96}
+                      height={96}
+                      className="w-full h-full rounded-2xl object-cover"
+                    />
+                  ) : (
+                    <span>{displayName[0].toUpperCase()}</span>
+                  )}
+                </div>
+                {profile.status === "ACTIVE" && (
+                  <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-success-500 border-2 border-white dark:border-neutral-900 rounded-full shadow-sm" />
                 )}
               </div>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-1">
-                  <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-neutral-100 tracking-tight">
-                    {displayName}
-                  </h1>
+            </div>
+
+            {/* Identity block */}
+            <div className="flex-1 min-w-0">
+              {/* Name + badges */}
+              <div className="flex flex-wrap items-start gap-x-3 gap-y-2 mb-2">
+                <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-neutral-100 tracking-tight leading-tight">
+                  {displayName}
+                </h1>
+                <div className="flex flex-wrap items-center gap-1.5 mt-1">
                   <span
-                    className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold uppercase tracking-wide border ${roleBadge.className}`}
+                    className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold uppercase tracking-wide ${roleBadge.className}`}
                   >
                     {roleBadge.label}
                   </span>
                   <span
-                    className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold uppercase tracking-wide border ${statusBadge.className}`}
+                    className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold uppercase tracking-wide ${statusBadge.className}`}
                   >
                     {statusBadge.label}
                   </span>
                 </div>
-                <p className="text-neutral-600 dark:text-neutral-400 text-sm sm:text-base truncate">
+              </div>
+
+              {/* Email + verification */}
+              <div className="flex flex-wrap items-center gap-2.5 mb-3">
+                <p className="text-sm text-neutral-600 dark:text-neutral-400">
                   {profile.email}
                 </p>
-                {profile.bio && (
-                  <p className="text-neutral-600 dark:text-neutral-400 mt-2 text-sm line-clamp-2 max-w-2xl">
-                    {profile.bio}
-                  </p>
+                {profile.emailVerified ? (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-success-600 dark:text-success-400 bg-success-50 dark:bg-success-950/50 px-1.5 py-0.5 rounded">
+                    <svg
+                      className="w-3 h-3"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={3}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                    Verified
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-950/50 px-1.5 py-0.5 rounded">
+                    <svg
+                      className="w-3 h-3"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    Unverified
+                  </span>
                 )}
               </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 border-t sm:border-t-0 sm:border-l border-neutral-200 dark:border-neutral-700 pt-4 sm:pt-0 sm:pl-6">
-              <span className="flex items-center gap-1.5">
-                <svg
-                  className="w-4 h-4 text-neutral-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                  />
-                </svg>
-                Member since {formatDateTime(profile.createdAt).split(",")[0]}
-              </span>
-              {profile.lastLoginAt && (
-                <span className="flex items-center gap-1.5">
+
+              {/* Bio */}
+              {profile.bio && profile.bio.trim().length > 0 && (
+                <p className="text-sm text-neutral-600 dark:text-neutral-400 line-clamp-2 max-w-xl mb-3 italic">
+                  &ldquo;{profile.bio}&rdquo;
+                </p>
+              )}
+
+              {/* Meta chips */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800 px-2.5 py-1 rounded-full">
                   <svg
-                    className="w-4 h-4 text-neutral-400"
+                    className="w-3.5 h-3.5"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -163,17 +203,56 @@ export default async function ProfilePage() {
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeWidth={2}
-                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                      d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
                     />
                   </svg>
-                  Last login {formatDateTime(profile.lastLoginAt).split(",")[0]}
+                  Member since {formatDateTime(profile.createdAt).split(",")[0]}
                 </span>
-              )}
+                {profile.lastLoginAt && (
+                  <span className="inline-flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800 px-2.5 py-1 rounded-full">
+                    <svg
+                      className="w-3.5 h-3.5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    Last login{" "}
+                    {formatDateTime(profile.lastLoginAt).split(",")[0]}
+                  </span>
+                )}
+                {profile.timezone && profile.timezone !== "UTC" && (
+                  <span className="inline-flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800 px-2.5 py-1 rounded-full">
+                    <svg
+                      className="w-3.5 h-3.5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064"
+                      />
+                    </svg>
+                    {profile.timezone}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
-          <div className="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-800 flex flex-wrap gap-3">
+
+          {/* Actions footer */}
+          <div className="mt-5 pt-5 border-t border-neutral-100 dark:border-neutral-800 flex flex-wrap gap-4">
             <Link
-              href={"/dashboard/settings"}
+              href="/dashboard/settings"
               className="inline-flex items-center gap-2 text-sm font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors"
             >
               <svg
@@ -195,13 +274,13 @@ export default async function ProfilePage() {
                   d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
                 />
               </svg>
-              Settings
+              Account Settings
             </Link>
           </div>
         </div>
       </div>
 
-      {/* Profile completeness */}
+      {/* ── Profile completeness ─────────────────────────────────────────── */}
       <ProfileCompleteness
         hasAvatar={!!profile.avatar}
         hasBio={!!(profile.bio && profile.bio.trim().length > 0)}
@@ -210,7 +289,7 @@ export default async function ProfilePage() {
         hasName={!!(profile.name && profile.name.trim().length > 0)}
       />
 
-      {/* Personal information — collapsible like Settings */}
+      {/* ── Personal information ─────────────────────────────────────────── */}
       <CollapsibleSection
         title="Personal information"
         description="Update your display name and bio"
@@ -239,7 +318,7 @@ export default async function ProfilePage() {
         />
       </CollapsibleSection>
 
-      {/* Account overview — read-only details */}
+      {/* ── Account overview ─────────────────────────────────────────────── */}
       <CollapsibleSection
         title="Account overview"
         description="Your account details and verification status"
@@ -270,7 +349,12 @@ export default async function ProfilePage() {
             </p>
             {profile.emailVerified ? (
               <div className="flex items-center gap-1.5 mt-1.5 text-success-600 dark:text-success-400 text-xs font-medium">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -282,7 +366,12 @@ export default async function ProfilePage() {
               </div>
             ) : (
               <div className="flex items-center gap-1.5 mt-1.5 text-yellow-600 dark:text-yellow-400 text-xs font-medium">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -294,6 +383,7 @@ export default async function ProfilePage() {
               </div>
             )}
           </div>
+
           <div>
             <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-2 block">
               Timezone
@@ -302,6 +392,7 @@ export default async function ProfilePage() {
               {profile.timezone ?? "UTC"}
             </p>
           </div>
+
           <div>
             <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-2 block">
               Role
@@ -312,6 +403,7 @@ export default async function ProfilePage() {
               {roleBadge.label}
             </span>
           </div>
+
           <div>
             <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-2 block">
               Status
@@ -322,11 +414,32 @@ export default async function ProfilePage() {
               {statusBadge.label}
             </span>
           </div>
+
+          <div>
+            <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-2 block">
+              Member since
+            </span>
+            <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+              {formatDateTime(profile.createdAt)}
+            </p>
+          </div>
+
+          {profile.lastLoginAt && (
+            <div>
+              <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-2 block">
+                Last login
+              </span>
+              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                {formatDateTime(profile.lastLoginAt)}
+              </p>
+            </div>
+          )}
         </div>
-        <p className="mt-4 text-xs text-neutral-500 dark:text-neutral-400">
+
+        <p className="mt-6 pt-4 border-t border-neutral-100 dark:border-neutral-800 text-xs text-neutral-500 dark:text-neutral-400">
           To change email, password, or other account settings, go to{" "}
           <Link
-            href={"/dashboard/settings"}
+            href="/dashboard/settings"
             className="font-medium text-primary-600 dark:text-primary-400 hover:underline"
           >
             Settings
