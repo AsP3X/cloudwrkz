@@ -6,10 +6,12 @@ import { ProfileCompleteness } from "@/components/features/settings/ProfileCompl
 import { formatDateTime } from "@/lib/utils/date";
 import { getAvatarUrl } from "@/lib/utils/users";
 import { api } from "@/api/client";
+import { Button } from "@/components/ui/Button";
+import { Dialog } from "@/components/ui/Dialog";
 import type { Employee, EmployeeStatus } from "@/lib/types";
 
-// Human: Signed-in profile overview with avatar, role/status badges, completeness, employment card, and editable sections.
-// Agent: FETCH /employees to find linked employee by linkedUserId; RENDER hero, employment section, ProfileForm, account overview.
+// Human: Signed-in profile overview with avatar, role/status badges, completeness, employment dialog entry, and editable sections.
+// Agent: FETCH /employees/me; RENDER hero stats, button opens EmploymentDetailsDialog, ProfileForm, account overview.
 
 function getRoleBadge(role: string) {
   switch (role) {
@@ -123,13 +125,181 @@ function InfoField({ label, value }: { label: string; value: React.ReactNode }) 
   );
 }
 
-// Human: Layout shell: hero, employment card (when linked), personal info form, account overview.
-// Agent: FETCH linked employee via /employees search; DERIVE displayName, avatarUrl, badges; CONDITIONAL employment section.
+function formatMoney(n: number | null | undefined) {
+  if (n == null) return "—";
+  return n.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 0 });
+}
+
+// Human: Modal body for linked employee: identity, work contact, org, time off, managers, optional compensation.
+// Agent: RENDER from Employee; vacation bar when vacationTotal > 0.
+
+function EmploymentDetailsDialog({
+  open,
+  onOpenChange,
+  employee,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  employee: Employee;
+}) {
+  const statusCfg = getEmployeeStatusConfig(employee.employeeStatus);
+  const vacationTotal =
+    employee.vacationAvailable + employee.vacationUsed + employee.vacationPlanned;
+  const usedPct =
+    vacationTotal > 0
+      ? Math.min(100, Math.round((employee.vacationUsed / vacationTotal) * 100))
+      : 0;
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Employment details"
+      description="Information from your linked employee record."
+      className="sm:max-w-lg"
+    >
+      <div className="px-5 sm:px-7 py-4 space-y-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+            {employee.firstName} {employee.lastName}
+          </p>
+          <span
+            className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${statusCfg.className}`}
+          >
+            {statusCfg.label}
+          </span>
+        </div>
+
+        <div className="space-y-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+            Work contact
+          </h3>
+          <InfoField label="Work email" value={employee.email} />
+          {employee.emails && employee.emails.length > 0 && (
+            <div>
+              <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block mb-1.5">
+                Additional emails
+              </span>
+              <ul className="text-sm text-neutral-800 dark:text-neutral-200 space-y-1.5">
+                {employee.emails.map((e) => (
+                  <li key={e.id}>
+                    {e.email}
+                    {e.label ? (
+                      <span className="text-neutral-500 dark:text-neutral-400"> ({e.label})</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+            {"Role & organization"}
+          </h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {employee.title && <InfoField label="Job title" value={employee.title} />}
+            {employee.department && <InfoField label="Department" value={employee.department} />}
+            <InfoField label="Company role" value={employee.companyRole || "—"} />
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+            Time off
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="rounded-lg p-2.5 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700">
+              <p className="text-lg font-bold text-neutral-900 dark:text-neutral-100">{employee.vacationAvailable}</p>
+              <p className="text-xs text-neutral-500">Vacation available</p>
+            </div>
+            <div className="rounded-lg p-2.5 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700">
+              <p className="text-lg font-bold text-neutral-900 dark:text-neutral-100">{employee.vacationUsed}</p>
+              <p className="text-xs text-neutral-500">Vacation used</p>
+            </div>
+            <div className="rounded-lg p-2.5 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700">
+              <p className="text-lg font-bold text-neutral-900 dark:text-neutral-100">{employee.vacationPlanned}</p>
+              <p className="text-xs text-neutral-500">Vacation planned</p>
+            </div>
+            <div className="rounded-lg p-2.5 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700">
+              <p className="text-lg font-bold text-neutral-900 dark:text-neutral-100">
+                {employee.sickDaysAvailable}/{employee.sickDaysTotal}
+              </p>
+              <p className="text-xs text-neutral-500">Sick days (avail. / total)</p>
+            </div>
+          </div>
+          {vacationTotal > 0 && (
+            <div>
+              <div className="flex justify-between text-xs text-neutral-500 dark:text-neutral-400 mb-1.5">
+                <span>Vacation usage</span>
+                <span>
+                  {employee.vacationUsed} / {vacationTotal} days
+                </span>
+              </div>
+              <div className="h-2 rounded-full bg-neutral-100 dark:bg-neutral-800 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-primary-500 to-secondary-500"
+                  style={{ width: `${usedPct}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+            {"Compensation & hours"}
+          </h3>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <InfoField label="Monthly salary" value={formatMoney(employee.monthlySalary)} />
+            <InfoField label="Monthly expenses" value={formatMoney(employee.monthlyExpenses)} />
+            <InfoField
+              label="Hours worked"
+              value={employee.hoursWorked != null ? String(employee.hoursWorked) : "—"}
+            />
+          </div>
+        </div>
+
+        {employee.managers && employee.managers.length > 0 && (
+          <div className="space-y-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+              Managers
+            </h3>
+            <ul className="text-sm space-y-2">
+              {employee.managers.map((m) => (
+                <li
+                  key={m.id}
+                  className="rounded-lg border border-neutral-200 dark:border-neutral-700 px-3 py-2 bg-neutral-50/80 dark:bg-neutral-800/40"
+                >
+                  <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                    {m.firstName} {m.lastName}
+                  </span>
+                  <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{m.email}</div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="pt-1 flex justify-end">
+          <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+// Human: Layout shell: hero, employment CTA + dialog, personal info form, account overview.
+// Agent: FETCH linked employee via /employees/me; DERIVE displayName, avatarUrl, badges; CONDITIONAL employment button + dialog.
 
 export default function ProfilePage() {
   const { user, refreshUser } = useAuth();
   const [linkedEmployee, setLinkedEmployee] = useState<Employee | null>(null);
   const [employeeLoading, setEmployeeLoading] = useState(true);
+  const [employmentOpen, setEmploymentOpen] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -147,15 +317,6 @@ export default function ProfilePage() {
   const statusBadge = getStatusBadge(user.status);
   const avatarUrl = getAvatarUrl(user.avatar);
 
-  const employeeStatusConfig = linkedEmployee
-    ? getEmployeeStatusConfig(linkedEmployee.employeeStatus)
-    : null;
-
-  const vacationTotal = linkedEmployee
-    ? linkedEmployee.vacationAvailable +
-      linkedEmployee.vacationUsed +
-      linkedEmployee.vacationPlanned
-    : 0;
   const profileScore = useMemo(() => {
     const checks = [
       !!user.name?.trim(),
@@ -249,42 +410,39 @@ export default function ProfilePage() {
       </div>
 
       <section className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 sm:p-8">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100">Employment Workspace</h2>
-            <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">All critical employment data linked to your user profile.</p>
+            <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100">Employment</h2>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
+              Open a summary of your linked employment record when you need the details.
+            </p>
           </div>
+          {employeeLoading ? (
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 sm:text-right">Checking link…</p>
+          ) : linkedEmployee ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setEmploymentOpen(true)}
+            >
+              View employment details
+            </Button>
+          ) : null}
         </div>
-        {employeeLoading ? (
-          <p className="mt-6 text-sm text-neutral-500 dark:text-neutral-400">Loading employment data...</p>
-        ) : !linkedEmployee ? (
-          <div className="mt-6 rounded-xl border border-dashed border-neutral-300 dark:border-neutral-700 p-6 text-sm text-neutral-500 dark:text-neutral-400">
-            No linked employment record found for this user yet.
-          </div>
-        ) : (
-          <div className="mt-6 space-y-6">
-            <div className="grid gap-4 sm:grid-cols-3">
-              {linkedEmployee.title && <InfoField label="Job title" value={linkedEmployee.title} />}
-              {linkedEmployee.department && <InfoField label="Department" value={linkedEmployee.department} />}
-              <InfoField label="Company role" value={linkedEmployee.companyRole || "Not set"} />
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="rounded-xl p-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700"><p className="text-xl font-bold">{linkedEmployee.vacationAvailable}</p><p className="text-xs text-neutral-500">Vacation available</p></div>
-              <div className="rounded-xl p-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700"><p className="text-xl font-bold">{linkedEmployee.vacationUsed}</p><p className="text-xs text-neutral-500">Vacation used</p></div>
-              <div className="rounded-xl p-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700"><p className="text-xl font-bold">{linkedEmployee.vacationPlanned}</p><p className="text-xs text-neutral-500">Vacation planned</p></div>
-              <div className="rounded-xl p-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700"><p className="text-xl font-bold">{linkedEmployee.sickDaysAvailable}/{linkedEmployee.sickDaysTotal}</p><p className="text-xs text-neutral-500">Sick days left</p></div>
-            </div>
-            {vacationTotal > 0 && (
-              <div>
-                <div className="flex justify-between text-xs text-neutral-500 mb-1.5"><span>Vacation usage</span><span>{linkedEmployee.vacationUsed}/{vacationTotal}</span></div>
-                <div className="h-2 rounded-full bg-neutral-100 dark:bg-neutral-800 overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-primary-500 to-secondary-500" style={{ width: `${Math.min(100, Math.round((linkedEmployee.vacationUsed / vacationTotal) * 100))}%` }} />
-                </div>
-              </div>
-            )}
-          </div>
+        {!employeeLoading && !linkedEmployee && (
+          <p className="mt-4 text-sm text-neutral-500 dark:text-neutral-400 rounded-xl border border-dashed border-neutral-300 dark:border-neutral-700 px-4 py-3">
+            No linked employment record for this account.
+          </p>
         )}
       </section>
+
+      {linkedEmployee && (
+        <EmploymentDetailsDialog
+          open={employmentOpen}
+          onOpenChange={setEmploymentOpen}
+          employee={linkedEmployee}
+        />
+      )}
 
       <section className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 sm:p-8">
         <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100">Personal Information</h2>
