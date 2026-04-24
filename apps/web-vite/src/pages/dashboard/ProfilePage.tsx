@@ -364,23 +364,22 @@ export default function ProfilePage() {
     <div className="space-y-8">
       <div className="grid gap-6 xl:grid-cols-12">
         <section className="xl:col-span-8 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-soft-lg overflow-hidden">
-          <div className="px-6 sm:px-8 py-7 bg-gradient-to-r from-primary-600 via-primary-500 to-secondary-500 text-white">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+          <div className="p-6 sm:p-8">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6 mb-6">
               <div className="min-w-0">
-                <p className="text-xs uppercase tracking-[0.2em] text-white/70">Account command center</p>
-                <h1 className="mt-2 text-3xl sm:text-4xl font-bold leading-tight">{displayName}</h1>
-                <p className="mt-2 text-sm sm:text-base text-white/80 max-w-2xl">
+                <p className="text-xs uppercase tracking-[0.2em] text-neutral-500 dark:text-neutral-400">Account command center</p>
+                <h1 className="mt-2 text-3xl sm:text-4xl font-bold leading-tight text-neutral-900 dark:text-neutral-100">{displayName}</h1>
+                <p className="mt-2 text-sm sm:text-base text-neutral-600 dark:text-neutral-300 max-w-2xl">
                   Your identity and account health in one place.
                 </p>
               </div>
               <div className="shrink-0 flex flex-col items-stretch sm:items-end justify-center gap-1">
                 {employeeLoading ? (
-                  <span className="text-sm text-white/80 py-2 sm:py-0">Checking employment link…</span>
+                  <span className="text-sm text-neutral-500 dark:text-neutral-400 py-2 sm:py-0">Checking employment link...</span>
                 ) : (
                   <Button
                     type="button"
-                    variant="primary"
-                    className="!bg-white !text-primary-800 shadow-sm hover:!bg-white/95 dark:!bg-white dark:!text-primary-900"
+                    variant="outline"
                     onClick={() => setEmploymentOpen(true)}
                   >
                     View employment details
@@ -388,8 +387,6 @@ export default function ProfilePage() {
                 )}
               </div>
             </div>
-          </div>
-          <div className="p-6 sm:p-8">
             <div className="flex flex-col sm:flex-row gap-5">
               <div className="relative w-20 h-20 sm:w-24 sm:h-24 shrink-0">
                 <div className="w-full h-full rounded-2xl bg-neutral-100 dark:bg-neutral-800 overflow-hidden ring-4 ring-white dark:ring-neutral-900 shadow-lg flex items-center justify-center text-3xl font-bold text-primary-700 dark:text-primary-300">
