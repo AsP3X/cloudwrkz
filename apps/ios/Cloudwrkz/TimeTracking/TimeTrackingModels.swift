@@ -9,7 +9,7 @@
 import Foundation
 
 // Human: Time entry entities, status machine, duration math for live counters, and filter/date-range defaults tied to account settings.
-// Agent: Decodable time entry API wrappers; TimeEntryStatus RUNNING|PAUSED|STOPPED|COMPLETED; TimeEntry breaks user ticketId; TimeTrackingUtils elapsed/break seconds; TimeTrackingFilters READS AccountSettingsStorage default period UserDefaults-backed.
+// Agent: Decodable time entry API wrappers; TimeEntryStatus RUNNING|PAUSED|STOPPED|COMPLETED; TimeEntry+ listRunRange*; DraftTimeEntryBreak add/edit drafts; TimeEntry breaks user ticketId; TimeTrackingUtils elapsed/break seconds; TimeTrackingFilters READS AccountSettingsStorage default period UserDefaults-backed.
 
 // MARK: - API responses
 
@@ -105,6 +105,26 @@ struct TimeEntry: Identifiable, Decodable, Hashable {
     }
 }
 
+extension TimeEntry {
+    // Human: Overview list rows show a clock span (start–end). Running timers have no fixed end until stop/complete; paused rows end at `pausedAt`.
+    // Agent: READS startedAt status pausedAt stoppedAt completedAt; listRunRangeStart=startedAt; listRunRangeEndFixed nil iff RUNNING else wall end.
+    var listRunRangeStart: Date { startedAt }
+
+    /// When non-nil, the list can show `start – end` without a live clock (paused, stopped, completed).
+    var listRunRangeEndFixed: Date? {
+        switch status {
+        case .running:
+            return nil
+        case .paused:
+            return pausedAt
+        case .stopped:
+            return stoppedAt ?? completedAt
+        case .completed:
+            return completedAt ?? stoppedAt
+        }
+    }
+}
+
 // MARK: - TimeEntryBreak
 
 // Human: A pause segment inside a time entry, with optional end time, computed duration, and notes.
@@ -117,6 +137,48 @@ struct TimeEntryBreak: Identifiable, Decodable, Hashable {
     let description: String?
     let createdAt: Date
     let updatedAt: Date
+}
+
+// Human: Draft break row for add/edit flows before rows hit the API—matches edit sheet list + AddBreakSheet local persistence.
+// Agent: DraftTimeEntryBreak Identifiable Equatable; inits from TimeEntryBreak and local-only id; static totalBreakSeconds REDUCES duration/interval.
+struct DraftTimeEntryBreak: Identifiable, Equatable {
+    let id: String
+    var startedAt: Date
+    var endedAt: Date?
+    var duration: Int?
+    var description: String?
+    let createdAt: Date
+    let updatedAt: Date
+
+    init(from b: TimeEntryBreak) {
+        id = b.id
+        startedAt = b.startedAt
+        endedAt = b.endedAt
+        duration = b.duration
+        description = b.description
+        createdAt = b.createdAt
+        updatedAt = b.updatedAt
+    }
+
+    init(localId: String, startedAt: Date, endedAt: Date, description: String?) {
+        id = localId
+        self.startedAt = startedAt
+        self.endedAt = endedAt
+        duration = max(0, Int(endedAt.timeIntervalSince(startedAt)))
+        self.description = description
+        let now = Date()
+        createdAt = now
+        updatedAt = now
+    }
+
+    /// Sum seconds for timing summaries (prefers `duration`, else closed interval from start/end).
+    static func totalBreakSeconds(in breaks: [DraftTimeEntryBreak]) -> Int {
+        breaks.reduce(0) { acc, br in
+            if let d = br.duration { return acc + max(0, d) }
+            if let end = br.endedAt { return acc + max(0, Int(end.timeIntervalSince(br.startedAt))) }
+            return acc
+        }
+    }
 }
 
 // MARK: - Duration helpers

@@ -1546,15 +1546,69 @@ async fn exec_time_entry_manual_create(
     }
 
     let id = new_cuid();
-    let total_secs =
-        body.hours.unwrap_or(0) * 3600 + body.minutes.unwrap_or(0) * 60 + body.seconds.unwrap_or(0);
-
     let started_at = body
         .started_at
         .as_deref()
         .and_then(parse_api_utc_naive_datetime)
         .unwrap_or_else(|| chrono::Utc::now().naive_utc());
-    let stopped_at = started_at + chrono::Duration::seconds(total_secs as i64);
+
+    let manual_breaks_nonempty = body
+        .manual_breaks
+        .as_ref()
+        .map(|v| !v.is_empty())
+        .unwrap_or(false);
+    let has_explicit_stop = body
+        .stopped_at
+        .as_deref()
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false);
+    if manual_breaks_nonempty && !has_explicit_stop {
+        return JobExecOutcome::Fail(AppError::bad_request(
+            "manual_breaks requires stopped_at (wall-clock end of the entry)",
+        ));
+    }
+
+    // Human: iOS sends `stopped_at` + optional `manual_breaks` (same pattern as edit). Legacy path omits `stopped_at` and uses worked H/M/S + optional `break_seconds` with one trailing break row.
+    // Agent: COMPUTE stopped_at wall_secs_i32; INSERT time_entries; INSERT manual_breaks OR legacy synthetic break.
+    let (stopped_at, wall_secs_i32) = if has_explicit_stop {
+        let st_raw = body.stopped_at.as_deref().map(str::trim).unwrap_or("");
+        let stopped = match parse_api_utc_naive_datetime(st_raw) {
+            Some(dt) => dt,
+            None => {
+                return JobExecOutcome::Fail(AppError::bad_request(
+                    "Invalid stopped_at timestamp (expected ISO-8601 / RFC3339)",
+                ));
+            }
+        };
+        let wall_secs = stopped.signed_duration_since(started_at).num_seconds();
+        if wall_secs < 0 {
+            return JobExecOutcome::Fail(AppError::bad_request(
+                "stopped_at must be on or after started_at",
+            ));
+        }
+        if wall_secs > i32::MAX as i64 {
+            return JobExecOutcome::Fail(AppError::bad_request(
+                "Entry duration exceeds the maximum allowed size",
+            ));
+        }
+        (stopped, wall_secs as i32)
+    } else {
+        let work_secs = (body.hours.unwrap_or(0) as i64 * 3600
+            + body.minutes.unwrap_or(0) as i64 * 60
+            + body.seconds.unwrap_or(0) as i64)
+            .max(0);
+        let break_secs = body.break_seconds.unwrap_or(0).max(0) as i64;
+        let wall_secs = work_secs.saturating_add(break_secs);
+        if wall_secs > i32::MAX as i64 {
+            return JobExecOutcome::Fail(AppError::bad_request(
+                "Combined worked duration and break exceed the maximum allowed size",
+            ));
+        }
+        let wall_secs_i32 = wall_secs as i32;
+        let stopped = started_at + chrono::Duration::seconds(wall_secs);
+        (stopped, wall_secs_i32)
+    };
+
     let tags = body.tags.unwrap_or_default();
 
     let res = sqlx::query(
@@ -1568,7 +1622,7 @@ async fn exec_time_entry_manual_create(
     .bind(&body.description)
     .bind(started_at)
     .bind(stopped_at)
-    .bind(total_secs)
+    .bind(wall_secs_i32)
     .bind(&user_id)
     .bind(&tags)
     .bind(body.billable.unwrap_or(false))
@@ -1580,6 +1634,84 @@ async fn exec_time_entry_manual_create(
         let _ = tx.rollback().await;
         return map_sqlx_ticket(e);
     }
+
+    if let Some(ref breaks) = body.manual_breaks {
+        if !breaks.is_empty() {
+            for br in breaks {
+                let b_start = match parse_api_utc_naive_datetime(br.started_at.trim()) {
+                    Some(dt) => dt,
+                    None => {
+                        return JobExecOutcome::Fail(AppError::bad_request(
+                            "Invalid break started_at (expected ISO-8601 / RFC3339)",
+                        ));
+                    }
+                };
+                let b_end = match parse_api_utc_naive_datetime(br.ended_at.trim()) {
+                    Some(dt) => dt,
+                    None => {
+                        return JobExecOutcome::Fail(AppError::bad_request(
+                            "Invalid break ended_at (expected ISO-8601 / RFC3339)",
+                        ));
+                    }
+                };
+                if b_end <= b_start {
+                    return JobExecOutcome::Fail(AppError::bad_request(
+                        "Each break must have end time after start time",
+                    ));
+                }
+                if b_start < started_at || b_end > stopped_at {
+                    return JobExecOutcome::Fail(AppError::bad_request(
+                        "Each break must fall within the entry start and end times",
+                    ));
+                }
+                let dur = b_end.signed_duration_since(b_start).num_seconds();
+                if dur > i32::MAX as i64 || dur < 0 {
+                    return JobExecOutcome::Fail(AppError::bad_request("Break duration is invalid"));
+                }
+                let break_id = new_cuid();
+                if let Err(e) = sqlx::query(
+                    r#"INSERT INTO time_entry_breaks (id, time_entry_id, started_at, ended_at, duration, description, created_at, updated_at)
+                       VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())"#,
+                )
+                .bind(&break_id)
+                .bind(&id)
+                .bind(b_start)
+                .bind(b_end)
+                .bind(dur as i32)
+                .bind(&br.description)
+                .execute(&mut *tx)
+                .await
+                {
+                    let _ = tx.rollback().await;
+                    return map_sqlx_ticket(e);
+                }
+            }
+        }
+    } else if !has_explicit_stop {
+        let break_secs = body.break_seconds.unwrap_or(0).max(0) as i64;
+        if break_secs > 0 {
+            let break_id = new_cuid();
+            let break_start = stopped_at - chrono::Duration::seconds(break_secs);
+            let break_duration_i32: i32 = break_secs.try_into().unwrap_or(i32::MAX);
+            if let Err(e) = sqlx::query(
+                r#"INSERT INTO time_entry_breaks (id, time_entry_id, started_at, ended_at, duration, description, created_at, updated_at)
+                   VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())"#,
+            )
+            .bind(&break_id)
+            .bind(&id)
+            .bind(break_start)
+            .bind(stopped_at)
+            .bind(break_duration_i32)
+            .bind(Option::<String>::None)
+            .execute(&mut *tx)
+            .await
+            {
+                let _ = tx.rollback().await;
+                return map_sqlx_ticket(e);
+            }
+        }
+    }
+
     if let Err(e) = tx.commit().await {
         return map_sqlx_ticket(e);
     }

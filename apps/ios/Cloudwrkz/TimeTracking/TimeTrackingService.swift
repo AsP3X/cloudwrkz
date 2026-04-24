@@ -77,6 +77,22 @@ enum TimeTrackingService {
         return e
     }
 
+    /// Same date encoding as `dateEncoder` with **snake_case** keys so the body matches `AddTimeEntryRequest` in the Rust API (e.g. `started_at` / `stopped_at`).
+    // Human: The add job records `to_value` of the parsed struct; key shape must match serde field names.
+    // Agent: keyEncodingStrategy convertToSnakeCase; USED addTimeEntry POST …/add only.
+    private static var manualAddEntryJSONEncoder: JSONEncoder {
+        let e = JSONEncoder()
+        e.keyEncodingStrategy = .convertToSnakeCase
+        e.dateEncodingStrategy = .custom { date, encoder in
+            var c = encoder.singleValueContainer()
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            formatter.timeZone = TimeZone(identifier: "UTC")
+            try c.encode(formatter.string(from: date))
+        }
+        return e
+    }
+
     // MARK: - GET /api/time-tracking (list)
 
     static func fetchTimeEntries(
@@ -183,14 +199,14 @@ enum TimeTrackingService {
         AppIdentity.apply(to: &request)
         request.httpBody = try? dateEncoder.encode(input)
 
-        return await execute(request: request, decode: { data in
-            let decoded = try JSONDecoder().decode(CreateTimeEntryResponse.self, from: data)
-            return decoded.id
-        })
+        // Human: POST create is always queued on the Rust API (202 + mutation job); we poll until the job exposes `{ id }` like a synchronous 201.
+        // Agent: CALLS executeCreateReturningId; ON success RETURNS new time entry id string.
+        return await executeCreateReturningId(config: config, request: request)
     }
 
     // MARK: - POST /api/time-tracking/add (manual entry with duration)
 
+    /// Carries worked duration, `startedAt`, and `stoppedAt` (wall). Breaks are **not** in this body—the add sheet calls `addBreak` per draft after create succeeds (same as edit’s sync path).
     struct AddManualInput: Encodable {
         var name: String
         var description: String?
@@ -201,6 +217,7 @@ enum TimeTrackingService {
         var minutes: Int
         var seconds: Int
         var startedAt: Date
+        var stoppedAt: Date
     }
 
     static func addTimeEntry(config: ServerConfig, input: AddManualInput) async -> Result<String, TimeTrackingServiceError> {
@@ -214,12 +231,15 @@ enum TimeTrackingService {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         AppIdentity.apply(to: &request)
-        request.httpBody = try? dateEncoder.encode(input)
+        do {
+            request.httpBody = try Self.manualAddEntryJSONEncoder.encode(input)
+        } catch {
+            return .failure(.serverError(message: "Could not encode the time entry for the server."))
+        }
 
-        return await execute(request: request, decode: { data in
-            let decoded = try JSONDecoder().decode(CreateTimeEntryResponse.self, from: data)
-            return decoded.id
-        })
+        // Human: Manual add matches timer create—HTTP 202 and `GET …/mutation-jobs/{id}` carry the real `{ id }` when the worker finishes.
+        // Agent: CALLS executeCreateReturningId for POST …/add; SAME queue contract as createTimeEntry.
+        return await executeCreateReturningId(config: config, request: request)
     }
 
     // MARK: - PATCH /api/time-tracking/[id] (update)
@@ -525,7 +545,134 @@ enum TimeTrackingService {
         return .failure(.serverError(message: "The server took too long to apply your change. Please try again."))
     }
 
+    /// Polls after HTTP 202 on time-entry **create** routes until `status == completed`, then reads `body.id` (same shape as synchronous `CreateTimeEntryResponse`).
+    // Human: Entity-create jobs store `JsonMutationResult` with HTTP 201 and `{ "id": "…" }` in the job row; the list UI only needs that id once the job succeeds.
+    // Agent: GET mutation-jobs loop; ON completed READS http_status body.id; REQUIRES non-empty id on 2xx.
+    private static func pollMutationJobForCreatedId(
+        config: ServerConfig,
+        jobId: String,
+        retryDeadlineSecs: UInt32
+    ) async -> Result<String, TimeTrackingServiceError> {
+        guard let base = config.baseURL else {
+            return .failure(.noServerURL)
+        }
+        guard let token = AuthTokenStorage.getToken(), !token.isEmpty else {
+            return .failure(.noToken)
+        }
+        let segments = mutationJobPathSegments(loginPath: config.loginPath, jobId: jobId)
+        guard !segments.isEmpty else {
+            return .failure(.noServerURL)
+        }
+        var statusURL = base
+        for s in segments {
+            statusURL = statusURL.appending(path: s)
+        }
+        let maxWait = TimeInterval(retryDeadlineSecs + 5)
+        let deadline = Date().addingTimeInterval(maxWait)
+
+        var pollIndex = 0
+        while Date() < deadline {
+            if pollIndex > 0 {
+                try? await Task.sleep(nanoseconds: mutationJobPollIntervalNs)
+            }
+            pollIndex += 1
+            var request = URLRequest(url: statusURL)
+            request.httpMethod = "GET"
+            request.timeoutInterval = timeout
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            AppIdentity.apply(to: &request)
+            let data: Data
+            let http: HTTPURLResponse
+            do {
+                let (d, response) = try await URLSession.shared.data(for: request)
+                guard let h = response as? HTTPURLResponse else {
+                    return .failure(.serverError(message: "Invalid response"))
+                }
+                data = d
+                http = h
+            } catch {
+                let description = (error as? URLError)?.localizedDescription ?? error.localizedDescription
+                return .failure(.networkError(description: description))
+            }
+            if http.statusCode == 401 {
+                SessionExpiredNotifier.notify()
+                return .failure(.unauthorized)
+            }
+            guard http.statusCode == 200,
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let stRaw = (obj["status"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !stRaw.isEmpty
+            else {
+                continue
+            }
+            let st = stRaw.lowercased()
+            if st == "completed" {
+                let code = intFromJsonNumber(obj, key: "http_status") ?? 200
+                if code >= 400 {
+                    let msg = (obj["message"] as? String) ?? "Request failed"
+                    return .failure(.serverError(message: msg))
+                }
+                guard let body = obj["body"] as? [String: Any] else {
+                    return .failure(.serverError(message: "Server did not return the new entry id."))
+                }
+                let rawId = (body["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard let rawId, !rawId.isEmpty else {
+                    return .failure(.serverError(message: "Server did not return the new entry id."))
+                }
+                return .success(rawId)
+            }
+            if st == "failed" {
+                let msg = (obj["message"] as? String) ?? "Change could not be applied"
+                return .failure(.serverError(message: msg))
+            }
+        }
+        return .failure(.serverError(message: "The server took too long to apply your change. Please try again."))
+    }
+
     // MARK: - Shared helpers
+
+    /// POST create/add: synchronous `200/201` + `{ id }`, or `202` + poll mutation job for the same `{ id }` in the completed job body.
+    // Human: Matches `execute` but treats 202 like `executeVoid`—decode `job_id`, wait for the worker, then return the new row id for callers that dismiss sheets on success.
+    // Agent: URLSession POST; ON 200/201 DECODE CreateTimeEntryResponse; ON 202 DECODE MutationQueuedPayload CALL pollMutationJobForCreatedId; SAME auth/notFound/4xx paths as execute.
+    private static func executeCreateReturningId(
+        config: ServerConfig,
+        request: URLRequest
+    ) async -> Result<String, TimeTrackingServiceError> {
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                return .failure(.serverError(message: "Invalid response"))
+            }
+            switch http.statusCode {
+            case 200, 201:
+                let decoded = try JSONDecoder().decode(CreateTimeEntryResponse.self, from: data)
+                return .success(decoded.id)
+            case 202:
+                guard let queued = try? JSONDecoder().decode(MutationQueuedPayload.self, from: data),
+                      let jid = queued.resolvedJobId, !jid.isEmpty
+                else {
+                    return .failure(.serverError(message: "Change was queued but no job id was returned"))
+                }
+                let deadline = queued.retry_deadline_secs ?? 120
+                return await pollMutationJobForCreatedId(config: config, jobId: jid, retryDeadlineSecs: deadline)
+            case 401:
+                SessionExpiredNotifier.notify()
+                return .failure(.unauthorized)
+            case 404:
+                return .failure(.notFound)
+            case 400...599:
+                return .failure(.serverError(message: apiErrorMessage(from: data, statusCode: http.statusCode)))
+            default:
+                return .failure(.serverError(message: "Unexpected status \(http.statusCode)"))
+            }
+        } catch let error as DecodingError {
+            return .failure(.serverError(message: decodingErrorDescription(error)))
+        } catch {
+            let description = (error as? URLError)?.localizedDescription ?? error.localizedDescription
+            return .failure(.networkError(description: description))
+        }
+    }
 
     private static func postAction(config: ServerConfig, id: String, action: String) async -> Result<Void, TimeTrackingServiceError> {
         guard let url = buildURL(config: config, extraSegments: [id, action]) else { return .failure(.noServerURL) }

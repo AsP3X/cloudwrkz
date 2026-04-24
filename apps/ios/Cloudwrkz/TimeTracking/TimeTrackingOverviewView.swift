@@ -812,6 +812,36 @@ struct TimeTrackingOverviewView: View {
     }
 }
 
+// MARK: - Run range (start–end) for list rows
+
+/// Shows `startedAt – end` using short date/time; running timers refresh the end via `TimelineView` so “to now” stays accurate without per-second timers on every row.
+// Human: One line answers “when did this block run?” for manual blocks and live timers alike.
+// Agent: READS TimeEntry.listRunRangeStart listRunRangeEndFixed status; TimelineView periodic 30s when end not fixed (RUNNING).
+private struct TimeEntryRunRangeText: View {
+    let entry: TimeEntry
+
+    private static let rangeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .short
+        f.timeStyle = .short
+        return f
+    }()
+
+    var body: some View {
+        Group {
+            if let endFixed = entry.listRunRangeEndFixed {
+                Text("\(Self.rangeFormatter.string(from: entry.listRunRangeStart)) – \(Self.rangeFormatter.string(from: endFixed))")
+            } else {
+                TimelineView(.periodic(from: .now, by: 30)) { context in
+                    Text("\(Self.rangeFormatter.string(from: entry.listRunRangeStart)) – \(Self.rangeFormatter.string(from: context.date))")
+                }
+            }
+        }
+        .font(.system(size: 12, weight: .regular))
+        .foregroundStyle(CloudwrkzColors.neutral500)
+    }
+}
+
 // MARK: - Live duration text (own timer so row/context menu do not re-render)
 
 private struct LiveDurationText: View {
@@ -946,6 +976,7 @@ private struct ActiveTimerRow: View {
                             .foregroundStyle(CloudwrkzColors.neutral400)
                             .lineLimit(1)
                     }
+                    TimeEntryRunRangeText(entry: entry)
                 }
                 Spacer(minLength: 8)
                 VStack(alignment: .trailing, spacing: 2) {
@@ -1065,13 +1096,6 @@ private struct TimeEntryRow: View {
     var onResume: () -> Void
     var onStop: () -> Void
 
-    private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .short
-        f.timeStyle = .short
-        return f
-    }()
-
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
@@ -1094,6 +1118,7 @@ private struct TimeEntryRow: View {
                             .foregroundStyle(CloudwrkzColors.neutral400)
                             .lineLimit(1)
                     }
+                    TimeEntryRunRangeText(entry: entry)
                 }
                 Spacer(minLength: 8)
                 VStack(alignment: .trailing, spacing: 2) {
@@ -1127,10 +1152,6 @@ private struct TimeEntryRow: View {
                 if entry.status.isActive {
                     compactActions
                 }
-
-                Text(Self.dateFormatter.string(from: entry.startedAt))
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundStyle(CloudwrkzColors.neutral500)
             }
         }
         .padding(16)

@@ -10,38 +10,7 @@
 import SwiftUI
 
 // Human: Break rows in the edit sheet are a local draft until Save; then PATCH entry plus delete/add break API calls to match the draft.
-// Agent: EditableBreak baselineBreaks draftBreaks; AddBreakSheet onPersistLocally; syncDraftBreaksToServer after updateTimeEntry.
-
-private struct EditableBreak: Identifiable, Equatable {
-    let id: String
-    var startedAt: Date
-    var endedAt: Date?
-    var duration: Int?
-    var description: String?
-    let createdAt: Date
-    let updatedAt: Date
-
-    init(from b: TimeEntryBreak) {
-        id = b.id
-        startedAt = b.startedAt
-        endedAt = b.endedAt
-        duration = b.duration
-        description = b.description
-        createdAt = b.createdAt
-        updatedAt = b.updatedAt
-    }
-
-    init(localId: String, startedAt: Date, endedAt: Date, description: String?) {
-        id = localId
-        self.startedAt = startedAt
-        self.endedAt = endedAt
-        duration = max(0, Int(endedAt.timeIntervalSince(startedAt)))
-        self.description = description
-        let now = Date()
-        createdAt = now
-        updatedAt = now
-    }
-}
+// Agent: DraftTimeEntryBreak baselineBreaks draftBreaks; AddBreakSheet onPersistLocally; syncDraftBreaksToServer after updateTimeEntry.
 
 // Human: Full edit sheet for an existing entry: identity, timing window, tags, billable, breaks add/remove, and PATCH save with change detection.
 // Agent: EditTimeEntrySheet draft breaks until Save; TimeTrackingService PATCH update; showAddBreakSheet; onSaved dismiss; tracks hasChanges vs server snapshot.
@@ -65,8 +34,8 @@ struct EditTimeEntrySheet: View {
 
     // MARK: - UI state
 
-    private let baselineBreaks: [EditableBreak]
-    @State private var draftBreaks: [EditableBreak]
+    private let baselineBreaks: [DraftTimeEntryBreak]
+    @State private var draftBreaks: [DraftTimeEntryBreak]
     @State private var isSaving = false
     @State private var showAddBreakSheet = false
     @State private var errorMessage: String?
@@ -83,7 +52,7 @@ struct EditTimeEntrySheet: View {
     init(entry: TimeEntry, onSaved: (() -> Void)? = nil) {
         self.entry = entry
         self.onSaved = onSaved
-        let initialDraft = (entry.breaks ?? []).map(EditableBreak.init(from:))
+        let initialDraft = (entry.breaks ?? []).map(DraftTimeEntryBreak.init(from:))
         baselineBreaks = initialDraft
         _draftBreaks = State(initialValue: initialDraft)
         _name = State(initialValue: entry.name)
@@ -161,7 +130,7 @@ struct EditTimeEntrySheet: View {
             .sheet(isPresented: $showAddBreakSheet) {
                 AddBreakSheet(timeEntryId: entry.id, onPersistLocally: { start, end, desc in
                     let localId = "local-\(UUID().uuidString)"
-                    let newBreak = EditableBreak(localId: localId, startedAt: start, endedAt: end, description: desc)
+                    let newBreak = DraftTimeEntryBreak(localId: localId, startedAt: start, endedAt: end, description: desc)
                     draftBreaks = draftBreaks + [newBreak]
                 })
             }
@@ -314,22 +283,48 @@ struct EditTimeEntrySheet: View {
     }
 
     private var durationSummary: some View {
-        let seconds = max(0, Int(endDate.timeIntervalSince(startDate)))
-        let durationText = TimeTrackingUtils.formatDuration(seconds)
-        return HStack(spacing: 10) {
-            Image(systemName: "clock.fill")
-                .font(.system(size: 16))
-                .foregroundStyle(CloudwrkzColors.primary400)
-            Text("Duration")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(CloudwrkzColors.neutral100)
-            Spacer()
-            Text(durationText)
-                .font(.system(size: 15, weight: .bold, design: .monospaced))
-                .foregroundStyle(CloudwrkzColors.primary400)
-                .contentTransition(.numericText())
+        // Human: Wall span is end−start; worked time subtracts draft breaks so the summary matches overview/detail counters before Save.
+        // Agent: READS endDate startDate draftBreaks; DISPLAYS span vs worked (span − breakSeconds).
+        let wallSeconds = max(0, Int(endDate.timeIntervalSince(startDate)))
+        let breakSeconds = draftBreaksTotalSeconds(draftBreaks)
+        let workedSeconds = max(0, wallSeconds - breakSeconds)
+        let wallText = TimeTrackingUtils.formatDuration(wallSeconds)
+        let workedText = TimeTrackingUtils.formatDuration(workedSeconds)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: "clock.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(CloudwrkzColors.primary400)
+                Text("Clock span")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(CloudwrkzColors.neutral100)
+                Spacer()
+                Text(wallText)
+                    .font(.system(size: 15, weight: .bold, design: .monospaced))
+                    .foregroundStyle(CloudwrkzColors.primary400)
+                    .contentTransition(.numericText())
+            }
+            if breakSeconds > 0 {
+                HStack(spacing: 10) {
+                    Image(systemName: "cup.and.saucer.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(CloudwrkzColors.warning400)
+                    Text("Worked (span − breaks)")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(CloudwrkzColors.neutral400)
+                    Spacer()
+                    Text(workedText)
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .foregroundStyle(CloudwrkzColors.neutral200)
+                }
+            }
         }
-        .id("\(startDate.timeIntervalSince1970)-\(endDate.timeIntervalSince1970)")
+        .id("\(startDate.timeIntervalSince1970)-\(endDate.timeIntervalSince1970)-\(breakSeconds)")
+    }
+
+    /// Sum break lengths for timing summaries (draft rows use `duration` or start/end interval).
+    private func draftBreaksTotalSeconds(_ breaks: [DraftTimeEntryBreak]) -> Int {
+        DraftTimeEntryBreak.totalBreakSeconds(in: breaks)
     }
 
     private var timingDivider: some View {
