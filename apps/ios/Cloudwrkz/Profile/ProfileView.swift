@@ -141,18 +141,7 @@ struct ProfileView: View {
                 AccountSettingsView()
             }
             .sheet(isPresented: $showEmploymentSheet) {
-                NavigationStack {
-                    EmploymentDetailsView(employee: linkedEmployee)
-                        .navigationTitle("profile.employment.sheet_title")
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .confirmationAction) {
-                                Button("common.done") { showEmploymentSheet = false }
-                                    .foregroundStyle(CloudwrkzColors.primary400)
-                            }
-                        }
-                        .toolbarBackground(CloudwrkzColors.neutral950.opacity(0.95), for: .navigationBar)
-                }
+                EmploymentDetailsView(employee: linkedEmployee)
             }
             .task {
                 await refreshServerProfile()

@@ -8,9 +8,11 @@
 import SwiftUI
 
 // Human: Read-only employment summary: status, work contact, org, PTO, compensation, managers—same sections as the web modal.
-// Agent: EmploymentDetailsView READS optional EmployeeMyRecord; EMPTY state copy; FORMAT money + vacation bar.
+// Agent: EmploymentDetailsView NavigationStack + gradient shell like AccountSettingsView; toolbarBackground hidden; dismiss Done.
 
 struct EmploymentDetailsView: View {
+    @Environment(\.dismiss) private var dismiss
+
     var employee: EmployeeMyRecord?
 
     private static let moneyFormatter: NumberFormatter = {
@@ -22,33 +24,58 @@ struct EmploymentDetailsView: View {
     }()
 
     var body: some View {
-        Group {
-            if let employee {
+        NavigationStack {
+            ZStack {
+                LinearGradient(
+                    colors: [CloudwrkzColors.primary950, CloudwrkzColors.neutral950],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 22) {
-                        nameAndStatus(employee)
-                        workContact(employee)
-                        roleAndOrg(employee)
-                        timeOff(employee)
-                        compensation(employee)
-                        managers(employee)
+                    Group {
+                        if let employee {
+                            VStack(alignment: .leading, spacing: 22) {
+                                nameAndStatus(employee)
+                                workContact(employee)
+                                roleAndOrg(employee)
+                                timeOff(employee)
+                                compensation(employee)
+                                managers(employee)
+                            }
+                        } else {
+                            VStack(alignment: .leading, spacing: 16) {
+                                Text("profile.employment.empty_title")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(CloudwrkzColors.neutral100)
+                                Text("profile.employment.empty_body")
+                                    .font(.system(size: 14, weight: .regular))
+                                    .foregroundStyle(CloudwrkzColors.neutral400)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
-                    .padding(20)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                    .padding(.bottom, 32)
                 }
-            } else {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("profile.employment.empty_title")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(CloudwrkzColors.neutral100)
-                    Text("profile.employment.empty_body")
-                        .font(.system(size: 14, weight: .regular))
-                        .foregroundStyle(CloudwrkzColors.neutral400)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(20)
+                .scrollContentBackground(.hidden)
             }
+            .navigationTitle("profile.employment.sheet_title")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("common.done") {
+                        dismiss()
+                    }
+                    .foregroundStyle(CloudwrkzColors.primary400)
+                    .accessibilityLabel("Done")
+                }
+            }
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .tint(CloudwrkzColors.primary400)
         }
-        .background(CloudwrkzColors.neutral950)
     }
 
     private func nameAndStatus(_ e: EmployeeMyRecord) -> some View {

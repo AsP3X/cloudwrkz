@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { DateTimeFields } from "@/components/ui/DateTimeFields";
 import { updateTimeEntrySchema, type UpdateTimeEntryInput } from "@/lib/validations/time-tracking";
-import { TimeEntryBreaks } from "../TimeEntryBreaks";
+import { TimeEntryBreaks, type TimeEntryBreakDraftRow } from "../TimeEntryBreaks";
 import { COMMON_TIMEZONES } from "@/lib/constants/timezones";
 import { LocationAutocompleteInput } from "@/components/ui/LocationAutocompleteInput";
 
@@ -31,25 +31,19 @@ type TimeEntry = {
   } | null;
 };
 
+export type TimeEntryEditSavePayload = UpdateTimeEntryInput & { tags: string[]; breaks: TimeEntryBreakDraftRow[] };
+
 interface TimeEntryEditFormProps {
   entry: TimeEntry;
-  onSave: (data: UpdateTimeEntryInput) => Promise<void>;
+  onSave: (data: TimeEntryEditSavePayload) => Promise<void>;
   onCancel: () => void;
   isSubmitting: boolean;
   userTimezone: string;
   entryTimezone?: string | null;
-  breaks?: Array<{
-    id: string;
-    startedAt: Date;
-    endedAt: Date | null;
-    duration: number;
-    description: string | null;
-    createdAt?: Date;
-    updatedAt?: Date;
-  }>;
+  breaks?: TimeEntryBreakDraftRow[];
 }
 
-const EMPTY_BREAKS: NonNullable<TimeEntryEditFormProps['breaks']> = [];
+const EMPTY_BREAKS: TimeEntryBreakDraftRow[] = [];
 
 function SectionHeader({ icon, label }: { icon: React.ReactNode; label: string }) {
   return (
@@ -64,6 +58,24 @@ function SectionHeader({ icon, label }: { icon: React.ReactNode; label: string }
 export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting, userTimezone, entryTimezone, breaks = EMPTY_BREAKS }: TimeEntryEditFormProps) {
   const [tags, setTags] = React.useState<string[]>(entry.tags);
   const [tagInput, setTagInput] = React.useState("");
+  const [draftBreaks, setDraftBreaks] = React.useState<TimeEntryBreakDraftRow[]>(breaks);
+
+  const breaksSyncKey = React.useMemo(
+    () =>
+      breaks
+        .map(
+          (b) =>
+            `${b.id}:${b.startedAt.getTime()}:${b.endedAt?.getTime() ?? "x"}:${b.duration}:${b.description ?? ""}`,
+        )
+        .join("|"),
+    [breaks],
+  );
+
+  React.useEffect(() => {
+    setDraftBreaks(breaks);
+    // breaksSyncKey captures server break content; avoid depending on `breaks` reference to prevent wiping the draft on unrelated parent re-renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry.id, breaksSyncKey]);
 
   const {
     register,
@@ -112,7 +124,7 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting, userT
   };
 
   const onSubmit = async (data: UpdateTimeEntryInput) => {
-    await onSave({ ...data, tags });
+    await onSave({ ...data, tags, breaks: draftBreaks });
   };
 
   return (
@@ -330,11 +342,13 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting, userT
           userTimezone={userTimezone}
           entryTimezone={entryTimezone}
           entryStartedAt={entry.startedAt}
-          initialBreaks={breaks?.map(breakItem => ({
+          initialBreaks={breaks.map((breakItem) => ({
             ...breakItem,
             createdAt: breakItem.createdAt || new Date(),
             updatedAt: breakItem.updatedAt || new Date(),
           }))}
+          draftBreaks={draftBreaks}
+          onDraftBreaksChange={setDraftBreaks}
         />
       </div>
     </>

@@ -4,7 +4,7 @@
 //
 //  API service for time tracking. Uses Bearer token and ServerConfig.
 //  Endpoints: GET/POST /api/time-tracking, PATCH/DELETE /api/time-tracking/[id],
-//  POST /api/time-tracking/[id]/{pause,resume,stop,complete}.
+//  POST /api/time-tracking/[id]/{pause,resume,stop,complete}; POST breaks may return 202 + mutation job poll.
 //
 
 import Foundation
@@ -245,7 +245,13 @@ enum TimeTrackingService {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         AppIdentity.apply(to: &request)
-        request.httpBody = try? dateEncoder.encode(input)
+        let encodedBody: Data
+        do {
+            encodedBody = try dateEncoder.encode(input)
+        } catch {
+            return .failure(.serverError(message: "Could not encode changes for the server."))
+        }
+        request.httpBody = encodedBody
 
         return await executeVoid(request: request, config: config)
     }
@@ -329,23 +335,21 @@ enum TimeTrackingService {
 
     // MARK: - POST /api/time-tracking/[id]/breaks
 
+    /// Must match `CreateBreakRequest` on the API (`started_at` / `ended_at`); camelCase is ignored and yields zero-duration breaks.
     struct AddBreakBody: Encodable {
-        let startedAt: String?
-        let endedAt: String?
+        let started_at: String?
+        let ended_at: String?
         let description: String?
     }
 
-    struct AddBreakResponse: Decodable {
-        let id: String
-    }
-
+    /// POST `/time-tracking/{id}/breaks` — API may return **202** + mutation job (same as pause/delete); poll until completed.
     static func addBreak(
         config: ServerConfig,
         timeEntryId: String,
         startedAt: Date? = nil,
         endedAt: Date? = nil,
         description: String? = nil
-    ) async -> Result<String, TimeTrackingServiceError> {
+    ) async -> Result<Void, TimeTrackingServiceError> {
         let id = timeEntryId.trimmingCharacters(in: .whitespaces)
         guard !id.isEmpty else { return .failure(.notFound) }
         guard let url = buildURL(config: config, extraSegments: [id, "breaks"]) else { return .failure(.noServerURL) }
@@ -355,8 +359,8 @@ enum TimeTrackingService {
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         formatter.timeZone = TimeZone(identifier: "UTC")
         let body = AddBreakBody(
-            startedAt: startedAt.map { formatter.string(from: $0) },
-            endedAt: endedAt.map { formatter.string(from: $0) },
+            started_at: startedAt.map { formatter.string(from: $0) },
+            ended_at: endedAt.map { formatter.string(from: $0) },
             description: description
         )
 
@@ -369,10 +373,36 @@ enum TimeTrackingService {
         AppIdentity.apply(to: &request)
         request.httpBody = try? JSONEncoder().encode(body)
 
-        return await execute(request: request, decode: { data in
-            let decoded = try dateDecoder.decode(AddBreakResponse.self, from: data)
-            return decoded.id
-        })
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                return .failure(.serverError(message: "Invalid response"))
+            }
+            switch http.statusCode {
+            case 200, 201, 204:
+                return .success(())
+            case 202:
+                guard let queued = try? JSONDecoder().decode(MutationQueuedPayload.self, from: data),
+                      let jid = queued.resolvedJobId, !jid.isEmpty
+                else {
+                    return .failure(.serverError(message: "Change was queued but no job id was returned"))
+                }
+                let deadline = queued.retry_deadline_secs ?? 120
+                return await pollMutationJob(config: config, jobId: jid, retryDeadlineSecs: deadline)
+            case 401:
+                SessionExpiredNotifier.notify()
+                return .failure(.unauthorized)
+            case 404:
+                return .failure(.notFound)
+            case 400...599:
+                return .failure(.serverError(message: apiErrorMessage(from: data, statusCode: http.statusCode)))
+            default:
+                return .failure(.serverError(message: "Unexpected status \(http.statusCode)"))
+            }
+        } catch {
+            let description = (error as? URLError)?.localizedDescription ?? error.localizedDescription
+            return .failure(.networkError(description: description))
+        }
     }
 
     // MARK: - DELETE /api/time-tracking/[id]/breaks/[breakId]
@@ -473,12 +503,14 @@ enum TimeTrackingService {
             }
             guard http.statusCode == 200,
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let st = obj["status"] as? String
+                  let stRaw = (obj["status"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !stRaw.isEmpty
             else {
                 continue
             }
+            let st = stRaw.lowercased()
             if st == "completed" {
-                let code = (obj["http_status"] as? Int) ?? 200
+                let code = intFromJsonNumber(obj, key: "http_status") ?? 200
                 if code >= 400 {
                     let msg = (obj["message"] as? String) ?? "Request failed"
                     return .failure(.serverError(message: msg))
@@ -525,9 +557,7 @@ enum TimeTrackingService {
             case 404:
                 return .failure(.notFound)
             case 400...599:
-                let message = (try? JSONDecoder().decode(MessageResponse.self, from: data))?.message
-                    ?? "Server error (\(http.statusCode))"
-                return .failure(.serverError(message: message))
+                return .failure(.serverError(message: apiErrorMessage(from: data, statusCode: http.statusCode)))
             default:
                 return .failure(.serverError(message: "Unexpected status \(http.statusCode)"))
             }
@@ -576,9 +606,7 @@ enum TimeTrackingService {
             case 404:
                 return .failure(.notFound)
             case 400...599:
-                let message = (try? JSONDecoder().decode(MessageResponse.self, from: data))?.message
-                    ?? "Server error (\(http.statusCode))"
-                return .failure(.serverError(message: message))
+                return .failure(.serverError(message: apiErrorMessage(from: data, statusCode: http.statusCode)))
             default:
                 return .failure(.serverError(message: "Unexpected status \(http.statusCode)"))
             }
@@ -595,4 +623,40 @@ enum TimeTrackingService {
 
 private struct MessageResponse: Decodable {
     let message: String?
+}
+
+/// Parses API JSON errors: primary shape `{ "error": { "message": "…" } }` (`AppError` / `ErrorEnvelope`), then legacy `{ "message": "…" }`.
+private struct ApiErrorEnvelope: Decodable {
+    struct ErrorBody: Decodable {
+        let message: String?
+    }
+
+    let error: ErrorBody?
+}
+
+private extension TimeTrackingService {
+    static func apiErrorMessage(from data: Data, statusCode: Int) -> String {
+        let fallback = "Server error (\(statusCode))"
+        if let env = try? JSONDecoder().decode(ApiErrorEnvelope.self, from: data),
+           let m = env.error?.message?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !m.isEmpty
+        {
+            return m
+        }
+        if let legacy = try? JSONDecoder().decode(MessageResponse.self, from: data),
+           let m = legacy.message?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !m.isEmpty
+        {
+            return m
+        }
+        return fallback
+    }
+
+    /// Reads `http_status` from mutation-job JSON (NSNumber / Int / Double).
+    static func intFromJsonNumber(_ obj: [String: Any], key: String) -> Int? {
+        if let i = obj[key] as? Int { return i }
+        if let n = obj[key] as? NSNumber { return n.intValue }
+        if let d = obj[key] as? Double { return Int(d) }
+        return nil
+    }
 }

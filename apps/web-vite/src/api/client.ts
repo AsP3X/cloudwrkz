@@ -95,8 +95,12 @@ async function pollMutationJobUntilDone<T>(
         `/mutation-jobs/${jobId}`,
         { method: "GET" },
       );
-      if (st.status === "completed") {
-        const code = st.http_status ?? 200;
+      const statusNorm =
+        typeof st.status === "string" ? st.status.toLowerCase() : "";
+      if (statusNorm === "completed") {
+        const raw = st.http_status;
+        const code =
+          typeof raw === "number" && Number.isFinite(raw) ? raw : 200;
         if (code >= 400) {
           const msg =
             typeof st.message === "string" ? st.message : "Request failed";
@@ -105,7 +109,7 @@ async function pollMutationJobUntilDone<T>(
         mutationFinishedOk = true;
         return st.body as T;
       }
-      if (st.status === "failed") {
+      if (statusNorm === "failed") {
         throw new ApiError(
           400,
           st.message || "Change could not be applied",

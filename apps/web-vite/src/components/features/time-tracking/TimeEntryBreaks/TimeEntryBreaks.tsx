@@ -53,7 +53,7 @@ function handleNumericArrowKey(
   e.currentTarget.value = String(next).padStart(padTo, "0");
 }
 
-type Break = {
+export type TimeEntryBreakDraftRow = {
   id: string;
   startedAt: Date;
   endedAt: Date | null;
@@ -63,22 +63,48 @@ type Break = {
   updatedAt?: Date;
 };
 
+type Break = TimeEntryBreakDraftRow;
+
 interface TimeEntryBreaksProps {
   timeEntryId: string;
   userTimezone: string;
   entryTimezone?: string | null;
   initialBreaks?: Break[];
   entryStartedAt?: Date;
+  /** When set with `draftBreaks`, add/update/delete only change local state; parent persists on Save. */
+  draftBreaks?: Break[];
+  onDraftBreaksChange?: (next: Break[]) => void;
 }
 
 const EMPTY_BREAKS: Break[] = [];
 
-export function TimeEntryBreaks({ timeEntryId, userTimezone, entryTimezone, initialBreaks = EMPTY_BREAKS, entryStartedAt }: TimeEntryBreaksProps) {
+export function TimeEntryBreaks({
+  timeEntryId,
+  userTimezone,
+  entryTimezone,
+  initialBreaks = EMPTY_BREAKS,
+  entryStartedAt,
+  draftBreaks: draftBreaksProp,
+  onDraftBreaksChange,
+}: TimeEntryBreaksProps) {
+  const isDraftMode = typeof onDraftBreaksChange === "function";
   const displayTimezone = React.useMemo(() => {
     return entryTimezone || userTimezone || "UTC";
   }, [entryTimezone, userTimezone]);
 
-  const [breaks, setBreaks] = React.useState<Break[]>(initialBreaks);
+  const [internalBreaks, setInternalBreaks] = React.useState<Break[]>(initialBreaks);
+  const breaks = isDraftMode ? (draftBreaksProp ?? EMPTY_BREAKS) : internalBreaks;
+  const setBreaks = React.useCallback(
+    (next: Break[] | ((prev: Break[]) => Break[])) => {
+      if (isDraftMode) {
+        const resolved = typeof next === "function" ? next(draftBreaksProp ?? EMPTY_BREAKS) : next;
+        onDraftBreaksChange!(resolved);
+      } else {
+        setInternalBreaks(next);
+      }
+    },
+    [isDraftMode, onDraftBreaksChange, draftBreaksProp],
+  );
   const [showAddDialog, setShowAddDialog] = React.useState(false);
   const [addBreakDefaults, setAddBreakDefaults] = React.useState<{
     startDay: string;
@@ -131,13 +157,15 @@ export function TimeEntryBreaks({ timeEntryId, userTimezone, entryTimezone, init
   };
 
   React.useEffect(() => {
+    if (isDraftMode) return;
     loadBreaks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeEntryId]);
+  }, [timeEntryId, isDraftMode]);
 
   React.useEffect(() => {
-    setBreaks(initialBreaks);
-  }, [initialBreaks]);
+    if (isDraftMode) return;
+    setInternalBreaks(initialBreaks);
+  }, [initialBreaks, isDraftMode]);
 
   const handleAddBreak = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -165,15 +193,30 @@ export function TimeEntryBreaks({ timeEntryId, userTimezone, entryTimezone, init
         fromDateAndTime(endedAtDay, endedAtMonth, endedAtYear, endedAtHour, endedAtMinute) ??
         new Date(startedAt.getTime() + 15 * 60 * 1000);
 
-      await api.post(`/time-tracking/${timeEntryId}/breaks`, {
-        started_at: startedAt.toISOString(),
-        ended_at: endedAt.toISOString(),
-        description: description || undefined,
-      });
+      if (isDraftMode) {
+        const now = new Date();
+        const duration = Math.max(0, Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000));
+        const row: Break = {
+          id: `local-${crypto.randomUUID()}`,
+          startedAt,
+          endedAt,
+          duration,
+          description: description ? String(description) : null,
+          createdAt: now,
+          updatedAt: now,
+        };
+        setBreaks([...breaks, row]);
+      } else {
+        await api.post(`/time-tracking/${timeEntryId}/breaks`, {
+          started_at: startedAt.toISOString(),
+          ended_at: endedAt.toISOString(),
+          description: description || undefined,
+        });
+        await loadBreaks();
+      }
 
       form.reset();
       setShowAddDialog(false);
-      await loadBreaks();
     } catch (err: any) {
       setError(err.message || "Failed to add break");
     } finally {
@@ -209,14 +252,34 @@ export function TimeEntryBreaks({ timeEntryId, userTimezone, entryTimezone, init
           ? fromDateAndTime(endedAtDay, endedAtMonth, endedAtYear, endedAtHour, endedAtMinute)
           : null;
 
-      await api.patch(`/time-tracking/${timeEntryId}/breaks/${editingBreak.id}`, {
-        started_at: startedAt.toISOString(),
-        ended_at: endedAt ? endedAt.toISOString() : null,
-        description: description || undefined,
-      });
+      if (isDraftMode) {
+        const now = new Date();
+        const duration =
+          endedAt != null ? Math.max(0, Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000)) : editingBreak.duration;
+        setBreaks(
+          breaks.map((b) =>
+            b.id === editingBreak.id
+              ? {
+                  ...b,
+                  startedAt,
+                  endedAt,
+                  duration,
+                  description: description != null && description !== "" ? String(description) : null,
+                  updatedAt: now,
+                }
+              : b,
+          ),
+        );
+      } else {
+        await api.patch(`/time-tracking/${timeEntryId}/breaks/${editingBreak.id}`, {
+          started_at: startedAt.toISOString(),
+          ended_at: endedAt ? endedAt.toISOString() : null,
+          description: description || undefined,
+        });
+        await loadBreaks();
+      }
 
       setEditingBreak(null);
-      await loadBreaks();
     } catch (err: any) {
       setError(err.message || "Failed to update break");
     } finally {
@@ -233,8 +296,12 @@ export function TimeEntryBreaks({ timeEntryId, userTimezone, entryTimezone, init
     setError(null);
 
     try {
-      await api.delete(`/time-tracking/${timeEntryId}/breaks/${breakId}`);
-      await loadBreaks();
+      if (isDraftMode) {
+        setBreaks(breaks.filter((b) => b.id !== breakId));
+      } else {
+        await api.delete(`/time-tracking/${timeEntryId}/breaks/${breakId}`);
+        await loadBreaks();
+      }
     } catch (err: any) {
       setError(err.message || "Failed to delete break");
     } finally {
