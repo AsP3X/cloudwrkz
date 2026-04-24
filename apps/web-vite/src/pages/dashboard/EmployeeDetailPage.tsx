@@ -30,7 +30,7 @@ const STATUS_BADGE: Record<EmployeeStatus, "success" | "warning" | "info" | "def
 };
 
 const CARD_CLASS =
-  "bg-white/70 dark:bg-white/[0.04] backdrop-blur-md rounded-xl shadow-soft-lg border border-white/40 dark:border-white/10 p-6";
+  "bg-transparent rounded-xl shadow-soft-lg border border-white/35 dark:border-white/10 p-6";
 
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (

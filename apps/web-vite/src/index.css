@@ -25,12 +25,20 @@
 }
 
 @layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+    overscroll-behavior: none;
+    background: transparent;
+  }
+
   * {
     @apply border-neutral-200 dark:border-neutral-800;
   }
 
   body {
-    @apply bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-50 antialiased;
+    @apply text-neutral-900 dark:text-neutral-50 antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 

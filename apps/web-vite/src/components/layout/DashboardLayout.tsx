@@ -186,7 +186,7 @@ export const DashboardLayout = () => {
         </div>
       ) : null}
       <DashboardLayoutContent />
-      <main className={cn("min-h-screen relative z-10", "lg:pl-64")}>
+      <main className={cn("min-h-screen relative z-10 overscroll-y-none overflow-x-hidden", "lg:pl-64")}>
         <div className="p-4 sm:p-6 lg:p-8">
           {showMutationQueueNotice ? <MutationQueueNotice /> : null}
           <Outlet />
@@ -199,7 +199,7 @@ export const DashboardLayout = () => {
     <SidebarProvider>
       <MouseSpotlightSurface
         variant="content"
-        className="min-h-screen bg-gradient-to-br from-neutral-200/90 via-neutral-100 to-neutral-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950"
+        className="min-h-screen overscroll-none overflow-x-hidden bg-gradient-to-br from-neutral-200/90 via-neutral-100 to-neutral-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950"
       >
         {layoutContent}
       </MouseSpotlightSurface>

@@ -136,10 +136,8 @@ export function OrganicNetworkCanvas({ variant, className }: OrganicNetworkCanva
   const particleCount = isContent ? 160 : 220;
 
   useLayoutEffect(() => {
-    const wrap = wrapRef.current;
     const canvas = canvasRef.current;
-    if (!wrap || !canvas) return;
-    const wrapEl: HTMLDivElement = wrap;
+    if (!canvas) return;
     const canvasEl: HTMLCanvasElement = canvas;
 
     const ctx = canvasEl.getContext("2d", { alpha: false });
@@ -188,9 +186,10 @@ export function OrganicNetworkCanvas({ variant, className }: OrganicNetworkCanva
     }
 
     function measure() {
-      const r = wrapEl.getBoundingClientRect();
-      const nw = Math.max(1, r.width);
-      const nh = Math.max(1, r.height);
+      // Use viewport dimensions directly so elastic scroll / container reflow
+      // does not retrigger canvas buffer resets at page edges.
+      const nw = Math.max(1, window.innerWidth);
+      const nh = Math.max(1, window.innerHeight);
       const ndpr = Math.min(window.devicePixelRatio || 1, 2);
       const nextBufW = Math.floor(nw * ndpr);
       const nextBufH = Math.floor(nh * ndpr);
@@ -399,24 +398,23 @@ export function OrganicNetworkCanvas({ variant, className }: OrganicNetworkCanva
       if (reduced) drawStaticFrame();
     }
 
-    const ro = new ResizeObserver(() => {
+    const onResize = () => {
       ensureRunningAfterResize();
-    });
-
-    ro.observe(wrapEl);
+    };
+    window.addEventListener("resize", onResize);
     layoutAndMaybeStart();
 
     return () => {
       cancelAnimationFrame(bootRaf);
       cancelAnimationFrame(raf);
-      ro.disconnect();
+      window.removeEventListener("resize", onResize);
     };
   }, [reduced, isContent, nodeCount, particleCount]);
 
   return (
     <div
       ref={wrapRef}
-      className={cn("pointer-events-none absolute inset-0 z-[1] overflow-hidden", className)}
+      className={cn("pointer-events-none fixed inset-0 z-[1] overflow-hidden", className)}
       aria-hidden
     >
       <canvas
