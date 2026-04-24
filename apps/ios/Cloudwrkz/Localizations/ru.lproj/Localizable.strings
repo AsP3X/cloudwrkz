@@ -350,6 +350,10 @@
 "profile.command_center.settings_hint" = "Чтобы изменить email, пароль и другие параметры, откройте «Настройки аккаунта» ниже.";
 "profile.command_center.status" = "СТАТУС";
 "profile.command_center.subtitle" = "Ваша идентичность и состояние аккаунта в одном месте.";
+"profile.command_center.tap_to_expand" = "Нажмите, чтобы показать подробности";
+"profile.command_center.a11y_header" = "Центр управления аккаунтом";
+"profile.command_center.a11y_expand_hint" = "Показывает заполненность профиля, трудоустройство и сведения об аккаунте.";
+"profile.command_center.a11y_collapse_hint" = "Скрывает заполненность профиля, трудоустройство и сведения об аккаунте.";
 "profile.command_center.timezone" = "ЧАСОВОЙ ПОЯС";
 "profile.command_center.yes" = "Да";
 "profile.completeness.a11y_progress_format" = "Профиль заполнен на %lld %%";

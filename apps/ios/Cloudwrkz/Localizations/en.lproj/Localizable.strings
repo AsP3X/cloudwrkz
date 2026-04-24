@@ -793,6 +793,14 @@
 
 "profile.command_center.subtitle" = "Your identity and account health in one place.";
 
+"profile.command_center.tap_to_expand" = "Tap to show details";
+
+"profile.command_center.a11y_header" = "Account command center";
+
+"profile.command_center.a11y_expand_hint" = "Shows profile health, employment link, and account details.";
+
+"profile.command_center.a11y_collapse_hint" = "Hides profile health, employment link, and account details.";
+
 "profile.command_center.timezone" = "TIMEZONE";
 
 "profile.command_center.yes" = "Yes";

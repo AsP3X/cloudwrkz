@@ -456,6 +456,14 @@
 
 "profile.command_center.subtitle" = "Identität und Kontostatus an einem Ort.";
 
+"profile.command_center.tap_to_expand" = "Tippen für Details";
+
+"profile.command_center.a11y_header" = "Konto-Command-Center";
+
+"profile.command_center.a11y_expand_hint" = "Zeigt Profilstatus, Beschäftigung und Kontodetails.";
+
+"profile.command_center.a11y_collapse_hint" = "Blendet Profilstatus, Beschäftigung und Kontodetails aus.";
+
 "profile.command_center.timezone" = "ZEITZONE";
 
 "profile.command_center.yes" = "Ja";

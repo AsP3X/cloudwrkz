@@ -2,13 +2,13 @@
 //  ProfileView.swift
 //  Cloudwrkz
 //
-//  Sheet showing user profile: hero, account health, employment link, completeness checklist, quick actions, sign out.
+//  Sheet showing user profile: hero, account health, employment link, quick actions, sign out.
 //  Liquid glass, modern enterprise. Opened from profile icon context menu.
 //
 
 import SwiftUI
 
-// Human: Profile sheet mirrors the web “account command center”: `/me` for health/badges, `/employees/me` for employment details, and the same completeness checklist.
+// Human: Profile sheet mirrors the web “account command center”: `/me` for health/badges and `/employees/me` for employment details.
 // Agent: ProfileView .task AuthService.fetchCurrentUser + EmployeeService.fetchMyEmployee; sheets ProfileEditView AccountSettingsView EmploymentDetailsView.
 
 struct ProfileView: View {
@@ -28,6 +28,8 @@ struct ProfileView: View {
     @State private var showEmploymentSheet = false
     @State private var linkedEmployee: EmployeeMyRecord?
     @State private var employeeLoading = true
+    /// Account command center: extra fields hidden until the user expands this section.
+    @State private var isCommandCenterExpanded = false
 
     private var resolvedFirstName: String { firstName?.trimmingCharacters(in: .whitespaces) ?? UserProfileStorage.firstName?.trimmingCharacters(in: .whitespaces) ?? "" }
     private var resolvedLastName: String { lastName?.trimmingCharacters(in: .whitespaces) ?? UserProfileStorage.lastName?.trimmingCharacters(in: .whitespaces) ?? "" }
@@ -104,15 +106,6 @@ struct ProfileView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
                         commandCenterSection
-                        ProfileCompletenessCard(
-                            hasName: hasDisplayName,
-                            hasAvatar: hasAvatarForCompleteness,
-                            emailVerified: UserProfileStorage.emailVerified,
-                            hasBio: hasBio,
-                            hasCustomTimezone: hasCustomTimezone,
-                            onEditProfile: { showEditSheet = true },
-                            onOpenAccountSettings: { showAccountSettings = true }
-                        )
                         accountSection
                         sessionSection
                         versionSection
@@ -170,21 +163,65 @@ struct ProfileView: View {
     // MARK: - Account command center
 
     private var commandCenterSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.22)) {
+                    isCommandCenterExpanded.toggle()
+                }
+            } label: {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("profile.command_center.kicker")
+                            .font(.system(size: 10, weight: .bold))
+                            .tracking(1.2)
+                            .foregroundStyle(CloudwrkzColors.neutral500)
+                        Text(displayName)
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundStyle(CloudwrkzColors.neutral100)
+                            .multilineTextAlignment(.leading)
+                        if !isCommandCenterExpanded {
+                            Text("profile.command_center.tap_to_expand")
+                                .font(.system(size: 12, weight: .regular))
+                                .foregroundStyle(CloudwrkzColors.neutral500)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(CloudwrkzColors.neutral500)
+                        .rotationEffect(.degrees(isCommandCenterExpanded ? 180 : 0))
+                        .accessibilityHidden(true)
+                }
+                .padding(20)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(localized: "profile.command_center.a11y_header"))
+            .accessibilityHint(
+                isCommandCenterExpanded
+                    ? String(localized: "profile.command_center.a11y_collapse_hint")
+                    : String(localized: "profile.command_center.a11y_expand_hint")
+            )
+
+            if isCommandCenterExpanded {
+                VStack(alignment: .leading, spacing: 16) {
+                    commandCenterExpandedBody
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 20)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .glassPanel(cornerRadius: 20, tint: CloudwrkzColors.primary500, tintOpacity: 0.04)
+    }
+
+    private var commandCenterExpandedBody: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("profile.command_center.kicker")
-                        .font(.system(size: 10, weight: .bold))
-                        .tracking(1.2)
-                        .foregroundStyle(CloudwrkzColors.neutral500)
-                    Text(displayName)
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(CloudwrkzColors.neutral100)
-                    Text("profile.command_center.subtitle")
-                        .font(.system(size: 14, weight: .regular))
-                        .foregroundStyle(CloudwrkzColors.neutral400)
-                }
-                Spacer(minLength: 12)
+                Text("profile.command_center.subtitle")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(CloudwrkzColors.neutral400)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 VStack(alignment: .trailing) {
                     if employeeLoading {
                         Text("profile.employment.checking_link")
@@ -277,8 +314,6 @@ struct ProfileView: View {
                 .foregroundStyle(CloudwrkzColors.neutral500)
                 .padding(.top, 4)
         }
-        .padding(20)
-        .glassPanel(cornerRadius: 20, tint: CloudwrkzColors.primary500, tintOpacity: 0.04)
     }
 
     private var memberAndLoginChips: some View {
