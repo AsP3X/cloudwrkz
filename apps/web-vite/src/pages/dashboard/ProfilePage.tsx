@@ -362,8 +362,7 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-8">
-      <div className="grid gap-6 xl:grid-cols-12">
-        <section className="xl:col-span-8 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-soft-lg overflow-hidden">
+      <section className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-soft-lg overflow-hidden">
           <div className="p-6 sm:p-8">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6 mb-6">
               <div className="min-w-0">
@@ -445,24 +444,16 @@ export default function ProfilePage() {
               .
             </p>
           </div>
-        </section>
-        <aside className="xl:col-span-4 space-y-4">
-          <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Quick actions</h2>
-            <div className="mt-4 space-y-2 text-sm">
-              <Link to="/dashboard/settings" className="block rounded-lg px-3 py-2 bg-neutral-50 dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-primary-900/30 text-neutral-700 dark:text-neutral-200">Open account settings</Link>
-              <Link to="/dashboard/settings/security" className="block rounded-lg px-3 py-2 bg-neutral-50 dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-primary-900/30 text-neutral-700 dark:text-neutral-200">Review security settings</Link>
-            </div>
-          </div>
-          <ProfileCompleteness
-            hasAvatar={!!user.avatar}
-            hasBio={!!(user.bio && user.bio.trim().length > 0)}
-            emailVerified={!!user.emailVerified}
-            hasCustomTimezone={!!(user.timezone && user.timezone !== "UTC")}
-            hasName={!!(user.name && user.name.trim().length > 0)}
-          />
-        </aside>
-      </div>
+      </section>
+
+      <ProfileCompleteness
+        variant="floating"
+        hasAvatar={!!user.avatar}
+        hasBio={!!(user.bio && user.bio.trim().length > 0)}
+        emailVerified={!!user.emailVerified}
+        hasCustomTimezone={!!(user.timezone && user.timezone !== "UTC")}
+        hasName={!!(user.name && user.name.trim().length > 0)}
+      />
 
       <EmploymentDetailsDialog
         open={employmentOpen}
