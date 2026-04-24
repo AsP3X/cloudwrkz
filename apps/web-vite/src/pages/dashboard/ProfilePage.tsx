@@ -134,18 +134,11 @@ export default function ProfilePage() {
   useEffect(() => {
     if (!user) return;
     api
-      .get<{ employees: Employee[] }>(
-        `/employees?search=${encodeURIComponent(user.email)}&limit=20`,
-      )
-      .then((res) => {
-        const match = (res.employees ?? []).find(
-          (e) => e.linkedUserId === user.id,
-        );
-        setLinkedEmployee(match ?? null);
-      })
+      .get<{ employee: Employee | null }>("/employees/me")
+      .then((res) => setLinkedEmployee(res.employee ?? null))
       .catch(() => setLinkedEmployee(null))
       .finally(() => setEmployeeLoading(false));
-  }, [user?.id, user?.email]);
+  }, [user?.id]);
 
   if (!user) return null;
 
