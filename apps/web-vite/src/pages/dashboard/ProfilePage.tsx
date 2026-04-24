@@ -10,8 +10,8 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import type { Employee, EmployeeStatus } from "@/lib/types";
 
-// Human: Signed-in profile overview with avatar, role/status badges, completeness, employment dialog entry, and editable sections.
-// Agent: FETCH /employees/me; RENDER hero stats, button opens EmploymentDetailsDialog, ProfileForm, account overview.
+// Human: Signed-in profile overview with avatar, role/status badges, completeness, and editable sections.
+// Agent: FETCH /employees/me; RENDER hero stats + account details in command center, button opens EmploymentDetailsDialog.
 
 function getRoleBadge(role: string) {
   switch (role) {
@@ -322,7 +322,7 @@ function EmploymentDetailsDialogBody({
   );
 }
 
-// Human: Layout shell: account command center (employment CTA in hero), dialog, personal info, account overview.
+// Human: Layout shell: account command center (employment CTA + account details), dialog, and personal info.
 // Agent: FETCH /employees/me; always show CTA after load; EmploymentDetailsDialog for linked or empty state.
 
 export default function ProfilePage() {
@@ -424,6 +424,29 @@ export default function ProfilePage() {
                 <p className="text-xs text-neutral-500 dark:text-neutral-400">Email verified</p>
               </div>
             </div>
+            <div className="mt-6 grid gap-4 sm:grid-cols-2">
+              <InfoField label="Timezone" value={user.timezone ?? "UTC"} />
+              <InfoField
+                label="Member since"
+                value={user.createdAt ? formatDateTime(user.createdAt) : "—"}
+              />
+              <InfoField label="Role" value={roleBadge.label} />
+              <InfoField label="Status" value={statusBadge.label} />
+              <InfoField
+                label="Last login"
+                value={user.lastLoginAt ? formatDateTime(user.lastLoginAt) : "—"}
+              />
+            </div>
+            <p className="mt-6 pt-4 border-t border-neutral-100 dark:border-neutral-800 text-xs text-neutral-500 dark:text-neutral-400">
+              To change email, password, or other account settings, go to{" "}
+              <Link
+                to="/dashboard/settings"
+                className="font-medium text-primary-600 dark:text-primary-400 hover:underline"
+              >
+                Settings
+              </Link>
+              .
+            </p>
           </div>
         </section>
         <aside className="xl:col-span-4 space-y-4">
@@ -460,113 +483,6 @@ export default function ProfilePage() {
           }}
           onSaved={refreshUser}
         />
-      </section>
-
-      <section className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 sm:p-8">
-        <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-5">Account Overview</h2>
-        <div className="grid gap-6 sm:grid-cols-2">
-          <div>
-            <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-2 block">
-              Email address
-            </span>
-            <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-              {user.email}
-            </p>
-            {user.emailVerified ? (
-              <div className="flex items-center gap-1.5 mt-1.5 text-success-600 dark:text-success-400 text-xs font-medium">
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                Verified
-              </div>
-            ) : (
-              <div className="flex items-center gap-1.5 mt-1.5 text-yellow-600 dark:text-yellow-400 text-xs font-medium">
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                  />
-                </svg>
-                Not verified
-              </div>
-            )}
-          </div>
-          <div>
-            <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-2 block">
-              Timezone
-            </span>
-            <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-              {user.timezone ?? "UTC"}
-            </p>
-          </div>
-          <div>
-            <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-2 block">
-              Role
-            </span>
-            <span
-              className={`inline-flex items-center px-2.5 py-1 rounded-md text-sm font-medium border ${roleBadge.className}`}
-            >
-              {roleBadge.label}
-            </span>
-          </div>
-          <div>
-            <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-2 block">
-              Status
-            </span>
-            <span
-              className={`inline-flex items-center px-2.5 py-1 rounded-md text-sm font-medium border ${statusBadge.className}`}
-            >
-              {statusBadge.label}
-            </span>
-          </div>
-          {user.createdAt && (
-            <div>
-              <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-2 block">
-                Member since
-              </span>
-              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                {formatDateTime(user.createdAt)}
-              </p>
-            </div>
-          )}
-          {user.lastLoginAt && (
-            <div>
-              <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-2 block">
-                Last login
-              </span>
-              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                {formatDateTime(user.lastLoginAt)}
-              </p>
-            </div>
-          )}
-        </div>
-        <p className="mt-6 pt-4 border-t border-neutral-100 dark:border-neutral-800 text-xs text-neutral-500 dark:text-neutral-400">
-          To change email, password, or other account settings, go to{" "}
-          <Link
-            to="/dashboard/settings"
-            className="font-medium text-primary-600 dark:text-primary-400 hover:underline"
-          >
-            Settings
-          </Link>
-          .
-        </p>
       </section>
     </div>
   );
