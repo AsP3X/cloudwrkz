@@ -197,7 +197,17 @@ fn link_to_result(r: &sqlx::postgres::PgRow) -> Result<serde_json::Value, AppErr
 }
 
 fn time_entry_to_result(r: &sqlx::postgres::PgRow) -> Result<serde_json::Value, AppError> {
+    // Human: iOS and web search rows show the same “when, how long, breaks” line as the time list without a second API fetch.
+    // Agent: EMITS startedAt/lastResumedAt/stoppedAt/… + totalDuration + breakDurationTotal from row; RFC3339 datetimes; SUM(breaks.duration) subquery in TIME_ENTRY_SEARCH_SQL.
     let id: String = r.get("id");
+    let started_at: chrono::NaiveDateTime = r.get("started_at");
+    let paused_at: Option<chrono::NaiveDateTime> = r.get("paused_at");
+    let stopped_at: Option<chrono::NaiveDateTime> = r.get("stopped_at");
+    let completed_at: Option<chrono::NaiveDateTime> = r.get("completed_at");
+    let last_resumed_at: Option<chrono::NaiveDateTime> = r.get("last_resumed_at");
+    let total_duration: i32 = r.get("total_duration");
+    let break_duration_total: i32 = r.get("break_duration_total");
+    let iso = |n: Option<chrono::NaiveDateTime>| n.map(|d| d.and_utc().to_rfc3339());
     Ok(json!({
         "type": "timeentry",
         "id": id,
@@ -206,6 +216,13 @@ fn time_entry_to_result(r: &sqlx::postgres::PgRow) -> Result<serde_json::Value, 
         "url": format!("/dashboard/time-tracking/{}", id),
         "metadata": {
             "status": r.get::<String, _>("status"),
+            "startedAt": started_at.and_utc().to_rfc3339(),
+            "pausedAt": iso(paused_at),
+            "stoppedAt": iso(stopped_at),
+            "completedAt": iso(completed_at),
+            "lastResumedAt": iso(last_resumed_at),
+            "totalDuration": total_duration,
+            "breakDurationTotal": break_duration_total,
         },
     }))
 }

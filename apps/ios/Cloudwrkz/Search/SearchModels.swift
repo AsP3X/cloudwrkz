@@ -15,7 +15,7 @@ struct SearchResponse: Decodable {
     let total: Int
 }
 
-// Human: One hit in the unified search list, including deep-link `url` and optional highlight snippets for the UI.
+// Human: One hit in the unified search list, including deep-link `url` and optional highlight snippets for the UI. Time entry hits may include rich `metadata` (startedAt, totalDuration, breakDurationTotal, …) for list-style timing in the iOS search card.
 // Agent: STRUCT SearchResult Identifiable Decodable; FIELDS type id title url; OPTIONAL description metadata parentTicketId context contextHighlight; CUSTOM init(from decoder:).
 struct SearchResult: Identifiable, Decodable {
     let type: String

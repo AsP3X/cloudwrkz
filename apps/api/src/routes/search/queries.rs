@@ -82,7 +82,9 @@ LIMIT $3
 "#;
 
 pub const TIME_ENTRY_SEARCH_SQL: &str = r#"
-SELECT id, name, description, status::text AS status,
+SELECT te.id, te.name, te.description, te.status::text AS status,
+  te.started_at, te.paused_at, te.stopped_at, te.completed_at, te.last_resumed_at, te.total_duration,
+  (SELECT COALESCE(SUM(b.duration), 0)::bigint FROM time_entry_breaks b WHERE b.time_entry_id = te.id)::int AS break_duration_total,
   GREATEST(
     COALESCE(similarity(name, $2), 0),
     COALESCE(similarity(COALESCE(description, ''), $2), 0),

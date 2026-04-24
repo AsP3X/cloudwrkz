@@ -336,12 +336,16 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
 
 // MARK: - Result row (enterprise card)
 
-// Human: Each hit is a tappable card with type glyph so tickets vs todos are distinguishable without reading fine print.
-// Agent: SearchResultRow Button; typeIcon title description highlights; onTap closure.
+// Human: Each hit is a tappable card with type glyph so tickets vs todos are distinguishable without reading fine print. Time entries add a full timing block (start–end, net duration, break total) from search `metadata` when the API includes it.
+// Agent: SearchResultRow Button; typeIcon title description; timeentry TimeEntrySearchResultTimingBlock when TimeEntrySearchMetadata.parse; context highlights; onTap closure.
 
 private struct SearchResultRow: View {
     let result: SearchResult
     let onTap: () -> Void
+
+    private var timeEntryMeta: TimeEntrySearchMetadata? {
+        TimeEntrySearchMetadata.parse(result)
+    }
 
     var body: some View {
         Button(action: onTap) {
@@ -359,6 +363,9 @@ private struct SearchResultRow: View {
                             .foregroundStyle(CloudwrkzColors.neutral500)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
+                    }
+                    if let m = timeEntryMeta {
+                        TimeEntrySearchResultTimingBlock(meta: m)
                     }
                     if let context = result.context, !context.isEmpty {
                         Text(context)
