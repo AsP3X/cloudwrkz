@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find \"C:\\\\Users\\\\asp3x\\\\Documents\\\\Development\\\\cloudwrkz\\\\apps\\\\api\\\\src\" -name \"*.rs\" -exec grep -l \"JOB_TYPE_EMPLOYEE_CREATE\" {} \\\\;)",
+      "Bash(grep -E \"\\\\.rs$\")",
+      "Bash(xargs -I {} basename {} .rs)",
+      "Bash(cargo check *)"
+    ]
+  }
+}

@@ -21,7 +21,10 @@ use crate::routes::AppState;
 use crate::routes::helpers::{check_permission, get_user_permission_keys};
 
 use engine::{ScoredHit, fetch_recent_access_counts, rank_and_truncate};
-use queries::{LINK_SEARCH_SQL, TICKET_SEARCH_SQL, TIME_ENTRY_SEARCH_SQL, TODO_SEARCH_SQL};
+use queries::{
+    EMPLOYEE_SEARCH_SQL, LINK_SEARCH_SQL, TICKET_SEARCH_SQL, TIME_ENTRY_SEARCH_SQL,
+    TODO_SEARCH_SQL, USER_SEARCH_SQL,
+};
 
 // Human: `POST /search/access` records lightweight telemetry used only for ranking boosts inside the sliding window.
 // Agent: Router GET search + advanced; POST record_search_access.
@@ -67,6 +70,8 @@ struct SearchContext {
     mod_todos: bool,
     mod_links: bool,
     mod_time: bool,
+    mod_employees: bool,
+    mod_users: bool,
     can_view_all_tickets: bool,
     can_view_all_time: bool,
 }
@@ -87,6 +92,8 @@ async fn load_search_context(pool: &sqlx::PgPool, user_id: &str) -> SearchContex
     let mod_todos = module_enabled(pool, "todos").await;
     let mod_links = module_enabled(pool, "links").await;
     let mod_time = module_enabled(pool, "timetracking").await;
+    let mod_employees = module_enabled(pool, "employees").await;
+    let mod_users = module_enabled(pool, "users").await;
     let can_view_all_tickets = check_permission(pool, user_id, "tickets.view_all").await
         || check_permission(pool, user_id, "admin.tickets.manage").await;
     let can_view_all_time = check_permission(pool, user_id, "time_tracking.view_all").await;
@@ -97,6 +104,8 @@ async fn load_search_context(pool: &sqlx::PgPool, user_id: &str) -> SearchContex
         mod_todos,
         mod_links,
         mod_time,
+        mod_employees,
+        mod_users,
         can_view_all_tickets,
         can_view_all_time,
     }
@@ -125,6 +134,14 @@ fn can_search_time(ctx: &SearchContext) -> bool {
     ctx.mod_time
         && (has_perm(&ctx.perm_keys, "time_tracking.view")
             || has_perm(&ctx.perm_keys, "time_tracking.view_all"))
+}
+
+fn can_search_employees(ctx: &SearchContext) -> bool {
+    ctx.mod_employees && has_perm(&ctx.perm_keys, "employees.view")
+}
+
+fn can_search_users(ctx: &SearchContext) -> bool {
+    ctx.mod_users && has_perm(&ctx.perm_keys, "users.view")
 }
 
 fn row_match_score(r: &sqlx::postgres::PgRow) -> f64 {
@@ -227,6 +244,43 @@ fn time_entry_to_result(r: &sqlx::postgres::PgRow) -> Result<serde_json::Value, 
     }))
 }
 
+fn employee_to_result(r: &sqlx::postgres::PgRow) -> Result<serde_json::Value, AppError> {
+    let id: String = r.get("id");
+    let first_name: String = r.get("first_name");
+    let last_name: String = r.get("last_name");
+    Ok(json!({
+        "type": "employee",
+        "id": id,
+        "title": format!("{} {}", first_name, last_name),
+        "description": r.get::<Option<String>, _>("title"),
+        "url": format!("/dashboard/employees/{}", id),
+        "metadata": {
+            "firstName": first_name,
+            "lastName": last_name,
+            "email": r.get::<String, _>("email"),
+            "title": r.get::<Option<String>, _>("title"),
+            "companyRole": r.get::<Option<String>, _>("company_role"),
+            "department": r.get::<Option<String>, _>("department"),
+            "employeeStatus": r.get::<String, _>("employee_status"),
+        },
+    }))
+}
+
+fn user_to_result(r: &sqlx::postgres::PgRow) -> Result<serde_json::Value, AppError> {
+    let id: String = r.get("id");
+    Ok(json!({
+        "type": "user",
+        "id": id,
+        "title": r.get::<Option<String>, _>("name").unwrap_or_default(),
+        "description": r.get::<String, _>("email"),
+        "url": format!("/dashboard/users/{}", id),
+        "metadata": {
+            "email": r.get::<String, _>("email"),
+            "role": r.get::<String, _>("role"),
+        },
+    }))
+}
+
 /// Per-entity candidate cap before global merge + ranking (wider net, then cut to `limit`).
 fn per_type_fetch_limit(requested: i64) -> i64 {
     requested.max(12).min(80)
@@ -246,22 +300,32 @@ async fn execute_unified_search(
     let run_tickets = can_search_tickets(&ctx)
         && tf
             .as_deref()
-            .map(|t| !["todo", "link", "timeentry"].contains(&t))
+            .map(|t| !["todo", "link", "timeentry", "employee", "user"].contains(&t))
             .unwrap_or(true);
     let run_todos = can_search_todos(&ctx)
         && tf
             .as_deref()
-            .map(|t| !["ticket", "link", "timeentry"].contains(&t))
+            .map(|t| !["ticket", "link", "timeentry", "employee", "user"].contains(&t))
             .unwrap_or(true);
     let run_links = can_search_links(&ctx)
         && tf
             .as_deref()
-            .map(|t| !["ticket", "todo", "timeentry"].contains(&t))
+            .map(|t| !["ticket", "todo", "timeentry", "employee", "user"].contains(&t))
             .unwrap_or(true);
     let run_time = can_search_time(&ctx)
         && tf
             .as_deref()
-            .map(|t| !["ticket", "todo", "link"].contains(&t))
+            .map(|t| !["ticket", "todo", "link", "employee", "user"].contains(&t))
+            .unwrap_or(true);
+    let run_employees = can_search_employees(&ctx)
+        && tf
+            .as_deref()
+            .map(|t| !["ticket", "todo", "link", "timeentry", "user"].contains(&t))
+            .unwrap_or(true);
+    let run_users = can_search_users(&ctx)
+        && tf
+            .as_deref()
+            .map(|t| !["ticket", "todo", "link", "timeentry", "employee"].contains(&t))
             .unwrap_or(true);
 
     let mut hits: Vec<ScoredHit> = Vec::new();
@@ -345,6 +409,44 @@ async fn execute_unified_search(
         }
     }
 
+    if run_employees {
+        let rows = sqlx::query(EMPLOYEE_SEARCH_SQL)
+            .bind(user_id)
+            .bind(q)
+            .bind(cap)
+            .fetch_all(&state.pool)
+            .await?;
+        for r in rows {
+            let score = row_match_score(&r);
+            let id: String = r.get("id");
+            hits.push(ScoredHit {
+                entity_type: "employee".to_string(),
+                entity_id: id,
+                match_score: score,
+                result: employee_to_result(&r)?,
+            });
+        }
+    }
+
+    if run_users {
+        let rows = sqlx::query(USER_SEARCH_SQL)
+            .bind(user_id)
+            .bind(q)
+            .bind(cap)
+            .fetch_all(&state.pool)
+            .await?;
+        for r in rows {
+            let score = row_match_score(&r);
+            let id: String = r.get("id");
+            hits.push(ScoredHit {
+                entity_type: "user".to_string(),
+                entity_id: id,
+                match_score: score,
+                result: user_to_result(&r)?,
+            });
+        }
+    }
+
     let total_matches = hits.len() as u64;
     let pairs: Vec<(&str, &str)> = hits
         .iter()
@@ -408,7 +510,7 @@ async fn record_search_access(
     }
     let allowed = matches!(
         et,
-        "ticket" | "task" | "link" | "timeentry" | "user" | "comment" | "setting"
+        "ticket" | "task" | "link" | "timeentry" | "employee" | "user" | "comment" | "setting"
     );
     if !allowed {
         return Err(AppError::bad_request("unsupported entity_type"));
