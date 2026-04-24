@@ -213,6 +213,9 @@ struct ProfileView: View {
             }
         }
         .glassPanel(cornerRadius: 20, tint: CloudwrkzColors.primary500, tintOpacity: 0.04)
+        // Human: Slide/opacity transitions must not paint outside the rounded glass panel.
+        // Agent: clipShape matches glassPanel cornerRadius so expanded body stays visually contained.
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
     private var commandCenterExpandedBody: some View {
