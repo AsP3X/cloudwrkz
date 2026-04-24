@@ -8,18 +8,19 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
     routing::{delete, get, post},
 };
-use rand::Rng;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::Row;
 
 use crate::auth::extractors::AuthUser;
-use crate::auth::password;
+use crate::command_queue::{MutationQueuedResponse, MutationRunContext};
 use crate::error::AppError;
+use crate::job_queue::entity_creates;
 use crate::routes::AppState;
-use crate::routes::helpers::check_permission;
+use crate::routes::helpers::{check_permission, hash_json_for_idempotency, idempotency_key_from_headers};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -60,7 +61,7 @@ struct CheckEmailQuery {
     email: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct CreateEmployeeRequest {
     first_name: String,
     last_name: String,
@@ -87,13 +88,13 @@ struct CreateEmployeeRequest {
     manager_ids: Option<Vec<String>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct AdditionalEmailInput {
     email: String,
     label: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct UpdateEmployeeRequest {
     first_name: Option<String>,
     last_name: Option<String>,
@@ -112,18 +113,18 @@ struct UpdateEmployeeRequest {
     sick_days_available: Option<i32>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct AddEmailRequest {
     email: String,
     label: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct AddManagerRequest {
     manager_employee_id: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct LinkUserRequest {
     user_id: String,
 }
@@ -137,6 +138,46 @@ fn validate_employee_status(s: &str) -> bool {
         s.to_uppercase().as_str(),
         "ACTIVE" | "INACTIVE" | "ON_LEAVE" | "PROBATION" | "TERMINATED"
     )
+}
+
+async fn enqueue_employee_job(
+    state: &AppState,
+    user_id: &str,
+    route: String,
+    body_hash: u64,
+    idempotency_key: Option<String>,
+    job_type: &str,
+    mut payload: serde_json::Value,
+    message: &str,
+) -> Result<Response, AppError> {
+    if let Some(ref ik) = idempotency_key {
+        if !ik.trim().is_empty() {
+            if let Some(cached) = state
+                .mutation_broker
+                .idempotency
+                .get(user_id, &ik.trim().to_string(), &route, body_hash)
+                .await
+            {
+                return Ok((cached.status, Json(cached.body)).into_response());
+            }
+        }
+    }
+    payload["user_id"] = json!(user_id);
+    payload["route"] = json!(route);
+    payload["body_hash"] = json!(body_hash);
+    payload["idempotency_key"] = json!(idempotency_key);
+
+    let job_id = entity_creates::enqueue_entity_create_job(&state.pool, job_type, user_id, payload)
+        .await
+        .map_err(AppError::from)?;
+    let q = MutationQueuedResponse {
+        message: message.into(),
+        queued: true,
+        job_id,
+        retry_deadline_secs: entity_creates::ENTITY_CREATE_POLL_DEADLINE_SECS,
+        job_type: Some(job_type.to_string()),
+    };
+    Ok((StatusCode::ACCEPTED, Json(q)).into_response())
 }
 
 /// Fetch emails + managers for a single employee and return a full JSON value.
@@ -424,178 +465,49 @@ async fn get_employee(
 async fn create_employee(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    _headers: HeaderMap,
+    headers: HeaderMap,
     Json(body): Json<CreateEmployeeRequest>,
-) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
+) -> Result<Response, AppError> {
     if !check_permission(&state.pool, &user.id, "employees.create").await
         && user.role != "ADMIN"
     {
         return Err(AppError::forbidden("Insufficient permissions"));
     }
-
-    let first_name = body.first_name.trim().to_string();
-    let last_name = body.last_name.trim().to_string();
-    if first_name.is_empty() {
-        return Err(AppError::bad_request("First name is required"));
+    let first_name = body.first_name.trim();
+    let last_name = body.last_name.trim();
+    if first_name.is_empty() || last_name.is_empty() {
+        return Err(AppError::bad_request("First name and last name are required"));
     }
-    if last_name.is_empty() {
-        return Err(AppError::bad_request("Last name is required"));
-    }
-
-    let email = body.email.trim().to_lowercase();
+    let email = body.email.trim();
     if email.is_empty() || !email.contains('@') {
         return Err(AppError::bad_request("A valid email address is required"));
     }
-
-    let status = body
-        .employee_status
-        .as_deref()
-        .map(|s| s.to_uppercase())
-        .unwrap_or_else(|| "ACTIVE".into());
-    if !validate_employee_status(&status) {
-        return Err(AppError::bad_request("Invalid employee status"));
+    if let Some(ref s) = body.employee_status {
+        if !validate_employee_status(s) {
+            return Err(AppError::bad_request("Invalid employee status"));
+        }
     }
-
-    // Resolve the linked user ID before the main INSERT
-    let linked_user_id: Option<String> =
-        if let Some(existing_uid) = body.link_existing_user_id.as_ref() {
-            let exists: Option<String> = sqlx::query_scalar("SELECT id FROM users WHERE id = $1")
-                .bind(existing_uid)
-                .fetch_optional(&state.pool)
-                .await?;
-            if exists.is_none() {
-                return Err(AppError::not_found("User account not found"));
-            }
-            Some(existing_uid.clone())
-        } else if body.create_user_account == Some(true) {
-            let already: Option<String> =
-                sqlx::query_scalar("SELECT id FROM users WHERE lower(email) = $1")
-                    .bind(&email)
-                    .fetch_optional(&state.pool)
-                    .await?;
-            if already.is_some() {
-                return Err(AppError::bad_request(
-                    "A user account with this email already exists. Use link_existing_user_id to link it.",
-                ));
-            }
-            let raw_pass = generate_temp_password();
-            let hash = password::hash_password(&raw_pass)
-                .map_err(|e| AppError::internal(e.to_string()))?;
-            let new_user_id = crate::id::new_cuid();
-            let display_name = format!("{first_name} {last_name}");
-            sqlx::query(
-                r#"INSERT INTO users (id, email, name, password, role, status, email_verified,
-                      timezone, theme, locale, created_at, updated_at)
-                   VALUES ($1, $2, $3, $4, 'USER'::"Role", 'PENDING'::"UserStatus", false,
-                           'UTC', 'system', 'en', NOW(), NOW())"#,
-            )
-            .bind(&new_user_id)
-            .bind(&email)
-            .bind(&display_name)
-            .bind(&hash)
-            .execute(&state.pool)
-            .await
-            .map_err(|e| {
-                if let sqlx::Error::Database(ref db) = e {
-                    if db.code().as_deref() == Some("23505") {
-                        return AppError::bad_request(
-                            "A user account with this email already exists.",
-                        );
-                    }
-                }
-                e.into()
-            })?;
-            Some(new_user_id)
-        } else {
-            None
-        };
-
-    let emp_id = crate::id::new_cuid();
-
-    sqlx::query(
-        r#"INSERT INTO employees (
-             id, first_name, last_name, email, title, employee_status,
-             company_role, department,
-             monthly_salary, monthly_expenses, hours_worked,
-             vacation_available, vacation_used, vacation_planned,
-             sick_days_total, sick_days_available,
-             linked_user_id, created_at, updated_at
-           ) VALUES (
-             $1, $2, $3, $4, $5, $6::employee_status_enum,
-             $7, $8,
-             $9, $10, $11,
-             $12, $13, $14,
-             $15, $16,
-             $17, NOW(), NOW()
-           )"#,
+    let body_hash = hash_json_for_idempotency(&body);
+    let route = "POST /employees".to_string();
+    let ctx = MutationRunContext {
+        user_id: user.id.clone(),
+        route: route.clone(),
+        idempotency_key: idempotency_key_from_headers(&headers),
+        body_hash,
+    };
+    let request_json = serde_json::to_value(&body)
+        .map_err(|e| AppError::internal(format!("serialize employee create: {e}")))?;
+    enqueue_employee_job(
+        &state,
+        &user.id,
+        route,
+        ctx.body_hash,
+        ctx.idempotency_key,
+        entity_creates::JOB_TYPE_EMPLOYEE_CREATE,
+        json!({ "request": request_json }),
+        "Employee creation is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed.",
     )
-    .bind(&emp_id)
-    .bind(&first_name)
-    .bind(&last_name)
-    .bind(&email)
-    .bind(body.title.as_deref().filter(|s| !s.is_empty()))
-    .bind(&status)
-    .bind(body.company_role.as_deref().filter(|s| !s.is_empty()))
-    .bind(body.department.as_deref().filter(|s| !s.is_empty()))
-    .bind(body.monthly_salary)
-    .bind(body.monthly_expenses)
-    .bind(body.hours_worked)
-    .bind(body.vacation_available.unwrap_or(0))
-    .bind(body.vacation_used.unwrap_or(0))
-    .bind(body.vacation_planned.unwrap_or(0))
-    .bind(body.sick_days_total.unwrap_or(0))
-    .bind(body.sick_days_available.unwrap_or(0))
-    .bind(&linked_user_id)
-    .execute(&state.pool)
-    .await?;
-
-    // Additional emails
-    if let Some(addl) = &body.additional_emails {
-        for ae in addl {
-            let ae_email = ae.email.trim().to_lowercase();
-            if !ae_email.is_empty() && ae_email.contains('@') {
-                let email_id = crate::id::new_cuid();
-                sqlx::query(
-                    "INSERT INTO employee_emails (id, employee_id, email, label, created_at) VALUES ($1, $2, $3, $4, NOW())",
-                )
-                .bind(&email_id)
-                .bind(&emp_id)
-                .bind(&ae_email)
-                .bind(ae.label.as_deref().filter(|s| !s.is_empty()))
-                .execute(&state.pool)
-                .await?;
-            }
-        }
-    }
-
-    // Manager links
-    if let Some(mgr_ids) = &body.manager_ids {
-        for mgr_id in mgr_ids {
-            let mgr_id = mgr_id.trim();
-            if mgr_id.is_empty() || mgr_id == emp_id.as_str() {
-                continue;
-            }
-            let exists: Option<String> =
-                sqlx::query_scalar("SELECT id FROM employees WHERE id = $1")
-                    .bind(mgr_id)
-                    .fetch_optional(&state.pool)
-                    .await?;
-            if exists.is_some() {
-                let rel_id = crate::id::new_cuid();
-                let _ = sqlx::query(
-                    "INSERT INTO employee_managers (id, employee_id, manager_employee_id, created_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT DO NOTHING",
-                )
-                .bind(&rel_id)
-                .bind(&emp_id)
-                .bind(mgr_id)
-                .execute(&state.pool)
-                .await;
-            }
-        }
-    }
-
-    let data = employee_full_json(&state.pool, &emp_id).await?;
-    Ok((StatusCode::CREATED, Json(json!({ "employee": data }))))
+    .await
 }
 
 // Human: Partial update for any employee field; only provided fields are changed.
@@ -605,76 +517,35 @@ async fn update_employee(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Json(body): Json<UpdateEmployeeRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Response, AppError> {
     if !check_permission(&state.pool, &user.id, "employees.update").await
         && user.role != "ADMIN"
     {
         return Err(AppError::forbidden("Insufficient permissions"));
     }
 
-    let _: String = sqlx::query_scalar("SELECT id FROM employees WHERE id = $1")
-        .bind(&id)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or_else(|| AppError::not_found("Employee not found"))?;
-
     if let Some(ref s) = body.employee_status {
         if !validate_employee_status(s) {
             return Err(AppError::bad_request("Invalid employee status"));
         }
     }
-
-    sqlx::query(
-        r#"UPDATE employees SET
-             first_name          = COALESCE($2,  first_name),
-             last_name           = COALESCE($3,  last_name),
-             email               = COALESCE($4,  email),
-             title               = COALESCE($5,  title),
-             employee_status     = COALESCE($6::employee_status_enum, employee_status),
-             company_role        = COALESCE($7,  company_role),
-             department          = COALESCE($8,  department),
-             monthly_salary      = COALESCE($9,  monthly_salary),
-             monthly_expenses    = COALESCE($10, monthly_expenses),
-             hours_worked        = COALESCE($11, hours_worked),
-             vacation_available  = COALESCE($12, vacation_available),
-             vacation_used       = COALESCE($13, vacation_used),
-             vacation_planned    = COALESCE($14, vacation_planned),
-             sick_days_total     = COALESCE($15, sick_days_total),
-             sick_days_available = COALESCE($16, sick_days_available),
-             updated_at          = NOW()
-           WHERE id = $1"#,
+    let body_hash = hash_json_for_idempotency(&body);
+    let route = format!("PATCH /employees/{id}");
+    let request_json = serde_json::to_value(&body)
+        .map_err(|e| AppError::internal(format!("serialize employee update: {e}")))?;
+    enqueue_employee_job(
+        &state,
+        &user.id,
+        route,
+        body_hash,
+        idempotency_key_from_headers(&headers),
+        entity_creates::JOB_TYPE_EMPLOYEE_UPDATE,
+        json!({ "employee_id": id, "request": request_json }),
+        "Employee update is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed.",
     )
-    .bind(&id)
-    .bind(body.first_name.as_deref().filter(|s| !s.is_empty()))
-    .bind(body.last_name.as_deref().filter(|s| !s.is_empty()))
-    .bind(
-        body.email
-            .as_ref()
-            .map(|s| s.trim().to_lowercase())
-            .filter(|s| s.contains('@')),
-    )
-    .bind(body.title.as_deref())
-    .bind(
-        body.employee_status
-            .as_deref()
-            .map(|s| s.to_uppercase()),
-    )
-    .bind(body.company_role.as_deref())
-    .bind(body.department.as_deref())
-    .bind(body.monthly_salary)
-    .bind(body.monthly_expenses)
-    .bind(body.hours_worked)
-    .bind(body.vacation_available)
-    .bind(body.vacation_used)
-    .bind(body.vacation_planned)
-    .bind(body.sick_days_total)
-    .bind(body.sick_days_available)
-    .execute(&state.pool)
-    .await?;
-
-    let data = employee_full_json(&state.pool, &id).await?;
-    Ok(Json(json!({ "employee": data })))
+    .await
 }
 
 // Human: Delete an employee record; cascades to emails and manager links via FK.
@@ -684,23 +555,26 @@ async fn delete_employee(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
-) -> Result<Json<serde_json::Value>, AppError> {
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
     if !check_permission(&state.pool, &user.id, "employees.delete").await
         && user.role != "ADMIN"
     {
         return Err(AppError::forbidden("Insufficient permissions"));
     }
 
-    let result = sqlx::query("DELETE FROM employees WHERE id = $1")
-        .bind(&id)
-        .execute(&state.pool)
-        .await?;
-
-    if result.rows_affected() == 0 {
-        return Err(AppError::not_found("Employee not found"));
-    }
-
-    Ok(Json(json!({ "success": true })))
+    let route = format!("DELETE /employees/{id}");
+    enqueue_employee_job(
+        &state,
+        &user.id,
+        route,
+        0,
+        idempotency_key_from_headers(&headers),
+        entity_creates::JOB_TYPE_EMPLOYEE_DELETE,
+        json!({ "employee_id": id }),
+        "Employee deletion is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed.",
+    )
+    .await
 }
 
 // Human: Add an additional email address to an employee record.
@@ -710,8 +584,9 @@ async fn add_employee_email(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Json(body): Json<AddEmailRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Response, AppError> {
     if !check_permission(&state.pool, &user.id, "employees.update").await
         && user.role != "ADMIN"
     {
@@ -723,25 +598,21 @@ async fn add_employee_email(
         return Err(AppError::bad_request("A valid email address is required"));
     }
 
-    let _: String = sqlx::query_scalar("SELECT id FROM employees WHERE id = $1")
-        .bind(&id)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or_else(|| AppError::not_found("Employee not found"))?;
-
-    let email_id = crate::id::new_cuid();
-    sqlx::query(
-        "INSERT INTO employee_emails (id, employee_id, email, label, created_at) VALUES ($1, $2, $3, $4, NOW())",
+    let route = format!("POST /employees/{id}/emails");
+    let body_hash = hash_json_for_idempotency(&body);
+    let request_json = serde_json::to_value(&body)
+        .map_err(|e| AppError::internal(format!("serialize employee add email: {e}")))?;
+    enqueue_employee_job(
+        &state,
+        &user.id,
+        route,
+        body_hash,
+        idempotency_key_from_headers(&headers),
+        entity_creates::JOB_TYPE_EMPLOYEE_ADD_EMAIL,
+        json!({ "employee_id": id, "request": request_json }),
+        "Employee email add is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed.",
     )
-    .bind(&email_id)
-    .bind(&id)
-    .bind(&email)
-    .bind(body.label.as_deref().filter(|s| !s.is_empty()))
-    .execute(&state.pool)
-    .await?;
-
-    let data = employee_full_json(&state.pool, &id).await?;
-    Ok(Json(json!({ "employee": data })))
+    .await
 }
 
 // Human: Remove an additional email from an employee.
@@ -751,21 +622,26 @@ async fn remove_employee_email(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path((id, email_id)): Path<(String, String)>,
-) -> Result<Json<serde_json::Value>, AppError> {
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
     if !check_permission(&state.pool, &user.id, "employees.update").await
         && user.role != "ADMIN"
     {
         return Err(AppError::forbidden("Insufficient permissions"));
     }
 
-    sqlx::query("DELETE FROM employee_emails WHERE id = $1 AND employee_id = $2")
-        .bind(&email_id)
-        .bind(&id)
-        .execute(&state.pool)
-        .await?;
-
-    let data = employee_full_json(&state.pool, &id).await?;
-    Ok(Json(json!({ "employee": data })))
+    let route = format!("DELETE /employees/{id}/emails/{email_id}");
+    enqueue_employee_job(
+        &state,
+        &user.id,
+        route,
+        0,
+        idempotency_key_from_headers(&headers),
+        entity_creates::JOB_TYPE_EMPLOYEE_REMOVE_EMAIL,
+        json!({ "employee_id": id, "email_id": email_id }),
+        "Employee email removal is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed.",
+    )
+    .await
 }
 
 // Human: Link another employee as a manager of this employee.
@@ -775,8 +651,9 @@ async fn add_employee_manager(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Json(body): Json<AddManagerRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Response, AppError> {
     if !check_permission(&state.pool, &user.id, "employees.update").await
         && user.role != "ADMIN"
     {
@@ -789,30 +666,21 @@ async fn add_employee_manager(
         ));
     }
 
-    let _: String = sqlx::query_scalar("SELECT id FROM employees WHERE id = $1")
-        .bind(&id)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or_else(|| AppError::not_found("Employee not found"))?;
-
-    let _: String = sqlx::query_scalar("SELECT id FROM employees WHERE id = $1")
-        .bind(&body.manager_employee_id)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or_else(|| AppError::not_found("Manager employee not found"))?;
-
-    let rel_id = crate::id::new_cuid();
-    sqlx::query(
-        "INSERT INTO employee_managers (id, employee_id, manager_employee_id, created_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT DO NOTHING",
+    let route = format!("POST /employees/{id}/managers");
+    let body_hash = hash_json_for_idempotency(&body);
+    let request_json = serde_json::to_value(&body)
+        .map_err(|e| AppError::internal(format!("serialize employee add manager: {e}")))?;
+    enqueue_employee_job(
+        &state,
+        &user.id,
+        route,
+        body_hash,
+        idempotency_key_from_headers(&headers),
+        entity_creates::JOB_TYPE_EMPLOYEE_ADD_MANAGER,
+        json!({ "employee_id": id, "request": request_json }),
+        "Employee manager add is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed.",
     )
-    .bind(&rel_id)
-    .bind(&id)
-    .bind(&body.manager_employee_id)
-    .execute(&state.pool)
-    .await?;
-
-    let data = employee_full_json(&state.pool, &id).await?;
-    Ok(Json(json!({ "employee": data })))
+    .await
 }
 
 // Human: Remove a manager relationship from an employee.
@@ -822,23 +690,26 @@ async fn remove_employee_manager(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path((id, manager_id)): Path<(String, String)>,
-) -> Result<Json<serde_json::Value>, AppError> {
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
     if !check_permission(&state.pool, &user.id, "employees.update").await
         && user.role != "ADMIN"
     {
         return Err(AppError::forbidden("Insufficient permissions"));
     }
 
-    sqlx::query(
-        "DELETE FROM employee_managers WHERE employee_id = $1 AND manager_employee_id = $2",
+    let route = format!("DELETE /employees/{id}/managers/{manager_id}");
+    enqueue_employee_job(
+        &state,
+        &user.id,
+        route,
+        0,
+        idempotency_key_from_headers(&headers),
+        entity_creates::JOB_TYPE_EMPLOYEE_REMOVE_MANAGER,
+        json!({ "employee_id": id, "manager_employee_id": manager_id }),
+        "Employee manager removal is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed.",
     )
-    .bind(&id)
-    .bind(&manager_id)
-    .execute(&state.pool)
-    .await?;
-
-    let data = employee_full_json(&state.pool, &id).await?;
-    Ok(Json(json!({ "employee": data })))
+    .await
 }
 
 // Human: Set the linked_user_id on an employee to connect it to a platform user account.
@@ -848,34 +719,30 @@ async fn link_user(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Json(body): Json<LinkUserRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Response, AppError> {
     if !check_permission(&state.pool, &user.id, "employees.update").await
         && user.role != "ADMIN"
     {
         return Err(AppError::forbidden("Insufficient permissions"));
     }
 
-    let _: String = sqlx::query_scalar("SELECT id FROM employees WHERE id = $1")
-        .bind(&id)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or_else(|| AppError::not_found("Employee not found"))?;
-
-    let _: String = sqlx::query_scalar("SELECT id FROM users WHERE id = $1")
-        .bind(&body.user_id)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or_else(|| AppError::not_found("User account not found"))?;
-
-    sqlx::query("UPDATE employees SET linked_user_id = $2, updated_at = NOW() WHERE id = $1")
-        .bind(&id)
-        .bind(&body.user_id)
-        .execute(&state.pool)
-        .await?;
-
-    let data = employee_full_json(&state.pool, &id).await?;
-    Ok(Json(json!({ "employee": data })))
+    let route = format!("POST /employees/{id}/link-user");
+    let body_hash = hash_json_for_idempotency(&body);
+    let request_json = serde_json::to_value(&body)
+        .map_err(|e| AppError::internal(format!("serialize employee link user: {e}")))?;
+    enqueue_employee_job(
+        &state,
+        &user.id,
+        route,
+        body_hash,
+        idempotency_key_from_headers(&headers),
+        entity_creates::JOB_TYPE_EMPLOYEE_LINK_USER,
+        json!({ "employee_id": id, "request": request_json }),
+        "Employee user-link is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed.",
+    )
+    .await
 }
 
 // Human: Clear the linked_user_id from an employee, severing the platform-account association.
@@ -885,38 +752,25 @@ async fn unlink_user(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
-) -> Result<Json<serde_json::Value>, AppError> {
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
     if !check_permission(&state.pool, &user.id, "employees.update").await
         && user.role != "ADMIN"
     {
         return Err(AppError::forbidden("Insufficient permissions"));
     }
 
-    let result =
-        sqlx::query("UPDATE employees SET linked_user_id = NULL, updated_at = NOW() WHERE id = $1")
-            .bind(&id)
-            .execute(&state.pool)
-            .await?;
-
-    if result.rows_affected() == 0 {
-        return Err(AppError::not_found("Employee not found"));
-    }
-
-    let data = employee_full_json(&state.pool, &id).await?;
-    Ok(Json(json!({ "employee": data })))
+    let route = format!("POST /employees/{id}/unlink-user");
+    enqueue_employee_job(
+        &state,
+        &user.id,
+        route,
+        0,
+        idempotency_key_from_headers(&headers),
+        entity_creates::JOB_TYPE_EMPLOYEE_UNLINK_USER,
+        json!({ "employee_id": id }),
+        "Employee user-unlink is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed.",
+    )
+    .await
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-fn generate_temp_password() -> String {
-    let mut rng = rand::rng();
-    let chars: Vec<char> =
-        "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%^&*"
-            .chars()
-            .collect();
-    (0..20)
-        .map(|_| chars[rng.random_range(0..chars.len())])
-        .collect()
-}

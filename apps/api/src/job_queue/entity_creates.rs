@@ -9,6 +9,7 @@ use serde_json::json;
 use sqlx::{PgPool, Row};
 use tracing::{error, info, warn};
 
+use crate::auth::password;
 use crate::audit::{self, WriteAuditParams};
 use crate::command_queue::{
     JsonMutationResult, MutationBroker, MutationJobStatusKind, MutationJobStatusResponse,
@@ -55,6 +56,15 @@ pub const JOB_TYPE_LINK_DELETE: &str = "link_delete";
 pub const JOB_TYPE_COLLECTION_CREATE: &str = "collection_create";
 pub const JOB_TYPE_COLLECTION_UPDATE: &str = "collection_update";
 pub const JOB_TYPE_COLLECTION_DELETE: &str = "collection_delete";
+pub const JOB_TYPE_EMPLOYEE_CREATE: &str = "employee_create";
+pub const JOB_TYPE_EMPLOYEE_UPDATE: &str = "employee_update";
+pub const JOB_TYPE_EMPLOYEE_DELETE: &str = "employee_delete";
+pub const JOB_TYPE_EMPLOYEE_ADD_EMAIL: &str = "employee_add_email";
+pub const JOB_TYPE_EMPLOYEE_REMOVE_EMAIL: &str = "employee_remove_email";
+pub const JOB_TYPE_EMPLOYEE_ADD_MANAGER: &str = "employee_add_manager";
+pub const JOB_TYPE_EMPLOYEE_REMOVE_MANAGER: &str = "employee_remove_manager";
+pub const JOB_TYPE_EMPLOYEE_LINK_USER: &str = "employee_link_user";
+pub const JOB_TYPE_EMPLOYEE_UNLINK_USER: &str = "employee_unlink_user";
 
 pub const ENTITY_CREATE_POLL_DEADLINE_SECS: u32 = 120;
 
@@ -88,6 +98,15 @@ pub fn is_entity_create_job_type(job_type: &str) -> bool {
             | JOB_TYPE_COLLECTION_CREATE
             | JOB_TYPE_COLLECTION_UPDATE
             | JOB_TYPE_COLLECTION_DELETE
+            | JOB_TYPE_EMPLOYEE_CREATE
+            | JOB_TYPE_EMPLOYEE_UPDATE
+            | JOB_TYPE_EMPLOYEE_DELETE
+            | JOB_TYPE_EMPLOYEE_ADD_EMAIL
+            | JOB_TYPE_EMPLOYEE_REMOVE_EMAIL
+            | JOB_TYPE_EMPLOYEE_ADD_MANAGER
+            | JOB_TYPE_EMPLOYEE_REMOVE_MANAGER
+            | JOB_TYPE_EMPLOYEE_LINK_USER
+            | JOB_TYPE_EMPLOYEE_UNLINK_USER
     )
 }
 
@@ -368,6 +387,23 @@ pub async fn run_entity_create_job(
         }
         JOB_TYPE_COLLECTION_DELETE => {
             exec_collection_delete(pool, http, lock_ms, stmt_ms, payload).await
+        }
+        JOB_TYPE_EMPLOYEE_CREATE => exec_employee_create(pool, lock_ms, stmt_ms, payload).await,
+        JOB_TYPE_EMPLOYEE_UPDATE => exec_employee_update(pool, lock_ms, stmt_ms, payload).await,
+        JOB_TYPE_EMPLOYEE_DELETE => exec_employee_delete(pool, lock_ms, stmt_ms, payload).await,
+        JOB_TYPE_EMPLOYEE_ADD_EMAIL => exec_employee_add_email(pool, lock_ms, stmt_ms, payload).await,
+        JOB_TYPE_EMPLOYEE_REMOVE_EMAIL => {
+            exec_employee_remove_email(pool, lock_ms, stmt_ms, payload).await
+        }
+        JOB_TYPE_EMPLOYEE_ADD_MANAGER => {
+            exec_employee_add_manager(pool, lock_ms, stmt_ms, payload).await
+        }
+        JOB_TYPE_EMPLOYEE_REMOVE_MANAGER => {
+            exec_employee_remove_manager(pool, lock_ms, stmt_ms, payload).await
+        }
+        JOB_TYPE_EMPLOYEE_LINK_USER => exec_employee_link_user(pool, lock_ms, stmt_ms, payload).await,
+        JOB_TYPE_EMPLOYEE_UNLINK_USER => {
+            exec_employee_unlink_user(pool, lock_ms, stmt_ms, payload).await
         }
         _ => JobExecOutcome::Fail(AppError::internal("Unknown entity create job type")),
     };
@@ -1751,6 +1787,510 @@ struct CreateCollectionJobRequest {
 fn collection_hex_ok(s: &str) -> bool {
     let b = s.as_bytes();
     b.len() == 7 && b[0] == b'#' && b[1..].iter().all(|x| x.is_ascii_hexdigit())
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateEmployeeJobRequest {
+    first_name: String,
+    last_name: String,
+    email: String,
+    title: Option<String>,
+    employee_status: Option<String>,
+    company_role: Option<String>,
+    department: Option<String>,
+    monthly_salary: Option<f64>,
+    monthly_expenses: Option<f64>,
+    hours_worked: Option<f64>,
+    vacation_available: Option<i32>,
+    vacation_used: Option<i32>,
+    vacation_planned: Option<i32>,
+    sick_days_total: Option<i32>,
+    sick_days_available: Option<i32>,
+    create_user_account: Option<bool>,
+    link_existing_user_id: Option<String>,
+    additional_emails: Option<Vec<CreateEmployeeAdditionalEmail>>,
+    manager_ids: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateEmployeeAdditionalEmail {
+    email: String,
+    label: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateEmployeeJobRequest {
+    first_name: Option<String>,
+    last_name: Option<String>,
+    email: Option<String>,
+    title: Option<String>,
+    employee_status: Option<String>,
+    company_role: Option<String>,
+    department: Option<String>,
+    monthly_salary: Option<f64>,
+    monthly_expenses: Option<f64>,
+    hours_worked: Option<f64>,
+    vacation_available: Option<i32>,
+    vacation_used: Option<i32>,
+    vacation_planned: Option<i32>,
+    sick_days_total: Option<i32>,
+    sick_days_available: Option<i32>,
+}
+
+#[derive(Debug, Deserialize)]
+struct EmployeeAddEmailJobRequest {
+    email: String,
+    label: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct EmployeeAddManagerJobRequest {
+    manager_employee_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct EmployeeLinkUserJobRequest {
+    user_id: String,
+}
+
+fn employee_status_ok(s: &str) -> bool {
+    matches!(
+        s.to_uppercase().as_str(),
+        "ACTIVE" | "INACTIVE" | "ON_LEAVE" | "PROBATION" | "TERMINATED"
+    )
+}
+
+fn temp_password() -> String {
+    use rand::Rng;
+    let mut rng = rand::rng();
+    let chars: Vec<char> = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%^&*"
+        .chars()
+        .collect();
+    (0..20)
+        .map(|_| chars[rng.random_range(0..chars.len())])
+        .collect()
+}
+
+async fn exec_employee_create(
+    pool: &PgPool,
+    lock_ms: u64,
+    stmt_ms: u64,
+    payload: &serde_json::Value,
+) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+    };
+    if !check_permission(pool, &user_id, "employees.create").await {
+        return JobExecOutcome::Fail(AppError::forbidden(
+            "You do not have permission to create employees",
+        ));
+    }
+    let body_val = match payload.get("request") {
+        Some(v) => v.clone(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing request in job payload")),
+    };
+    let body: CreateEmployeeJobRequest = match serde_json::from_value(body_val) {
+        Ok(v) => v,
+        Err(e) => {
+            return JobExecOutcome::Fail(AppError::bad_request(format!(
+                "Invalid employee create body: {e}"
+            )));
+        }
+    };
+    let first_name = body.first_name.trim().to_string();
+    let last_name = body.last_name.trim().to_string();
+    if first_name.is_empty() || last_name.is_empty() {
+        return JobExecOutcome::Fail(AppError::bad_request("First name and last name are required"));
+    }
+    let email = body.email.trim().to_lowercase();
+    if email.is_empty() || !email.contains('@') {
+        return JobExecOutcome::Fail(AppError::bad_request("A valid email address is required"));
+    }
+    let status = body
+        .employee_status
+        .as_deref()
+        .map(|s| s.to_uppercase())
+        .unwrap_or_else(|| "ACTIVE".into());
+    if !employee_status_ok(&status) {
+        return JobExecOutcome::Fail(AppError::bad_request("Invalid employee status"));
+    }
+
+    let mut tx = match pool.begin().await {
+        Ok(t) => t,
+        Err(e) => return map_sqlx_ticket(e),
+    };
+    if let Err(e) = apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+
+    let linked_user_id: Option<String> = if let Some(existing_uid) = body.link_existing_user_id.as_ref() {
+        let exists: Option<String> = match sqlx::query_scalar("SELECT id FROM users WHERE id = $1")
+            .bind(existing_uid)
+            .fetch_optional(&mut *tx)
+            .await
+        {
+            Ok(v) => v,
+            Err(e) => {
+                let _ = tx.rollback().await;
+                return map_sqlx_ticket(e);
+            }
+        };
+        if exists.is_none() {
+            let _ = tx.rollback().await;
+            return JobExecOutcome::Fail(AppError::not_found("User account not found"));
+        }
+        Some(existing_uid.clone())
+    } else if body.create_user_account == Some(true) {
+        let already: Option<String> = match sqlx::query_scalar("SELECT id FROM users WHERE lower(email) = $1")
+            .bind(&email)
+            .fetch_optional(&mut *tx)
+            .await
+        {
+            Ok(v) => v,
+            Err(e) => {
+                let _ = tx.rollback().await;
+                return map_sqlx_ticket(e);
+            }
+        };
+        if already.is_some() {
+            let _ = tx.rollback().await;
+            return JobExecOutcome::Fail(AppError::bad_request(
+                "A user account with this email already exists. Use link_existing_user_id to link it.",
+            ));
+        }
+        let hash = match password::hash_password(&temp_password()) {
+            Ok(v) => v,
+            Err(e) => {
+                let _ = tx.rollback().await;
+                return JobExecOutcome::Fail(AppError::internal(e.to_string()));
+            }
+        };
+        let new_user_id = new_cuid();
+        let display_name = format!("{first_name} {last_name}");
+        let res = sqlx::query(
+            r#"INSERT INTO users (id, email, name, password, role, status, email_verified,
+                  timezone, theme, locale, created_at, updated_at)
+               VALUES ($1, $2, $3, $4, 'USER'::"Role", 'PENDING'::"UserStatus", false,
+                       'UTC', 'system', 'en', NOW(), NOW())"#,
+        )
+        .bind(&new_user_id)
+        .bind(&email)
+        .bind(&display_name)
+        .bind(&hash)
+        .execute(&mut *tx)
+        .await;
+        if let Err(e) = res {
+            let _ = tx.rollback().await;
+            if let sqlx::Error::Database(ref db) = e {
+                if db.code().as_deref() == Some("23505") {
+                    return JobExecOutcome::Fail(AppError::bad_request(
+                        "A user account with this email already exists.",
+                    ));
+                }
+            }
+            return map_sqlx_ticket(e);
+        }
+        Some(new_user_id)
+    } else {
+        None
+    };
+
+    let emp_id = new_cuid();
+    let res = sqlx::query(
+        r#"INSERT INTO employees (
+             id, first_name, last_name, email, title, employee_status,
+             company_role, department,
+             monthly_salary, monthly_expenses, hours_worked,
+             vacation_available, vacation_used, vacation_planned,
+             sick_days_total, sick_days_available,
+             linked_user_id, created_at, updated_at
+           ) VALUES (
+             $1, $2, $3, $4, $5, $6::employee_status_enum,
+             $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW()
+           )"#,
+    )
+    .bind(&emp_id)
+    .bind(&first_name)
+    .bind(&last_name)
+    .bind(&email)
+    .bind(body.title.as_deref().filter(|s| !s.is_empty()))
+    .bind(&status)
+    .bind(body.company_role.as_deref().filter(|s| !s.is_empty()))
+    .bind(body.department.as_deref().filter(|s| !s.is_empty()))
+    .bind(body.monthly_salary)
+    .bind(body.monthly_expenses)
+    .bind(body.hours_worked)
+    .bind(body.vacation_available.unwrap_or(0))
+    .bind(body.vacation_used.unwrap_or(0))
+    .bind(body.vacation_planned.unwrap_or(0))
+    .bind(body.sick_days_total.unwrap_or(0))
+    .bind(body.sick_days_available.unwrap_or(0))
+    .bind(&linked_user_id)
+    .execute(&mut *tx)
+    .await;
+    if let Err(e) = res {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+    if let Some(addl) = &body.additional_emails {
+        for ae in addl {
+            let em = ae.email.trim().to_lowercase();
+            if em.is_empty() || !em.contains('@') {
+                continue;
+            }
+            let _ = sqlx::query(
+                "INSERT INTO employee_emails (id, employee_id, email, label, created_at) VALUES ($1, $2, $3, $4, NOW())",
+            )
+            .bind(new_cuid())
+            .bind(&emp_id)
+            .bind(&em)
+            .bind(ae.label.as_deref().filter(|s| !s.is_empty()))
+            .execute(&mut *tx)
+            .await;
+        }
+    }
+    if let Some(manager_ids) = &body.manager_ids {
+        for mgr in manager_ids {
+            let mgr = mgr.trim();
+            if mgr.is_empty() || mgr == emp_id {
+                continue;
+            }
+            let _ = sqlx::query(
+                "INSERT INTO employee_managers (id, employee_id, manager_employee_id, created_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT DO NOTHING",
+            )
+            .bind(new_cuid())
+            .bind(&emp_id)
+            .bind(mgr)
+            .execute(&mut *tx)
+            .await;
+        }
+    }
+    if let Err(e) = tx.commit().await {
+        return map_sqlx_ticket(e);
+    }
+    JobExecOutcome::Ok(JsonMutationResult::created(json!({ "id": emp_id })))
+}
+
+async fn exec_employee_update(pool: &PgPool, lock_ms: u64, stmt_ms: u64, payload: &serde_json::Value) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+    };
+    if !check_permission(pool, &user_id, "employees.update").await {
+        return JobExecOutcome::Fail(AppError::forbidden("You do not have permission to update employees"));
+    }
+    let employee_id = match payload.get("employee_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing employee_id in job payload")),
+    };
+    let body: UpdateEmployeeJobRequest = match payload.get("request").cloned().and_then(|v| serde_json::from_value(v).ok()) {
+        Some(v) => v,
+        None => return JobExecOutcome::Fail(AppError::bad_request("Invalid update request in job payload")),
+    };
+    if let Some(ref s) = body.employee_status {
+        if !employee_status_ok(s) {
+            return JobExecOutcome::Fail(AppError::bad_request("Invalid employee status"));
+        }
+    }
+    let mut tx = match pool.begin().await {
+        Ok(t) => t,
+        Err(e) => return map_sqlx_ticket(e),
+    };
+    if let Err(e) = apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+    let res = sqlx::query(
+        r#"UPDATE employees SET
+             first_name          = COALESCE($2,  first_name),
+             last_name           = COALESCE($3,  last_name),
+             email               = COALESCE($4,  email),
+             title               = COALESCE($5,  title),
+             employee_status     = COALESCE($6::employee_status_enum, employee_status),
+             company_role        = COALESCE($7,  company_role),
+             department          = COALESCE($8,  department),
+             monthly_salary      = COALESCE($9,  monthly_salary),
+             monthly_expenses    = COALESCE($10, monthly_expenses),
+             hours_worked        = COALESCE($11, hours_worked),
+             vacation_available  = COALESCE($12, vacation_available),
+             vacation_used       = COALESCE($13, vacation_used),
+             vacation_planned    = COALESCE($14, vacation_planned),
+             sick_days_total     = COALESCE($15, sick_days_total),
+             sick_days_available = COALESCE($16, sick_days_available),
+             updated_at          = NOW()
+           WHERE id = $1"#,
+    )
+    .bind(&employee_id)
+    .bind(body.first_name.as_deref().filter(|s| !s.is_empty()))
+    .bind(body.last_name.as_deref().filter(|s| !s.is_empty()))
+    .bind(body.email.as_ref().map(|s| s.trim().to_lowercase()).filter(|s| s.contains('@')))
+    .bind(body.title.as_deref())
+    .bind(body.employee_status.as_deref().map(|s| s.to_uppercase()))
+    .bind(body.company_role.as_deref())
+    .bind(body.department.as_deref())
+    .bind(body.monthly_salary)
+    .bind(body.monthly_expenses)
+    .bind(body.hours_worked)
+    .bind(body.vacation_available)
+    .bind(body.vacation_used)
+    .bind(body.vacation_planned)
+    .bind(body.sick_days_total)
+    .bind(body.sick_days_available)
+    .execute(&mut *tx)
+    .await;
+    let result = match res {
+        Ok(v) => v,
+        Err(e) => {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    };
+    if result.rows_affected() == 0 {
+        let _ = tx.rollback().await;
+        return JobExecOutcome::Fail(AppError::not_found("Employee not found"));
+    }
+    if let Err(e) = tx.commit().await {
+        return map_sqlx_ticket(e);
+    }
+    JobExecOutcome::Ok(JsonMutationResult::ok(json!({ "success": true, "id": employee_id })))
+}
+
+async fn exec_employee_delete(pool: &PgPool, lock_ms: u64, stmt_ms: u64, payload: &serde_json::Value) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+    };
+    if !check_permission(pool, &user_id, "employees.delete").await {
+        return JobExecOutcome::Fail(AppError::forbidden("You do not have permission to delete employees"));
+    }
+    let employee_id = match payload.get("employee_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing employee_id in job payload")),
+    };
+    let mut tx = match pool.begin().await {
+        Ok(t) => t,
+        Err(e) => return map_sqlx_ticket(e),
+    };
+    if let Err(e) = apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await {
+        let _ = tx.rollback().await;
+        return map_sqlx_ticket(e);
+    }
+    let res = sqlx::query("DELETE FROM employees WHERE id = $1")
+        .bind(&employee_id)
+        .execute(&mut *tx)
+        .await;
+    let result = match res {
+        Ok(v) => v,
+        Err(e) => {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    };
+    if result.rows_affected() == 0 {
+        let _ = tx.rollback().await;
+        return JobExecOutcome::Fail(AppError::not_found("Employee not found"));
+    }
+    if let Err(e) = tx.commit().await {
+        return map_sqlx_ticket(e);
+    }
+    JobExecOutcome::Ok(JsonMutationResult::ok(json!({ "success": true })))
+}
+
+async fn exec_employee_add_email(pool: &PgPool, lock_ms: u64, stmt_ms: u64, payload: &serde_json::Value) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+    };
+    if !check_permission(pool, &user_id, "employees.update").await {
+        return JobExecOutcome::Fail(AppError::forbidden("You do not have permission to update employees"));
+    }
+    let employee_id = match payload.get("employee_id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return JobExecOutcome::Fail(AppError::bad_request("Missing employee_id in job payload")),
+    };
+    let req: EmployeeAddEmailJobRequest = match payload.get("request").cloned().and_then(|v| serde_json::from_value(v).ok()) {
+        Some(v) => v,
+        None => return JobExecOutcome::Fail(AppError::bad_request("Invalid add-email request in job payload")),
+    };
+    let email = req.email.trim().to_lowercase();
+    if email.is_empty() || !email.contains('@') {
+        return JobExecOutcome::Fail(AppError::bad_request("A valid email address is required"));
+    }
+    let mut tx = match pool.begin().await { Ok(t)=>t, Err(e)=>return map_sqlx_ticket(e) };
+    if let Err(e)=apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await { let _=tx.rollback().await; return map_sqlx_ticket(e); }
+    let res = sqlx::query("INSERT INTO employee_emails (id, employee_id, email, label, created_at) VALUES ($1, $2, $3, $4, NOW())")
+        .bind(new_cuid()).bind(&employee_id).bind(&email).bind(req.label.as_deref().filter(|s| !s.is_empty()))
+        .execute(&mut *tx).await;
+    if let Err(e)=res { let _=tx.rollback().await; return map_sqlx_ticket(e); }
+    if let Err(e)=tx.commit().await { return map_sqlx_ticket(e); }
+    JobExecOutcome::Ok(JsonMutationResult::ok(json!({ "success": true })))
+}
+
+async fn exec_employee_remove_email(pool: &PgPool, lock_ms: u64, stmt_ms: u64, payload: &serde_json::Value) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) { Some(s)=>s.to_string(), None=>return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")) };
+    if !check_permission(pool, &user_id, "employees.update").await { return JobExecOutcome::Fail(AppError::forbidden("You do not have permission to update employees")); }
+    let employee_id = match payload.get("employee_id").and_then(|v| v.as_str()) { Some(s)=>s.to_string(), None=>return JobExecOutcome::Fail(AppError::bad_request("Missing employee_id in job payload")) };
+    let email_id = match payload.get("email_id").and_then(|v| v.as_str()) { Some(s)=>s.to_string(), None=>return JobExecOutcome::Fail(AppError::bad_request("Missing email_id in job payload")) };
+    let mut tx = match pool.begin().await { Ok(t)=>t, Err(e)=>return map_sqlx_ticket(e) };
+    if let Err(e)=apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await { let _=tx.rollback().await; return map_sqlx_ticket(e); }
+    if let Err(e)=sqlx::query("DELETE FROM employee_emails WHERE id = $1 AND employee_id = $2").bind(&email_id).bind(&employee_id).execute(&mut *tx).await { let _=tx.rollback().await; return map_sqlx_ticket(e); }
+    if let Err(e)=tx.commit().await { return map_sqlx_ticket(e); }
+    JobExecOutcome::Ok(JsonMutationResult::ok(json!({ "success": true })))
+}
+
+async fn exec_employee_add_manager(pool: &PgPool, lock_ms: u64, stmt_ms: u64, payload: &serde_json::Value) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) { Some(s)=>s.to_string(), None=>return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")) };
+    if !check_permission(pool, &user_id, "employees.update").await { return JobExecOutcome::Fail(AppError::forbidden("You do not have permission to update employees")); }
+    let employee_id = match payload.get("employee_id").and_then(|v| v.as_str()) { Some(s)=>s.to_string(), None=>return JobExecOutcome::Fail(AppError::bad_request("Missing employee_id in job payload")) };
+    let req: EmployeeAddManagerJobRequest = match payload.get("request").cloned().and_then(|v| serde_json::from_value(v).ok()) {
+        Some(v)=>v, None=>return JobExecOutcome::Fail(AppError::bad_request("Invalid add-manager request in job payload")),
+    };
+    if req.manager_employee_id == employee_id { return JobExecOutcome::Fail(AppError::bad_request("An employee cannot be their own manager")); }
+    let mut tx = match pool.begin().await { Ok(t)=>t, Err(e)=>return map_sqlx_ticket(e) };
+    if let Err(e)=apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await { let _=tx.rollback().await; return map_sqlx_ticket(e); }
+    if let Err(e)=sqlx::query("INSERT INTO employee_managers (id, employee_id, manager_employee_id, created_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT DO NOTHING")
+        .bind(new_cuid()).bind(&employee_id).bind(&req.manager_employee_id).execute(&mut *tx).await { let _=tx.rollback().await; return map_sqlx_ticket(e); }
+    if let Err(e)=tx.commit().await { return map_sqlx_ticket(e); }
+    JobExecOutcome::Ok(JsonMutationResult::ok(json!({ "success": true })))
+}
+
+async fn exec_employee_remove_manager(pool: &PgPool, lock_ms: u64, stmt_ms: u64, payload: &serde_json::Value) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) { Some(s)=>s.to_string(), None=>return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")) };
+    if !check_permission(pool, &user_id, "employees.update").await { return JobExecOutcome::Fail(AppError::forbidden("You do not have permission to update employees")); }
+    let employee_id = match payload.get("employee_id").and_then(|v| v.as_str()) { Some(s)=>s.to_string(), None=>return JobExecOutcome::Fail(AppError::bad_request("Missing employee_id in job payload")) };
+    let manager_id = match payload.get("manager_employee_id").and_then(|v| v.as_str()) { Some(s)=>s.to_string(), None=>return JobExecOutcome::Fail(AppError::bad_request("Missing manager_employee_id in job payload")) };
+    let mut tx = match pool.begin().await { Ok(t)=>t, Err(e)=>return map_sqlx_ticket(e) };
+    if let Err(e)=apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await { let _=tx.rollback().await; return map_sqlx_ticket(e); }
+    if let Err(e)=sqlx::query("DELETE FROM employee_managers WHERE employee_id = $1 AND manager_employee_id = $2").bind(&employee_id).bind(&manager_id).execute(&mut *tx).await { let _=tx.rollback().await; return map_sqlx_ticket(e); }
+    if let Err(e)=tx.commit().await { return map_sqlx_ticket(e); }
+    JobExecOutcome::Ok(JsonMutationResult::ok(json!({ "success": true })))
+}
+
+async fn exec_employee_link_user(pool: &PgPool, lock_ms: u64, stmt_ms: u64, payload: &serde_json::Value) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) { Some(s)=>s.to_string(), None=>return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")) };
+    if !check_permission(pool, &user_id, "employees.update").await { return JobExecOutcome::Fail(AppError::forbidden("You do not have permission to update employees")); }
+    let employee_id = match payload.get("employee_id").and_then(|v| v.as_str()) { Some(s)=>s.to_string(), None=>return JobExecOutcome::Fail(AppError::bad_request("Missing employee_id in job payload")) };
+    let req: EmployeeLinkUserJobRequest = match payload.get("request").cloned().and_then(|v| serde_json::from_value(v).ok()) {
+        Some(v)=>v, None=>return JobExecOutcome::Fail(AppError::bad_request("Invalid link-user request in job payload")),
+    };
+    let mut tx = match pool.begin().await { Ok(t)=>t, Err(e)=>return map_sqlx_ticket(e) };
+    if let Err(e)=apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await { let _=tx.rollback().await; return map_sqlx_ticket(e); }
+    if let Err(e)=sqlx::query("UPDATE employees SET linked_user_id = $2, updated_at = NOW() WHERE id = $1").bind(&employee_id).bind(&req.user_id).execute(&mut *tx).await { let _=tx.rollback().await; return map_sqlx_ticket(e); }
+    if let Err(e)=tx.commit().await { return map_sqlx_ticket(e); }
+    JobExecOutcome::Ok(JsonMutationResult::ok(json!({ "success": true })))
+}
+
+async fn exec_employee_unlink_user(pool: &PgPool, lock_ms: u64, stmt_ms: u64, payload: &serde_json::Value) -> JobExecOutcome {
+    let user_id = match payload.get("user_id").and_then(|v| v.as_str()) { Some(s)=>s.to_string(), None=>return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")) };
+    if !check_permission(pool, &user_id, "employees.update").await { return JobExecOutcome::Fail(AppError::forbidden("You do not have permission to update employees")); }
+    let employee_id = match payload.get("employee_id").and_then(|v| v.as_str()) { Some(s)=>s.to_string(), None=>return JobExecOutcome::Fail(AppError::bad_request("Missing employee_id in job payload")) };
+    let mut tx = match pool.begin().await { Ok(t)=>t, Err(e)=>return map_sqlx_ticket(e) };
+    if let Err(e)=apply_mutation_tx_settings(&mut tx, lock_ms, stmt_ms).await { let _=tx.rollback().await; return map_sqlx_ticket(e); }
+    if let Err(e)=sqlx::query("UPDATE employees SET linked_user_id = NULL, updated_at = NOW() WHERE id = $1").bind(&employee_id).execute(&mut *tx).await { let _=tx.rollback().await; return map_sqlx_ticket(e); }
+    if let Err(e)=tx.commit().await { return map_sqlx_ticket(e); }
+    JobExecOutcome::Ok(JsonMutationResult::ok(json!({ "success": true })))
 }
 
 async fn exec_collection_create(
