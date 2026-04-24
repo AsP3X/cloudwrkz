@@ -127,11 +127,22 @@ enum AuthChangePasswordFailure: Equatable, Error {
     case networkError(description: String)
 }
 
-private struct MeResponse: Decodable {
+/// Full GET `/me` payload (camelCase JSON from cloudwrkz-api).
+private struct MeApiResponse: Decodable {
+    let id: String?
     let name: String?
     let email: String?
-    /// Module IDs the user is allowed to access (e.g. ["tickets", "todos", "links", "time_tracking", "archive"]). Omitted = all modules.
+    let role: String?
+    let status: String?
+    let avatar: String?
+    let timezone: String?
+    let theme: String?
+    let emailVerified: Bool?
+    let createdAt: String?
+    let bio: String?
+    let lastLoginAt: String?
     let modules: [String]?
+    let permissions: [String]?
 }
 
 enum AuthService {
@@ -318,8 +329,8 @@ enum AuthService {
     }
 
     /// GET current user with Bearer token. Path derived from login path (api/login → api/me, api/auth/login → api/auth/me).
-    /// Returns name, email, and optional modules (allowed module IDs). When modules is nil or empty from API, caller may treat as "all modules allowed".
-    static func fetchCurrentUser(config: ServerConfig) async -> Result<(name: String?, email: String?, modules: [String]?), AuthMeFailure> {
+    /// Returns profile fields for storage and UI; when `modules` is nil or empty from API, callers may treat visibility the same as web.
+    static func fetchCurrentUser(config: ServerConfig) async -> Result<CurrentUserInfo, AuthMeFailure> {
         guard let base = config.baseURL else {
             return .failure(.noServerURL)
         }
@@ -348,10 +359,21 @@ enum AuthService {
             }
             switch http.statusCode {
             case 200:
-                let meDecoder = JSONDecoder()
-                meDecoder.keyDecodingStrategy = .convertFromSnakeCase
-                let decoded = try meDecoder.decode(MeResponse.self, from: data)
-                return .success((name: decoded.name, email: decoded.email, modules: decoded.modules))
+                let decoded = try JSONDecoder().decode(MeApiResponse.self, from: data)
+                let info = CurrentUserInfo(
+                    name: decoded.name,
+                    email: decoded.email,
+                    modules: decoded.modules,
+                    emailVerified: decoded.emailVerified ?? false,
+                    bio: decoded.bio,
+                    timezone: decoded.timezone,
+                    avatar: decoded.avatar,
+                    role: decoded.role,
+                    status: decoded.status,
+                    createdAt: decoded.createdAt,
+                    lastLoginAt: decoded.lastLoginAt
+                )
+                return .success(info)
             case 401:
                 SessionExpiredNotifier.notify()
                 return .failure(.unauthorized)

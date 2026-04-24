@@ -424,17 +424,127 @@
 
 "profile.account" = "KONTO";
 
+"profile.account_status.active" = "Aktiv";
+
+"profile.account_status.pending" = "Ausstehend";
+
+"profile.account_status.suspended" = "Gesperrt";
+
 "profile.account_settings" = "Kontoeinstellungen";
 
 "profile.account_settings_subtitle" = "Einstellungen und Sicherheit";
 
 "profile.app_version" = "Cloudwrkz %@";
 
+"profile.command_center.email_verified" = "E-Mail bestätigt";
+
+"profile.command_center.kicker" = "KONTO-COMMAND-CENTER";
+
+"profile.command_center.last_login" = "LETZTE ANMELDUNG";
+
+"profile.command_center.member_since" = "MITGLIED SEIT";
+
+"profile.command_center.no" = "Nein";
+
+"profile.command_center.profile_health" = "Profilvollständigkeit";
+
+"profile.command_center.role" = "ROLLE";
+
+"profile.command_center.settings_hint" = "E-Mail, Passwort und weitere Kontoeinstellungen ändern Sie unten unter Kontoeinstellungen.";
+
+"profile.command_center.status" = "STATUS";
+
+"profile.command_center.subtitle" = "Identität und Kontostatus an einem Ort.";
+
+"profile.command_center.timezone" = "ZEITZONE";
+
+"profile.command_center.yes" = "Ja";
+
+"profile.completeness.a11y_progress_format" = "Profil zu %lld %% vollständig";
+
+"profile.completeness.avatar" = "Avatar hochladen";
+
+"profile.completeness.avatar_hint" = "Foto hinzufügen";
+
+"profile.completeness.bio" = "Kurzbiografie schreiben";
+
+"profile.completeness.bio_hint" = "Kurz vorstellen";
+
+"profile.completeness.email" = "E-Mail bestätigen";
+
+"profile.completeness.email_hint" = "Adresse verifizieren";
+
+"profile.completeness.name" = "Namen hinzufügen";
+
+"profile.completeness.name_hint" = "Sichtbarer Name";
+
+"profile.completeness.timezone" = "Zeitzone setzen";
+
+"profile.completeness.timezone_hint" = "Zeiten korrekt anzeigen";
+
+"profile.completeness.title" = "Profil vervollständigen";
+
 "profile.edit_profile" = "Profil bearbeiten";
 
 "profile.edit_profile_nav" = "Profil bearbeiten";
 
 "profile.edit_profile_subtitle" = "Name und Foto";
+
+"profile.employee_status.active" = "Aktiv";
+
+"profile.employee_status.inactive" = "Inaktiv";
+
+"profile.employee_status.on_leave" = "Abwesend";
+
+"profile.employee_status.probation" = "Probezeit";
+
+"profile.employee_status.terminated" = "Beendet";
+
+"profile.employment.additional_emails" = "WEITERE E-MAILS";
+
+"profile.employment.checking_link" = "Beschäftigungsverknüpfung wird geprüft…";
+
+"profile.employment.company_role" = "Unternehmensrolle";
+
+"profile.employment.compensation" = "VERGÜTUNG & STUNDEN";
+
+"profile.employment.department" = "Abteilung";
+
+"profile.employment.empty_body" = "Mit Ihrem Konto ist kein Beschäftigungsdatensatz verknüpft. Wenden Sie sich an eine Administratorin oder einen Administrator.";
+
+"profile.employment.empty_title" = "Kein Beschäftigungsdatensatz";
+
+"profile.employment.hours_worked" = "Gearbeitete Stunden";
+
+"profile.employment.job_title" = "Berufsbezeichnung";
+
+"profile.employment.managers" = "VORGESETZTE";
+
+"profile.employment.monthly_expenses" = "Monatliche Ausgaben";
+
+"profile.employment.monthly_salary" = "Monatsgehalt";
+
+"profile.employment.role_org" = "ROLLE & ORGANISATION";
+
+"profile.employment.sheet_title" = "Beschäftigungsdetails";
+
+"profile.employment.sick_days" = "Krankheitstage (verf. / gesamt)";
+
+"profile.employment.time_off" = "FREI";
+
+"profile.employment.vacation_available" = "Urlaub verfügbar";
+
+"profile.employment.vacation_planned" = "Urlaub geplant";
+
+"profile.employment.vacation_usage" = "Urlaubsnutzung";
+
+"profile.employment.vacation_used" = "Urlaub genutzt";
+
+"profile.employment.view_details" = "Beschäftigungsdetails";
+
+"profile.employment.work_contact" = "ERREICHBARKEIT";
+
+"profile.employment.work_email" = "Geschäftliche E-Mail";
 
 "profile.first_name" = "Vorname";
 
@@ -469,6 +579,14 @@
 "profile.tap_to_change_photo" = "Tippen zum ?ndern des Fotos";
 
 "profile.title" = "Profil";
+
+"profile.role.admin" = "Admin";
+
+"profile.role.agent" = "Agent";
+
+"profile.role.moderator" = "Moderator";
+
+"profile.role.user" = "Benutzer";
 
 "profile.view_profile" = "Profil anzeigen";
 

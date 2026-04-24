@@ -109,14 +109,8 @@ struct ContentView: View {
                 if AuthTokenStorage.getToken() != nil {
                     Task { @MainActor in
                         switch await AuthService.fetchCurrentUser(config: appState.config) {
-                        case .success((let name, let email, let modules)):
-                            if let n = name?.trimmingCharacters(in: .whitespaces), !n.isEmpty {
-                                UserProfileStorage.username = n
-                            }
-                            if let e = email?.trimmingCharacters(in: .whitespaces), !e.isEmpty {
-                                UserProfileStorage.email = e
-                            }
-                            UserProfileStorage.allowedModuleIds = modules
+                        case .success(let info):
+                            UserProfileStorage.applyFromMe(info)
                             refreshProfileFromStorage()
                         case .failure:
                             break
