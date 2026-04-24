@@ -467,19 +467,12 @@ async fn get_employee(
 }
 
 // Human: Return the employee record linked to the authenticated user's account, for the profile page.
-// Agent: check employees.view_self; SELECT id FROM employees WHERE linked_user_id = user.id; employee_full_json; null when no linked record.
+// Agent: AuthUser only—no employees.* check; rows are constrained to linked_user_id = session user (same model as PATCH /profile).
 
 async fn get_my_employee(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if !check_permission(&state.pool, &user.id, "employees.view_self").await
-        && !check_permission(&state.pool, &user.id, "employees.view").await
-        && user.role != "ADMIN"
-    {
-        return Err(AppError::forbidden("Insufficient permissions"));
-    }
-
     let row = sqlx::query_scalar::<_, String>(
         "SELECT id FROM employees WHERE linked_user_id = $1 LIMIT 1",
     )
