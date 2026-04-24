@@ -1790,6 +1790,7 @@ fn collection_hex_ok(s: &str) -> bool {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CreateEmployeeJobRequest {
     first_name: String,
     last_name: String,
@@ -1813,12 +1814,14 @@ struct CreateEmployeeJobRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CreateEmployeeAdditionalEmail {
     email: String,
     label: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct UpdateEmployeeJobRequest {
     first_name: Option<String>,
     last_name: Option<String>,
@@ -1838,17 +1841,20 @@ struct UpdateEmployeeJobRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct EmployeeAddEmailJobRequest {
     email: String,
     label: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct EmployeeAddManagerJobRequest {
     manager_employee_id: String,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct EmployeeLinkUserJobRequest {
     user_id: String,
 }

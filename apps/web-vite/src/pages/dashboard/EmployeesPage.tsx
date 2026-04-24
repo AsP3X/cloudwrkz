@@ -762,16 +762,15 @@ export default function EmployeesPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Employees</h1>
-          <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
-            {total > 0 ? `${total} employee${total === 1 ? "" : "s"}` : "No employees yet"}
+          <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100">Employee Management</h1>
+          <p className="text-neutral-600 dark:text-neutral-400 mt-1">
+            Manage all employee records ({total} total)
           </p>
         </div>
         {caps.canCreate && (
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button variant="primary" onClick={() => setCreateOpen(true)}>
             <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
@@ -780,107 +779,124 @@ export default function EmployeesPage() {
         )}
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <Input
-          className="flex-1"
-          placeholder="Search by name, email, role…"
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-        />
-        <Select
-          className="sm:w-44"
-          value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-        >
-          <option value="">All statuses</option>
-          {EMPLOYEE_STATUSES.map((s) => (
-            <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-          ))}
-        </Select>
+      <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Input
+            label="Search"
+            placeholder="Search by name, email, role, department..."
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          />
+          <Select
+            label="Status"
+            options={[
+              { value: "", label: "All statuses" },
+              ...EMPLOYEE_STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] })),
+            ]}
+            value={statusFilter}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+          />
+          <div className="flex items-end">
+            <Button
+              variant="outline"
+              className="w-full md:w-auto"
+              onClick={() => {
+                setSearch("");
+                setStatusFilter("");
+                setPage(1);
+              }}
+              disabled={!search && !statusFilter}
+            >
+              Clear filters
+            </Button>
+          </div>
+        </div>
       </div>
 
-      {/* Table */}
-      <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-soft-lg overflow-hidden">
+      <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 overflow-hidden">
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <svg className="h-8 w-8 animate-spin text-primary-600" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
+          <div className="p-12 text-center">
+            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
           </div>
         ) : employees.length === 0 ? (
-          <div className="py-20 text-center text-neutral-500 dark:text-neutral-400 text-sm">
-            {search || statusFilter ? "No employees match your filters." : "No employees yet. Create one to get started."}
+          <div className="p-12 text-center">
+            <svg className="w-16 h-16 text-neutral-300 dark:text-neutral-700 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            <p className="text-neutral-500 dark:text-neutral-400">
+              {search || statusFilter ? "No employees match your filters" : "No employees found"}
+            </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Name</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Email</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Role / Dept.</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Account</th>
-                  <th className="w-10 px-4 py-3" />
+            <table className="w-full">
+              <thead className="bg-neutral-50 dark:bg-neutral-900">
+                <tr>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-neutral-700 dark:text-neutral-300">Employee</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-neutral-700 dark:text-neutral-300">Email</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-neutral-700 dark:text-neutral-300">Role</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-neutral-700 dark:text-neutral-300">Department</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-neutral-700 dark:text-neutral-300">Status</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-neutral-700 dark:text-neutral-300">Account</th>
+                  <th className="px-4 py-3 text-right text-sm font-semibold text-neutral-700 dark:text-neutral-300">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+              <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
                 {employees.map((emp) => (
                   <tr
                     key={emp.id}
-                    className="group hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors"
+                    className="hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-context-menu"
+                    onContextMenu={(e) => {
+                      const items = getContextMenuItems(emp);
+                      if (items.length === 0) return;
+                      e.preventDefault();
+                      setContextMenu({ x: e.clientX, y: e.clientY, emp });
+                    }}
                   >
                     <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => navigate(ROUTES.EMPLOYEE_DETAIL.replace(":id", emp.id))}
-                        className="font-medium text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400 text-left"
-                      >
+                      <button type="button" onClick={() => navigate(ROUTES.EMPLOYEE_DETAIL.replace(":id", emp.id))} className="text-sm font-medium text-neutral-900 dark:text-neutral-100 hover:text-primary-600 dark:hover:text-primary-400 text-left">
                         {emp.firstName} {emp.lastName}
                       </button>
                       {emp.title && (
                         <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{emp.title}</p>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-neutral-600 dark:text-neutral-300 text-xs">{emp.email}</td>
+                    <td className="px-4 py-3 text-sm text-neutral-900 dark:text-neutral-100">{emp.email}</td>
+                    <td className="px-4 py-3 text-sm text-neutral-900 dark:text-neutral-100">{emp.companyRole ?? "-"}</td>
+                    <td className="px-4 py-3 text-sm text-neutral-900 dark:text-neutral-100">{emp.department ?? "-"}</td>
                     <td className="px-4 py-3">
-                      <p className="text-neutral-700 dark:text-neutral-300 text-xs">{emp.companyRole ?? "—"}</p>
-                      {emp.department && (
-                        <p className="text-neutral-400 dark:text-neutral-500 text-xs">{emp.department}</p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant={getStatusBadgeVariant(emp.employeeStatus)}>
+                      <Badge variant={getStatusBadgeVariant(emp.employeeStatus)} size="sm">
                         {STATUS_LABELS[emp.employeeStatus] ?? emp.employeeStatus}
                       </Badge>
                     </td>
                     <td className="px-4 py-3">
                       {emp.linkedUserId ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                        <span className="inline-flex items-center gap-1 text-sm text-emerald-600 dark:text-emerald-400 font-medium">
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                           </svg>
                           Linked
                         </span>
                       ) : (
-                        <span className="text-xs text-neutral-400 dark:text-neutral-500">—</span>
+                        <span className="text-sm text-neutral-400 dark:text-neutral-500">—</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setContextMenu({ x: e.clientX, y: e.clientY, emp });
-                        }}
-                        className="p-1.5 rounded-md text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-                      >
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM18 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                        </svg>
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button variant="ghost" size="sm" onClick={() => navigate(ROUTES.EMPLOYEE_DETAIL.replace(":id", emp.id))}>
+                          View
+                        </Button>
+                        {caps.canUpdate && (
+                          <Button variant="ghost" size="sm" onClick={() => { setSelectedEmployee(emp); setEditOpen(true); }}>
+                            Edit
+                          </Button>
+                        )}
+                        {caps.canDelete && (
+                          <Button variant="danger" size="sm" onClick={() => { setSelectedEmployee(emp); setDeleteOpen(true); }}>
+                            Delete
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -889,15 +905,14 @@ export default function EmployeesPage() {
           </div>
         )}
 
-        {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between border-t border-neutral-200 dark:border-neutral-800 px-4 py-3">
-            <span className="text-xs text-neutral-500 dark:text-neutral-400">
+          <div className="px-4 py-3 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
+            <div className="text-sm text-neutral-600 dark:text-neutral-400">
               Page {page} of {totalPages}
-            </span>
+            </div>
             <div className="flex gap-2">
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page <= 1 || loading}
@@ -905,7 +920,7 @@ export default function EmployeesPage() {
                 Previous
               </Button>
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page >= totalPages || loading}

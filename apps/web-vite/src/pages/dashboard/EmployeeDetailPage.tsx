@@ -29,6 +29,9 @@ const STATUS_BADGE: Record<EmployeeStatus, "success" | "warning" | "info" | "def
   TERMINATED: "error",
 };
 
+const CARD_CLASS =
+  "bg-white/70 dark:bg-white/[0.04] backdrop-blur-md rounded-xl shadow-soft-lg border border-white/40 dark:border-white/10 p-6";
+
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-start gap-2 py-2 border-b border-neutral-100 dark:border-neutral-800 last:border-0">
@@ -40,7 +43,7 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
 
 function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-soft-lg p-6">
+    <div className={CARD_CLASS}>
       <h2 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wide mb-4">{title}</h2>
       {children}
     </div>
@@ -411,39 +414,108 @@ export default function EmployeeDetailPage() {
   const fullName = `${employee.firstName} ${employee.lastName}`;
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      {/* Back + header */}
-      <div className="flex items-start gap-4">
-        <Button variant="ghost" size="sm" onClick={() => navigate(ROUTES.EMPLOYEES)} className="mt-1">
-          <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-          </svg>
-          Employees
-        </Button>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">{fullName}</h1>
-            <Badge variant={STATUS_BADGE[employee.employeeStatus] ?? "default"}>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <Link
+            to={ROUTES.EMPLOYEES}
+            className="text-sm text-primary-600 dark:text-primary-400 hover:underline mb-2 inline-block"
+          >
+            ← Back to Employees
+          </Link>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-3xl font-bold text-neutral-900 dark:text-neutral-100">{fullName}</h1>
+            <Badge variant={STATUS_BADGE[employee.employeeStatus] ?? "default"} size="md">
               {STATUS_LABELS[employee.employeeStatus] ?? employee.employeeStatus}
             </Badge>
           </div>
-          {employee.title && (
-            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{employee.title}</p>
-          )}
+          <p className="text-neutral-600 dark:text-neutral-400 mt-1">
+            {employee.title || "No title set"}
+          </p>
         </div>
         {canUpdate && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate(ROUTES.EMPLOYEES)}
-            className="mt-1"
-          >
-            Edit
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setAddEmailOpen(true)}>
+              Add Email
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setAddManagerOpen(true)}>
+              Add Manager
+            </Button>
+            {employee.linkedUser ? (
+              <Button variant="danger" size="sm" onClick={() => setUnlinkConfirmOpen(true)}>
+                Unlink Account
+              </Button>
+            ) : (
+              <Button variant="primary" size="sm" onClick={() => setLinkUserOpen(true)}>
+                Link Account
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Top summary cards */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className={`${CARD_CLASS} xl:col-span-2`}>
+          <h2 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wide mb-4">Quick overview</h2>
+          <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3">
+              <dt className="text-xs text-neutral-500 dark:text-neutral-400">Primary email</dt>
+              <dd className="text-sm font-medium text-neutral-900 dark:text-neutral-100 mt-1 truncate">{employee.email}</dd>
+            </div>
+            <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3">
+              <dt className="text-xs text-neutral-500 dark:text-neutral-400">Company role</dt>
+              <dd className="text-sm font-medium text-neutral-900 dark:text-neutral-100 mt-1">{employee.companyRole ?? "—"}</dd>
+            </div>
+            <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3">
+              <dt className="text-xs text-neutral-500 dark:text-neutral-400">Department</dt>
+              <dd className="text-sm font-medium text-neutral-900 dark:text-neutral-100 mt-1">{employee.department ?? "—"}</dd>
+            </div>
+            <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3">
+              <dt className="text-xs text-neutral-500 dark:text-neutral-400">Vacation available</dt>
+              <dd className="text-sm font-medium text-neutral-900 dark:text-neutral-100 mt-1">{employee.vacationAvailable} days</dd>
+            </div>
+            <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3">
+              <dt className="text-xs text-neutral-500 dark:text-neutral-400">Sick days available</dt>
+              <dd className="text-sm font-medium text-neutral-900 dark:text-neutral-100 mt-1">{employee.sickDaysAvailable} days</dd>
+            </div>
+            <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3">
+              <dt className="text-xs text-neutral-500 dark:text-neutral-400">Linked account</dt>
+              <dd className="text-sm font-medium mt-1">
+                {employee.linkedUserId ? (
+                  <span className="text-emerald-600 dark:text-emerald-400">Linked</span>
+                ) : (
+                  <span className="text-neutral-500 dark:text-neutral-400">Not linked</span>
+                )}
+              </dd>
+            </div>
+          </dl>
+        </div>
+        <div className={CARD_CLASS}>
+          <h2 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wide mb-4">Record metadata</h2>
+          <dl className="space-y-3">
+            <div>
+              <dt className="text-xs text-neutral-500 dark:text-neutral-400">Created</dt>
+              <dd className="text-sm text-neutral-900 dark:text-neutral-100 mt-1">{formatDate(employee.createdAt)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-neutral-500 dark:text-neutral-400">Updated</dt>
+              <dd className="text-sm text-neutral-900 dark:text-neutral-100 mt-1">{formatDate(employee.updatedAt)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-neutral-500 dark:text-neutral-400">Status</dt>
+              <dd className="mt-1">
+                <Badge variant={STATUS_BADGE[employee.employeeStatus] ?? "default"} size="sm">
+                  {STATUS_LABELS[employee.employeeStatus] ?? employee.employeeStatus}
+                </Badge>
+              </dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {/* Basic information */}
         <SectionCard title="Basic information">
           <dl className="divide-y divide-neutral-100 dark:divide-neutral-800">
@@ -551,9 +623,9 @@ export default function EmployeeDetailPage() {
           )}
           {canUpdate && (
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
-              className="mt-3"
+              className="mt-4"
               onClick={() => setAddEmailOpen(true)}
             >
               + Add email
@@ -596,9 +668,9 @@ export default function EmployeeDetailPage() {
           )}
           {canUpdate && (
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
-              className="mt-3"
+              className="mt-4"
               onClick={() => setAddManagerOpen(true)}
             >
               + Add manager
@@ -622,12 +694,7 @@ export default function EmployeeDetailPage() {
                 </div>
               </div>
               {canUpdate && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setUnlinkConfirmOpen(true)}
-                  className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300"
-                >
+                <Button variant="danger" size="sm" onClick={() => setUnlinkConfirmOpen(true)}>
                   Unlink account
                 </Button>
               )}
@@ -638,19 +705,13 @@ export default function EmployeeDetailPage() {
                 No platform user account linked.
               </p>
               {canUpdate && (
-                <Button variant="ghost" size="sm" onClick={() => setLinkUserOpen(true)}>
+                <Button variant="primary" size="sm" onClick={() => setLinkUserOpen(true)}>
                   Link user account
                 </Button>
               )}
             </div>
           )}
         </SectionCard>
-      </div>
-
-      {/* Metadata */}
-      <div className="text-xs text-neutral-400 dark:text-neutral-500 flex gap-4">
-        <span>Created {formatDate(employee.createdAt)}</span>
-        <span>Updated {formatDate(employee.updatedAt)}</span>
       </div>
 
       {/* Dialogs */}

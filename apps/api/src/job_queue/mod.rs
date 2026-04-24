@@ -302,7 +302,16 @@ async fn run_one_job(
         | entity_creates::JOB_TYPE_LINK_DELETE
         | entity_creates::JOB_TYPE_COLLECTION_CREATE
         | entity_creates::JOB_TYPE_COLLECTION_UPDATE
-        | entity_creates::JOB_TYPE_COLLECTION_DELETE => {
+        | entity_creates::JOB_TYPE_COLLECTION_DELETE
+        | entity_creates::JOB_TYPE_EMPLOYEE_CREATE
+        | entity_creates::JOB_TYPE_EMPLOYEE_UPDATE
+        | entity_creates::JOB_TYPE_EMPLOYEE_DELETE
+        | entity_creates::JOB_TYPE_EMPLOYEE_ADD_EMAIL
+        | entity_creates::JOB_TYPE_EMPLOYEE_REMOVE_EMAIL
+        | entity_creates::JOB_TYPE_EMPLOYEE_ADD_MANAGER
+        | entity_creates::JOB_TYPE_EMPLOYEE_REMOVE_MANAGER
+        | entity_creates::JOB_TYPE_EMPLOYEE_LINK_USER
+        | entity_creates::JOB_TYPE_EMPLOYEE_UNLINK_USER => {
             entity_creates::run_entity_create_job(
                 pool,
                 client,

@@ -62,6 +62,7 @@ struct CheckEmailQuery {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct CreateEmployeeRequest {
     first_name: String,
     last_name: String,
@@ -89,12 +90,14 @@ struct CreateEmployeeRequest {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct AdditionalEmailInput {
     email: String,
     label: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct UpdateEmployeeRequest {
     first_name: Option<String>,
     last_name: Option<String>,
@@ -114,17 +117,20 @@ struct UpdateEmployeeRequest {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct AddEmailRequest {
     email: String,
     label: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct AddManagerRequest {
     manager_employee_id: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct LinkUserRequest {
     user_id: String,
 }
