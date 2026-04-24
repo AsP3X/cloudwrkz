@@ -26,6 +26,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/employees", get(list_employees).post(create_employee))
         .route("/employees/check-email", get(check_email))
+        .route("/employees/me", get(get_my_employee))
         .route(
             "/employees/{id}",
             get(get_employee).patch(update_employee).delete(delete_employee),
@@ -463,6 +464,36 @@ async fn get_employee(
 
     let data = employee_full_json(&state.pool, &id).await?;
     Ok(Json(json!({ "employee": data })))
+}
+
+// Human: Return the employee record linked to the authenticated user's account, for the profile page.
+// Agent: check employees.view_self; SELECT id FROM employees WHERE linked_user_id = user.id; employee_full_json; null when no linked record.
+
+async fn get_my_employee(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if !check_permission(&state.pool, &user.id, "employees.view_self").await
+        && !check_permission(&state.pool, &user.id, "employees.view").await
+        && user.role != "ADMIN"
+    {
+        return Err(AppError::forbidden("Insufficient permissions"));
+    }
+
+    let row = sqlx::query_scalar::<_, String>(
+        "SELECT id FROM employees WHERE linked_user_id = $1 LIMIT 1",
+    )
+    .bind(&user.id)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    match row {
+        Some(employee_id) => {
+            let data = employee_full_json(&state.pool, &employee_id).await?;
+            Ok(Json(json!({ "employee": data })))
+        }
+        None => Ok(Json(json!({ "employee": null }))),
+    }
 }
 
 // Human: Create an employee record; optionally auto-create a user account or link an existing one.

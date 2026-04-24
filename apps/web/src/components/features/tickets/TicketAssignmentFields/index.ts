@@ -1,1 +1,0 @@
-export { TicketAssignmentFields } from "./TicketAssignmentFields";

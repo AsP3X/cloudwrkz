@@ -1086,3 +1086,25 @@ WHERE p.key IN (
 )
 AND EXISTS (SELECT 1 FROM groups WHERE name = 'Admin')
 ON CONFLICT (id) DO NOTHING;
+
+-- employees.view_self: lets any authenticated user view their own linked employment record
+INSERT INTO permissions (id, key, name, description, category, module, created_at, updated_at)
+VALUES
+  (gen_random_uuid()::text, 'employees.view_self', 'View Own Employee Profile', 'View own linked employment profile details', 'employees', 'employees', NOW(), NOW())
+ON CONFLICT (key) DO UPDATE SET
+  name        = EXCLUDED.name,
+  description = EXCLUDED.description,
+  category    = EXCLUDED.category,
+  module      = EXCLUDED.module,
+  updated_at  = NOW();
+
+INSERT INTO group_permissions (id, group_id, permission_id, created_at)
+SELECT
+  'default-group-' || p.key,
+  (SELECT id FROM groups WHERE name = 'Default' LIMIT 1),
+  p.id,
+  NOW()
+FROM permissions p
+WHERE p.key = 'employees.view_self'
+AND EXISTS (SELECT 1 FROM groups WHERE name = 'Default')
+ON CONFLICT (id) DO NOTHING;

@@ -1,2 +1,0 @@
-export { DeleteAccountDialog } from "./DeleteAccountDialog";
-
