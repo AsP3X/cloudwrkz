@@ -61,14 +61,14 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
-          context: apps/web
-          file: apps/web/Dockerfile
+          context: apps/web-vite
+          file: apps/web-vite/Dockerfile
           push: true
           tags: |
             ghcr.io/${{ steps.image.outputs.repo }}:${{ steps.vars.outputs.TAG }}
           labels: |
             org.opencontainers.image.title=cloudwrkz
-            org.opencontainers.image.description=Cloudwrkz web application and CLI (Next.js + PNPM)
+            org.opencontainers.image.description=Cloudwrkz web-vite application and CLI
             org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
