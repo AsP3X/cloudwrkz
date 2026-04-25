@@ -30,7 +30,6 @@ COPY --from=rust-builder /build/target/release/cloudwrkz-cli /usr/local/bin/clou
 WORKDIR /workspace
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY apps/web apps/web
 COPY apps/web-vite apps/web-vite
 
 RUN pnpm install --frozen-lockfile

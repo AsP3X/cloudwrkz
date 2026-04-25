@@ -61,7 +61,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
-          context: apps/web-vite
+          context: .
           file: apps/web-vite/Dockerfile
           push: true
           tags: |
