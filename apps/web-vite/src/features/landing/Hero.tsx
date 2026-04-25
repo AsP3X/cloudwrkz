@@ -1,3 +1,6 @@
+// Human: Landing hero with primary headline, supporting copy, and CTAs that smooth-scroll to the features section in-page.
+// Agent: CALLS document.getElementById features scrollIntoView; RENDERS Button ROUTES links; STATIC marketing content.
+
 import React from "react";
 import { Button } from "@/components/ui/Button";
 import { ROUTES } from "@/lib/constants/routes";

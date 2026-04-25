@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Global search is its own full-screen mode so results can use list density without fighting the dashboard’s section chrome.
+// Agent: DashboardSearchView; debounced Task SearchService.search; pagination initialPageSize pageSize; enhanced query disables paging; onSelectResult.
+
 struct DashboardSearchView: View {
     @Environment(\.appState) private var appState
     var onDismiss: () -> Void
@@ -35,6 +38,9 @@ struct DashboardSearchView: View {
         }
         return results.count < total
     }
+
+    // Human: ZStack keeps the dimmed background behind the sheet-like header so focus stays on the query and first hits.
+    // Agent: ZStack background VStack header searchBar resultsContent; onChange query debounce cancel searchTask; infinite scroll loadMore.
 
     var body: some View {
         ZStack {
@@ -330,9 +336,16 @@ CloudwrkzSpinner(tint: CloudwrkzColors.primary400)
 
 // MARK: - Result row (enterprise card)
 
+// Human: Each hit is a tappable card with type glyph so tickets vs todos are distinguishable without reading fine print. Time entries add a full timing block (start–end, net duration, break total) from search `metadata` when the API includes it.
+// Agent: SearchResultRow Button; typeIcon title description; timeentry TimeEntrySearchResultTimingBlock when TimeEntrySearchMetadata.parse; context highlights; onTap closure.
+
 private struct SearchResultRow: View {
     let result: SearchResult
     let onTap: () -> Void
+
+    private var timeEntryMeta: TimeEntrySearchMetadata? {
+        TimeEntrySearchMetadata.parse(result)
+    }
 
     var body: some View {
         Button(action: onTap) {
@@ -350,6 +363,9 @@ private struct SearchResultRow: View {
                             .foregroundStyle(CloudwrkzColors.neutral500)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
+                    }
+                    if let m = timeEntryMeta {
+                        TimeEntrySearchResultTimingBlock(meta: m)
                     }
                     if let context = result.context, !context.isEmpty {
                         Text(context)

@@ -1,11 +1,49 @@
 import React from "react";
 import { Dialog } from "@/components/ui/Dialog";
-import { TimeEntryEditForm } from "../TimeEntryEditForm";
+import { TimeEntryEditForm, type TimeEntryEditSavePayload } from "../TimeEntryEditForm";
 import { api } from "@/api/client";
-import type { UpdateTimeEntryInput } from "@/lib/validations/time-tracking";
 import type { TimeEntry as ViteTimeEntry } from "@/lib/types";
 import { parseApiDate } from "@/lib/utils/date";
+import type { TimeEntryBreakDraftRow } from "../TimeEntryBreaks";
 
+// Human: React UI for `EditTimeEntryDialog` in time entries and live timers: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE time-tracking; ENTRIES breaks floating-timer; EXPORTS EditTimeEntryDialog; REACT component; READS props hooks; MAY CALL api client.
+
+async function syncTimeEntryBreakDraft(
+  entryId: string,
+  baseline: TimeEntryBreakDraftRow[],
+  draft: TimeEntryBreakDraftRow[],
+): Promise<void> {
+  const draftById = new Map(draft.map((d) => [d.id, d]));
+  for (const b of baseline) {
+    if (!draftById.has(b.id)) {
+      await api.delete(`/time-tracking/${entryId}/breaks/${b.id}`);
+    }
+  }
+  for (const d of draft) {
+    if (d.id.startsWith("local-")) {
+      await api.post(`/time-tracking/${entryId}/breaks`, {
+        started_at: d.startedAt.toISOString(),
+        ended_at: d.endedAt ? d.endedAt.toISOString() : undefined,
+        description: d.description || undefined,
+      });
+    } else {
+      const base = baseline.find((x) => x.id === d.id);
+      if (!base) continue;
+      if (
+        base.startedAt.getTime() !== d.startedAt.getTime() ||
+        (base.endedAt?.getTime() ?? null) !== (d.endedAt?.getTime() ?? null) ||
+        (base.description ?? "") !== (d.description ?? "")
+      ) {
+        await api.patch(`/time-tracking/${entryId}/breaks/${d.id}`, {
+          started_at: d.startedAt.toISOString(),
+          ended_at: d.endedAt ? d.endedAt.toISOString() : null,
+          description: d.description || undefined,
+        });
+      }
+    }
+  }
+}
 interface EditTimeEntryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -17,6 +55,8 @@ interface EditTimeEntryDialogProps {
 export function EditTimeEntryDialog({ open, onOpenChange, entry, userTimezone = "UTC", onUpdated }: EditTimeEntryDialogProps) {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const baselineBreaksRef = React.useRef<TimeEntryBreakDraftRow[]>([]);
+  const lastSnapshottedEntryIdRef = React.useRef<string | null>(null);
 
   const formEntry = React.useMemo(() => ({
     id: entry.id,
@@ -45,7 +85,18 @@ export function EditTimeEntryDialog({ open, onOpenChange, entry, userTimezone = 
     [entry.breaks]
   );
 
-  const handleSave = async (data: UpdateTimeEntryInput) => {
+  React.useLayoutEffect(() => {
+    if (!open) {
+      lastSnapshottedEntryIdRef.current = null;
+      return;
+    }
+    if (lastSnapshottedEntryIdRef.current !== entry.id) {
+      baselineBreaksRef.current = formBreaks.map((b) => ({ ...b }));
+      lastSnapshottedEntryIdRef.current = entry.id;
+    }
+  }, [open, entry.id, formBreaks]);
+
+  const handleSave = async (data: TimeEntryEditSavePayload) => {
     setIsSubmitting(true);
     setError(null);
     try {
@@ -59,6 +110,7 @@ export function EditTimeEntryDialog({ open, onOpenChange, entry, userTimezone = 
         started_at: data.startedAt ? data.startedAt.toISOString() : undefined,
         stopped_at: data.stoppedAt ? data.stoppedAt.toISOString() : null,
       });
+      await syncTimeEntryBreakDraft(entry.id, baselineBreaksRef.current, data.breaks);
       onOpenChange(false);
       onUpdated?.();
     } catch (err: any) {

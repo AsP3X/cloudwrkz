@@ -2,6 +2,8 @@ import React from "react";
 import { cn } from "@/lib/utils/cn";
 import { type LinkViewMode } from "../LinkViewContext";
 
+// Human: React UI for `LinkViewToggle` in saved links and collections: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE links; COLLECTIONS metadata GitHub YouTube; EXPORTS LinkViewToggle; REACT component; READS props hooks; MAY CALL api client.
 interface LinkViewToggleProps {
   currentView: LinkViewMode;
   onViewChange: (view: LinkViewMode) => void;

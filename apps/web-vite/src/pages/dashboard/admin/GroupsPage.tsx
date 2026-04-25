@@ -8,6 +8,9 @@ import { Input } from "@/components/ui/Input";
 import { Dialog } from "@/components/ui/Dialog";
 import type { AdminGroup } from "@/lib/types";
 
+// Human: Admin directory of groups with create/delete dialogs, client-side search, and membership summaries.
+// Agent: GET /admin/groups; ROLE gate via user.role; STATE dialogs+formData; MUTATES groups list after actions.
+
 export default function GroupsPage() {
   const { user } = useAuth();
   const [groups, setGroups] = useState<AdminGroup[]>([]);

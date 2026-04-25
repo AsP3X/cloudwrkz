@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Adding a link should feel fast: paste URL, auto-fill title/icon when the server can scrape, then pick collections once.
+// Agent: AddLinkView; debounced fetchMetadataTask LinkService metadata; sheet AddLinkCollectionChooserView; POST create onSaved dismiss.
+
 struct AddLinkView: View {
     @Environment(\.dismiss) private var dismiss
     var collections: [Collection]

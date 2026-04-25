@@ -22,11 +22,17 @@ import { api, ApiError } from "@/api/client";
 import type { HealthPayload, PingPayload } from "@/features/health/types";
 import { LatencyAnimatedTail } from "@/features/health/LatencyAnimatedTail";
 
+// Human: Public health dashboard that polls `/health` and `/ping`, charts rolling latency, and visualizes uptime.
+// Agent: HTTP GET health+ping via api client; POLLS POLL_MS; MUTATES latencySeries FIFO LATENCY_HISTORY_MAX; CHARTS Recharts.
+
 const POLL_MS = 4000;
 /** Rolling window: oldest dropped when full; X-axis uses slots 1…60 so the trace grows left → right. */
 const LATENCY_HISTORY_MAX = 60;
 
 const CHART_INTRO_MS = 950;
+
+// Human: Tooltip body for the database latency series so operators can read timestamps, milliseconds, and check ids.
+// Agent: READS Recharts tooltip active+payload; RETURNS null OR card with row.at, row.dbMs, row.seq.
 
 function DbLatencyChartTooltip({
   active,
@@ -54,6 +60,9 @@ function DbLatencyChartTooltip({
     </div>
   );
 }
+
+// Human: Tooltip for API-only ping latency so DB numbers are not conflated with handler processing times.
+// Agent: READS Recharts tooltip payload; DISPLAYS row.apiMs + explanatory copy; RETURNS null when inactive.
 
 function ApiLatencyChartTooltip({
   active,
@@ -131,6 +140,9 @@ function formatUptime(seconds: number): string {
   return `${m}m`;
 }
 
+// Human: Runtime guard that distinguishes the rich health payload (nested services) from minimal ping responses.
+// Agent: TYPE predicate HealthPayload; REQUIRES api object + services.database object shape; RETURNS boolean.
+
 function isRichHealth(d: unknown): d is HealthPayload {
   if (!d || typeof d !== "object" || d === null) return false;
   const s = (d as HealthPayload).services;
@@ -144,6 +156,9 @@ function isRichHealth(d: unknown): d is HealthPayload {
     typeof s.database === "object"
   );
 }
+
+// Human: Main health route component coordinating polling, manual refresh, charts, and error surfaces for operators.
+// Agent: STATE health,latencySeries,loading,refreshing,error; useCallback fetchHealth; useEffect poll timer; RENDERS charts + links.
 
 export default function HealthPage() {
   const [health, setHealth] = useState<HealthPayload | null>(null);

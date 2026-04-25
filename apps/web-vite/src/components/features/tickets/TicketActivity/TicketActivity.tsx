@@ -2,6 +2,8 @@ import { formatUserName } from "@/lib/utils/users";
 import { formatDateTime } from "@/lib/utils/date";
 import type { TicketActivity as ActivityItem } from "@/lib/types";
 
+// Human: React UI for `TicketActivity` in support tickets and related tooling: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE tickets; COMMENTS bulk filters timers; EXPORTS TicketActivity; REACT component; READS props hooks; MAY CALL api client.
 function getActivityDescription(
   activityType: string,
   oldValue: string | null | undefined,

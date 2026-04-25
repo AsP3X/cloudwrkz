@@ -1,3 +1,6 @@
+// Human: Ticket type labels, stable prefixes, and helpers for formatting and parsing `#TSK-000123` style ticket numbers.
+// Agent: READS TicketType union; generateTicketNumber parseTicketNumber STRING ops; CONST maps TICKET_TYPE_LABELS PREFIXES.
+
 /** Entity identifier prefixes (always 3 letters): TSK=tickets, TDO=todos, TMR=timers, LNK=links. */
 export type TicketType = "BUG" | "FEATURE" | "QUESTION" | "SUPPORT" | "TASK";
 

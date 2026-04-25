@@ -1,3 +1,6 @@
+// Human: Persists the async registration job id in session storage so queued signup UIs can resume after refresh.
+// Agent: READS/WRITES sessionStorage key cw_reg_job_id; FUNCTIONS get set clear; SWALLOWS quota/private errors.
+
 const REG_JOB_STORAGE_KEY = "cw_reg_job_id";
 
 export function getStoredRegisterJobId(): string | null {

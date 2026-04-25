@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { api } from "@/api/client";
 import { sanitizeHtml } from "@/lib/utils/html-sanitizer";
 
+// Human: React UI for `TicketCommentForm` in support tickets and related tooling: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE tickets; COMMENTS bulk filters timers; EXPORTS TicketCommentForm; REACT component; READS props hooks; MAY CALL api client.
 const commentSchema = z.object({
   content: z
     .string()

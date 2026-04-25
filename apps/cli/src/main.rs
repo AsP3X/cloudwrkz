@@ -12,6 +12,9 @@
 //!   cloudwrkz-cli diagnostics-token generate   Store hashed token in DB; print plaintext once (for GET …/health/detailed).
 //!                                                Prefer this in CI/deploy when you standardize on the CLI binary (equivalent to `cloudwrkz-api diagnostics-token generate`).
 
+// Human: One binary covers scripted DB maintenance, headless admin bootstrap, token login printing, and the full ratatui operator console.
+// Agent: CLAP subcommands Login Db Admin DiagnosticsToken; NO args -> run_interactive; DB cmds USE sqlx + migrations dir; TUI USES api::ApiClient + tui::run_tui.
+
 mod api;
 mod tui;
 
@@ -19,22 +22,25 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use argon2::password_hash::{
-    rand_core::{OsRng, RngCore},
-    PasswordHasher, SaltString,
-};
 use argon2::Argon2;
+use argon2::password_hash::{
+    PasswordHasher, SaltString,
+    rand_core::{OsRng, RngCore},
+};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use inquire::{Confirm, Password, Text};
-use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
+use sqlx::postgres::PgPoolOptions;
 
 const APP_NAME: &str = "CloudWrkz";
 const FALLBACK_COLS: usize = 80;
 const FALLBACK_ROWS: usize = 24;
 
 /// Terminal dimensions (cols, rows). Cached for layout; use when drawing.
+// Human: Help banners and separators need a width even when stdout is not a real tty (e.g. CI) so wrapping stays stable.
+// Agent: CALLS crossterm::terminal::size; MAP u16->usize; FALLBACK 80x24.
+
 fn terminal_size() -> (usize, usize) {
     crossterm::terminal::size()
         .map(|(c, r)| (c as usize, r as usize))
@@ -42,6 +48,9 @@ fn terminal_size() -> (usize, usize) {
 }
 
 /// Width for separators and layout (responsive to terminal).
+// Human: Separator lines in help text stretch to the full terminal width so the CLI looks intentional in wide consoles.
+// Agent: READS terminal_size().0 only.
+
 fn terminal_cols() -> usize {
     terminal_size().0
 }
@@ -55,16 +64,34 @@ struct PermissionOption {
 }
 
 impl std::fmt::Display for PermissionOption {
+    // Human: Grant/revoke lists show key, human title, and category on one line so dense permission trees stay scannable in the TUI.
+    // Agent: write! key — name (category) with spacing.
+
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "  {}  —  {}  ({})", self.key, self.name, self.category)
     }
 }
 
+// Human: Admin permission JSON uses loose `serde_json::Value` rows; this normalizes missing fields to empty strings for stable menu sorting.
+// Agent: READS key name category string fields with unwrap_or ""; BUILDS PermissionOption.
+
 fn permission_option_from_json(p: &serde_json::Value) -> PermissionOption {
     PermissionOption {
-        key: p.get("key").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        name: p.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        category: p.get("category").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        key: p
+            .get("key")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        name: p
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        category: p
+            .get("category")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
     }
 }
 
@@ -72,6 +99,9 @@ const BACK_LABEL: &str = "← Back";
 
 /// Filter items by case-insensitive substring; returns (filtered_items, original_indices).
 /// The last item is always included if it is "← Back" so navigation remains possible.
+// Human: Global search should never hide the back row, or operators could get trapped in a leaf screen with no exit affordance.
+// Agent: FILTER to_lowercase contains q; TRACK original indices; IF BACK_LABEL last AND missing APPEND back row + index.
+
 fn filter_by_search(items: &[String], query: &str) -> (Vec<String>, Vec<usize>) {
     if query.is_empty() {
         return (items.to_vec(), (0..items.len()).collect());
@@ -80,7 +110,9 @@ fn filter_by_search(items: &[String], query: &str) -> (Vec<String>, Vec<usize>) 
     let mut filtered = Vec::new();
     let mut indices = Vec::new();
     let back_idx = items.len().saturating_sub(1);
-    let has_back = items.get(back_idx).map_or(false, |s| s.as_str() == BACK_LABEL);
+    let has_back = items
+        .get(back_idx)
+        .map_or(false, |s| s.as_str() == BACK_LABEL);
     for (i, s) in items.iter().enumerate() {
         if s.to_lowercase().contains(&q) {
             filtered.push(s.clone());
@@ -95,8 +127,12 @@ fn filter_by_search(items: &[String], query: &str) -> (Vec<String>, Vec<usize>) 
 }
 
 /// Unique categories from permissions, sorted.
+// Human: Grant/revoke sidebars group keys by product area; empty categories from malformed JSON are dropped before sorting.
+// Agent: COLLECT category into HashSet remove ""; INTO Vec SORT.
+
 fn categories_from_permissions(perms: &[PermissionOption]) -> Vec<String> {
-    let mut cats: std::collections::HashSet<String> = perms.iter().map(|p| p.category.clone()).collect();
+    let mut cats: std::collections::HashSet<String> =
+        perms.iter().map(|p| p.category.clone()).collect();
     cats.remove("");
     let mut list: Vec<String> = cats.into_iter().collect();
     list.sort();
@@ -189,6 +225,9 @@ enum DbCommand {
     },
 }
 
+// Human: Packaged binaries may run outside the repo, so `MIGRATIONS_DIR` overrides the default `apps/api/migrations` next to cwd.
+// Agent: USE given OR cwd.join apps/api/migrations OR static fallback PathBuf.
+
 fn migrations_dir(given: Option<PathBuf>) -> PathBuf {
     given.unwrap_or_else(|| {
         std::env::current_dir()
@@ -203,6 +242,9 @@ fn migrations_dir(given: Option<PathBuf>) -> PathBuf {
 /// 2. Blank `CLOUDWRKZ_*` values are removed so a later file can fill them (`from_path` never overrides).
 /// 3. `apps/api/.env` — shared with `cloudwrkz-api` (`DATABASE_URL`, `API_PORT`, optional `CLOUDWRKZ_TOKEN`).
 /// 4. `apps/cli/.env` — **overrides** (recommended place for `CLOUDWRKZ_TOKEN` so it always wins).
+// Human: Layered env loading mirrors the API server so `DATABASE_URL` can live in `apps/api/.env` while the CLI token overrides from `apps/cli/.env`.
+// Agent: dotenv root; unset blank CLOUDWRKZ_TOKEN/API_URL; from_path apps/api/.env; from_path_override apps/cli/.env.
+
 fn load_dotenv() {
     dotenvy::dotenv().ok();
     unset_env_if_blank("CLOUDWRKZ_TOKEN");
@@ -214,6 +256,9 @@ fn load_dotenv() {
         let _ = dotenvy::from_path_override(path);
     }
 }
+
+// Human: Empty-string env vars block later files from supplying real values because dotenv refuses to override set keys.
+// Agent: IF var exists AND trim empty unsafe remove_var; CALLED only from main thread before spawn.
 
 fn unset_env_if_blank(key: &str) {
     match std::env::var(key) {
@@ -229,6 +274,9 @@ fn unset_env_if_blank(key: &str) {
 }
 
 /// Walks up from cwd, then from the executable directory, to find `relative_path` under a workspace root.
+// Human: Developers run the CLI from subfolders or `target/release`, so we walk parents from cwd and from the exe path to find nested `.env` files.
+// Agent: WALK cwd.parent chain test is_file; ELSE WALK exe.parent chain; RETURNS first match Option.
+
 fn find_workspace_file(relative_path: &str) -> Option<PathBuf> {
     if let Ok(cwd) = std::env::current_dir() {
         let mut dir = Some(cwd.as_path());
@@ -252,6 +300,9 @@ fn find_workspace_file(relative_path: &str) -> Option<PathBuf> {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Human: Parses clap commands for headless workflows, otherwise drops into the ratatui operator console used for day-two admin tasks.
+    // Agent: load_dotenv; IF argc<=1 run_interactive; ELSE Cli::parse match Login|Db|Admin|DiagnosticsToken; EACH branch READS DATABASE_URL as needed.
+
     load_dotenv();
 
     // No arguments → interactive mode (port of Node CLI's "pnpm cli")
@@ -272,11 +323,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 "DATABASE_URL must be set (e.g. in .env or apps/api/.env)".to_string()
             })?;
             match subcommand {
-                DbCommand::Seed { migrations_dir: dir } => {
+                DbCommand::Seed {
+                    migrations_dir: dir,
+                } => {
                     let dir = migrations_dir(dir);
                     run_seed(&database_url, &dir).await?;
                 }
-                DbCommand::Migrate { migrations_dir: dir } => {
+                DbCommand::Migrate {
+                    migrations_dir: dir,
+                } => {
                     let dir = migrations_dir(dir);
                     run_migrate(&database_url, &dir).await?;
                 }
@@ -296,7 +351,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 "DATABASE_URL must be set (e.g. in .env or apps/api/.env)".to_string()
             })?;
             match subcommand {
-                AdminCommand::CreateAdmin { email, password, name } => {
+                AdminCommand::CreateAdmin {
+                    email,
+                    password,
+                    name,
+                } => {
                     run_create_admin(&database_url, &email, &password, name.as_deref()).await?;
                 }
             }
@@ -306,7 +365,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 "DATABASE_URL must be set (e.g. in .env or apps/api/.env)".to_string()
             })?;
             match subcommand {
-                DiagnosticsTokenCommand::Generate { migrations_dir: dir } => {
+                DiagnosticsTokenCommand::Generate {
+                    migrations_dir: dir,
+                } => {
                     let dir = migrations_dir(dir);
                     run_diagnostics_token_generate(&database_url, &dir).await?;
                 }
@@ -323,6 +384,9 @@ async fn run_diagnostics_token_generate(
     database_url: &str,
     migrations_dir: &PathBuf,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Human: Mirrors `cloudwrkz-api diagnostics-token generate` so CI can ship one binary; migrates first so `system_settings` exists.
+    // Agent: run_migrate; CONNECT pool max 2; OsRng 32 bytes hex cwzd_; hash_password Argon2; UPSERT system_settings key diagnostics_health_token_hash; PRINT token once.
+
     run_migrate(database_url, migrations_dir).await?;
 
     let pool = PgPoolOptions::new()
@@ -363,11 +427,18 @@ async fn run_login(
     email: Option<String>,
     password: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Human: Headless login prompts when flags/env are missing, then prints shell export hints so operators can paste `CLOUDWRKZ_TOKEN` safely.
+    // Agent: api_config + ApiClient::new; inquire Text/Password fallback; client.login; SUCCESS print token; ERR api::user_message exit 1.
+
     let (base_url, _) = api::api_config();
     let client = api::ApiClient::new(base_url.clone(), None);
 
     let email = email.unwrap_or_else(|| {
-        Text::new("Email:").prompt().unwrap_or_default().trim().to_string()
+        Text::new("Email:")
+            .prompt()
+            .unwrap_or_default()
+            .trim()
+            .to_string()
     });
     let password = password.unwrap_or_else(|| {
         Password::new("Password:")
@@ -423,6 +494,9 @@ async fn run_login(
 }
 
 /// Generate a CUID-like id (same format as API) for new user.
+// Human: Bootstrap `create-admin` inserts rows compatible with Prisma-style string ids used everywhere else in the product.
+// Agent: SAME algorithm as API id.rs: millis base36 + 16 random base36 chars prefixed c.
+
 fn new_cuid() -> String {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -441,6 +515,9 @@ fn new_cuid() -> String {
     format!("c{}{}", base36(timestamp as u64), random_part)
 }
 
+// Human: Encodes the timestamp portion of the synthetic CUID without pulling in extra crates.
+// Agent: DIV loop base 36 digits; SPECIAL n==0; REVERSE bytes to string.
+
 fn base36(mut n: u64) -> String {
     if n == 0 {
         return "0".to_string();
@@ -456,6 +533,9 @@ fn base36(mut n: u64) -> String {
 }
 
 /// Hash password with Argon2 (same as API) so the user can log in via API.
+// Human: The bootstrap admin must use the same Argon2 parameters as the API’s `hash_password` or first login would always fail verification.
+// Agent: SaltString::generate OsRng; Argon2::default hash_password; RETURN PHC string.
+
 fn hash_password(password: &str) -> Result<String, argon2::password_hash::Error> {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
@@ -469,10 +549,17 @@ async fn run_create_admin(
     password: &str,
     name: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Human: Creates only the very first `ADMIN` row in an empty install; later admins must go through the product so this stays a guarded bootstrap.
+    // Agent: REQUIRES CLOUDWRKZ_BOOTSTRAP_SECRET non-empty; VALIDATES email+password length; CHECK no existing ADMIN; INSERT users role ADMIN; HANDLE unique violation.
+
     // Require bootstrap secret so DATABASE_URL alone is not enough (e.g. in CI or leaked env).
     let secret = std::env::var("CLOUDWRKZ_BOOTSTRAP_SECRET").unwrap_or_default();
     if secret.trim().is_empty() {
-        eprintln!("{} create-admin is protected. Set {} (any non-empty value) to allow bootstrap.", "✗".red(), "CLOUDWRKZ_BOOTSTRAP_SECRET".cyan());
+        eprintln!(
+            "{} create-admin is protected. Set {} (any non-empty value) to allow bootstrap.",
+            "✗".red(),
+            "CLOUDWRKZ_BOOTSTRAP_SECRET".cyan()
+        );
         eprintln!("  Example: export CLOUDWRKZ_BOOTSTRAP_SECRET=your-secret-here");
         std::process::exit(1);
     }
@@ -498,12 +585,16 @@ async fn run_create_admin(
     let pool = pool(database_url).await?;
 
     // Only allow creating the first admin. After that, use API or web app.
-    let existing: Option<(i32,)> = sqlx::query_as("SELECT 1 FROM users WHERE role = 'ADMIN' LIMIT 1")
-        .fetch_optional(&pool)
-        .await?;
+    let existing: Option<(i32,)> =
+        sqlx::query_as("SELECT 1 FROM users WHERE role = 'ADMIN' LIMIT 1")
+            .fetch_optional(&pool)
+            .await?;
     if existing.is_some() {
         pool.close().await;
-        eprintln!("{} An admin user already exists. Create more users via the API or web app.", "✗".red());
+        eprintln!(
+            "{} An admin user already exists. Create more users via the API or web app.",
+            "✗".red()
+        );
         std::process::exit(1);
     }
 
@@ -541,6 +632,9 @@ async fn run_create_admin(
 }
 
 /// Current TUI screen (and its data). All sub-UIs use the same sidebar + content layout.
+// Human: A navigation stack of `AppScreen` values models nested menus without separate ratatui routes—pop equals Back.
+// Agent: ENUM variants carry JSON blobs or selection state for users/groups/permissions/db output; Main is root.
+
 #[derive(Clone)]
 enum AppScreen {
     Main,
@@ -557,25 +651,64 @@ enum AppScreen {
         role: String,
         status: String,
     },
-    StatusChoice { user_id: String, email: String },
-    RoleChoice { user_id: String, email: String },
-    Permissions { user_id: String, email: String, status: String },
-    GrantPermission { permissions: Vec<PermissionOption>, categories: Vec<String>, email: String, status: String, selected: HashSet<String> },
-    RevokeCategory { categories: Vec<String>, email: String, status: String },
-    RevokePermission { permissions: Vec<PermissionOption>, categories: Vec<String>, email: String, status: String, selected: HashSet<String> },
-    ConfirmDelete { user_id: String, email: String },
-    ConfirmRevoke { user_id: String, key: String },
+    StatusChoice {
+        user_id: String,
+        email: String,
+    },
+    RoleChoice {
+        user_id: String,
+        email: String,
+    },
+    Permissions {
+        user_id: String,
+        email: String,
+        status: String,
+    },
+    GrantPermission {
+        permissions: Vec<PermissionOption>,
+        categories: Vec<String>,
+        email: String,
+        status: String,
+        selected: HashSet<String>,
+    },
+    RevokeCategory {
+        categories: Vec<String>,
+        email: String,
+        status: String,
+    },
+    RevokePermission {
+        permissions: Vec<PermissionOption>,
+        categories: Vec<String>,
+        email: String,
+        status: String,
+        selected: HashSet<String>,
+    },
+    ConfirmDelete {
+        user_id: String,
+        email: String,
+    },
+    ConfirmRevoke {
+        user_id: String,
+        key: String,
+    },
     GroupsList(Vec<serde_json::Value>),
     ModulesList(Vec<serde_json::Value>),
     SessionsList(Vec<serde_json::Value>),
     DbOutput(String),
     Help(String),
     UserDetailsJson(String),
-    PermissionTable { _user_id: String, email: String, permissions: Vec<PermissionOption> },
+    PermissionTable {
+        _user_id: String,
+        email: String,
+        permissions: Vec<PermissionOption>,
+    },
     ConfirmDbReset,
 }
 
 /// Main menu: right-panel action list for each sidebar row (must stay in sync with `AppScreen::Main`).
+// Human: Sidebar index 0–6 maps to Users…Quit; tokenless rows show placeholders instead of calling APIs that would 401.
+// Agent: MATCH section+has_token; RETURNS vec of localized action labels.
+
 fn main_section_submenu(section: usize, has_token: bool) -> Vec<String> {
     match section {
         0 if !has_token => vec!["(Login required — set CLOUDWRKZ_TOKEN)".to_string()],
@@ -603,6 +736,9 @@ fn main_section_submenu(section: usize, has_token: bool) -> Vec<String> {
     }
 }
 
+// Human: Labels feed both the main sidebar emoji row and the breadcrumb-style parent row on sub-screens.
+// Agent: STATIC str match section index.
+
 fn main_section_parent_label(section: usize) -> &'static str {
     match section {
         0 => "Users",
@@ -617,11 +753,17 @@ fn main_section_parent_label(section: usize) -> &'static str {
 }
 
 /// Left sidebar on sub-screens: parent section title + the same submenu entries as on the main menu.
+// Human: Child screens keep the same left column structure so muscle memory from the home menu still applies one level deeper.
+// Agent: PREPEND main_section_parent_label string; EXTEND with main_section_submenu(section, has_token).
+
 fn sidebar_parent_plus_submenu(section: usize, has_token: bool) -> Vec<String> {
     let mut v = vec![main_section_parent_label(section).to_string()];
     v.extend(main_section_submenu(section, has_token));
     v
 }
+
+// Human: One string per user row keeps the ratatui list simple while still showing email, optional name, role, and status columns.
+// Agent: MAP serde_json fields email name role status; FORMAT single line each.
 
 fn user_list_rows(users: &[serde_json::Value]) -> Vec<String> {
     users
@@ -638,6 +780,9 @@ fn user_list_rows(users: &[serde_json::Value]) -> Vec<String> {
 }
 
 /// Right-panel list for the current screen and sidebar selection (keeps sidebar + content in sync in the TUI).
+// Human: This giant match is the single source of truth for what the right column shows for every `AppScreen` and sidebar index pair.
+// Agent: MATCH AppScreen variant; COMPOSE main_section_submenu rows OR user lists OR permission pickers OR db/help text chunks; APPEND BACK_LABEL where navigation applies.
+
 fn panel_content(screen: &AppScreen, sidebar_idx: usize, has_token: bool) -> Vec<String> {
     match screen {
         AppScreen::Main => main_section_submenu(sidebar_idx, has_token),
@@ -728,14 +873,20 @@ fn panel_content(screen: &AppScreen, sidebar_idx: usize, has_token: bool) -> Vec
             let mut content: Vec<String> = filtered
                 .iter()
                 .map(|p| {
-                    let mark = if selected.contains(&p.key) { "☑ " } else { "  " };
+                    let mark = if selected.contains(&p.key) {
+                        "☑ "
+                    } else {
+                        "  "
+                    };
                     format!("{}{} — {} ({})", mark, p.key, p.name, p.category)
                 })
                 .collect();
             content.push(BACK_LABEL.to_string());
             content
         }
-        AppScreen::RevokeCategory { categories: cats, .. } => {
+        AppScreen::RevokeCategory {
+            categories: cats, ..
+        } => {
             let mut content = cats.clone();
             content.push(BACK_LABEL.to_string());
             content
@@ -755,7 +906,11 @@ fn panel_content(screen: &AppScreen, sidebar_idx: usize, has_token: bool) -> Vec
             let mut content: Vec<String> = filtered
                 .iter()
                 .map(|p| {
-                    let mark = if selected.contains(&p.key) { "☑ " } else { "  " };
+                    let mark = if selected.contains(&p.key) {
+                        "☑ "
+                    } else {
+                        "  "
+                    };
                     format!("{}{} — {} ({})", mark, p.key, p.name, p.category)
                 })
                 .collect();
@@ -766,7 +921,10 @@ fn panel_content(screen: &AppScreen, sidebar_idx: usize, has_token: bool) -> Vec
             if sidebar_idx == 0 {
                 main_section_submenu(0, true)
             } else {
-                vec!["Yes, soft-delete this user".to_string(), "No, cancel".to_string()]
+                vec![
+                    "Yes, soft-delete this user".to_string(),
+                    "No, cancel".to_string(),
+                ]
             }
         }
         AppScreen::ConfirmRevoke { key, .. } => {
@@ -834,7 +992,8 @@ fn panel_content(screen: &AppScreen, sidebar_idx: usize, has_token: bool) -> Vec
             if sidebar_idx == 0 {
                 main_section_submenu(4, has_token)
             } else {
-                let mut lines: Vec<String> = text.lines().map(|s| s.to_string()).take(200).collect();
+                let mut lines: Vec<String> =
+                    text.lines().map(|s| s.to_string()).take(200).collect();
                 lines.push(BACK_LABEL.to_string());
                 lines
             }
@@ -843,7 +1002,8 @@ fn panel_content(screen: &AppScreen, sidebar_idx: usize, has_token: bool) -> Vec
             if sidebar_idx == 0 {
                 main_section_submenu(5, has_token)
             } else {
-                let mut lines: Vec<String> = text.lines().map(|s| s.to_string()).take(200).collect();
+                let mut lines: Vec<String> =
+                    text.lines().map(|s| s.to_string()).take(200).collect();
                 lines.push(BACK_LABEL.to_string());
                 lines
             }
@@ -852,7 +1012,8 @@ fn panel_content(screen: &AppScreen, sidebar_idx: usize, has_token: bool) -> Vec
             if sidebar_idx == 0 {
                 main_section_submenu(0, true)
             } else {
-                let mut lines: Vec<String> = text.lines().map(|s| s.to_string()).take(200).collect();
+                let mut lines: Vec<String> =
+                    text.lines().map(|s| s.to_string()).take(200).collect();
                 lines.push(BACK_LABEL.to_string());
                 lines
             }
@@ -873,20 +1034,26 @@ fn panel_content(screen: &AppScreen, sidebar_idx: usize, has_token: bool) -> Vec
             if sidebar_idx == 0 {
                 main_section_submenu(4, has_token)
             } else {
-                vec![
-                    "Yes, reset database".to_string(),
-                    "No, cancel".to_string(),
-                ]
+                vec!["Yes, reset database".to_string(), "No, cancel".to_string()]
             }
         }
     }
 }
 
+// Human: Maps abstract `AppScreen` + focus state into the four strings ratatui needs: left title, sidebar rows, right title, content rows, optional header block.
+// Agent: MATCH screen; BUILD emoji sidebar for Main; OTHER screens CALL sidebar_parent_plus_submenu + panel_content; RETURN optional header tuple.
+
 fn build_ui(
     screen: &AppScreen,
     has_token: bool,
     sidebar_index: usize,
-) -> (String, Vec<String>, String, Vec<String>, Option<(Vec<String>, String)>) {
+) -> (
+    String,
+    Vec<String>,
+    String,
+    Vec<String>,
+    Option<(Vec<String>, String)>,
+) {
     match screen {
         AppScreen::Main => {
             let sidebar = vec![
@@ -899,7 +1066,13 @@ fn build_ui(
                 "🚪 Quit".to_string(),
             ];
             let content = panel_content(screen, sidebar_index, has_token);
-            (" CloudWrkz ".to_string(), sidebar, " Actions ".to_string(), content, None)
+            (
+                " CloudWrkz ".to_string(),
+                sidebar,
+                " Actions ".to_string(),
+                content,
+                None,
+            )
         }
         AppScreen::UserList { total, .. } => {
             let sidebar = sidebar_parent_plus_submenu(0, true);
@@ -907,9 +1080,19 @@ fn build_ui(
             let title_right = format!(" Select user ({} total) ", total);
             (" Users ".to_string(), sidebar, title_right, content, None)
         }
-        AppScreen::UserDetail { email, name, status, role: _role, .. } => {
+        AppScreen::UserDetail {
+            email,
+            name,
+            status,
+            role: _role,
+            ..
+        } => {
             let username = name.trim();
-            let user_label = if username.is_empty() { email.as_str() } else { username };
+            let user_label = if username.is_empty() {
+                email.as_str()
+            } else {
+                username
+            };
             let header = vec![
                 format!("Root → User [{}] → Manage", user_label),
                 format!("Status: {}", status),
@@ -917,19 +1100,37 @@ fn build_ui(
             ];
             let sidebar = sidebar_parent_plus_submenu(0, true);
             let content = panel_content(screen, sidebar_index, has_token);
-            (" User ".to_string(), sidebar, " Sub menu options ".to_string(), content, Some((header, "User".to_string())))
+            (
+                " User ".to_string(),
+                sidebar,
+                " Sub menu options ".to_string(),
+                content,
+                Some((header, "User".to_string())),
+            )
         }
         AppScreen::StatusChoice { email, .. } => {
             let mut sidebar = sidebar_parent_plus_submenu(0, true);
             sidebar.push(format!("Set status — {}", email));
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Status ".to_string(), sidebar, " Choose status ".to_string(), content, None)
+            (
+                " Status ".to_string(),
+                sidebar,
+                " Choose status ".to_string(),
+                content,
+                None,
+            )
         }
         AppScreen::RoleChoice { email, .. } => {
             let mut sidebar = sidebar_parent_plus_submenu(0, true);
             sidebar.push(format!("Set role — {}", email));
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Role ".to_string(), sidebar, " Choose role ".to_string(), content, None)
+            (
+                " Role ".to_string(),
+                sidebar,
+                " Choose role ".to_string(),
+                content,
+                None,
+            )
         }
         AppScreen::Permissions { email, status, .. } => {
             let header = vec![
@@ -939,9 +1140,21 @@ fn build_ui(
             ];
             let sidebar = sidebar_parent_plus_submenu(0, true);
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Permissions ".to_string(), sidebar, " Sub menu options ".to_string(), content, Some((header, "Permissions".to_string())))
+            (
+                " Permissions ".to_string(),
+                sidebar,
+                " Sub menu options ".to_string(),
+                content,
+                Some((header, "Permissions".to_string())),
+            )
         }
-        AppScreen::GrantPermission { permissions: _, categories: cats, email, status, selected: _ } => {
+        AppScreen::GrantPermission {
+            permissions: _,
+            categories: cats,
+            email,
+            status,
+            selected: _,
+        } => {
             let header = vec![
                 format!("Root → User [{}] → Grant permission", email),
                 format!("Status: {}", status),
@@ -951,9 +1164,19 @@ fn build_ui(
             let mut sidebar = vec!["All".to_string()];
             sidebar.extend(cats.clone());
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Grant ".to_string(), sidebar, " Permissions ".to_string(), content, Some((header, "Grant permission".to_string())))
+            (
+                " Grant ".to_string(),
+                sidebar,
+                " Permissions ".to_string(),
+                content,
+                Some((header, "Grant permission".to_string())),
+            )
         }
-        AppScreen::RevokeCategory { categories: cats, email, status } => {
+        AppScreen::RevokeCategory {
+            categories: cats,
+            email,
+            status,
+        } => {
             let header = vec![
                 format!("Root → User [{}] → Revoke permission", email),
                 format!("Status: {}", status),
@@ -961,9 +1184,21 @@ fn build_ui(
             ];
             let sidebar = cats.clone();
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Revoke ".to_string(), sidebar, " Categories ".to_string(), content, Some((header, "Revoke permission".to_string())))
+            (
+                " Revoke ".to_string(),
+                sidebar,
+                " Categories ".to_string(),
+                content,
+                Some((header, "Revoke permission".to_string())),
+            )
         }
-        AppScreen::RevokePermission { permissions: _, categories: cats, email, status, selected: _ } => {
+        AppScreen::RevokePermission {
+            permissions: _,
+            categories: cats,
+            email,
+            status,
+            selected: _,
+        } => {
             let header = vec![
                 format!("Root → User [{}] → Revoke permission", email),
                 format!("Status: {}", status),
@@ -972,55 +1207,117 @@ fn build_ui(
             ];
             let sidebar = cats.clone();
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Revoke ".to_string(), sidebar, " Select to revoke ".to_string(), content, Some((header, "Revoke permission".to_string())))
+            (
+                " Revoke ".to_string(),
+                sidebar,
+                " Select to revoke ".to_string(),
+                content,
+                Some((header, "Revoke permission".to_string())),
+            )
         }
         AppScreen::ConfirmDelete { email, .. } => {
             let mut sidebar = sidebar_parent_plus_submenu(0, true);
             sidebar.push(format!("Delete — {}", email));
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Confirm ".to_string(), sidebar, " Delete user? ".to_string(), content, None)
+            (
+                " Confirm ".to_string(),
+                sidebar,
+                " Delete user? ".to_string(),
+                content,
+                None,
+            )
         }
         AppScreen::ConfirmRevoke { key, .. } => {
             let mut sidebar = sidebar_parent_plus_submenu(0, true);
             sidebar.push(format!("Revoke — {}", key));
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Confirm ".to_string(), sidebar, " Revoke? ".to_string(), content, None)
+            (
+                " Confirm ".to_string(),
+                sidebar,
+                " Revoke? ".to_string(),
+                content,
+                None,
+            )
         }
         AppScreen::GroupsList(_) => {
             let sidebar = sidebar_parent_plus_submenu(1, has_token);
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Groups ".to_string(), sidebar, " List ".to_string(), content, None)
+            (
+                " Groups ".to_string(),
+                sidebar,
+                " List ".to_string(),
+                content,
+                None,
+            )
         }
         AppScreen::ModulesList(_) => {
             let sidebar = sidebar_parent_plus_submenu(2, has_token);
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Modules ".to_string(), sidebar, " List ".to_string(), content, None)
+            (
+                " Modules ".to_string(),
+                sidebar,
+                " List ".to_string(),
+                content,
+                None,
+            )
         }
         AppScreen::SessionsList(_) => {
             let sidebar = sidebar_parent_plus_submenu(3, has_token);
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Sessions ".to_string(), sidebar, " List ".to_string(), content, None)
+            (
+                " Sessions ".to_string(),
+                sidebar,
+                " List ".to_string(),
+                content,
+                None,
+            )
         }
         AppScreen::DbOutput(_) => {
             let sidebar = sidebar_parent_plus_submenu(4, has_token);
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Output ".to_string(), sidebar, " Result ".to_string(), content, None)
+            (
+                " Output ".to_string(),
+                sidebar,
+                " Result ".to_string(),
+                content,
+                None,
+            )
         }
         AppScreen::Help(_) => {
             let sidebar = sidebar_parent_plus_submenu(5, has_token);
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Help ".to_string(), sidebar, " Documentation ".to_string(), content, None)
+            (
+                " Help ".to_string(),
+                sidebar,
+                " Documentation ".to_string(),
+                content,
+                None,
+            )
         }
         AppScreen::UserDetailsJson(_) => {
             let sidebar = sidebar_parent_plus_submenu(0, true);
             let content = panel_content(screen, sidebar_index, has_token);
-            (" User details ".to_string(), sidebar, " JSON ".to_string(), content, None)
+            (
+                " User details ".to_string(),
+                sidebar,
+                " JSON ".to_string(),
+                content,
+                None,
+            )
         }
-        AppScreen::PermissionTable { email, permissions, .. } => {
+        AppScreen::PermissionTable {
+            email, permissions, ..
+        } => {
             let mut sidebar = sidebar_parent_plus_submenu(0, true);
             sidebar.push(format!("Permissions — {}", email));
             let content = panel_content(screen, sidebar_index, has_token);
-            (" Direct permissions ".to_string(), sidebar, format!(" {} ", permissions.len()), content, None)
+            (
+                " Direct permissions ".to_string(),
+                sidebar,
+                format!(" {} ", permissions.len()),
+                content,
+                None,
+            )
         }
         AppScreen::ConfirmDbReset => {
             let mut sidebar = sidebar_parent_plus_submenu(4, has_token);
@@ -1042,6 +1339,9 @@ fn build_ui(
     }
 }
 
+// Human: Full-screen prompts between TUI and println modes avoid leaving ratatui debris on the scrollback when we drop to line mode.
+// Agent: crossterm execute Clear All MoveTo 0,0 on stdout.
+
 fn clear_screen() {
     let _ = crossterm::execute!(
         std::io::stdout(),
@@ -1049,6 +1349,9 @@ fn clear_screen() {
         crossterm::cursor::MoveTo(0, 0),
     );
 }
+
+// Human: Non-TUI messages still share a consistent branded banner width with the terminal ruler line.
+// Agent: PRINT separator line terminal_cols; PRINT APP_NAME CLI title colored.
 
 fn header(title: &str, subtitle: &str) {
     let w = terminal_cols();
@@ -1060,6 +1363,9 @@ fn header(title: &str, subtitle: &str) {
     println!("{}\n", subtitle.bright_black());
 }
 
+// Human: After informational println screens we block on stdin so fast operators can read the text before it scrolls away.
+// Agent: READ_LINE stdin discard result.
+
 fn wait_for_enter() {
     println!("{}", "Press Enter to continue...".bright_black());
     let mut buf = String::new();
@@ -1067,10 +1373,17 @@ fn wait_for_enter() {
 }
 
 async fn run_interactive() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Human: The interactive shell is a stack machine: each `tui::run_tui` pass may push/pop `AppScreen` values and optionally filter both panes via search.
+    // Agent: REQUIRE DATABASE_URL; BUILD api_client; LOOP build_ui+panel_content; APPLY search_filter mapping; MATCH TuiExit dispatch_tui_action; BREAK Quit.
+
     let database_url = match std::env::var("DATABASE_URL") {
         Ok(u) => u,
         Err(_) => {
-            eprintln!("{} {}", "✗".red(), "DATABASE_URL must be set (e.g. in .env or apps/api/.env)".red());
+            eprintln!(
+                "{} {}",
+                "✗".red(),
+                "DATABASE_URL must be set (e.g. in .env or apps/api/.env)".red()
+            );
             std::process::exit(1);
         }
     };
@@ -1121,7 +1434,9 @@ async fn run_interactive() -> Result<(), Box<dyn std::error::Error + Send + Sync
             &display_sidebar,
             &title_right,
             &display_content,
-            header.as_ref().map(|(lines, title)| (lines.as_slice(), title.as_str())),
+            header
+                .as_ref()
+                .map(|(lines, title)| (lines.as_slice(), title.as_str())),
             if search_active {
                 Some(&mut search_query)
             } else {
@@ -1149,12 +1464,20 @@ async fn run_interactive() -> Result<(), Box<dyn std::error::Error + Send + Sync
             }
             tui::TuiExit::SearchChanged(query) => {
                 search_active = true;
-                search_filter = if query.is_empty() { None } else { Some(query.clone()) };
+                search_filter = if query.is_empty() {
+                    None
+                } else {
+                    Some(query.clone())
+                };
                 search_query = query;
             }
             tui::TuiExit::SearchDone(query) => {
                 search_active = false;
-                search_filter = if query.is_empty() { None } else { Some(query.clone()) };
+                search_filter = if query.is_empty() {
+                    None
+                } else {
+                    Some(query.clone())
+                };
                 search_query = query;
             }
             tui::TuiExit::SearchCancel => {
@@ -1217,7 +1540,10 @@ async fn run_interactive() -> Result<(), Box<dyn std::error::Error + Send + Sync
             }
             tui::TuiExit::Select(sb_idx, content_idx) => {
                 let real_sb = sidebar_orig_indices.get(sb_idx).copied().unwrap_or(sb_idx);
-                let real_content = content_orig_indices.get(content_idx).copied().unwrap_or(content_idx);
+                let real_content = content_orig_indices
+                    .get(content_idx)
+                    .copied()
+                    .unwrap_or(content_idx);
                 let handled = dispatch_tui_action(
                     &mut tui_state,
                     &mut stack,
@@ -1237,7 +1563,10 @@ async fn run_interactive() -> Result<(), Box<dyn std::error::Error + Send + Sync
             }
         }
     }
-    println!("{}", format!("Thank you for using {} CLI. Goodbye! 👋", APP_NAME).bright_blue());
+    println!(
+        "{}",
+        format!("Thank you for using {} CLI. Goodbye! 👋", APP_NAME).bright_blue()
+    );
     Ok(())
 }
 
@@ -1246,6 +1575,9 @@ enum DispatchResult {
     Continue,
     Quit,
 }
+
+// Human: Every Enter/Space on a menu row is interpreted here—this is where API calls, stack pushes, and destructive confirms are centralized.
+// Agent: READ panel_content for BACK detection; MATCH screen variant; AWAIT api_client or sqlx helpers; MUTATE stack + tui_state.sidebar_index; RETURN Continue|Quit.
 
 async fn dispatch_tui_action(
     tui_state: &mut tui::TuiState,
@@ -1259,7 +1591,10 @@ async fn dispatch_tui_action(
     database_url: &str,
 ) -> Result<DispatchResult, Box<dyn std::error::Error + Send + Sync>> {
     let live = panel_content(screen, sb_idx, has_token);
-    let is_back = content_idx < live.len() && live.get(content_idx).is_some_and(|s| s.trim() == BACK_LABEL);
+    let is_back = content_idx < live.len()
+        && live
+            .get(content_idx)
+            .is_some_and(|s| s.trim() == BACK_LABEL);
 
     match screen {
         AppScreen::Main => {
@@ -1270,29 +1605,27 @@ async fn dispatch_tui_action(
                     show_login_required();
                     wait_for_enter();
                 }
-                0 => {
-                    match content_idx {
-                        0 => {
-                            let res = api_client.list_users().await?;
-                            tui_state.sidebar_index = 1;
-                            stack.push(AppScreen::UserList {
-                                users: res.users,
-                                for_manage: true,
-                                total: res.total,
-                            });
-                        }
-                        1 | 2 => {
-                            let res = api_client.list_users().await?;
-                            tui_state.sidebar_index = 1 + content_idx;
-                            stack.push(AppScreen::UserList {
-                                users: res.users,
-                                for_manage: false,
-                                total: res.total,
-                            });
-                        }
-                        _ => {}
+                0 => match content_idx {
+                    0 => {
+                        let res = api_client.list_users().await?;
+                        tui_state.sidebar_index = 1;
+                        stack.push(AppScreen::UserList {
+                            users: res.users,
+                            for_manage: true,
+                            total: res.total,
+                        });
                     }
-                }
+                    1 | 2 => {
+                        let res = api_client.list_users().await?;
+                        tui_state.sidebar_index = 1 + content_idx;
+                        stack.push(AppScreen::UserList {
+                            users: res.users,
+                            for_manage: false,
+                            total: res.total,
+                        });
+                    }
+                    _ => {}
+                },
                 1 if has_token => {
                     let res = api_client.list_groups().await?;
                     tui_state.sidebar_index = 1;
@@ -1371,11 +1704,31 @@ async fn dispatch_tui_action(
                 return Ok(DispatchResult::Continue);
             }
             if let Some(u) = users.get(content_idx) {
-                let id = u.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let email = u.get("email").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let name = u.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let role = u.get("role").and_then(|v| v.as_str()).unwrap_or("-").to_string();
-                let status = u.get("status").and_then(|v| v.as_str()).unwrap_or("-").to_string();
+                let id = u
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let email = u
+                    .get("email")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let name = u
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let role = u
+                    .get("role")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("-")
+                    .to_string();
+                let status = u
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("-")
+                    .to_string();
                 if for_manage {
                     tui_state.sidebar_index = 1;
                     stack.push(AppScreen::UserDetail {
@@ -1387,13 +1740,20 @@ async fn dispatch_tui_action(
                     });
                 } else {
                     let v = api_client.get_user(&id).await?;
-                    let pretty = serde_json::to_string_pretty(v.get("user").unwrap_or(&serde_json::Value::Null))?;
+                    let pretty = serde_json::to_string_pretty(
+                        v.get("user").unwrap_or(&serde_json::Value::Null),
+                    )?;
                     tui_state.sidebar_index = 3;
                     stack.push(AppScreen::UserDetailsJson(pretty));
                 }
             }
         }
-        AppScreen::UserDetail { user_id, email, status, .. } => {
+        AppScreen::UserDetail {
+            user_id,
+            email,
+            status,
+            ..
+        } => {
             if sb_idx == 0 {
                 match content_idx {
                     0 => return Ok(DispatchResult::Continue),
@@ -1432,15 +1792,23 @@ async fn dispatch_tui_action(
             match content_idx {
                 0 => {
                     let v = api_client.get_user(&user_id).await?;
-                    let pretty = serde_json::to_string_pretty(v.get("user").unwrap_or(&serde_json::Value::Null))?;
+                    let pretty = serde_json::to_string_pretty(
+                        v.get("user").unwrap_or(&serde_json::Value::Null),
+                    )?;
                     tui_state.sidebar_index = 1;
                     stack.push(AppScreen::UserDetailsJson(pretty));
                 }
                 1 => {
                     let name = inquire::Text::new("New display name (empty to clear):").prompt();
                     if let Ok(n) = name {
-                        let val = if n.trim().is_empty() { None } else { Some(n.trim().to_string()) };
-                        let _ = api_client.update_user(&user_id, val.as_deref(), None, None).await;
+                        let val = if n.trim().is_empty() {
+                            None
+                        } else {
+                            Some(n.trim().to_string())
+                        };
+                        let _ = api_client
+                            .update_user(&user_id, val.as_deref(), None, None)
+                            .await;
                     }
                 }
                 2 => {
@@ -1456,7 +1824,11 @@ async fn dispatch_tui_action(
                 }
                 5 => {
                     tui_state.sidebar_index = 1;
-                    stack.push(AppScreen::Permissions { user_id, email, status });
+                    stack.push(AppScreen::Permissions {
+                        user_id,
+                        email,
+                        status,
+                    });
                 }
                 6 => {
                     tui_state.sidebar_index = 1;
@@ -1490,7 +1862,11 @@ async fn dispatch_tui_action(
             }
             stack.pop();
         }
-        AppScreen::Permissions { user_id, email, status } => {
+        AppScreen::Permissions {
+            user_id,
+            email,
+            status,
+        } => {
             if is_back {
                 stack.pop();
                 return Ok(DispatchResult::Continue);
@@ -1498,8 +1874,11 @@ async fn dispatch_tui_action(
             match content_idx {
                 0 => {
                     let res = api_client.list_user_permissions(user_id).await?;
-                    let perms: Vec<PermissionOption> =
-                        res.permissions.iter().map(permission_option_from_json).collect();
+                    let perms: Vec<PermissionOption> = res
+                        .permissions
+                        .iter()
+                        .map(permission_option_from_json)
+                        .collect();
                     tui_state.sidebar_index = 1;
                     stack.push(AppScreen::PermissionTable {
                         _user_id: user_id.clone(),
@@ -1515,7 +1894,9 @@ async fn dispatch_tui_action(
                         .map(|r| {
                             r.permissions
                                 .iter()
-                                .filter_map(|p| p.get("key").and_then(|v| v.as_str()).map(String::from))
+                                .filter_map(|p| {
+                                    p.get("key").and_then(|v| v.as_str()).map(String::from)
+                                })
                                 .collect()
                         })
                         .unwrap_or_default();
@@ -1528,7 +1909,9 @@ async fn dispatch_tui_action(
                         })
                         .map(permission_option_from_json)
                         .collect();
-                    available.sort_by(|a, b| a.category.cmp(&b.category).then_with(|| a.key.cmp(&b.key)));
+                    available.sort_by(|a, b| {
+                        a.category.cmp(&b.category).then_with(|| a.key.cmp(&b.key))
+                    });
                     let categories = categories_from_permissions(&available);
                     tui_state.sidebar_index = 0;
                     tui_state.content_index = 0;
@@ -1546,9 +1929,14 @@ async fn dispatch_tui_action(
                         stack.pop();
                         return Ok(DispatchResult::Continue);
                     }
-                    let mut opts: Vec<PermissionOption> =
-                        res.permissions.iter().map(permission_option_from_json).collect();
-                    opts.sort_by(|a, b| a.category.cmp(&b.category).then_with(|| a.key.cmp(&b.key)));
+                    let mut opts: Vec<PermissionOption> = res
+                        .permissions
+                        .iter()
+                        .map(permission_option_from_json)
+                        .collect();
+                    opts.sort_by(|a, b| {
+                        a.category.cmp(&b.category).then_with(|| a.key.cmp(&b.key))
+                    });
                     let categories = categories_from_permissions(&opts);
                     if categories.len() > 1 {
                         tui_state.sidebar_index = 0;
@@ -1619,21 +2007,32 @@ async fn dispatch_tui_action(
                 stack.pop();
             }
         }
-        AppScreen::RevokeCategory { categories: cats, email, status } => {
+        AppScreen::RevokeCategory {
+            categories: cats,
+            email,
+            status,
+        } => {
             if is_back {
                 stack.pop();
                 return Ok(DispatchResult::Continue);
             }
-            let user_id_for_revoke = stack.iter().rev().find_map(|s| {
-                if let AppScreen::Permissions { user_id, .. } = s {
-                    Some(user_id.as_str())
-                } else {
-                    None
-                }
-            }).unwrap_or("");
+            let user_id_for_revoke = stack
+                .iter()
+                .rev()
+                .find_map(|s| {
+                    if let AppScreen::Permissions { user_id, .. } = s {
+                        Some(user_id.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or("");
             let res = api_client.list_user_permissions(user_id_for_revoke).await?;
-            let mut opts: Vec<PermissionOption> =
-                res.permissions.iter().map(permission_option_from_json).collect();
+            let mut opts: Vec<PermissionOption> = res
+                .permissions
+                .iter()
+                .map(permission_option_from_json)
+                .collect();
             opts.sort_by(|a, b| a.category.cmp(&b.category).then_with(|| a.key.cmp(&b.key)));
             stack.pop();
             tui_state.sidebar_index = 0;
@@ -1709,7 +2108,9 @@ async fn dispatch_tui_action(
                 stack.pop();
             }
         }
-        AppScreen::DbOutput(_) | AppScreen::Help(_) | AppScreen::UserDetailsJson(_)
+        AppScreen::DbOutput(_)
+        | AppScreen::Help(_)
+        | AppScreen::UserDetailsJson(_)
         | AppScreen::PermissionTable { .. } => {
             if is_back {
                 stack.pop();
@@ -1731,8 +2132,10 @@ async fn dispatch_tui_action(
     Ok(DispatchResult::Continue)
 }
 
-
 /// Run a DB action and return output as a string (for TUI display).
+// Human: Database menu indexes align with the non-interactive `db` subcommands so the TUI shows the same operations in order.
+// Agent: MATCH index 0-3 -> run_status_string run_migrate_string run_seed_string run_stats_string.
+
 async fn run_db_action_capture(
     database_url: &str,
     index: usize,
@@ -1747,16 +2150,31 @@ async fn run_db_action_capture(
     }
 }
 
-async fn run_status_string(database_url: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+async fn run_status_string(
+    database_url: &str,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    // Human: Compact text panel proves connectivity and gives a rough sense of whether the database already has seed users.
+    // Agent: pool; SELECT 1; COUNT users; close pool; FORMAT two-line string.
+
     let pool = pool(database_url).await?;
     let _: (i32,) = sqlx::query_as("SELECT 1").fetch_one(&pool).await?;
-    let users: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users").fetch_one(&pool).await?;
+    let users: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+        .fetch_one(&pool)
+        .await?;
     pool.close().await;
     Ok(format!("Database: connected\nUsers:   {}", users.0))
 }
 
-async fn run_stats_string(database_url: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+async fn run_stats_string(
+    database_url: &str,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    // Human: Table counts help operators sanity-check a restore or seed without opening a SQL shell; all queries run in parallel for speed.
+    // Agent: try_join COUNT on fixed table names; NOTE table names are literals not user input.
+
     let pool = pool(database_url).await?;
+    // Human: Inner helper formats `SELECT COUNT(*)` for a known-safe table name chosen by this CLI, not remote users.
+    // Agent: query_as dynamic format string with table identifier; FETCH_ONE i64.
+
     async fn count(pool: &PgPool, table: &str) -> Result<i64, sqlx::Error> {
         let row: (i64,) = sqlx::query_as(&format!("SELECT COUNT(*) FROM {}", table))
             .fetch_one(pool)
@@ -1780,15 +2198,30 @@ async fn run_stats_string(database_url: &str) -> Result<String, Box<dyn std::err
     ))
 }
 
-async fn run_seed_string(database_url: &str, migrations_dir: &PathBuf) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+// Human: TUI capture path wraps the same `run_seed` implementation as the `db seed` subcommand so output stays consistent.
+// Agent: AWAIT run_seed; RETURNS static "Seed complete." string.
+
+async fn run_seed_string(
+    database_url: &str,
+    migrations_dir: &PathBuf,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     run_seed(database_url, migrations_dir).await?;
     Ok("Seed complete.".to_string())
 }
 
-async fn run_migrate_string(database_url: &str, migrations_dir: &PathBuf) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+// Human: String wrapper exists so the database menu can show the same migrate result text as the CLI prints to stdout.
+// Agent: AWAIT run_migrate; OK static migrations message.
+
+async fn run_migrate_string(
+    database_url: &str,
+    migrations_dir: &PathBuf,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     run_migrate(database_url, migrations_dir).await?;
     Ok("Migrations complete.".to_string())
 }
+
+// Human: TUI reset confirmation already happened in `AppScreen::ConfirmDbReset`, so this string helper skips prompts (`yes: true`).
+// Agent: run_reset skip_confirm true; RETURNS completion string.
 
 async fn run_reset_string(
     database_url: &str,
@@ -1797,6 +2230,9 @@ async fn run_reset_string(
     run_reset(database_url, migrations_dir, true).await?;
     Ok("Database reset complete.".to_string())
 }
+
+// Human: Help screen text is generated so the horizontal rule width tracks the current terminal instead of hard-wrapping at 80 columns.
+// Agent: READ terminal_cols; format! multi-section static help string with APP_NAME and repeated line separators.
 
 fn help_text() -> String {
     let w = terminal_cols();
@@ -1807,19 +2243,36 @@ fn help_text() -> String {
     )
 }
 
+// Human: When `CLOUDWRKZ_TOKEN` is missing we block with a full-screen explainer instead of failing each API call cryptically from deep menus.
+// Agent: clear_screen + header; PRINT token/env instructions; wait_for_enter.
+
 fn show_login_required() {
     clear_screen();
-    header("Login required", "Management (Users, Groups, Modules, Sessions) uses the API.");
-    println!("{} Set {} and (optionally) {} then run again.", "ℹ".bright_blue(), "CLOUDWRKZ_TOKEN".cyan(), "CLOUDWRKZ_API_URL".cyan());
+    header(
+        "Login required",
+        "Management (Users, Groups, Modules, Sessions) uses the API.",
+    );
+    println!(
+        "{} Set {} and (optionally) {} then run again.",
+        "ℹ".bright_blue(),
+        "CLOUDWRKZ_TOKEN".cyan(),
+        "CLOUDWRKZ_API_URL".cyan()
+    );
     println!();
     println!("  {}  Get a token by logging in:", "To get a token:".bold());
     println!("     {}", "cloudwrkz-cli login".cyan());
     println!();
     println!("  Then export the token:");
-    println!("     {}", "export CLOUDWRKZ_TOKEN=\"<token from login>\"".bright_black());
+    println!(
+        "     {}",
+        "export CLOUDWRKZ_TOKEN=\"<token from login>\"".bright_black()
+    );
     println!();
     wait_for_enter();
 }
+
+// Human: CLI commands are short-lived, so a two-connection cap avoids holding a large pool during one-off scripts.
+// Agent: PgPoolOptions max_connections 2 connect database_url.
 
 async fn pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
     PgPoolOptions::new()
@@ -1828,7 +2281,13 @@ async fn pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
         .await
 }
 
-async fn run_seed(database_url: &str, migrations_dir: &PathBuf) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn run_seed(
+    database_url: &str,
+    migrations_dir: &PathBuf,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Human: Seeds ship as raw multi-statement SQL beside migrations so operators can diff them like any other migration artifact.
+    // Agent: READ 002_seed_data.sql; raw_sql execute on acquired conn; COUNT modules+permissions; close pool.
+
     let seed_file = migrations_dir.join("002_seed_data.sql");
     let sql = std::fs::read_to_string(&seed_file).map_err(|e| {
         format!(
@@ -1852,12 +2311,21 @@ async fn run_seed(database_url: &str, migrations_dir: &PathBuf) -> Result<(), Bo
         .fetch_one(&pool)
         .await?;
 
-    println!("Seed complete. Modules: {}, Permissions: {}", modules.0, permissions.0);
+    println!(
+        "Seed complete. Modules: {}, Permissions: {}",
+        modules.0, permissions.0
+    );
     pool.close().await;
     Ok(())
 }
 
-async fn run_migrate(database_url: &str, migrations_dir: &PathBuf) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn run_migrate(
+    database_url: &str,
+    migrations_dir: &PathBuf,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Human: Uses the same folder layout as `sqlx migrate` so CI and devs only maintain one migrations tree under `apps/api/migrations`.
+    // Agent: EXISTS check migrations_dir; Migrator::new RUN; println complete.
+
     if !migrations_dir.exists() {
         return Err(format!(
             "Migrations directory not found: {}. Set MIGRATIONS_DIR or run from repo root.",
@@ -1877,11 +2345,16 @@ async fn run_migrate(database_url: &str, migrations_dir: &PathBuf) -> Result<(),
     Ok(())
 }
 
+// Human: Non-interactive `db status` is the quickest smoke test that credentials reach Postgres and the `users` table is reachable.
+// Agent: pool SELECT 1 + COUNT users println; pool.close.
+
 async fn run_status(database_url: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let pool = pool(database_url).await?;
 
     let _: (i32,) = sqlx::query_as("SELECT 1").fetch_one(&pool).await?;
-    let users: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users").fetch_one(&pool).await?;
+    let users: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+        .fetch_one(&pool)
+        .await?;
 
     println!("Database: connected");
     println!("Users:   {}", users.0);
@@ -1890,7 +2363,13 @@ async fn run_status(database_url: &str) -> Result<(), Box<dyn std::error::Error 
 }
 
 async fn run_stats(database_url: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Human: Same parallel COUNT strategy as the TUI string variant but prints line-by-line for terminal `db stats` usage.
+    // Agent: try_join eight fixed tables; println each; pool.close.
+
     let pool = pool(database_url).await?;
+
+    // Human: Identical to `run_stats_string` inner helper—table names are CLI-controlled literals, not user SQL.
+    // Agent: format SELECT COUNT FROM table; query_as fetch_one.
 
     async fn count(pool: &PgPool, table: &str) -> Result<i64, sqlx::Error> {
         let row: (i64,) = sqlx::query_as(&format!("SELECT COUNT(*) FROM {}", table))
@@ -1928,6 +2407,9 @@ async fn run_reset(
     migrations_dir: &PathBuf,
     skip_confirm: bool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Human: Reset is intentionally destructive: it drops `public`, recreates grants, then replays migrations so the schema matches this binary.
+    // Agent: inquire Confirm unless skip_confirm; DROP SCHEMA CASCADE; CREATE SCHEMA; GRANT best-effort; run_migrate.
+
     if !skip_confirm {
         let confirmed = Confirm::new(
             "WARNING: Reset database will delete all data in schema public. Continue?",
@@ -1969,6 +2451,9 @@ async fn run_reset(
     println!("Database reset complete.");
     Ok(())
 }
+
+// Human: TUI “verify email” bypasses the mailer and simply flips the flag for operators fixing stuck onboarding in dev environments.
+// Agent: UPDATE users SET email_verified true WHERE id bind; pool.close.
 
 async fn run_verify_email(
     database_url: &str,

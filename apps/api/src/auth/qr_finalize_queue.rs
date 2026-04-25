@@ -1,5 +1,8 @@
 //! DB worker for `qr_login_finalize` background jobs.
 
+// Human: After mobile approval, the browser’s finalize job claims the one-time session token from `qr_login_requests` and attaches IP/UA metadata to that session.
+// Agent: READS payload request_id browser_token; attempt_qr_finalize_session CTE FOR UPDATE SKIP LOCKED; REQUEUE pending + run_after on RetrySoon/Transient; UPDATE background_jobs payload result.
+
 use sqlx::{PgPool, Row};
 use tracing::{info, warn};
 
@@ -7,6 +10,9 @@ use crate::audit::{self, WriteAuditParams};
 use crate::db::is_transient_sqlx;
 use crate::error::AppError;
 use crate::models::user::{LoginResponse, LoginUserInfo};
+
+// Human: Missing JSON fields fail the job immediately; success stores token+user inside the job row for the client poller to read.
+// Agent: VALIDATES payload; MATCH attempt_qr_finalize_session; UPDATE background_jobs completed jsonb_set result OR pending run_after OR failed.
 
 pub async fn execute_qr_login_finalize_job(
     pool: &PgPool,
@@ -110,6 +116,9 @@ pub async fn execute_qr_login_finalize_job(
     }
 }
 
+// Human: Terminal failure updates are fire-and-forget because the worker already chose the outcome and further errors would only recurse.
+// Agent: UPDATE background_jobs SET failed error_message; IGNORES sqlx execute Err.
+
 async fn mark_job_failed(pool: &PgPool, job_id: &str, msg: &str) {
     let _ = sqlx::query(
         r#"UPDATE background_jobs SET status = 'failed', error_message = $2, updated_at = clock_timestamp(), completed_at = clock_timestamp() WHERE id = $1"#,
@@ -126,12 +135,18 @@ pub enum QrFinalizeAttemptError {
     Final(AppError),
 }
 
+// Human: Transient DB errors let the dispatcher re-run the job; other sqlx failures become a generic internal error for the finalize path.
+// Agent: is_transient_sqlx -> Transient; ELSE Final(internal).
+
 fn map_sqlx(err: sqlx::Error) -> QrFinalizeAttemptError {
     if is_transient_sqlx(&err) {
         return QrFinalizeAttemptError::Transient;
     }
     QrFinalizeAttemptError::Final(AppError::internal("A database error occurred"))
 }
+
+// Human: `RetrySoon` means another worker holds the approving row but the session token is visible—we back off so the browser does not burn the token early.
+// Agent: BEGIN tx; UPDATE qr_login_requests claim session_token FOR UPDATE SKIP LOCKED; COUNT visible approved rows -> RetrySoon; UPDATE sessions metadata; COMMIT; audit auth.login.
 
 pub async fn attempt_qr_finalize_session(
     pool: &PgPool,

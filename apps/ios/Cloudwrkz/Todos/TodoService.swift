@@ -7,6 +7,9 @@
 
 import Foundation
 
+// Human: Todos mirror tickets’ async job pattern—creating or completing can return 202 and finish in the background.
+// Agent: TodoService Bearer paths todos + mutation-jobs; polls job status; MutationJobTitleHooks optional; dates ApiTimestampParsing.
+
 enum TodoServiceError: Equatable, Error {
     case noServerURL
     case noToken
@@ -16,6 +19,9 @@ enum TodoServiceError: Equatable, Error {
 }
 
 enum TodoService {
+    // Human: Same timeout budget as links/tickets so operators learn one “how long to wait” intuition across modules.
+    // Agent: timeout 20s; todosPathSegments; GET list detail; POST PATCH DELETE; snake_case decoder.
+
     private static let timeout: TimeInterval = 20
 
     /// Path for GET todos: derived from login path (api/auth/login → api/auth/todos, api/login → api/todos).

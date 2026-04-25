@@ -4,6 +4,8 @@ import type { TaskViewMode } from "../TaskViewToggle";
 import { TaskList } from "../TaskList/TaskList";
 import type { Todo } from "@/lib/types";
 
+// Human: React UI for `TasksSection` in tasks and todo lists: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE tasks; BULK filters forms; EXPORTS TasksSection; REACT component; READS props hooks; MAY CALL api client.
 export interface TasksSectionProps {
   ticketId: string;
   tasks: Todo[];

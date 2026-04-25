@@ -9,6 +9,9 @@
 
 import SwiftUI
 
+// Human: Register flow links here so consent isn’t a URL handoff to Safari on first launch—everything stays in-app.
+// Agent: PrivacyPolicyView NavigationStack ScrollView sections controller legalBasis thirdParty retention rights security; dismiss toolbar.
+
 struct PrivacyPolicyView: View {
     @Environment(\.dismiss) private var dismiss
 

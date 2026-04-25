@@ -7,8 +7,13 @@
 
 import SwiftUI
 
+// Human: Records a pause segment on a timer by choosing start/end instants and optional note, then POSTs a break onto the entry—or returns the interval to the parent when editing an entry defers persistence to Save.
+// Agent: AddBreakSheet timeEntryId; optional onPersistLocally skips POST; TimeTrackingService add break POST; onAdded dismiss; READS appState.
+
 struct AddBreakSheet: View {
     let timeEntryId: String
+    /// When set, "Add" dismisses after invoking this closure and does **not** POST to the API (edit entry sheet saves breaks with Save).
+    var onPersistLocally: ((Date, Date, String?) -> Void)?
     var onAdded: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
@@ -20,8 +25,9 @@ struct AddBreakSheet: View {
     @State private var isAdding = false
     @State private var errorMessage: String?
 
-    init(timeEntryId: String, onAdded: (() -> Void)? = nil) {
+    init(timeEntryId: String, onPersistLocally: ((Date, Date, String?) -> Void)? = nil, onAdded: (() -> Void)? = nil) {
         self.timeEntryId = timeEntryId
+        self.onPersistLocally = onPersistLocally
         self.onAdded = onAdded
         let cal = Calendar.current
         let now = Date()
@@ -230,6 +236,19 @@ struct AddBreakSheet: View {
             return
         }
 
+        let desc = descriptionText.trimmingCharacters(in: .whitespaces).isEmpty ? nil : descriptionText.trimmingCharacters(in: .whitespaces)
+
+        if let persistLocally = onPersistLocally {
+            await MainActor.run {
+                isAdding = true
+                persistLocally(startDate, endDate, desc)
+                isAdding = false
+                onAdded?()
+                dismiss()
+            }
+            return
+        }
+
         await MainActor.run { isAdding = true }
 
         let result = await TimeTrackingService.addBreak(
@@ -237,7 +256,7 @@ struct AddBreakSheet: View {
             timeEntryId: timeEntryId,
             startedAt: startDate,
             endedAt: endDate,
-            description: descriptionText.trimmingCharacters(in: .whitespaces).isEmpty ? nil : descriptionText.trimmingCharacters(in: .whitespaces)
+            description: desc
         )
 
         await MainActor.run { isAdding = false }

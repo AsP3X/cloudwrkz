@@ -2,6 +2,8 @@ import * as React from "react";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils/cn";
 
+// Human: React UI for `useLinkDetailSidebar` in saved links and collections: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE links; COLLECTIONS metadata GitHub YouTube; EXPORTS useLinkDetailSidebar; REACT component; READS props hooks; MAY CALL api client.
 const LinkDetailSidebarContext = React.createContext<{
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;

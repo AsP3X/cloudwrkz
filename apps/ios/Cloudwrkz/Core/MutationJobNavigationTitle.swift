@@ -7,9 +7,14 @@
 
 import SwiftUI
 
+// Human: Navigation title carousel when async mutation jobs queue (HTTP 202) and complete—hooks from services, UI in toolbar principal.
+// Agent: SwiftUI toolbar; @MainActor MutationTitleCarouselState playCycle animations; MutationJobTitleHooks onQueued onCompleted from API services; View.mutationJobNavigationTitle principal title.
+
 // MARK: - Hooks (passed into API services; optional)
 
 /// Optional UI callbacks when the API returns 202 and after the mutation job finishes.
+// Human: Service layer passes these closures so the nav title can flash “queued” then “done” without blocking the request.
+// Agent: STRUCT MutationJobTitleHooks Sendable; OPTIONAL async onQueued onCompleted; WIRED from mutation APIs returning HTTP 202.
 struct MutationJobTitleHooks: Sendable {
     var onQueued: (@Sendable () async -> Void)?
     var onCompleted: (@Sendable () async -> Void)?
@@ -26,11 +31,15 @@ struct MutationJobTitleHooks: Sendable {
 // MARK: - Carousel state
 
 /// Visual style for the mutation status pill (queued vs completed).
+// Human: Chooses orange vs green styling for the temporary status pill in the navigation bar.
+// Agent: ENUM MutationJobBannerKind Sendable queued|completed; DRIVES mutationBannerBackground colors success500.
 enum MutationJobBannerKind: Sendable {
     case queued
     case completed
 }
 
+// Human: Owns offsets/opacities for swapping the normal title with a short-lived mutation status message.
+// Agent: @MainActor @Observable MutationTitleCarouselState; MUTATES titleOffset infoOffset showInfoLayer; async playCycle Task.sleep timed phases; UI principal ZStack.
 @MainActor
 @Observable
 final class MutationTitleCarouselState {
@@ -93,6 +102,8 @@ final class MutationTitleCarouselState {
 
 // MARK: - Principal title view
 
+// Human: Stacks the base navigation title text with the animated mutation pill for the toolbar principal slot.
+// Agent: PRIVATE View MutationTitlePrincipalView; READS MutationTitleCarouselState; ACCESSIBILITY label on status message.
 private struct MutationTitlePrincipalView: View {
     let baseTitle: LocalizedStringKey
     @Bindable var state: MutationTitleCarouselState
@@ -138,6 +149,8 @@ private struct MutationTitlePrincipalView: View {
 
 // MARK: - View extension
 
+// Human: View modifier that clears the inline title and injects the carousel principal title for mutation feedback.
+// Agent: extension View mutationJobNavigationTitle; SETS navigationTitle empty inline toolbar principal MutationTitlePrincipalView; REQUIRES MutationTitleCarouselState.
 extension View {
     /// Replaces the inline navigation title with a carousel-capable principal title. Use with `MutationTitleCarouselState.playCycle` driven by `MutationJobTitleHooks` from services.
     func mutationJobNavigationTitle(_ baseTitle: LocalizedStringKey, state: MutationTitleCarouselState) -> some View {

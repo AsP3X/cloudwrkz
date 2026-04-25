@@ -6,6 +6,8 @@ import { getTicketTypeLabel, type TicketType } from "@/lib/utils/tickets";
 import { formatDate, formatDateTime } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
 
+// Human: React UI for `SearchResultsTable` in global search UX and result handling: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE search; QUERY results preview; EXPORTS SearchResultsTable; REACT component; READS props hooks; MAY CALL api client.
 interface SearchResultsTableProps {
   results: SearchResult[];
   searchQuery?: string;

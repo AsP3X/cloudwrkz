@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Ticket detail is read-heavy—comments, metadata, and status need room without turning the list screen into a novel.
+// Agent: TicketDetailView READS ticket; headerSection contentGrid; sidebar showTicketInfoSidebar; navigationTitle ticketNumber toolbar.
+
 struct TicketDetailView: View {
     let ticket: Ticket
     @State private var showTicketInfoSidebar = false
@@ -17,6 +20,9 @@ struct TicketDetailView: View {
         f.timeStyle = .short
         return f
     }()
+
+    // Human: Inline navigation title uses the human ticket number so screenshots match what support sees in the admin UI.
+    // Agent: ZStack ScrollView glass sections; toolbar info button toggles sidebar; scrollContentBackground hidden.
 
     var body: some View {
         ZStack {

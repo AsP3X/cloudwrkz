@@ -1,3 +1,6 @@
+// Human: QR-based login flow that requests a challenge, renders a rotating QR, and polls until approval, expiry, or error.
+// Agent: POST qr endpoints; POLL status interval; USES qrcode canvas; HANDLES ApiError; CALLBACK onClose optional.
+
 import React from "react";
 import QRCode from "qrcode";
 import { api, ApiError } from "@/api/client";

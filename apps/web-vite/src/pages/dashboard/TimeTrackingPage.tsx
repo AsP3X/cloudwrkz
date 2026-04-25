@@ -17,12 +17,18 @@ import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { AccessIssueTicketDialog } from "@/components/features/tickets/AccessIssueTicketDialog";
 import { calculateElapsedTime } from "@/lib/utils/time-tracking";
 
+// Human: Time tracking hub listing entries, filters, manual add/start flows, and floating widgets for running timers.
+// Agent: TimeEntryViewProvider; FETCH time entries; FILTER via searchParams; GATED modules.timetracking.view.
+
 function formatDateForInput(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
+
+// Human: Parses yyyy-mm-dd filter strings into local midnight epoch ms without UTC drift for range queries.
+// Agent: READS split "-"; VALIDATES numeric parts; RETURNS Date local ms OR null; PURE.
 
 function parseLocalDateStart(value: string): number | null {
   const [yearRaw, monthRaw, dayRaw] = value.split("-");
@@ -34,6 +40,9 @@ function parseLocalDateStart(value: string): number | null {
 }
 
 /** Total time (hours) from entries, updating every second when there are running timers */
+// Human: Live-updating summary chip that recomputes logged hours whenever entries include running timers.
+// Agent: READS TimeEntry[]; useEffect interval 1s when running; USES calculateElapsedTime; DISPLAYS hours total.
+
 function TotalTimeDisplay({ entries }: { entries: TimeEntry[] }) {
   const [totalHours, setTotalHours] = useState(0);
   const [mounted, setMounted] = useState(false);
@@ -62,6 +71,9 @@ function TotalTimeDisplay({ entries }: { entries: TimeEntry[] }) {
     </span>
   );
 }
+
+// Human: Inner list experience applying filters, pagination fetches, dialogs, and the floating timer widget.
+// Agent: useTimeEntryView; useSearchParams dates; CALLBACK fetchEntries; RENDERS TimeEntryList+dialogs.
 
 function TimeTrackingPageContent() {
   const { modules, user } = useAuth();
@@ -348,6 +360,9 @@ function TimeTrackingPageContent() {
     </div>
   );
 }
+
+// Human: Permission gate that mounts the time tracking provider stack or shows the standard access warning.
+// Agent: READS can("modules.timetracking.view"); EARLY AccessDeniedWarning OR TimeEntryViewProvider>TimeTrackingPageContent.
 
 export default function TimeTrackingPage() {
   const { can } = useAuth();

@@ -1,3 +1,5 @@
+// Human: Marketing footer with grouped links, legal routes, and a stable copyright year captured once on mount.
+// Agent: READS ROUTES and APP_CONFIG; STATE currentYear from Date; STATIC link map object.
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { APP_CONFIG } from "@/lib/constants/config";

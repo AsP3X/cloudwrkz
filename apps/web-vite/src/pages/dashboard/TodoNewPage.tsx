@@ -9,6 +9,12 @@ import type { TaskFormUser, TaskFormTicket } from "@/components/features/tasks/T
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { AccessIssueTicketDialog } from "@/components/features/tickets/AccessIssueTicketDialog";
 
+// Human: Task creation page that preloads assignable users and related tickets when permissions allow linking work.
+// Agent: FETCH /admin/users conditional on canAssign; FETCH /tickets; RENDERS TaskForm; GATED modules.todos.view.
+
+// Human: Coordinates loading state and passes hydrated picklists into TaskForm for new todo/task submission.
+// Agent: STATE users,tickets,loading; canViewTodos early exit; Promise.all loader.
+
 export default function TodoNewPage() {
   const { user, can } = useAuth();
   const [users, setUsers] = useState<TaskFormUser[]>([]);

@@ -7,6 +7,9 @@ import { formatDateTime } from "@/lib/hooks/useApi";
 
 const PAGE_LIMIT = 50;
 
+// Human: Searchable audit log explorer with filters, CSV export, and permission-aware data access for compliance.
+// Agent: FETCH /admin/audit*; QUERY action,user,date range,sort; REQUIRES audit.view|audit.export; PAGE_LIMIT paging.
+
 export default function AuditPage() {
   const { user, can } = useAuth();
   const [data, setData] = useState<AuditEntriesResponse | null>(null);

@@ -1,3 +1,5 @@
+// Human: Split date/time text inputs with keyboard nudging, strict parsing to reject impossible calendar values, and controlled sync from the parent `value` when not actively editing.
+// Agent: STATE isEditing gates value→parts sync; CALLS onChange with fromParts or null; HTTP none; READS idPrefix for element ids.
 import React from "react";
 
 interface DateTimeFieldsProps {
@@ -28,6 +30,8 @@ function toParts(value: Date | null | undefined): {
   };
 }
 
+// Human: Builds a local `Date` from parts and rejects rollover cases (for example 31 February) by comparing round-tripped fields.
+// Agent: RETURNS Date|null; VALIDATES integer parts; COMPARES parsed vs input y/m/d/h/m.
 function fromParts(day: string, month: string, year: string, hour: string, minute: string): Date | null {
   if (!day || !month || !year || !hour || !minute) return null;
   const dd = Number(day);

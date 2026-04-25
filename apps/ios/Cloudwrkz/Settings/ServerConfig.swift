@@ -8,6 +8,9 @@
 
 import Foundation
 
+// Human: Users pick official SaaS vs self-hosted; we derive `baseURL` so every service shares one consistent origin and login path.
+// Agent: ServerConfig Equatable tenant serverDomain serverPort useHTTPS loginPath; baseURL URLComponents; UserDefaults Keys load/save defaults.
+
 enum TenantType: String, CaseIterable, Identifiable {
     case official = "Official Cloudwrkz"
     case onprem = "On‑prem"

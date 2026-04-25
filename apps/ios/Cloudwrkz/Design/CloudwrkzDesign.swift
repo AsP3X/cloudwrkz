@@ -9,8 +9,13 @@
 import os
 import SwiftUI
 
+// Human: Shared “liquid glass” visuals, brand colors, motion, favicon loading, and small reusable SwiftUI widgets for the whole app.
+// Agent: CloudwrkzColors adaptive UIColor; View glassPanel glassButtonPrimary glassField glassCard iOS26 glassEffect fallback material; elasticSlide; CloudwrkzSpinner; FaviconImageView URLSession no-cache Bearer; Color hex extension.
+
 // MARK: - View switch animations
 
+// Human: Spring used when swapping major screens (auth stack, pushes) so transitions feel elastic, not flat.
+// Agent: STATIC Animation.elasticSlide spring response 0.48 dampingFraction 0.55; USED auth flow navigation transitions.
 extension Animation {
     /// Elastic slide used for view switches (auth flow, navigation push/pop).
     /// Spring with visible overshoot/bounce (low damping) for an elastic feel.
@@ -19,6 +24,8 @@ extension Animation {
 
 // MARK: - Enterprise palette (adaptive dark/light)
 
+// Human: Canonical blues, neutrals, semantic reds/greens/yellows, and glass stroke/fill tokens that track light vs dark mode.
+// Agent: ENUM CloudwrkzColors static lets; READS UITraitCollection userInterfaceStyle; EXPORTS primary neutral semantic glassStroke divider textOnGradient; CONSUMED across SwiftUI chrome.
 enum CloudwrkzColors {
 
     // MARK: Primary – brand blues (same in both modes)
@@ -273,6 +280,8 @@ private struct GlassFieldModifier: ViewModifier {
     }
 }
 
+// Human: View modifiers that wrap content in glass materials (iOS 26 `glassEffect` when available, thin/ultraThinMaterial fallback).
+// Agent: extension View glassPanel glassButtonPrimary glassButtonSecondary glassField glassCard; USES Glass*Modifier @Environment colorScheme; iOS 26 API gated #available.
 extension View {
     /// Pure liquid glass panel. Translucent only; optional minimal tint.
     func glassPanel(cornerRadius: CGFloat = 24, tint: Color? = nil, tintOpacity: Double = 0.06) -> some View {
@@ -340,6 +349,8 @@ private struct GlassCardModifier: ViewModifier {
 
 /// Circular loading indicator implemented in pure SwiftUI. Use instead of `ProgressView()` to avoid
 /// "Unable to render flattened version of PlatformViewRepresentableAdaptor<CircularUIKitProgressView>" in Previews and elsewhere.
+// Human: Lightweight indeterminate spinner that avoids UIKit’s circular progress representable issues in previews.
+// Agent: STRUCT CloudwrkzSpinner View; STATE isAnimating rotationEffect; ANIMATION linear repeatForever; DEFAULT tint primary400.
 struct CloudwrkzSpinner: View {
     var tint: Color = CloudwrkzColors.primary400
     @State private var isAnimating = false
@@ -362,6 +373,8 @@ struct CloudwrkzSpinner: View {
 ///
 /// Includes the stored Bearer token in requests so that favicons load correctly even when
 /// the server sits behind a reverse proxy that requires authentication.
+// Human: Fetches link favicons with cache-bypass and auth so icons stay fresh and work behind protected API routes.
+// Agent: FaviconImageView URLSession reloadIgnoringLocalCacheData urlCache nil; READS AuthTokenStorage Bearer; CALLS AppIdentity.apply; HTTP 2xx UIImage decode; DEBUG double-tap popover.
 struct FaviconImageView: View {
     let url: URL
     var size: CGFloat = 40
@@ -500,6 +513,8 @@ struct FaviconImageView: View {
 
 // MARK: - Color hex (for collection chips etc.)
 
+// Human: Parses `#RRGGBB` strings from the API into SwiftUI colors for collection chips and similar UI.
+// Agent: extension Color init(hex:); READS trimmed hex Scanner scanHexInt64; DEFAULT black on invalid length; sRGB.
 extension Color {
     init(hex: String) {
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)

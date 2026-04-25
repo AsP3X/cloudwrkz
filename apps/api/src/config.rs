@@ -1,5 +1,14 @@
+//! Typed application settings loaded from environment variables and CLI overrides.
+//! Values clamped to safe ranges prevent misconfiguration from stalling mutations or starving pools.
+
+// Human: Centralizes every tunable the binary reads from the environment so operators see one place for timeouts, limits, and feature flags.
+// Agent: READS std::env DATABASE_URL CORS_* COMMAND_* JOB_QUEUE_* GITHUB_* etc; CLAMP numeric bounds; STORES DeploymentCliOverrides merge target.
+
 use std::env;
 use std::time::Duration;
+
+// Human: Missing or non-numeric env values fall back to defaults so the server can boot with partial config in dev.
+// Agent: READS env var key; PARSES u64; RETURNS default on None/parse fail.
 
 fn env_u64_compat(key: &str, default: u64) -> u64 {
     env::var(key)
@@ -61,6 +70,9 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
+    // Human: Every field mirrors a production knob—rate limits derive per-minute env into a token refill interval, and booleans accept common truthy strings.
+    // Agent: READS env vars listed on AppConfig fields; CLAMPS auth/mutation/github/job_queue ranges; DEFAULTS http_request_log_enabled true unless falsey.
+
     pub fn from_env() -> Self {
         Self {
             database_url: env::var("DATABASE_URL").expect("DATABASE_URL must be set"),
@@ -182,6 +194,9 @@ impl AppConfig {
     }
 
     /// Apply `--region` / `--api-nodes` from argv (CLI wins over env for provided flags).
+    // Human: Deployment flags parsed from argv overwrite env-derived region and node count only when the operator passed non-empty values.
+    // Agent: MUTATES api_region Option trim/empty clears; MUTATES api_nodes_available max(1) from cli.api_nodes_available.
+
     pub fn apply_deployment_cli(&mut self, cli: DeploymentCliOverrides) {
         if let Some(r) = cli.region {
             let t = r.trim();
@@ -210,6 +225,9 @@ impl AppConfig {
 }
 
 /// Parse deployment flags from process args (after binary name). Skips `-v` / `--verbose` and their value.
+// Human: Only a subset of argv is interpreted here so verbose logging flags do not get mistaken for region values.
+// Agent: READS env::args skip(1); HANDLES --region [=] and --api-nodes [=]; SKIPS -v/--verbose + optional next arg; RETURNS DeploymentCliOverrides.
+
 pub fn parse_deployment_cli_from_args() -> DeploymentCliOverrides {
     let mut out = DeploymentCliOverrides::default();
     let mut args = env::args().skip(1);

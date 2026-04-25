@@ -7,7 +7,12 @@
 
 import Foundation
 
+// Human: Defines archive list item unions, filter chips, sort options, and filter state for the combined archive screen.
+// Agent: MODELS ArchiveItem ticket|todo|link|timeEntry ids; ArchiveTypeFilter ArchiveSortOption; ArchiveFilters type sort dates searchQuery; UI archive list parity with web.
+
 /// Single archived item for the combined archive list. Wraps one of ticket, todo, link, time entry.
+// Human: One row in the archive list: a ticket, todo, link, or time entry with shared title, subtitle, and type label for the UI.
+// Agent: ENUM ArchiveItem Identifiable id archivedAt title subtitle typeLabel; READS nested Ticket Todo Link TimeEntry fields.
 enum ArchiveItem: Identifiable {
     case ticket(Ticket)
     case todo(Todo)
@@ -61,6 +66,8 @@ enum ArchiveItem: Identifiable {
 }
 
 /// Filter for which type of archived items to show.
+// Human: Picker for showing all archived items or only tickets, todos, time entries, or links.
+// Agent: ENUM ArchiveTypeFilter String raw all|tickets|todos|time|links; DRIVES archive type segment filter API/query params.
 enum ArchiveTypeFilter: String, CaseIterable, Identifiable {
     case all = "All"
     case tickets = "Tickets"
@@ -72,6 +79,8 @@ enum ArchiveTypeFilter: String, CaseIterable, Identifiable {
 }
 
 /// Archive list sort option.
+// Human: How archived rows are ordered: by archived date or title, ascending or descending.
+// Agent: ENUM ArchiveSortOption raw archivedAt-desc|asc title-asc|desc; displayName for filter UI; PASSED to archive fetch/sort.
 enum ArchiveSortOption: String, CaseIterable, Identifiable {
     case newestArchivedFirst = "archivedAt-desc"
     case oldestArchivedFirst = "archivedAt-asc"
@@ -91,6 +100,8 @@ enum ArchiveSortOption: String, CaseIterable, Identifiable {
 }
 
 /// Archive filter state (type, sort, date range, search). Used by filter sheet.
+// Human: Holds the archive filter sheet choices: entity type, sort, optional archived-between range, and free-text search.
+// Agent: STRUCT ArchiveFilters Equatable; FIELDS type sort archivedFrom archivedTo searchQuery; BINDS ArchiveOverviewView filter sheet and list query.
 struct ArchiveFilters: Equatable {
     var type: ArchiveTypeFilter = .all
     var sort: ArchiveSortOption = .newestArchivedFirst

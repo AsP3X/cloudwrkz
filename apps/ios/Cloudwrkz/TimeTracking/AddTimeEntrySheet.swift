@@ -8,6 +8,9 @@
 
 import SwiftUI
 
+// Human: Manual add mirrors edit: create the entry with wall `stoppedAt`, then POST each draft break via `TimeTrackingService.addBreak` after the new id returns (same as edit sync).
+// Agent: AddTimeEntrySheet draftBreaks AddBreakSheet; addEntry CALLS addTimeEntry THEN addBreak per row; READS appState ServerConfig.
+
 struct AddTimeEntrySheet: View {
     var onCreated: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
@@ -22,10 +25,26 @@ struct AddTimeEntrySheet: View {
     @State private var minutes = 0
     @State private var seconds = 0
     @State private var startDate = Date()
+    @State private var draftBreaks: [DraftTimeEntryBreak] = []
+    @State private var showAddBreakSheet = false
     @State private var isSubmitting = false
     @State private var errorMessage: String?
 
     @Environment(\.appState) private var appState
+
+    private static let endPreviewFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .short
+        f.timeStyle = .short
+        return f
+    }()
+
+    private static let shortDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .short
+        f.timeStyle = .short
+        return f
+    }()
 
     var body: some View {
         NavigationStack {
@@ -79,11 +98,24 @@ struct AddTimeEntrySheet: View {
                 }
             }
             .tint(CloudwrkzColors.primary400)
+            .sheet(isPresented: $showAddBreakSheet) {
+                AddBreakSheet(timeEntryId: "__draft_add__", onPersistLocally: { start, end, desc in
+                    let localId = "local-\(UUID().uuidString)"
+                    draftBreaks.append(DraftTimeEntryBreak(localId: localId, startedAt: start, endedAt: end, description: desc))
+                })
+            }
         }
     }
 
     private var totalSeconds: Int {
         hours * 3600 + minutes * 60 + seconds
+    }
+
+    /// Wall-clock end: worked span from `startDate`, extended if any break ends later (same envelope idea as edit).
+    private var computedStoppedDate: Date {
+        let workEnd = startDate.addingTimeInterval(TimeInterval(totalSeconds))
+        let breakEnds = draftBreaks.compactMap(\.endedAt)
+        return ([workEnd] + breakEnds).max() ?? workEnd
     }
 
     // MARK: - Header
@@ -97,7 +129,7 @@ struct AddTimeEntrySheet: View {
                 Text("Add a manual time entry")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(CloudwrkzColors.neutral100)
-                Text("Enter the duration and details for completed work.")
+                Text("Enter worked duration, start time, optional breaks, and details.")
                     .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(CloudwrkzColors.neutral500)
             }
@@ -117,11 +149,11 @@ struct AddTimeEntrySheet: View {
                     .glassField()
             }
 
-            fieldGroup("Duration *") {
+            fieldGroup("Worked duration *") {
                 durationPicker
             }
 
-            fieldGroup("Start Date") {
+            fieldGroup("Start") {
                 DatePicker("", selection: $startDate, displayedComponents: [.date, .hourAndMinute])
                     .datePickerStyle(.compact)
                     .labelsHidden()
@@ -129,6 +161,15 @@ struct AddTimeEntrySheet: View {
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .glassField()
+            }
+
+            breaksSection
+
+            if totalSeconds > 0 {
+                Text("Entry ends at \(Self.endPreviewFormatter.string(from: computedStoppedDate)) (covers worked time and any breaks).")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(CloudwrkzColors.neutral500)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             fieldGroup("Description") {
@@ -205,6 +246,98 @@ struct AddTimeEntrySheet: View {
         .background(formGlass)
     }
 
+    // MARK: - Breaks (same interaction model as EditTimeEntrySheet)
+
+    private var breaksSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            fieldGroup("Breaks") {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "cup.and.saucer.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(CloudwrkzColors.warning400)
+                        Text("Breaks")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(CloudwrkzColors.neutral100)
+                        Spacer()
+                        Button {
+                            showAddBreakSheet = true
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 14))
+                                Text("Add break")
+                                    .font(.system(size: 14, weight: .semibold))
+                            }
+                            .foregroundStyle(CloudwrkzColors.primary400)
+                        }
+                    }
+
+                    if draftBreaks.isEmpty {
+                        Text("No breaks recorded.")
+                            .font(.system(size: 14, weight: .regular))
+                            .foregroundStyle(CloudwrkzColors.neutral500)
+                            .padding(.vertical, 4)
+                    } else {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(draftBreaks) { breakItem in
+                                HStack(spacing: 12) {
+                                    Circle()
+                                        .fill(breakItem.endedAt == nil ? CloudwrkzColors.warning500 : CloudwrkzColors.neutral600)
+                                        .frame(width: 8, height: 8)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        if let desc = breakItem.description, !desc.isEmpty {
+                                            Text(desc)
+                                                .font(.system(size: 13, weight: .medium))
+                                                .foregroundStyle(CloudwrkzColors.neutral200)
+                                        }
+                                        Text(Self.shortDateFormatter.string(from: breakItem.startedAt))
+                                            .font(.system(size: 12, weight: .regular))
+                                            .foregroundStyle(CloudwrkzColors.neutral500)
+                                    }
+                                    Spacer()
+                                    if let duration = breakItem.duration {
+                                        Text(TimeTrackingUtils.formatDuration(duration))
+                                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                            .foregroundStyle(CloudwrkzColors.warning400)
+                                    } else {
+                                        Text("Ongoing")
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .foregroundStyle(CloudwrkzColors.warning500)
+                                    }
+                                    Button {
+                                        draftBreaks = draftBreaks.filter { $0.id != breakItem.id }
+                                    } label: {
+                                        Image(systemName: "trash")
+                                            .font(.system(size: 14))
+                                            .foregroundStyle(CloudwrkzColors.neutral500)
+                                    }
+                                }
+                                .padding(.vertical, 8)
+                                if breakItem.id != draftBreaks.last?.id {
+                                    Rectangle()
+                                        .fill(CloudwrkzColors.neutral700.opacity(0.4))
+                                        .frame(height: 1)
+                                        .padding(.vertical, 4)
+                                }
+                            }
+                            let totalBreak = DraftTimeEntryBreak.totalBreakSeconds(in: draftBreaks)
+                            HStack {
+                                Spacer()
+                                Text("Total: \(TimeTrackingUtils.formatDuration(totalBreak))")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(CloudwrkzColors.warning400)
+                            }
+                            .padding(.top, 4)
+                        }
+                    }
+                }
+                .padding(20)
+                .glassPanel(cornerRadius: 20, tint: CloudwrkzColors.primary500, tintOpacity: 0.04)
+            }
+        }
+    }
+
     // MARK: - Duration picker
 
     private var durationPicker: some View {
@@ -223,7 +356,7 @@ struct AddTimeEntrySheet: View {
             .frame(maxWidth: .infinity)
 
             if totalSeconds > 0 {
-                Text("Total: \(TimeTrackingUtils.formatDuration(totalSeconds))")
+                Text("Worked: \(TimeTrackingUtils.formatDuration(totalSeconds))")
                     .font(.system(size: 14, weight: .semibold, design: .monospaced))
                     .foregroundStyle(CloudwrkzColors.primary400)
             }
@@ -283,9 +416,61 @@ struct AddTimeEntrySheet: View {
         tagInput = ""
     }
 
+    private func validationErrorMessage() -> String? {
+        if totalSeconds <= 0 {
+            return "Worked duration is required."
+        }
+        for b in draftBreaks {
+            guard let end = b.endedAt else {
+                return "Each break must have an end time."
+            }
+            if end <= b.startedAt {
+                return "Each break must end after it starts."
+            }
+            if b.startedAt < startDate {
+                return "Breaks must start on or after the entry start time."
+            }
+        }
+        let stop = computedStoppedDate
+        for b in draftBreaks {
+            guard let end = b.endedAt else { continue }
+            if end > stop {
+                return "A break extends past the entry end; adjust break times or worked duration."
+            }
+        }
+        return nil
+    }
+
+    /// After the manual entry row exists, adds each local draft the same way as `EditTimeEntrySheet.syncDraftBreaksToServer` (POST …/breaks, 202 + poll).
+    // Human: A single `POST /add` body was losing nested breaks; separate calls match the edit path and are reliable.
+    // Agent: FOR draftBreaks CALL TimeTrackingService.addBreak; RETURNS first error message or nil.
+    private func persistDraftBreaksAfterCreate(timeEntryId: String) async -> String? {
+        for b in draftBreaks {
+            let end = b.endedAt ?? b.startedAt
+            let result = await TimeTrackingService.addBreak(
+                config: appState.config,
+                timeEntryId: timeEntryId,
+                startedAt: b.startedAt,
+                endedAt: end,
+                description: b.description
+            )
+            if case .failure(let err) = result {
+                return errorText(err)
+            }
+        }
+        return nil
+    }
+
     private func addEntry() async {
-        isSubmitting = true
-        errorMessage = nil
+        if let msg = validationErrorMessage() {
+            await MainActor.run { errorMessage = msg }
+            return
+        }
+
+        await MainActor.run {
+            isSubmitting = true
+            errorMessage = nil
+        }
 
         let input = TimeTrackingService.AddManualInput(
             name: name.trimmingCharacters(in: .whitespaces),
@@ -296,20 +481,33 @@ struct AddTimeEntrySheet: View {
             hours: hours,
             minutes: minutes,
             seconds: seconds,
-            startedAt: startDate
+            startedAt: startDate,
+            stoppedAt: computedStoppedDate
         )
 
         let result = await TimeTrackingService.addTimeEntry(config: appState.config, input: input)
 
-        await MainActor.run {
-            switch result {
-            case .success:
+        switch result {
+        case .success(let newId):
+            if !draftBreaks.isEmpty {
+                if let breakErr = await persistDraftBreaksAfterCreate(timeEntryId: newId) {
+                    await MainActor.run {
+                        errorMessage = breakErr
+                        isSubmitting = false
+                    }
+                    return
+                }
+            }
+            await MainActor.run {
                 onCreated?()
                 dismiss()
-            case .failure(let error):
-                errorMessage = errorText(error)
+                isSubmitting = false
             }
-            isSubmitting = false
+        case .failure(let error):
+            await MainActor.run {
+                errorMessage = errorText(error)
+                isSubmitting = false
+            }
         }
     }
 

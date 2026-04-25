@@ -12,6 +12,8 @@ import { ROUTES } from "@/lib/constants/routes";
 import type { LoginQueuedUiState } from "@/components/providers/AuthProvider";
 import { LoginQueuedBanner } from "@/features/auth/LoginQueuedBanner";
 
+// Human: React UI for `TaskForm` in tasks and todo lists: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE tasks; BULK filters forms; EXPORTS TaskForm; REACT component; READS props hooks; MAY CALL api client.
 const STATUS_OPTIONS = [
   { value: "NOT_STARTED", label: "Not Started" },
   { value: "IN_PROGRESS", label: "In Progress" },

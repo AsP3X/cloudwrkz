@@ -1,3 +1,5 @@
+// Human: Thin context wrapper around `useDatabaseHealth` so any subtree can read database connectivity without prop drilling.
+// Agent: CALLS useDatabaseHealth({ pollInterval }); PROVIDES status, error, isServerUnreachable, checkHealth; useDatabaseHealthContext may return null.
 import React, { createContext, useContext } from "react";
 import { useDatabaseHealth } from "@/lib/hooks/useDatabaseHealth";
 import type { DatabaseHealthStatus } from "@/lib/hooks/useDatabaseHealth";

@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Collections are optional metadata but confusing if unnamed—multi-select with search keeps large tenant lists manageable.
+// Agent: AddLinkCollectionChooserView Binding Set selectedIds; lists collections toggle membership; dismiss toolbar Done.
+
 struct AddLinkCollectionChooserView: View {
     @Environment(\.dismiss) private var dismiss
     var collections: [Collection]

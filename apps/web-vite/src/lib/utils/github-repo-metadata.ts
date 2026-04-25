@@ -1,6 +1,8 @@
 /**
  * Maps stored link `metadata` (populated by the API GitHub metadata worker) to display fields.
  */
+// Human: Typed view-model for GitHub counters and topics extracted from persisted link metadata blobs in the UI.
+// Agent: INTERFACE GitHubRepoDisplayMetadata; pickGithubMetadataFromRecord READS Record unknown; RETURNS camelCase github* fields.
 
 export interface GitHubRepoDisplayMetadata {
   githubStars?: number;
@@ -21,6 +23,9 @@ export interface GitHubRepoDisplayMetadata {
 }
 
 /** Normalize stored metadata keys (camelCase github* only). */
+// Human: Pulls only known GitHub-related keys from arbitrary metadata JSON so the link sidebar can render stars and topics safely.
+// Agent: READS Record<string,unknown>; FILTERS arrays strings numbers; RETURNS GitHubRepoDisplayMetadata partial; NO network.
+
 export function pickGithubMetadataFromRecord(
   metadata: Record<string, unknown> | null | undefined,
 ): GitHubRepoDisplayMetadata {

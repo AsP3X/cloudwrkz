@@ -8,6 +8,9 @@
 import Testing
 @testable import Cloudwrkz
 
+// Human: Swift Testing target placeholder for unit tests that exercise Cloudwrkz modules without launching the full UI host.
+// Agent: @testable import Cloudwrkz; struct CloudwrkzTests; @Test example async throws scaffold.
+
 struct CloudwrkzTests {
 
     @Test func example() async throws {

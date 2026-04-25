@@ -1,3 +1,5 @@
+// Human: Persists the user’s light/dark/system preference, mirrors the resolved mode onto `document.documentElement`, and follows OS theme changes while in system mode.
+// Agent: READS WRITES localStorage key theme; MUTATES html.dark class; SUBSCRIBES matchMedia when theme===system; useTheme returns safe defaults outside provider.
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 
 type Theme = "light" | "dark" | "system";

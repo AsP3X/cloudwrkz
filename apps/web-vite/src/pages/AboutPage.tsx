@@ -7,6 +7,9 @@ import { AboutPageExperience } from "@/features/about/AboutPageExperience";
 import { SkipToContent } from "@/components/ui/SkipToContent";
 import { APP_CONFIG } from "@/lib/constants/config";
 
+// Human: Public marketing page that showcases the team narrative and hands rendering to the about experience feature.
+// Agent: SETS document.title on mount; RENDERS AboutPageExperience + CTA; READS APP_CONFIG.name; NO auth.
+
 const teamMembers = [
   { name: "Alex Johnson", role: "CEO & Founder", bio: "Visionary leader with 15+ years of experience in enterprise software development.", initials: "AJ" },
   { name: "Sarah Chen", role: "CTO", bio: "Full-stack architect passionate about building scalable, maintainable systems.", initials: "SC" },
@@ -15,6 +18,9 @@ const teamMembers = [
   { name: "David Kim", role: "DevOps Engineer", bio: "Infrastructure expert ensuring 99.9% uptime and seamless deployments.", initials: "DK" },
   { name: "Lisa Anderson", role: "Head of Support", bio: "Dedicated to providing exceptional customer service and technical support.", initials: "LA" },
 ];
+
+// Human: Landing about route that wires layout chrome, spotlight surface, and restores the browser title on exit.
+// Agent: useEffect MUTATES document.title; CHILD AboutPageExperience(teamMembers); IMPORTS layout shell.
 
 export default function AboutPage() {
   useEffect(() => {

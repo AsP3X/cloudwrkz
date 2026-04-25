@@ -1,3 +1,6 @@
+// Human: Canonical client-side paths for React Router links, redirects, and active nav checks across the SPA.
+// Agent: EXPORT const ROUTES frozen object; STRING literals only; CONSUMED by App routes Sidebar guards.
+
 export const ROUTES = {
   HOME: "/",
   LOGIN: "/login",
@@ -29,4 +32,6 @@ export const ROUTES = {
   LINKS_ARCHIVE: "/dashboard/links/archive",
   LINKS_COLLECTION: "/dashboard/links/collections",
   ARCHIVE: "/dashboard/archive",
+  EMPLOYEES: "/dashboard/employees",
+  EMPLOYEE_DETAIL: "/dashboard/employees/:id",
 } as const;

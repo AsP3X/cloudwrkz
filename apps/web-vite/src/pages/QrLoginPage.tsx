@@ -8,6 +8,9 @@ import { ROUTES } from "@/lib/constants/routes";
  * Page reached when the QR code URL is opened in a browser (e.g. after scanning with a generic camera).
  * The Cloudwrkz app scans the QR and uses the requestId to call the approve API; it does not open this URL.
  */
+// Human: Browser-facing explainer for QR login deep links so people who open the URL manually know what to do next.
+// Agent: STATIC copy; LINK ROUTES.LOGIN; NO QR parsing; EDUCATES user to use in-app scanner.
+
 export default function QrLoginPage() {
   return (
     <>

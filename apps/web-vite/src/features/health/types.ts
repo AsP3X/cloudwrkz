@@ -1,5 +1,8 @@
 /** Public `GET …/health` and `GET /api/health` JSON — dashboard fields only (no host, process, or timings). */
 
+// Human: TypeScript contracts for public health and ping JSON returned by the API health endpoints.
+// Agent: DEFINES HealthPayload/PingPayload shapes; NO runtime; USED BY useDatabaseHealth and Health UI.
+
 /** `GET …/ping` — no database access; `server_processing_ms` is time inside the API process only. */
 export interface PingPayload {
   ok: boolean;

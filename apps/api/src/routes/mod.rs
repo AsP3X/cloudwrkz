@@ -1,5 +1,9 @@
+// Human: Composes every `/api/v1` sub-router plus shared `AppState` construction so binaries and tests mount one typed router tree.
+// Agent: DEFINES AppState fields; v1_router MERGES domain routers + auth rate limit layer; mutation_broker_for_config WIRES idempotency + mutation queue limits.
+
 pub mod admin;
 pub mod archive;
+pub mod employees;
 pub mod auth;
 pub mod auth_qr_login;
 pub mod collections;
@@ -33,6 +37,9 @@ use crate::command_queue::{IdempotencyStore, MutationBroker, MutationJobs};
 use crate::config::AppConfig;
 
 /// Builds the mutation broker used by HTTP handlers and the background job queue (must be shared).
+// Human: One broker instance coordinates queued writes, idempotency keys, and DB transaction timeouts across HTTP and background jobs.
+// Agent: READS idempotency_max_entries + ttl + mutation tx/lock/statement timeouts + queue capacity; CONSTRUCTS IdempotencyStore + MutationBroker::new.
+
 pub fn mutation_broker_for_config(config: &AppConfig) -> MutationBroker {
     let idempotency = IdempotencyStore::new(
         config.idempotency_max_entries,
@@ -48,6 +55,9 @@ pub fn mutation_broker_for_config(config: &AppConfig) -> MutationBroker {
 }
 
 impl AppState {
+    // Human: Central dependency injection bundle created at process start; clones are cheap thanks to `Arc` fields inside nested structs.
+    // Agent: STORES pool, config, timers, login/register job maps, mutation broker/jobs, search_coalesce mutex, job_worker_supervisor Arc.
+
     pub fn new(
         pool: PgPool,
         config: AppConfig,
@@ -69,6 +79,9 @@ impl AppState {
     }
 }
 
+// Human: This is the full authenticated product API surface mounted under `/api/v1` in `lib.rs`, with auth routes behind IP rate limiting.
+// Agent: MERGES routers health, auth+nested qr-login, me, users, mutation_jobs, tickets, todos, links, collections, time_tracking, employees, search, profile, contact, admin, archive, filter_preferences, favicons, location_history.
+
 pub fn v1_router(config: &AppConfig) -> Router<AppState> {
     Router::new()
         .merge(health::v1_router())
@@ -85,6 +98,7 @@ pub fn v1_router(config: &AppConfig) -> Router<AppState> {
         .merge(links::router())
         .merge(collections::router())
         .merge(time_tracking::router())
+        .merge(employees::router())
         .merge(search::router())
         .merge(profile::router())
         .merge(contact::router())

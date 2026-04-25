@@ -1,6 +1,8 @@
 import React from "react";
 import { cn } from "@/lib/utils/cn";
 
+// Human: React UI for `TicketViewToggle` in support tickets and related tooling: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE tickets; COMMENTS bulk filters timers; EXPORTS TicketViewToggle; REACT component; READS props hooks; MAY CALL api client.
 export type TicketViewMode = "table" | "card";
 
 const VIEW_MODE_STORAGE_KEY = "ticket-view-mode";

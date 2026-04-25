@@ -5,6 +5,9 @@ import { MouseSpotlightSurface } from "@/components/ui/MouseSpotlightSurface";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 
+// Human: Legal privacy policy page with long-form copy and branded navigation back to the marketing home route.
+// Agent: STATIC JSX prose; LINK ROUTES.HOME; NO data fetching; ACCESSIBLE main#main-content.
+
 export default function PrivacyPage() {
   return (
     <>

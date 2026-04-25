@@ -7,6 +7,9 @@
 
 import XCTest
 
+// Human: Per-configuration launch screenshots help catch accidental layout regressions in CI without maintaining full scenario tests yet.
+// Agent: XCTestCase CloudwrkzUITestsLaunchTests; runsForEachTargetApplicationUIConfiguration true; testLaunch XCUIApplication screenshot XCTAttachment keepAlways.
+
 final class CloudwrkzUITestsLaunchTests: XCTestCase {
 
     override class var runsForEachTargetApplicationUIConfiguration: Bool {

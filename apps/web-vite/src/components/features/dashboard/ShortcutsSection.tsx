@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils/cn";
 
+// Human: React UI for `ShortcutsSection` in the signed-in home dashboard: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE dashboard; WIDGETS shortcuts activity todos; EXPORTS ShortcutsSection; REACT component; READS props hooks; MAY CALL api client.
 export interface ShortcutItem {
   label: string;
   href: string;

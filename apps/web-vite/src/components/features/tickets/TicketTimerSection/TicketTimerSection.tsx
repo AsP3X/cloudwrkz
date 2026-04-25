@@ -6,6 +6,8 @@ import { ROUTES } from "@/lib/constants/routes";
 import { calculateElapsedTime } from "@/lib/utils/time-tracking";
 import { formatDateTimeInTimezone } from "@/lib/utils/date";
 
+// Human: React UI for `TicketTimerSection` in support tickets and related tooling: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE tickets; COMMENTS bulk filters timers; EXPORTS TicketTimerSection; REACT component; READS props hooks; MAY CALL api client.
 type TimeEntryRow = {
   id: string;
   name: string;

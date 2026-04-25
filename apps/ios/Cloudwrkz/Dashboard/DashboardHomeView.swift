@@ -7,8 +7,14 @@
 
 import SwiftUI
 
+// Human: Home is the neutral landing: welcome copy plus tiles into enabled modules so new users aren’t dropped into an empty list.
+// Agent: DashboardHomeView; READS UserProfileStorage allowed modules; noModulesWarning; onSelectSection DashboardSection; quickAccessSection.
+
 struct DashboardHomeView: View {
     var onSelectSection: ((DashboardSection) -> Void)?
+
+    // Human: Gradient matches the rest of the shell so “home” doesn’t look like a separate lite mode compared to feature tabs.
+    // Agent: ZStack gradient ScrollView welcomeSection quickAccessSection; conditional noModulesAvailable.
 
     var body: some View {
         ZStack {

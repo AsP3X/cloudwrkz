@@ -8,6 +8,8 @@ import { api } from "@/api/client";
 import { ROUTES } from "@/lib/constants/routes";
 import { buildAccessIssueDescription } from "@/lib/access-issues";
 
+// Human: React UI for `AccessIssueTicketDialog` in support tickets and related tooling: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE tickets; COMMENTS bulk filters timers; EXPORTS AccessIssueTicketDialog; REACT component; READS props hooks; MAY CALL api client.
 export interface AccessIssueTicketDialogProps {
   primaryLabel: string;
   /** Hidden form fields (e.g. context, entityId) for the access-issue ticket */

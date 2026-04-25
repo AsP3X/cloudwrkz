@@ -8,6 +8,9 @@
 import SwiftUI
 import UIKit
 
+// Human: Pull-from-status-bar to search copies a familiar OS gesture without stealing normal scroll—only the top band listens.
+// Agent: PullDownToSearchView UIViewRepresentable; PullDownBandView captureBandHeight; UIPanGestureRecognizer Coordinator hold timer onTrigger.
+
 /// Height of the top band (points) where pull-down-and-hold is recognized. Below this, touches pass through to the scroll view.
 private let kPullBandHeight: CGFloat = 140
 

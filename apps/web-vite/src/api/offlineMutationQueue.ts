@@ -1,3 +1,6 @@
+// Human: Queues mutating API requests when the network drops, persists them, and replays in order when back online.
+// Agent: READS/WRITES localStorage STORAGE_KEY; REGISTERS executor from api client; EMITS cloudwrkz:offline-mutation-* events; CAP MAX_QUEUED.
+
 import { log } from "@/lib/logger";
 import { NetworkTransportError } from "@/api/networkTransportError";
 
@@ -31,7 +34,7 @@ const listeners = new Set<() => void>();
 let processing = false;
 
 /** When the browser stays "online" but the API is still unreachable, `online` never fires — retry drain on a timer. */
-let drainRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let drainRetryTimer: number | null = null;
 
 const DRAIN_RETRY_MS = 5000;
 
@@ -104,6 +107,9 @@ function persist(): void {
 
 loadFromStorage();
 
+// Human: Wires the module to the real `fetch`-based executor so queued items can be replayed against the API.
+// Agent: SETS module-level executor; REQUIRES api registration at startup; CALLED once from api client.
+
 export function registerOfflineMutationExecutor(fn: Executor): void {
   executor = fn;
 }
@@ -157,6 +163,9 @@ export function shouldQueueOfflineMutation(path: string, method: string, err: un
   }
   return isLikelyNetworkFailure(err);
 }
+
+// Human: Appends a mutation to the durable queue and returns a promise that settles when replay finishes or fails permanently.
+// Agent: PUSHES queue; PERSISTs; NOTIFYs; STORES pending resolve/reject; CALLS scheduleDrain; THROWS if executor missing.
 
 export async function enqueueOfflineMutation<T>(
   item: Omit<OfflineQueuedMutation, "id">,
@@ -265,6 +274,9 @@ async function scheduleDrain(): Promise<void> {
     notify();
   }
 }
+
+// Human: Hooks browser lifecycle signals so a tab coming back online or visible retries draining the queue without a full reload.
+// Agent: LISTENS window online + document visibilitychange; CLEARS drain retry timer; CALLS scheduleDrain on microtask.
 
 export function initOfflineMutationQueueListeners(): void {
   if (typeof window === "undefined") return;

@@ -1,5 +1,7 @@
 import type { FilterConfig } from "@/components/ui/FilterDialog";
 
+// Human: Builds filter-dialog field definitions for tasks and todo lists, driven by lists such as users or groups passed in from the parent screen.
+// Agent: SCOPE tasks; BULK filters forms; PURE builder; RETURNS FilterConfig; READS options only; NO HTTP.
 export const getTaskFilterConfig = (): FilterConfig => {
   const fields: FilterConfig["fields"] = [
     {

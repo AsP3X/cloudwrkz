@@ -1,3 +1,8 @@
+//! Time tracking rows, nested breaks, and create/update payloads used by REST routes and `job_queue/time_entry_mutations`.
+
+// Human: `TimeEntryWithBreaks` flattens the parent entry plus ordered breaks so timers match how the mobile app models state.
+// Agent: TimeEntryRow sqlx::FromRow; TimeEntryBreakRow; CreateTimeEntryRequest/Update* mirror handler validation types.
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -54,6 +59,16 @@ pub struct CreateTimeEntryRequest {
     pub started_at: Option<String>,
 }
 
+/// One break interval for `POST /time-tracking/add` when the client sends `stopped_at` + `manual_breaks` (iOS add sheet).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ManualCreateBreakInput {
+    #[serde(alias = "startedAt")]
+    pub started_at: String,
+    #[serde(alias = "endedAt")]
+    pub ended_at: String,
+    pub description: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AddTimeEntryRequest {
     pub name: String,
@@ -64,7 +79,16 @@ pub struct AddTimeEntryRequest {
     pub hours: Option<i32>,
     pub minutes: Option<i32>,
     pub seconds: Option<i32>,
+    #[serde(default, alias = "startedAt")]
     pub started_at: Option<String>,
+    /// Wall-clock end when the client sends explicit timing (with optional `manual_breaks`). When omitted, `hours`/`minutes`/`seconds` + `break_seconds` define the span (legacy).
+    #[serde(default, alias = "stoppedAt")]
+    pub stopped_at: Option<String>,
+    #[serde(default, alias = "manualBreaks")]
+    pub manual_breaks: Option<Vec<ManualCreateBreakInput>>,
+    /// Legacy: extend wall by this many seconds and insert one trailing break row when `stopped_at` is absent.
+    #[serde(default, alias = "breakSeconds")]
+    pub break_seconds: Option<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

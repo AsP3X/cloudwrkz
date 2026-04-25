@@ -8,6 +8,8 @@ import { LocationAutocompleteInput } from "@/components/ui/LocationAutocompleteI
 import { TagAutocompleteInput } from "@/components/ui/TagAutocompleteInput";
 import { DateTimeFields } from "@/components/ui/DateTimeFields";
 
+// Human: React UI for `AddTimeEntryDialog` in time entries and live timers: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE time-tracking; ENTRIES breaks floating-timer; EXPORTS AddTimeEntryDialog; REACT component; READS props hooks; MAY CALL api client.
 interface AddTimeEntryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;

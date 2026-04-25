@@ -1,3 +1,6 @@
+// Human: SPA entrypoint that mounts `<App />`, loads global styles, and in development surfaces hidden network failures in logs.
+// Agent: createRoot StrictMode; IMPORTS index.css; DEV LISTENS unhandledrejection+error FILTER network strings; CALLS log.error.
+
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
@@ -5,6 +8,9 @@ import { log } from "@/lib/logger";
 import "./index.css";
 
 log.info("CloudWrkz web app starting", { env: import.meta.env.MODE });
+
+// Human: Surfaces fetch/chunk failures that browsers hide behind generic UI errors so local debugging stays actionable.
+// Agent: DEV ONLY; LISTENS window error events; FILTERS message substrings; EMITS structured log.error payloads.
 
 // In dev, log failures that often show as "Load failed" in the UI but nothing in console
 if (import.meta.env.DEV) {

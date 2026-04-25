@@ -8,6 +8,9 @@
 
 import SwiftUI
 
+// Human: One hub for notification toggles, theme, biometric lock, server URL, cache hygiene, and GDPR actions—mirrors web account settings mental model.
+// Agent: AccountSettingsView READS WRITES AccountSettingsStorage; sheets ServerConfigView ChangePasswordView language; LocalCacheService DataRightsService alerts.
+
 struct AccountSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appState) private var appState
@@ -34,6 +37,9 @@ struct AccountSettingsView: View {
     @State private var showDeleteAccountConfirm = false
     @State private var showDeleteAccountSent = false
     @State private var showExportDataSent = false
+
+    // Human: State mirrors UserDefaults on appear so toggles reflect disk truth even if another screen changed prefs in the same session.
+    // Agent: NavigationStack ZStack gradient Form sections; onAppear refresh from AccountSettingsStorage; confirmation sheets alerts.
 
     var body: some View {
         NavigationStack {

@@ -8,6 +8,8 @@ import { api, ApiError } from "@/api/client";
 import { ROUTES } from "@/lib/constants/routes";
 import { ShareCollectionDialog, type CollectionMemberRow } from "@/components/features/links/ShareCollectionDialog/ShareCollectionDialog";
 
+// Human: React UI for `EditCollectionDialog` in saved links and collections: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE links; COLLECTIONS metadata GitHub YouTube; EXPORTS EditCollectionDialog; REACT component; READS props hooks; MAY CALL api client.
 const COLOR_OPTIONS = [
   { value: "#3B82F6", label: "Blue" },
   { value: "#10B981", label: "Green" },

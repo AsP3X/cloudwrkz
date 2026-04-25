@@ -65,12 +65,12 @@ This starts:
 
 - **PostgreSQL** on port `5432` (user `cloudwrkz`, database `cloudwrkz`, default password `cloudwrkz_dev_password` unless you set `POSTGRES_PASSWORD`)
 - **Rust API** on port `8080` (applies SQLx migrations on startup)
-- **Vite dev server** on port `5173` (custom image: Node + bundled **`cloudwrkz-cli`** on `PATH`; dependencies baked in the image — rebuild after changing app deps)
+- **Vite dev server** on port `5173` (custom image: Node + bundled `**cloudwrkz-cli`** on `PATH`; dependencies baked in the image — rebuild after changing app deps)
 - **pgAdmin** on port `5050` (default login `admin@cloudwrkz.test` / `admin`)
 
 Check API health: [http://localhost:8080/api/health](http://localhost:8080/api/health).
 
-**`cloudwrkz-cli` inside the Vite container** (after `docker compose up -d`), e.g. first admin bootstrap — use `postgres` as the DB host:
+`**cloudwrkz-cli` inside the Vite container** (after `docker compose up -d`), e.g. first admin bootstrap — use `postgres` as the DB host:
 
 ```bash
 docker compose exec -e CLOUDWRKZ_BOOTSTRAP_SECRET=local-dev -e DATABASE_URL="postgresql://cloudwrkz:cloudwrkz_dev_password@postgres:5432/cloudwrkz" web-vite cloudwrkz-cli admin create-admin you@example.com "YourPassword" "Your Name"

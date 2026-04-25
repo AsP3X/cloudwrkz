@@ -13,6 +13,12 @@ import { StandaloneTaskList } from "@/components/features/tasks/StandaloneTaskLi
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { AccessIssueTicketDialog } from "@/components/features/tickets/AccessIssueTicketDialog";
 
+// Human: Task list hub with filters, persisted view mode, standalone list rendering, and todos module RBAC.
+// Agent: FETCH /todos; TaskViewToggle persistence; READS can("modules.todos.view"); REFRESH via load callback.
+
+// Human: Page shell handling permission denial early, otherwise managing todos state, filters, and list refetch.
+// Agent: STATE todos,loading,viewMode; useRef filter snapshot; useCallback load; CONDITIONAL AccessDeniedWarning.
+
 export default function TodosPage() {
   const { user, can } = useAuth();
   const [todos, setTodos] = useState<Todo[]>([]);

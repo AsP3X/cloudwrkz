@@ -13,6 +13,8 @@ import { TodoBulkDeleteDialog } from "../TodoBulkDeleteDialog";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { OverviewContextMenu, type OverviewContextMenuItem } from "@/components/ui/OverviewContextMenu";
 
+// Human: React UI for `StandaloneTaskList` in tasks and todo lists: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE tasks; BULK filters forms; EXPORTS StandaloneTaskList; REACT component; READS props hooks; MAY CALL api client.
 type StandaloneTask = {
   id: string;
   taskNumber?: string | null;

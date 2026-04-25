@@ -13,6 +13,8 @@
  * - timestamp: "FROM-TO" — exact date range (created)
  * - type: "TYPE" — exact result type (tickets, todo, time entries, links, archive, users)
  */
+// Human: Parses the `>` advanced search mini-language into fuzzy text tokens and strict filters for the global search UI.
+// Agent: EXPORTS PREFIX PARAM constants TYPE_OPTIONS; parseEnhancedSearchQuery RETURNS EnhancedSearchParams|null; PURE string parser.
 
 export const ENHANCED_SEARCH_PREFIX = ">";
 
@@ -87,6 +89,9 @@ function parseQuotedString(s: string, start: number): { value: string; endIndex:
  * Parse enhanced search input (without the leading ">").
  * Format: optional search "text", then comma-separated key: "value" pairs.
  */
+// Human: Walks a trimmed `>` query body, extracting quoted search text plus comma-separated key:value filters the API understands.
+// Agent: USES parseQuotedString; REGEX keyValueRegex over knownKeys; RETURNS params object or null when empty.
+
 export function parseEnhancedSearchQuery(input: string): EnhancedSearchParams | null {
   const trimmed = input.trim();
   if (!trimmed) return null;

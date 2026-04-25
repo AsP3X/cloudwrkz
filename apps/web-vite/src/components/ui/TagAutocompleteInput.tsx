@@ -1,3 +1,5 @@
+// Human: Tag entry with debounced suggestions from `/time-tracking/tags`, excluding already-selected tags, plus keyboard navigation and Enter-to-submit behavior.
+// Agent: HTTP GET /time-tracking/tags; FILTERS selectedTags; LISTENS mousedown outside; CALLS onSubmitTag on Enter when no suggestion chosen.
 import React from "react";
 import { api } from "@/api/client";
 

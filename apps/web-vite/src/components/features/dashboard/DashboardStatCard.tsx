@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils/cn";
 
+// Human: React UI for `DashboardStatCard` in the signed-in home dashboard: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE dashboard; WIDGETS shortcuts activity todos; EXPORTS DashboardStatCard; REACT component; READS props hooks; MAY CALL api client.
 type Accent = "primary" | "secondary" | "success" | "warning" | "neutral";
 
 interface DashboardStatCardProps {

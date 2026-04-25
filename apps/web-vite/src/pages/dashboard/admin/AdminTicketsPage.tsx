@@ -6,6 +6,9 @@ import { Select } from "@/components/ui/Select";
 import type { Ticket } from "@/lib/types";
 import { relativeTime } from "@/lib/hooks/useApi";
 
+// Human: Staff-only ticket table with status filtering and relative timestamps for triage outside the user portal.
+// Agent: GET /tickets?status=; ROLE gate ADMIN|MODERATOR; STATE tickets,loading,statusFilter; USES relativeTime.
+
 export default function AdminTicketsPage() {
   const { user } = useAuth();
   const [tickets, setTickets] = useState<Ticket[]>([]);

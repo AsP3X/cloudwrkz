@@ -1,3 +1,5 @@
+// Human: Surfaces background-save progress by listening for custom window events and reusing the same queued-login banner UX as auth.
+// Agent: LISTENS cloudwrkz:mutation-queued, cloudwrkz:mutation-finished; SETS queuedUi; RENDERS LoginQueuedBanner when non-null.
 import * as React from "react";
 import type { LoginQueuedUiState } from "@/components/providers/AuthProvider";
 import { LoginQueuedBanner } from "@/features/auth/LoginQueuedBanner";

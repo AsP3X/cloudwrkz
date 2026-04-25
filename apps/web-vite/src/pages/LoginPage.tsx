@@ -8,6 +8,9 @@ import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 import { useSearchParams } from "react-router-dom";
 
+// Human: Public sign-in screen that surfaces server errors from the query string and defers form logic to LoginForm.
+// Agent: READS searchParams "error"; RENDERS LoginForm + RegistrationQueuedPanel; STATIC chrome only.
+
 export default function LoginPage() {
   const [searchParams] = useSearchParams();
   const error = searchParams.get("error") ?? undefined;

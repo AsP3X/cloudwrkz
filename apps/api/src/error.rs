@@ -5,6 +5,9 @@ use axum::{
 };
 use serde::Serialize;
 
+// Human: Every API failure the client should handle flows through `AppError` so JSON bodies stay `{ error: { code, message, fields? } }`.
+// Agent: SERIALIZES ErrorEnvelope; AppError HOLDS status+code+message+fields+transient_database flag; IntoResponse EMITS status+Json.
+
 #[derive(Debug, Serialize)]
 pub struct ErrorEnvelope {
     pub error: ErrorBody,
@@ -29,6 +32,9 @@ pub struct AppError {
 }
 
 impl AppError {
+    // Human: The `unauthorized`…`gateway_timeout` helpers each pin a fixed HTTP status and machine-readable `code` string for clients.
+    // Agent: CONSTRUCTORS set transient_database false except via From<sqlx::Error>; validation SETS fields Some(...).
+
     pub fn unauthorized(msg: impl Into<String>) -> Self {
         Self {
             status: StatusCode::UNAUTHORIZED,
@@ -121,6 +127,9 @@ impl AppError {
 }
 
 impl IntoResponse for AppError {
+    // Human: Axum turns this into the response the browser sees, keeping status and JSON body in sync with the same fields.
+    // Agent: BUILDS ErrorEnvelope from self; RETURNS (status, Json(body)).into_response().
+
     fn into_response(self) -> Response {
         let body = ErrorEnvelope {
             error: ErrorBody {
@@ -134,6 +143,9 @@ impl IntoResponse for AppError {
 }
 
 impl From<sqlx::Error> for AppError {
+    // Human: Database failures become either “try again” (transient) or a generic internal error; the real `sqlx` error stays in logs only.
+    // Agent: CALLS is_transient_sqlx; EMITS tracing warn vs error with {:?}; SETS transient_database flag; MAPS to 503 vs 500 + safe messages.
+
     fn from(err: sqlx::Error) -> Self {
         use crate::db::is_transient_sqlx;
         let transient = is_transient_sqlx(&err);

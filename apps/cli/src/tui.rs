@@ -1,26 +1,30 @@
 //! Lazygit-style TUI: persistent sidebar (left) + content area (right).
 //! Used for main menu and all sub-screens; caller supplies sidebar and content strings.
 
+// Human: Ratatui draws a two-pane management console with optional header or search bar while crossterm handles raw keyboard input.
+// Agent: run_tui ENABLES raw mode + alternate screen; run_tui_loop POLL events 100ms; ui LAYOUT sidebar+content+help; RETURNS TuiExit to caller.
+
 use ratatui::{
+    Frame, Terminal,
     backend::CrosstermBackend,
     crossterm::{
         event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
         execute,
-        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+        terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
     },
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{
-        Block, Borders, List, ListItem, ListState, Paragraph,
-    },
-    Frame, Terminal,
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
 };
 use std::io::{self, Stdout};
 
 const SIDEBAR_WIDTH: u16 = 28;
 
 /// Which panel has keyboard focus (Tab switches between them).
+// Human: Arrow keys apply to whichever list is focused so users can navigate sidebar categories without changing content selection accidentally.
+// Agent: TWO variants Sidebar Content; TOGGLED by Tab and Left/Right keys in run_tui_loop.
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PanelFocus {
     Sidebar,
@@ -28,6 +32,9 @@ pub enum PanelFocus {
 }
 
 /// Result of running the TUI. Indices refer to the current sidebar and content lists.
+// Human: One-shot return values let `main.rs` map keys to navigation without embedding ratatui types throughout the CLI.
+// Agent: ENUM covers Select ToggleSelect Back Quit OpenSearch Search* variants carrying indices or query strings.
+
 #[derive(Debug)]
 pub enum TuiExit {
     /// User selected an item: (sidebar_index, content_index)
@@ -58,6 +65,9 @@ pub struct TuiState {
 }
 
 impl TuiState {
+    // Human: Fresh state starts focused on the sidebar with both lists pointing at row zero so the first paint never indexes empty lists.
+    // Agent: CONSTRUCTS ListState select Some(0) for sidebar and content; focus Sidebar.
+
     pub fn new() -> Self {
         let mut list_state = ListState::default();
         list_state.select(Some(0));
@@ -71,6 +81,9 @@ impl TuiState {
             content_state,
         }
     }
+
+    // Human: After filtering search results or swapping the content callback, indices must clamp so ratatui never highlights past list ends.
+    // Agent: MIN sidebar_index to len-1; SYNC list_state select; SAME for content_index/content_state; CLEAR select if len==0.
 
     fn ensure_indices(&mut self, sidebar_len: usize, content_len: usize) {
         if sidebar_len == 0 {
@@ -100,6 +113,9 @@ pub type ContentForSidebarFn = dyn FnMut(usize) -> Vec<String>;
 /// until Enter (SearchDone) or Esc (SearchCancel). Search bar replaces the header when active.
 /// If `content_for_sidebar` is `Some`, it is called each frame with the current sidebar index
 /// to get the right-panel content, so the list updates live when the user changes the sidebar.
+// Human: Wraps the draw loop in alternate-screen setup/teardown so a crashed handler does not leave the user terminal in raw mode.
+// Agent: enable_raw_mode EnterAlternateScreen; CALL run_tui_loop; ALWAYS disable_raw_mode LeaveAlternateScreen show_cursor on unwind path.
+
 pub fn run_tui(
     state: &mut TuiState,
     title_left: &str,
@@ -134,6 +150,9 @@ pub fn run_tui(
 
     result
 }
+
+// Human: Each frame recomputes the right column from the optional sidebar→content callback so category sidebars refresh without restarting the TUI.
+// Agent: POLL key 100ms; IF search_bar Some HANDLE Esc/Enter/char -> Search* exits; ELSE map Tab/Arrows/Space/Enter to TuiExit; DRAW ui each iteration.
 
 fn run_tui_loop(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
@@ -209,30 +228,27 @@ fn run_tui_loop(
                     KeyCode::Backspace => return Ok(TuiExit::Back),
                     KeyCode::Char('q') => return Ok(TuiExit::Quit),
                     KeyCode::Esc => {}
-                    KeyCode::Up => {
-                        match state.focus {
-                            PanelFocus::Sidebar if slen > 0 && state.sidebar_index > 0 => {
-                                state.sidebar_index = state.sidebar_index.saturating_sub(1);
-                                state.content_index = 0;
-                            }
-                            PanelFocus::Content if clen > 0 => {
-                                state.content_index = state.content_index.saturating_sub(1);
-                            }
-                            _ => {}
+                    KeyCode::Up => match state.focus {
+                        PanelFocus::Sidebar if slen > 0 && state.sidebar_index > 0 => {
+                            state.sidebar_index = state.sidebar_index.saturating_sub(1);
+                            state.content_index = 0;
                         }
-                    }
-                    KeyCode::Down => {
-                        match state.focus {
-                            PanelFocus::Sidebar if state.sidebar_index < slen.saturating_sub(1) => {
-                                state.sidebar_index = (state.sidebar_index + 1).min(slen.saturating_sub(1));
-                                state.content_index = 0;
-                            }
-                            PanelFocus::Content if clen > 0 => {
-                                state.content_index = (state.content_index + 1).min(clen - 1);
-                            }
-                            _ => {}
+                        PanelFocus::Content if clen > 0 => {
+                            state.content_index = state.content_index.saturating_sub(1);
                         }
-                    }
+                        _ => {}
+                    },
+                    KeyCode::Down => match state.focus {
+                        PanelFocus::Sidebar if state.sidebar_index < slen.saturating_sub(1) => {
+                            state.sidebar_index =
+                                (state.sidebar_index + 1).min(slen.saturating_sub(1));
+                            state.content_index = 0;
+                        }
+                        PanelFocus::Content if clen > 0 => {
+                            state.content_index = (state.content_index + 1).min(clen - 1);
+                        }
+                        _ => {}
+                    },
                     KeyCode::Char(' ') => {
                         if state.focus == PanelFocus::Content && clen > 0 {
                             return Ok(TuiExit::ToggleSelect(
@@ -245,7 +261,10 @@ fn run_tui_loop(
                         // Sidebar is for navigation only (right panel updates live); confirm actions on the content list.
                         if state.focus == PanelFocus::Content {
                             if clen > 0 {
-                                return Ok(TuiExit::Select(state.sidebar_index, state.content_index));
+                                return Ok(TuiExit::Select(
+                                    state.sidebar_index,
+                                    state.content_index,
+                                ));
                             }
                             if slen > 0 {
                                 return Ok(TuiExit::Select(state.sidebar_index, 0));
@@ -262,6 +281,9 @@ fn run_tui_loop(
 const SEARCH_BAR_HEIGHT: u16 = 5;
 /// Hint strip under both panels (must not overlap List blocks — those use full `area` including borders).
 const HELP_ROW_HEIGHT: u16 = 1;
+
+// Human: Splits terminal into optional search/header band, then sidebar vs content lists with distinct focus colors and a one-line keybinding footer.
+// Agent: LAYOUT vertical+horizontal chunks; RENDER List stateful widgets; search mode SET_CURSOR after "Search: " prefix; help Paragraph fixed hints.
 
 fn ui(
     f: &mut Frame,
@@ -337,7 +359,10 @@ fn ui(
         .enumerate()
         .map(|(i, s)| {
             let style = if i == state.sidebar_index {
-                Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
@@ -346,7 +371,9 @@ fn ui(
         .collect();
     state.list_state.select(Some(state.sidebar_index));
     let sidebar_border = if sidebar_focused {
-        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(Color::Cyan)
     };
@@ -357,7 +384,12 @@ fn ui(
                 .borders(Borders::ALL)
                 .border_style(sidebar_border),
         )
-        .highlight_style(Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD))
+        .highlight_style(
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
         .highlight_symbol("▸ ");
     f.render_stateful_widget(sidebar, chunks[0], &mut state.list_state);
 
@@ -367,7 +399,9 @@ fn ui(
         .enumerate()
         .map(|(i, s)| {
             let style = if i == state.content_index {
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
@@ -377,10 +411,16 @@ fn ui(
     state.content_state.select(if content_items.is_empty() {
         None
     } else {
-        Some(state.content_index.min(content_items.len().saturating_sub(1)))
+        Some(
+            state
+                .content_index
+                .min(content_items.len().saturating_sub(1)),
+        )
     });
     let content_border = if content_focused {
-        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(Color::DarkGray)
     };
@@ -391,7 +431,12 @@ fn ui(
                 .borders(Borders::ALL)
                 .border_style(content_border),
         )
-        .highlight_style(Style::default().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD))
+        .highlight_style(
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )
         .highlight_symbol("  › ");
     f.render_stateful_widget(content, chunks[1], &mut state.content_state);
 

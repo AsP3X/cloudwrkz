@@ -9,6 +9,9 @@ import { ROUTES } from "@/lib/constants/routes";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { cn } from "@/lib/utils/cn";
 
+// Human: Admin-only job queue monitor with polling, pagination, detail drawer, and raw payload inspection tools.
+// Agent: REQUIRES admin.jobs.view; POLL_MS polling; FETCH background job APIs; DIALOG detail+raw JSON; SUBCOMPONENTS JobTable*.
+
 const POLL_MS = 12_000;
 
 const JOB_PAGE_SIZE_OPTIONS = [5, 10, 25, 50, 100] as const;
@@ -532,6 +535,9 @@ function useAgoLabel(updatedAt: number | null) {
   return `${h}h ago`;
 }
 
+// Human: Core jobs UI that loads active/completed rows, handles pagination windows, and surfaces job diagnostics.
+// Agent: STATE activeJobs,completedJobs,detail*; useEffect polling; FETCH admin job endpoints; MODALS rawOpen/detailId.
+
 function AdminBackgroundJobsPageContent() {
   const [activeJobs, setActiveJobs] = useState<BackgroundJobRow[]>([]);
   const [completedJobs, setCompletedJobs] = useState<BackgroundJobRow[]>([]);
@@ -964,6 +970,9 @@ function AdminBackgroundJobsPageContent() {
     </div>
   );
 }
+
+// Human: Permission gate returning either the access warning or the full background jobs dashboard content tree.
+// Agent: READS can("admin.jobs.view"); EARLY AccessDeniedWarning OR <AdminBackgroundJobsPageContent />.
 
 export default function AdminBackgroundJobsPage() {
   const { can } = useAuth();

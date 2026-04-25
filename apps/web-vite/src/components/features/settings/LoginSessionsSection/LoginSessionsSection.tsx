@@ -2,6 +2,8 @@ import React from "react";
 import { Button } from "@/components/ui/Button";
 import { LoginSessionsDialog } from "../LoginSessionsDialog/LoginSessionsDialog";
 
+// Human: React UI for `LoginSessionsSection` in account, privacy, and session settings: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE settings; SECURITY sessions delete-account; EXPORTS LoginSessionsSection; REACT component; READS props hooks; MAY CALL api client.
 export const LoginSessionsSection = () => {
   const [dialogOpen, setDialogOpen] = React.useState(false);
 

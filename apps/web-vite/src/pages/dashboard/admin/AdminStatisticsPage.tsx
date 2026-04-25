@@ -16,6 +16,9 @@ import {
 import { api, ApiError } from "@/api/client";
 import { useAuth } from "@/components/providers/AuthProvider";
 
+// Human: Admin analytics landing page combining headline counters, charts, and optional deeper analytics payloads.
+// Agent: GET dashboard stats + analytics endpoints; HANDLES ApiError fallback; RENDERS Recharts pies/bars/areas.
+
 interface DashboardStats {
   totalUsers: number;
   usersByStatus: { ACTIVE: number; PENDING: number; SUSPENDED: number; DELETED: number };
@@ -52,6 +55,9 @@ const CHART_COLORS = {
   area: ["#0ea5e9", "#06b6d4"],
 };
 
+// Human: Backfills missing calendar days in chart datasets so lines don’t gap when the API omits zero-count days.
+// Agent: GENERIC T extends {date}; BUILDS Map by date string; FILLS defaultValue for key across rolling window.
+
 function fillMissingDays<T extends { date: string }>(
   items: T[],
   days: number,
@@ -73,6 +79,9 @@ function fillMissingDays<T extends { date: string }>(
   }
   return result;
 }
+
+// Human: Loads dashboard and analytics JSON, toggles unavailable states, and composes multiple chart sections.
+// Agent: STATE stats,analytics,analyticsUnavailable,loading; useEffect load(); MAPS data into Recharts containers.
 
 export default function AdminStatisticsPage() {
   const { user } = useAuth();

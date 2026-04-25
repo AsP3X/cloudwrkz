@@ -8,6 +8,9 @@
 
 import Foundation
 
+// Human: Before typing credentials, admins want a quick green/red signal that the hostname resolves and `/api/health` answers.
+// Agent: TenantHealthChecker GET baseURL/api/v1/health timeout 8s; DECODES HealthResponse status; RETURNS TenantHealthResult checking|healthy|degraded|unreachable.
+
 /// Result of checking the configured tenant's health endpoint.
 enum TenantHealthResult: Equatable {
     case checking

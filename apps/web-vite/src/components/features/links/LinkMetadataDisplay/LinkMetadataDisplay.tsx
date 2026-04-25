@@ -2,6 +2,8 @@ import React from "react";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/utils/cn";
 
+// Human: React UI for `LinkMetadataDisplay` in saved links and collections: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE links; COLLECTIONS metadata GitHub YouTube; EXPORTS LinkMetadataDisplay; REACT component; READS props hooks; MAY CALL api client.
 interface LinkMetadataDisplayProps {
   metadata: Record<string, unknown> | null | undefined;
 }

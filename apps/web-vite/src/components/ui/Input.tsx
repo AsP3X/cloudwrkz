@@ -1,3 +1,5 @@
+// Human: Text field wrapper that wires label, stable ids, and accessible error or helper descriptions for forms.
+// Agent: READS label, error, helperText, name, id; EMITS aria-invalid, aria-describedby; DERIVES inputId from id or name.
 import React from "react";
 import { cn } from "@/lib/utils/cn";
 

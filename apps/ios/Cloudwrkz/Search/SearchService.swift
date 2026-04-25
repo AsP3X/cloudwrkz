@@ -9,6 +9,9 @@
 
 import Foundation
 
+// Human: Global search must cancel stale in-flight queries when the user types fast, otherwise results arrive out of order and feel random.
+// Agent: SearchService URLSession; searchPathSegments from loginPath; enhanced POST .../search/enhanced when query has SearchServiceEnhanced.prefix; cancellation.
+
 enum SearchServiceError: Equatable, Error {
     case noServerURL
     case noToken
@@ -24,6 +27,9 @@ enum SearchServiceEnhanced {
 }
 
 enum SearchService {
+    // Human: 15s matches other lightweight GETs—search should fail fast rather than wedging the main thread spinner forever.
+    // Agent: timeout 15s; snake_case JSONDecoder; Bearer token; 401→SessionExpiredNotifier.
+
     private static let timeout: TimeInterval = 15
 
     private static var responseDecoder: JSONDecoder {

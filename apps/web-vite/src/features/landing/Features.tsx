@@ -1,3 +1,6 @@
+// Human: Icon grid describing product pillars with scroll-triggered motion wrappers for the marketing home page.
+// Agent: STATIC features array; MAPS to ScrollAnimation cards; USES cn; NO data fetching.
+
 import React from "react";
 import { cn } from "@/lib/utils/cn";
 import { ScrollAnimation } from "./ScrollAnimation";

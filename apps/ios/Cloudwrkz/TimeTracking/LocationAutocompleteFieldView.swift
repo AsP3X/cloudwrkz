@@ -8,6 +8,9 @@
 
 import SwiftUI
 
+// Human: Location text field that debounces keystrokes and shows merged Nominatim + tenant history suggestions behind the account privacy toggle.
+// Agent: LocationAutocompleteFieldView @Binding text; debounceNanoseconds Task; CALLS LocationAutocompleteService.fetchSuggestions READS AccountSettingsStorage thirdParty flag appState config; minQueryLength 3 dropdown.
+
 struct LocationAutocompleteFieldView: View {
     @Binding var text: String
     var placeholder: String = "e.g. Office, Remote"

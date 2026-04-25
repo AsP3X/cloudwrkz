@@ -7,6 +7,9 @@ import { Dialog } from "@/components/ui/Dialog";
 import { cn } from "@/lib/utils/cn";
 import { formatDateTime } from "@/lib/utils/date";
 
+// Human: Unified archive browser for tickets, todos, time entries, and links with restore flows and type filters.
+// Agent: READS useSearchParams type; FETCHES archived items via api; MUTATES items state; SUPPORTS restore dialogs.
+
 export type ArchiveItemType = "all" | "tickets" | "todos" | "time" | "links";
 
 export type ArchiveItem = {
@@ -18,6 +21,9 @@ export type ArchiveItem = {
   archivedAt: string;
   subtitle?: string;
 };
+
+// Human: Maps each archived entity type to a colored pill label for scan-friendly list rows.
+// Agent: PURE switch on ArchiveItem["type"]; RETURNS {label,className}; NO IO.
 
 const typePill = (type: ArchiveItem["type"]) => {
   switch (type) {
@@ -31,6 +37,9 @@ const typePill = (type: ArchiveItem["type"]) => {
       return { label: "Link", className: "bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300" };
   }
 };
+
+// Human: Archive page controller handling filters, infinite scroll or pagination patterns, and per-type restore actions.
+// Agent: STATE items,loading,activeType; SYNC URL searchParams; CALLS api archive endpoints; RENDERS Dialog restore UX.
 
 export default function ArchivePage() {
   const [searchParams] = useSearchParams();

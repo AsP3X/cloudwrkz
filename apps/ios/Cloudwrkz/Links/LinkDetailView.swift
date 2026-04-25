@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Detail view is where rich previews (YouTube, GitHub) pay off—users confirm they saved the right resource before leaving.
+// Agent: LinkDetailView ScrollView; cachedYouTubeVideoId cachedGitHubParsed; READS link fields serverBaseURL favicon resolution; appState.
+
 struct LinkDetailView: View {
     @Environment(\.appState) private var appState
     let link: Link
@@ -23,6 +26,9 @@ struct LinkDetailView: View {
         f.timeStyle = .short
         return f
     }()
+
+    // Human: Cached parse state avoids re-running URL regex on every SwiftUI body pass when parent state toggles minor chrome.
+    // Agent: ZStack background ScrollView sections; toolbar share open URL; embed cards when videoId/github parse present.
 
     var body: some View {
         ZStack {

@@ -5,6 +5,9 @@
 //! (PostgreSQL/sqlx connection issues) is retried for up to [`LOGIN_RETRY_MAX`], so sign-in still
 //! completes when the database was briefly unavailable at submit time.
 
+// Human: Login returns 202 immediately while a tokio task retries `attempt_login` until success, a definitive auth error, or a short DB-outage window expires.
+// Agent: HOLDS LoginJobs Mutex HashMap job status; CALLS attempt_login + finish_auth_login_job; CLASSIFIES LoginAttemptError Transient vs Final; SPAWNS spawn_login_retry.
+
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -81,6 +84,9 @@ pub enum LoginAttemptError {
     Final(AppError),
 }
 
+// Human: Only connectivity-style sqlx errors are retried; everything else becomes a single internal error after logging.
+// Agent: BRANCHES is_transient_sqlx; RETURNS Transient OR Final(internal) after warn auth.login.db_error.
+
 fn map_sqlx_login(err: sqlx::Error) -> LoginAttemptError {
     if is_transient_sqlx(&err) {
         return LoginAttemptError::Transient;
@@ -105,6 +111,9 @@ fn failure_hint(err: &AppError) -> Option<String> {
 }
 
 /// Full sign-in attempt (used by the background login job after `POST /auth/login` returns 202).
+// Human: This is the synchronous password check, session insert, and audit write—the same rules the old inline login used, just callable from the retry loop.
+// Agent: SELECT users by email; verify_password; REJECTS wrong password inactive unverified banned suspended; INSERT sessions; WRITES audit auth.login; RETURNS LoginResponse.
+
 pub async fn attempt_login(
     pool: &PgPool,
     body: &LoginRequest,
@@ -318,6 +327,9 @@ pub async fn attempt_login(
     })
 }
 
+// Human: The in-process map mirrors job status for polling endpoints while pruning old completed rows so memory stays bounded.
+// Agent: Mutex<HashMap<String, LoginJobRecord>>; prune_stale_login_jobs_locked removes Done older than 15m; get_status READS Pending/Done.
+
 impl LoginJobs {
     pub fn insert_pending(&self, job_id: &str) {
         let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
@@ -398,6 +410,9 @@ fn prune_stale_login_jobs_locked(map: &mut HashMap<String, LoginJobRecord>) {
     });
 }
 
+// Human: Handlers detach login work with `tokio::spawn` so the HTTP task returns 202 immediately while retries continue in the background.
+// Agent: SPAWNS async login_retry_loop(pool, jobs, job_id, payload); NO JoinHandle returned to caller.
+
 pub fn spawn_login_retry(
     pool: PgPool,
     jobs: LoginJobs,
@@ -408,6 +423,9 @@ pub fn spawn_login_retry(
         login_retry_loop(pool, jobs, job_id, payload).await;
     });
 }
+
+// Human: The retry loop backs off implicitly by re-running `attempt_login` on each iteration until the wall clock hits `LOGIN_RETRY_MAX`.
+// Agent: LOOP until deadline; ON Ok set_completed + finish_auth_login_job success; ON Final set_failed + finish failed; ON Transient sleep 200ms; TIMEOUT sets failed message.
 
 async fn login_retry_loop(
     pool: PgPool,

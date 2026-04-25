@@ -8,6 +8,9 @@
 import SwiftUI
 import UIKit
 
+// Human: Root orchestrates auth stack vs main dashboard, tenant/health sheets, biometric re-lock after background, and global session expiry overlay.
+// Agent: ZStack ContentView + auth screens + TenantStatusView gear; scenePhase EXTEND session BACKGROUND lock; SessionMonitor timer; sheets ServerConfig ServerHealth.
+
 struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.appState) private var appState
@@ -24,6 +27,9 @@ struct RootView: View {
     @State private var isEvaluatingBiometric = false
 
     private let pushPopAnimation = Animation.elasticSlide
+
+    // Human: Logout and forced session expiry must wipe tokens, profile, settings cache, and disk JSON caches so the next user never sees stale data.
+    // Agent: CALLS AuthTokenStorage UserProfileStorage AccountSettingsStorage LocalCacheService clear*.
 
     private func clearAllUserDataAndCache() {
         AuthTokenStorage.clear()
@@ -194,6 +200,9 @@ struct RootView: View {
             showHealthStatus = true
         }
     }
+
+    // Human: Face ID / Touch ID gate re-opens the app after background without retyping password when the user enabled biometric lock in settings.
+    // Agent: GUARD biometric enabled+available; SET isEvaluatingBiometric; sleep brief; BiometricService.evaluate; CLEAR lock on success.
 
     private func tryUnlockWithBiometric() async {
         guard AccountSettingsStorage.biometricLockEnabled, BiometricService.isAvailable else {

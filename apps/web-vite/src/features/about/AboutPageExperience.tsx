@@ -1,3 +1,6 @@
+// Human: Rich marketing “about” experience with animated storytelling tabs, team carousel, and scroll-revealed sections.
+// Agent: USES ScrollAnimation usePrefersReducedMotion; MANAGES tab keyboard focus; STATIC STORY_TABS content; NO API writes.
+
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ScrollAnimation } from "@/features/landing/ScrollAnimation";

@@ -1,3 +1,6 @@
+// Human: Client-side ticket create/update payloads so obvious invalid titles or enums fail before API round-trips.
+// Agent: Zod enums for type priority status; TRIMS strings; MAX description 50000; EXPORTS CreateTicketInput UpdateTicketInput.
+
 import { z } from "zod";
 
 export const createTicketSchema = z.object({

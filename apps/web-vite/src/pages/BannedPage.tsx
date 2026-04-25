@@ -6,6 +6,9 @@ import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 import { useAuth } from "@/components/providers/AuthProvider";
 
+// Human: Explains account suspension while keeping signed-out visitors from lingering on a dead-end screen.
+// Agent: READS useAuth; REDIRECTS to ROUTES.LOGIN when unauthenticated; RENDERS static messaging + Header/Footer.
+
 export default function BannedPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();

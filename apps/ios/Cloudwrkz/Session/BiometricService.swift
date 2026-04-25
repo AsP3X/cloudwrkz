@@ -8,6 +8,9 @@
 import Foundation
 import LocalAuthentication
 
+// Human: Optional app lock uses the same LAContext policy the user already trusts from banking apps—no custom crypto UI.
+// Agent: BiometricService LAContext deviceOwnerAuthenticationWithBiometrics; isAvailable biometricTypeName; @MainActor evaluate async Bool.
+
 enum BiometricService {
     /// Whether the device supports biometrics and we can use them for app lock.
     static var isAvailable: Bool {

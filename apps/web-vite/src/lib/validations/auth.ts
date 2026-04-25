@@ -1,3 +1,6 @@
+// Human: Zod schemas for login and registration forms, including password composition rules aligned with the strength helper.
+// Agent: IMPORTS registerPasswordIssues superRefine on password; EXPORTS registerSchema loginSchema; INFERS input types.
+
 import { z } from "zod";
 import { registerPasswordIssues } from "@/lib/auth/passwordStrength";
 

@@ -1,5 +1,8 @@
 //! Time entry PATCH/DELETE/timer/break/bulk mutations for `background_jobs` (invoked from `entity_creates`).
 
+// Human: Each `exec_*` function runs the same SQL mutations HTTP would run, but inside job payloads with row locks and consistent `JsonMutationResult` shapes.
+// Agent: USES apply_mutation_tx_settings; lock_time_entry_tx FOR UPDATE owner check; RETURNS JobExecOutcome via entity_creates map_sqlx_ticket patterns.
+
 use chrono::Utc;
 use serde::Deserialize;
 use serde_json::json;
@@ -13,6 +16,9 @@ use crate::models::time_entry::{
 };
 
 use super::entity_creates::{JobExecOutcome, map_sqlx_ticket};
+
+// Human: Central SELECT list keeps `row_to_entry` aligned with every column the API returns for time entries after mutations.
+// Agent: STATIC SQL fragment reused in queries; PAIRED with row_to_entry field order.
 
 const ENTRY_SELECT: &str = r#"SELECT id, name, description, status::text as status,
        started_at, paused_at, stopped_at, completed_at,
@@ -51,10 +57,13 @@ fn parse_iso_datetime_utc_naive(s: &str) -> Option<chrono::NaiveDateTime> {
         .or_else(|| chrono::NaiveDateTime::parse_from_str(raw, "%Y-%m-%dT%H:%M:%S").ok())
         .or_else(|| {
             chrono::DateTime::parse_from_rfc3339(raw)
-        .ok()
-        .map(|dt| dt.naive_utc())
+                .ok()
+                .map(|dt| dt.naive_utc())
         })
 }
+
+// Human: Mutations always lock the row and compare `user_id` so a forged job payload cannot change another user’s timer.
+// Agent: SELECT user_id FROM time_entries FOR UPDATE; ERRORS not_found OR forbidden when owner mismatch.
 
 async fn lock_time_entry_tx(
     tx: &mut sqlx::Transaction<'_, Postgres>,
@@ -99,6 +108,9 @@ struct BulkIdsRequest {
     ids: Vec<String>,
 }
 
+// Human: Single-entry mutations (update through break delete) deserialize payloads like the REST handlers and enforce per-row ownership inside a transaction.
+// Agent: exec_time_entry_* READ payload user_id + ids; BEGIN tx apply_mutation_tx_settings; lock_time_entry_tx; UPDATE/DELETE time_entries time_entry_breaks; COMMIT JsonMutationResult.
+
 pub(super) async fn exec_time_entry_update(
     pool: &PgPool,
     lock_ms: u64,
@@ -107,20 +119,22 @@ pub(super) async fn exec_time_entry_update(
 ) -> JobExecOutcome {
     let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
-        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
+        }
     };
     let time_entry_id = match payload.get("time_entry_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
         None => {
             return JobExecOutcome::Fail(AppError::bad_request(
                 "Missing time_entry_id in job payload",
-            ))
+            ));
         }
     };
     let body_val = match payload.get("request") {
         Some(v) => v.clone(),
         None => {
-            return JobExecOutcome::Fail(AppError::bad_request("Missing request in job payload"))
+            return JobExecOutcome::Fail(AppError::bad_request("Missing request in job payload"));
         }
     };
     let body: UpdateTimeEntryRequest = match serde_json::from_value(body_val) {
@@ -128,7 +142,7 @@ pub(super) async fn exec_time_entry_update(
         Err(e) => {
             return JobExecOutcome::Fail(AppError::bad_request(format!(
                 "Invalid time entry update: {e}"
-            )))
+            )));
         }
     };
 
@@ -150,11 +164,12 @@ pub(super) async fn exec_time_entry_update(
     };
 
     if let Some(ref name) = body.name {
-        if let Err(e) = sqlx::query("UPDATE time_entries SET name = $1, updated_at = NOW() WHERE id = $2")
-            .bind(name)
-            .bind(&time_entry_id)
-            .execute(&mut *tx)
-            .await
+        if let Err(e) =
+            sqlx::query("UPDATE time_entries SET name = $1, updated_at = NOW() WHERE id = $2")
+                .bind(name)
+                .bind(&time_entry_id)
+                .execute(&mut *tx)
+                .await
         {
             let _ = tx.rollback().await;
             return map_sqlx_ticket(e);
@@ -174,39 +189,36 @@ pub(super) async fn exec_time_entry_update(
         }
     }
     if let Some(ref tags) = body.tags {
-        if let Err(e) = sqlx::query(
-            "UPDATE time_entries SET tags = $1, updated_at = NOW() WHERE id = $2",
-        )
-        .bind(tags)
-        .bind(&time_entry_id)
-        .execute(&mut *tx)
-        .await
+        if let Err(e) =
+            sqlx::query("UPDATE time_entries SET tags = $1, updated_at = NOW() WHERE id = $2")
+                .bind(tags)
+                .bind(&time_entry_id)
+                .execute(&mut *tx)
+                .await
         {
             let _ = tx.rollback().await;
             return map_sqlx_ticket(e);
         }
     }
     if let Some(ref loc) = body.location {
-        if let Err(e) = sqlx::query(
-            "UPDATE time_entries SET location = $1, updated_at = NOW() WHERE id = $2",
-        )
-        .bind(loc)
-        .bind(&time_entry_id)
-        .execute(&mut *tx)
-        .await
+        if let Err(e) =
+            sqlx::query("UPDATE time_entries SET location = $1, updated_at = NOW() WHERE id = $2")
+                .bind(loc)
+                .bind(&time_entry_id)
+                .execute(&mut *tx)
+                .await
         {
             let _ = tx.rollback().await;
             return map_sqlx_ticket(e);
         }
     }
     if let Some(billable) = body.billable {
-        if let Err(e) = sqlx::query(
-            "UPDATE time_entries SET billable = $1, updated_at = NOW() WHERE id = $2",
-        )
-        .bind(billable)
-        .bind(&time_entry_id)
-        .execute(&mut *tx)
-        .await
+        if let Err(e) =
+            sqlx::query("UPDATE time_entries SET billable = $1, updated_at = NOW() WHERE id = $2")
+                .bind(billable)
+                .bind(&time_entry_id)
+                .execute(&mut *tx)
+                .await
         {
             let _ = tx.rollback().await;
             return map_sqlx_ticket(e);
@@ -300,7 +312,9 @@ pub(super) async fn exec_time_entry_update(
 
         if recalculated_duration < 0 {
             let _ = tx.rollback().await;
-            return JobExecOutcome::Fail(AppError::bad_request("End time must be after start time"));
+            return JobExecOutcome::Fail(AppError::bad_request(
+                "End time must be after start time",
+            ));
         }
 
         if let Err(e) = sqlx::query(
@@ -358,14 +372,16 @@ pub(super) async fn exec_time_entry_delete(
 ) -> JobExecOutcome {
     let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
-        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
+        }
     };
     let time_entry_id = match payload.get("time_entry_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
         None => {
             return JobExecOutcome::Fail(AppError::bad_request(
                 "Missing time_entry_id in job payload",
-            ))
+            ));
         }
     };
 
@@ -406,14 +422,16 @@ pub(super) async fn exec_time_entry_stop(
 ) -> JobExecOutcome {
     let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
-        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
+        }
     };
     let time_entry_id = match payload.get("time_entry_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
         None => {
             return JobExecOutcome::Fail(AppError::bad_request(
                 "Missing time_entry_id in job payload",
-            ))
+            ));
         }
     };
 
@@ -473,14 +491,16 @@ pub(super) async fn exec_time_entry_pause(
 ) -> JobExecOutcome {
     let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
-        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
+        }
     };
     let time_entry_id = match payload.get("time_entry_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
         None => {
             return JobExecOutcome::Fail(AppError::bad_request(
                 "Missing time_entry_id in job payload",
-            ))
+            ));
         }
     };
 
@@ -536,14 +556,16 @@ pub(super) async fn exec_time_entry_resume(
 ) -> JobExecOutcome {
     let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
-        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
+        }
     };
     let time_entry_id = match payload.get("time_entry_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
         None => {
             return JobExecOutcome::Fail(AppError::bad_request(
                 "Missing time_entry_id in job payload",
-            ))
+            ));
         }
     };
 
@@ -594,14 +616,16 @@ pub(super) async fn exec_time_entry_complete(
 ) -> JobExecOutcome {
     let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
-        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
+        }
     };
     let time_entry_id = match payload.get("time_entry_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
         None => {
             return JobExecOutcome::Fail(AppError::bad_request(
                 "Missing time_entry_id in job payload",
-            ))
+            ));
         }
     };
 
@@ -652,26 +676,28 @@ pub(super) async fn exec_time_entry_break_create(
 ) -> JobExecOutcome {
     let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
-        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
+        }
     };
     let time_entry_id = match payload.get("time_entry_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
         None => {
             return JobExecOutcome::Fail(AppError::bad_request(
                 "Missing time_entry_id in job payload",
-            ))
+            ));
         }
     };
     let body_val = match payload.get("request") {
         Some(v) => v.clone(),
         None => {
-            return JobExecOutcome::Fail(AppError::bad_request("Missing request in job payload"))
+            return JobExecOutcome::Fail(AppError::bad_request("Missing request in job payload"));
         }
     };
     let body: CreateBreakRequest = match serde_json::from_value(body_val) {
         Ok(b) => b,
         Err(e) => {
-            return JobExecOutcome::Fail(AppError::bad_request(format!("Invalid break body: {e}")))
+            return JobExecOutcome::Fail(AppError::bad_request(format!("Invalid break body: {e}")));
         }
     };
 
@@ -695,9 +721,10 @@ pub(super) async fn exec_time_entry_break_create(
         .as_deref()
         .and_then(|s| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.fZ").ok())
         .unwrap_or_else(|| Utc::now().naive_utc());
-    let ended_at = body.ended_at.as_deref().and_then(|s| {
-        chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.fZ").ok()
-    });
+    let ended_at = body
+        .ended_at
+        .as_deref()
+        .and_then(|s| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.fZ").ok());
     let duration = ended_at
         .map(|e| e.signed_duration_since(started_at).num_seconds() as i32)
         .unwrap_or(0);
@@ -732,24 +759,28 @@ pub(super) async fn exec_time_entry_break_update(
 ) -> JobExecOutcome {
     let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
-        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
+        }
     };
     let time_entry_id = match payload.get("time_entry_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
         None => {
             return JobExecOutcome::Fail(AppError::bad_request(
                 "Missing time_entry_id in job payload",
-            ))
+            ));
         }
     };
     let break_id = match payload.get("break_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
-        None => return JobExecOutcome::Fail(AppError::bad_request("Missing break_id in job payload")),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request("Missing break_id in job payload"));
+        }
     };
     let body_val = match payload.get("request") {
         Some(v) => v.clone(),
         None => {
-            return JobExecOutcome::Fail(AppError::bad_request("Missing request in job payload"))
+            return JobExecOutcome::Fail(AppError::bad_request("Missing request in job payload"));
         }
     };
     let body: UpdateBreakRequest = match serde_json::from_value(body_val) {
@@ -757,7 +788,7 @@ pub(super) async fn exec_time_entry_break_update(
         Err(e) => {
             return JobExecOutcome::Fail(AppError::bad_request(format!(
                 "Invalid break update: {e}"
-            )))
+            )));
         }
     };
 
@@ -889,19 +920,23 @@ pub(super) async fn exec_time_entry_break_delete(
 ) -> JobExecOutcome {
     let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
-        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
+        }
     };
     let time_entry_id = match payload.get("time_entry_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
         None => {
             return JobExecOutcome::Fail(AppError::bad_request(
                 "Missing time_entry_id in job payload",
-            ))
+            ));
         }
     };
     let break_id = match payload.get("break_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
-        None => return JobExecOutcome::Fail(AppError::bad_request("Missing break_id in job payload")),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request("Missing break_id in job payload"));
+        }
     };
 
     let mut tx = match pool.begin().await {
@@ -935,6 +970,9 @@ pub(super) async fn exec_time_entry_break_delete(
     JobExecOutcome::Ok(JsonMutationResult::ok(json!({ "success": true })))
 }
 
+// Human: Bulk jobs apply the same validation as PATCH list endpoints but iterate ids in one transaction where possible to amortize commit overhead.
+// Agent: exec_time_entry_bulk_* PARSE BulkUpdateTimeEntriesRequest/BulkIdsRequest; LOOP ids with lock_time_entry_tx or batched UPDATE; RETURNS counts/success JSON.
+
 pub(super) async fn exec_time_entry_bulk_update(
     pool: &PgPool,
     lock_ms: u64,
@@ -943,18 +981,22 @@ pub(super) async fn exec_time_entry_bulk_update(
 ) -> JobExecOutcome {
     let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
-        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
+        }
     };
     let body_val = match payload.get("request") {
         Some(v) => v.clone(),
         None => {
-            return JobExecOutcome::Fail(AppError::bad_request("Missing request in job payload"))
+            return JobExecOutcome::Fail(AppError::bad_request("Missing request in job payload"));
         }
     };
     let body: BulkUpdateTimeEntriesRequest = match serde_json::from_value(body_val) {
         Ok(b) => b,
         Err(e) => {
-            return JobExecOutcome::Fail(AppError::bad_request(format!("Invalid bulk update: {e}")))
+            return JobExecOutcome::Fail(AppError::bad_request(format!(
+                "Invalid bulk update: {e}"
+            )));
         }
     };
     let status = match body.status.as_deref() {
@@ -1001,12 +1043,14 @@ pub(super) async fn exec_time_entry_bulk_archive(
 ) -> JobExecOutcome {
     let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
-        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
+        }
     };
     let body_val = match payload.get("request") {
         Some(v) => v.clone(),
         None => {
-            return JobExecOutcome::Fail(AppError::bad_request("Missing request in job payload"))
+            return JobExecOutcome::Fail(AppError::bad_request("Missing request in job payload"));
         }
     };
     let body: BulkIdsRequest = match serde_json::from_value(body_val) {
@@ -1014,7 +1058,7 @@ pub(super) async fn exec_time_entry_bulk_archive(
         Err(e) => {
             return JobExecOutcome::Fail(AppError::bad_request(format!(
                 "Invalid bulk archive: {e}"
-            )))
+            )));
         }
     };
     let mut sorted_ids = body.ids.clone();
@@ -1056,12 +1100,14 @@ pub(super) async fn exec_time_entry_bulk_delete(
 ) -> JobExecOutcome {
     let user_id = match payload.get("user_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
-        None => return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload")),
+        None => {
+            return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
+        }
     };
     let body_val = match payload.get("request") {
         Some(v) => v.clone(),
         None => {
-            return JobExecOutcome::Fail(AppError::bad_request("Missing request in job payload"))
+            return JobExecOutcome::Fail(AppError::bad_request("Missing request in job payload"));
         }
     };
     let body: BulkIdsRequest = match serde_json::from_value(body_val) {
@@ -1069,7 +1115,7 @@ pub(super) async fn exec_time_entry_bulk_delete(
         Err(e) => {
             return JobExecOutcome::Fail(AppError::bad_request(format!(
                 "Invalid bulk delete: {e}"
-            )))
+            )));
         }
     };
     let mut sorted_ids = body.ids.clone();

@@ -1,3 +1,5 @@
+// Human: TipTap formatting controls; toolbar buttons use `mousedown` prevention so clicking a control does not steal focus from the editor before commands run.
+// Agent: READS editor instance; CALLS editor.chain commands; STATE highlightColorOpen with outside-click close.
 import React from "react";
 import { useEditor } from "@tiptap/react";
 import { cn } from "@/lib/utils/cn";
@@ -23,6 +25,8 @@ function ToolbarButton({
   children: React.ReactNode;
   title?: string;
 }) {
+  // Human: Preventing default on mouse down keeps the editor focused; otherwise the button click would blur TipTap before `onClick` runs.
+  // Agent: PREVENTDEFAULT on mousedown; CALLS editor.commands.focus when not destroyed.
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
     if (!editor?.isDestroyed) editor?.commands.focus();

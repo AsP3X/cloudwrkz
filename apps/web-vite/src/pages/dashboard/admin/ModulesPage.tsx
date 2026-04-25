@@ -4,6 +4,9 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { Badge } from "@/components/ui/Badge";
 import type { Module } from "@/lib/types";
 
+// Human: Toggle board for enabling/disabling product modules and refreshing the signed-in user’s module claims.
+// Agent: GET /admin/modules; PATCH toggles; CALLS refreshUser after changes; REQUIRES admin role gate in UI.
+
 export default function ModulesPage() {
   const { user, refreshUser } = useAuth();
   const [modules, setModules] = useState<Module[]>([]);

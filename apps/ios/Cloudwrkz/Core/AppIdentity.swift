@@ -12,6 +12,9 @@ import Foundation
 import UIKit
 #endif
 
+// Human: Builds a stable iOS User-Agent and device metadata so API sessions match the web’s “device” story.
+// Agent: READS Bundle CFBundleShortVersionString CFBundleVersion; READS uname machine idiom; SETS URLRequest User-Agent; EXPORTS deviceName deviceType deviceOs deviceBrowser for auth/session payloads.
+
 enum AppIdentity {
 
     // MARK: - User-Agent

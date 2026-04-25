@@ -8,6 +8,8 @@ import {
   type PrivacySettingsInput,
 } from "@/lib/validations/settings";
 
+// Human: React UI for `PrivacySecurityForm` in account, privacy, and session settings: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE settings; SECURITY sessions delete-account; EXPORTS PrivacySecurityForm; REACT component; READS props hooks; MAY CALL api client.
 interface PrivacySecurityFormProps {
   children?: React.ReactNode;
 }

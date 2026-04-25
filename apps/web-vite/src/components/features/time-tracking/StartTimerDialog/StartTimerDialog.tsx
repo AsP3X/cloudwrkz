@@ -8,6 +8,8 @@ import { LocationAutocompleteInput } from "@/components/ui/LocationAutocompleteI
 import { TagAutocompleteInput } from "@/components/ui/TagAutocompleteInput";
 import { DateTimeFields } from "@/components/ui/DateTimeFields";
 
+// Human: React UI for `StartTimerDialog` in time entries and live timers: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE time-tracking; ENTRIES breaks floating-timer; EXPORTS StartTimerDialog; REACT component; READS props hooks; MAY CALL api client.
 function SectionHeader({ icon, label }: { icon: React.ReactNode; label: string }) {
   return (
     <div className="flex items-center gap-2.5 pb-1">

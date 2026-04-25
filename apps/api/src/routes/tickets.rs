@@ -1,3 +1,8 @@
+//! Ticket CRUD, comments, and activity feeds with RBAC checks and deferred mutations via `entity_creates`.
+
+// Human: Listing combines SQL filters with permission keys so contractors only see tickets they are allowed to view.
+// Agent: router tickets + comments + activities; get_user_permission_keys; MutationRunContext + entity_creates on PATCH/POST/DELETE when queued.
+
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -18,10 +23,12 @@ use crate::models::ticket::{
 };
 use crate::routes::AppState;
 use crate::routes::helpers::{
-    check_permission, fetch_comment_author, fetch_group_summary,
-    fetch_user_summary, get_user_permission_keys, hash_json_for_idempotency,
-    idempotency_key_from_headers,
+    check_permission, fetch_comment_author, fetch_group_summary, fetch_user_summary,
+    get_user_permission_keys, hash_json_for_idempotency,     idempotency_key_from_headers,
 };
+
+// Human: Comment and activity routes stay nested under `/tickets/{id}` so the SPA can invalidate one cache subtree per ticket.
+// Agent: Router GET/POST comments; GET activities; standard REST on ticket id.
 
 pub fn router() -> Router<AppState> {
     Router::new()

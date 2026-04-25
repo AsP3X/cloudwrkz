@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils/cn";
 import type { Todo } from "@/lib/types";
 import { ROUTES } from "@/lib/constants/routes";
 
+// Human: React UI for `SubtasksSection` in tasks and todo lists: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE tasks; BULK filters forms; EXPORTS SubtasksSection; REACT component; READS props hooks; MAY CALL api client.
 function getStatusColor(status: string): string {
   switch (status) {
     case "NOT_STARTED":

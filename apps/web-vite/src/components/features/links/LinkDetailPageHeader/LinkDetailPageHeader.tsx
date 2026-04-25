@@ -7,6 +7,8 @@ import { ROUTES } from "@/lib/constants/routes";
 import { useLinkDetailSidebar } from "@/components/features/links/LinkDetailLayout";
 import { api } from "@/api/client";
 
+// Human: React UI for `LinkDetailPageHeader` in saved links and collections: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE links; COLLECTIONS metadata GitHub YouTube; EXPORTS LinkDetailPageHeader; REACT component; READS props hooks; MAY CALL api client.
 interface LinkDetailPageHeaderProps {
   linkId: string;
   linkTitle: string;

@@ -1,5 +1,8 @@
 //! DB work for `qr_login_approve` background jobs (no HTTP / [`AppState`] dependency).
 
+// Human: When an approver confirms a QR request, this worker creates the web session row and flips the QR row to `APPROVED` with the session token the browser will finalize.
+// Agent: execute_qr_login_approve_job READS payload; approve_in_db transaction; REQUEUE pending on retry_soon; UPDATE background_jobs completed/failed; audit on failure.
+
 use chrono::Utc;
 use serde_json::json;
 use sqlx::Row;
@@ -8,6 +11,9 @@ use tracing::{info, warn};
 use crate::audit::{self, WriteAuditParams};
 use crate::auth::session::generate_token;
 use crate::id::new_cuid;
+
+// Human: Payload must include the QR request id and the job must carry `created_by_user_id` so we never approve on behalf of an anonymous caller.
+// Agent: VALIDATES qr_request_id + created_by_user_id; MATCH approve_in_db Ok/retry_soon/err; UPDATE background_jobs status; audit auth.qr_login.approve.attempt on fatal.
 
 pub async fn execute_qr_login_approve_job(
     pool: &sqlx::PgPool,
@@ -84,6 +90,9 @@ pub async fn execute_qr_login_approve_job(
     }
 }
 
+// Human: Same pattern as finalize: best-effort SQL so a secondary failure does not panic the worker after the main logic ran.
+// Agent: UPDATE background_jobs failed; IGNORES Err.
+
 async fn mark_job_failed(pool: &sqlx::PgPool, job_id: &str, msg: &str) {
     let _ = sqlx::query(
         r#"UPDATE background_jobs SET status = 'failed', error_message = $2, updated_at = clock_timestamp(), completed_at = clock_timestamp() WHERE id = $1"#,
@@ -98,6 +107,9 @@ struct ApproveFail {
     message: String,
     retry_soon: bool,
 }
+
+// Human: `FOR UPDATE SKIP LOCKED` plus a follow-up count distinguishes “row missing” from “row locked by another finalize/approve worker” for short retries.
+// Agent: SELECT qr_login_requests FOR UPDATE; INSERT sessions for approver; UPDATE qr_login_requests APPROVED session_token; COMMIT; ApproveFail retry_soon when locked visible.
 
 async fn approve_in_db(
     pool: &sqlx::PgPool,

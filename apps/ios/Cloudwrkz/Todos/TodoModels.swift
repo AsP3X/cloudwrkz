@@ -7,12 +7,17 @@
 
 import Foundation
 
+// Human: Todo hierarchy models, custom decoding for list payloads, and filter structs aligned with GET /api/todos query params.
+// Agent: Decodable TodosResponse; Todo nested subtodos _count custom CodingKeys; subtodosDisplayCount; TodoFilters status priority sort archive includeSubtodos.
+
 // MARK: - API response
 
 struct TodosResponse: Decodable {
     let todos: [Todo]
 }
 
+// Human: A todo with optional parent/ticket links, assignee, inline subtasks or legacy `_count`, and archive metadata.
+// Agent: STRUCT Todo Identifiable custom init(from:); FIELDS status priority dates archivedAt parentTodo ticket assignedTo subtodos _count; COMPUTED subtodosDisplayCount merges list shapes.
 struct Todo: Identifiable, Decodable, Hashable {
     let id: String
     let todoNumber: String?
@@ -106,6 +111,8 @@ struct Todo: Identifiable, Decodable, Hashable {
 
 // MARK: - Filter state (mirrors getAllTodos filters)
 
+// Human: Todo list filters: status, priority, sort, archive scope, and whether subtodos are included in list fetches.
+// Agent: STRUCT TodoFilters Equatable; TodoStatusFilter TodoPriorityFilter TodoSortOption TodoArchiveFilter raw strings; includeSubtodos Bool DEFAULT false overview true archive subtodos path; TodoService query.
 struct TodoFilters: Equatable {
     var status: TodoStatusFilter = .all
     var priority: TodoPriorityFilter = .all

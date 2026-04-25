@@ -1,6 +1,9 @@
 //! Parameter order for search SQL: `$1` = user id, `$2` = query string, `$3` = per-type row cap.
 //! Link visibility is owner or collection access only (no global “all links” search).
 
+// Human: Each const embeds the full SQL so search handlers can bind `(user_id, query, limit, …)` consistently across entity types.
+// Agent: EXPORTS TICKET_SEARCH_SQL TODO_SEARCH_SQL LINK_SEARCH_SQL TIME_ENTRY_SEARCH_SQL with pg_trgm similarity + permission predicates.
+
 pub const TICKET_SEARCH_SQL: &str = r#"
 SELECT id, ticket_number, title, description, status::text AS status, priority::text AS priority,
   GREATEST(
@@ -79,7 +82,9 @@ LIMIT $3
 "#;
 
 pub const TIME_ENTRY_SEARCH_SQL: &str = r#"
-SELECT id, name, description, status::text AS status,
+SELECT te.id, te.name, te.description, te.status::text AS status,
+  te.started_at, te.paused_at, te.stopped_at, te.completed_at, te.last_resumed_at, te.total_duration,
+  (SELECT COALESCE(SUM(b.duration), 0)::bigint FROM time_entry_breaks b WHERE b.time_entry_id = te.id)::int AS break_duration_total,
   GREATEST(
     COALESCE(similarity(name, $2), 0),
     COALESCE(similarity(COALESCE(description, ''), $2), 0),
@@ -107,6 +112,71 @@ WHERE te.archived_at IS NULL
     OR EXISTS (SELECT 1 FROM unnest(tags) AS t(tag) WHERE tag ILIKE '%' || $2 || '%')
   )
 ORDER BY match_score DESC NULLS LAST, te.updated_at DESC
+LIMIT $3
+"#;
+
+/// Bind: `$1` user_id (reserved, unused for row filter — any user with employees.view sees all), `$2` query, `$3` limit.
+pub const EMPLOYEE_SEARCH_SQL: &str = r#"
+SELECT id,
+       first_name, last_name, email, title,
+       company_role, department,
+       employee_status::text AS employee_status,
+  GREATEST(
+    COALESCE(similarity(first_name || ' ' || last_name, $2), 0),
+    COALESCE(similarity(first_name, $2), 0),
+    COALESCE(similarity(last_name, $2), 0),
+    COALESCE(similarity(COALESCE(email, ''), $2), 0),
+    COALESCE(similarity(COALESCE(title, ''), $2), 0),
+    COALESCE(similarity(COALESCE(company_role, ''), $2), 0),
+    COALESCE(similarity(COALESCE(department, ''), $2), 0),
+    CASE WHEN first_name || ' ' || last_name ILIKE '%' || $2 || '%' THEN 0.80 ELSE 0 END,
+    CASE WHEN first_name ILIKE '%' || $2 || '%' THEN 0.75 ELSE 0 END,
+    CASE WHEN last_name ILIKE '%' || $2 || '%' THEN 0.75 ELSE 0 END,
+    CASE WHEN COALESCE(email, '') ILIKE '%' || $2 || '%' THEN 0.70 ELSE 0 END,
+    CASE WHEN COALESCE(title, '') ILIKE '%' || $2 || '%' THEN 0.60 ELSE 0 END,
+    CASE WHEN COALESCE(company_role, '') ILIKE '%' || $2 || '%' THEN 0.58 ELSE 0 END,
+    CASE WHEN COALESCE(department, '') ILIKE '%' || $2 || '%' THEN 0.55 ELSE 0 END
+  ) AS match_score
+FROM employees
+WHERE (
+    COALESCE(similarity(first_name || ' ' || last_name, $2), 0) > 0.1
+    OR COALESCE(similarity(first_name, $2), 0) > 0.1
+    OR COALESCE(similarity(last_name, $2), 0) > 0.1
+    OR COALESCE(similarity(COALESCE(email, ''), $2), 0) > 0.1
+    OR COALESCE(similarity(COALESCE(title, ''), $2), 0) > 0.1
+    OR COALESCE(similarity(COALESCE(company_role, ''), $2), 0) > 0.1
+    OR COALESCE(similarity(COALESCE(department, ''), $2), 0) > 0.1
+    OR first_name ILIKE '%' || $2 || '%'
+    OR last_name ILIKE '%' || $2 || '%'
+    OR first_name || ' ' || last_name ILIKE '%' || $2 || '%'
+    OR COALESCE(email, '') ILIKE '%' || $2 || '%'
+    OR COALESCE(title, '') ILIKE '%' || $2 || '%'
+    OR COALESCE(company_role, '') ILIKE '%' || $2 || '%'
+    OR COALESCE(department, '') ILIKE '%' || $2 || '%'
+  )
+ORDER BY match_score DESC NULLS LAST, last_name ASC, first_name ASC
+LIMIT $3
+"#;
+
+/// Bind: `$1` user_id (reserved, unused for row filter), `$2` query, `$3` limit.
+/// Only searches active (non-deleted, non-banned, non-suspended) users.
+pub const USER_SEARCH_SQL: &str = r#"
+SELECT id, name, email, role::text AS role,
+  GREATEST(
+    COALESCE(similarity(COALESCE(name, ''), $2), 0),
+    COALESCE(similarity(COALESCE(email, ''), $2), 0),
+    CASE WHEN COALESCE(name, '') ILIKE '%' || $2 || '%' THEN 0.80 ELSE 0 END,
+    CASE WHEN COALESCE(email, '') ILIKE '%' || $2 || '%' THEN 0.72 ELSE 0 END
+  ) AS match_score
+FROM users
+WHERE status = 'ACTIVE'
+  AND (
+    COALESCE(similarity(COALESCE(name, ''), $2), 0) > 0.1
+    OR COALESCE(similarity(COALESCE(email, ''), $2), 0) > 0.1
+    OR COALESCE(name, '') ILIKE '%' || $2 || '%'
+    OR COALESCE(email, '') ILIKE '%' || $2 || '%'
+  )
+ORDER BY match_score DESC NULLS LAST, name ASC
 LIMIT $3
 "#;
 

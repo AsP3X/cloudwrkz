@@ -8,11 +8,18 @@
 
 import SwiftUI
 
+// Human: Main archive hub: loads mixed archived entities, applies client-side filters, supports card/list layout and navigation into detail routes.
+// Agent: @Binding NavigationPath path parent-driven push; @State ArchiveItem[] filters delete refresh; @AppStorage archiveOverviewViewStyle; READS appState; LOCAL filteredItems sort search date range type; REST unarchive/delete per item kind.
+
+// Human: User-toggleable archive layout stored in App Storage so card vs list survives relaunch.
+// Agent: ENUM ArchiveOverviewViewStyle String raw card list; READ WRITES @AppStorage archiveOverviewViewStyle on parent ArchiveOverviewView.
 enum ArchiveOverviewViewStyle: String, CaseIterable {
     case card = "card"
     case list = "list"
 }
 
+// Human: Primary archive list UI: fetches combined archive rows, filter sheet, style toggle, swipe actions, and deep links into ticket/todo/link/time detail.
+// Agent: STRUCT ArchiveOverviewView View; NavigationSplit/List ScrollView; sheet ArchiveFiltersView; PERSISTENCE UserDefaults archiveOverviewViewStyle; INTEGRATES ArchiveItem cases API loads (in-file helpers).
 struct ArchiveOverviewView: View {
     /// When provided, row tap pushes onto this path (no NavigationLink = no chevron). Swipe actions still work.
     @Binding var path: NavigationPath

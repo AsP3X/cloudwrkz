@@ -1,3 +1,6 @@
+// Human: Tracks long-running registration jobs (persisted job id), polls status, and notifies the parent when the job finishes.
+// Agent: READS sessionStorage pendingRegistration helpers; POLL api register job; CALLS onTerminalStatus completed|failed|expired.
+
 import { useEffect, useId, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, ApiError } from "@/api/client";

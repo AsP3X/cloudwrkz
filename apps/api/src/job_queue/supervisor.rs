@@ -1,6 +1,9 @@
 //! Supervises N background job dispatchers: keeps the running count at the configured minimum,
 //! shares per-process concurrency budgets across dispatchers, and exposes ring-buffer logs per worker.
 
+// Human: The supervisor scales the number of dispatcher tasks toward a DB-backed desired count while keeping abort handles for clean shutdown.
+// Agent: JobWorkerSupervisor HOLDS desired AtomicU32 + abort_by_id map; reconcile loop SPAWNS/kills run_job_queue_dispatcher_loop; WorkerLogRegistry ring buffer + broadcast.
+
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -24,6 +27,9 @@ const RECONCILE_INTERVAL: Duration = Duration::from_millis(250);
 const WORKER_LOG_MAX_LINES: usize = 2_000;
 
 /// Ring buffer + broadcast fan-out for per-dispatcher logs (admin inspection).
+// Human: Operators tail dispatcher stdout asynchronously; the ring buffer caps memory while subscribers miss slow reads without blocking workers.
+// Agent: Mutex VecDeque per worker_id capped max_lines; broadcast channel 1024 for live tail; append pushes timestamped line.
+
 pub struct WorkerLogRegistry {
     inner: Mutex<HashMap<u64, VecDeque<String>>>,
     live: broadcast::Sender<(u64, String)>,
@@ -85,8 +91,10 @@ impl JobWorkerSupervisor {
     }
 
     pub fn set_desired_count(&self, n: u32) {
-        self.desired
-            .store(n.clamp(JOB_QUEUE_WORKER_MIN, JOB_QUEUE_WORKER_MAX), Ordering::SeqCst);
+        self.desired.store(
+            n.clamp(JOB_QUEUE_WORKER_MIN, JOB_QUEUE_WORKER_MAX),
+            Ordering::SeqCst,
+        );
     }
 
     pub fn logs(&self) -> Arc<WorkerLogRegistry> {

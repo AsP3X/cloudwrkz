@@ -20,6 +20,8 @@ import type { TimeEntry, TimeEntryStatus } from "@/lib/types";
 import { OverviewContextMenu, type OverviewContextMenuItem } from "@/components/ui/OverviewContextMenu";
 import { EditTimeEntryDialog } from "../EditTimeEntryDialog";
 
+// Human: React UI for `TimeEntryList` in time entries and live timers: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE time-tracking; ENTRIES breaks floating-timer; EXPORTS TimeEntryList; REACT component; READS props hooks; MAY CALL api client.
 interface TimeEntryListProps {
   entries: TimeEntry[];
   userTimezone?: string;

@@ -1,3 +1,6 @@
+// Human: This barrel re-exports every routed page component so imports stay stable and tree-shaking stays predictable.
+// Agent: RE-EXPORTS default page modules; NO side effects; ROUTER CONSUMES named exports from single entry.
+
 export { default as HomePage } from "./HomePage";
 export { default as LoginPage } from "./LoginPage";
 export { default as RegisterPage } from "./RegisterPage";
@@ -34,6 +37,8 @@ export { default as NotificationsPage } from "./dashboard/NotificationsPage";
 export { default as StatisticsPage } from "./dashboard/StatisticsPage";
 export { default as ArchivePage } from "./dashboard/ArchivePage";
 export { default as UserViewPage } from "./dashboard/UserViewPage";
+export { default as EmployeesPage } from "./dashboard/EmployeesPage";
+export { default as EmployeeDetailPage } from "./dashboard/EmployeeDetailPage";
 
 export { default as UsersPage } from "./dashboard/admin/UsersPage";
 export { default as GroupsPage } from "./dashboard/admin/GroupsPage";

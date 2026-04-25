@@ -1,3 +1,5 @@
+// Human: Marketing site header with scroll styling, dark-mode–aware visuals, mobile drawer, and Escape-to-close plus body scroll lock while the drawer is open.
+// Agent: STATE scrolled, mobileMenuOpen, mounted, isDark; LISTENS scroll, keydown Escape; MUTATES document.body.overflow; USES createPortal for mobile menu when mounted.
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";

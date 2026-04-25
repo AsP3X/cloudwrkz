@@ -1,3 +1,8 @@
+//! Ticket list/detail DTOs and PATCH bodies (`TicketUpdateRequest`) shared by routes and background job payloads.
+
+// Human: List items embed optional `UserSummary` blobs so the board UI avoids extra round-trips for assignee avatars.
+// Agent: TicketListItem includes comment_count; TicketRow maps DB enums to text; serde aliases for archivedAt on updates.
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, sqlx::FromRow)]

@@ -1,5 +1,7 @@
 import { type FilterConfig } from "@/components/ui/FilterDialog";
 
+// Human: Shared TypeScript shapes for saved links and collections, keeping props and API payloads consistent across the `links` UI.
+// Agent: SCOPE links; COLLECTIONS metadata GitHub YouTube; DEFINES types only; NO React; NO IO.
 export interface LinkFilterConfigOptions {
   collections?: Array<{
     id: string;

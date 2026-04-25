@@ -10,6 +10,8 @@
  * drops it, but Safari triggers a CORS preflight that HIBP doesn't allow, breaking the request.
  * `Add-Padding` would also trigger a preflight. Omitting both keeps this a CORS "simple request".
  */
+// Human: k-anonymous Have I Been Pwned range lookup using SHA-1 prefix so we can warn without uploading full passwords.
+// Agent: FETCH api.pwnedpasswords.com/range/{5}; USES @noble/hashes sha1 not subtle; READS AbortSignal; RETURNS count|null.
 
 import { sha1 } from "@noble/hashes/legacy.js";
 import { bytesToHex } from "@noble/hashes/utils.js";

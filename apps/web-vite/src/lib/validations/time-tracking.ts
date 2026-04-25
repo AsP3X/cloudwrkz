@@ -1,3 +1,6 @@
+// Human: Zod models for manual time entry dialogs covering duration parts, optional ticket link, and edit patches.
+// Agent: EXPORTS create add update schemas; USES z.date for pickers; INFERS CreateTimeEntryInput AddTimeEntryInput UpdateTimeEntryInput.
+
 import { z } from "zod";
 
 export const createTimeEntrySchema = z.object({

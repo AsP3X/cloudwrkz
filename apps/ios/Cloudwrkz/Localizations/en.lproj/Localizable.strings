@@ -761,17 +761,135 @@
 
 "profile.account" = "ACCOUNT";
 
+"profile.account_status.active" = "Active";
+
+"profile.account_status.pending" = "Pending";
+
+"profile.account_status.suspended" = "Suspended";
+
 "profile.account_settings" = "Account settings";
 
 "profile.account_settings_subtitle" = "Preferences and security";
 
 "profile.app_version" = "Cloudwrkz %@";
 
+"profile.command_center.email_verified" = "Email verified";
+
+"profile.command_center.kicker" = "ACCOUNT COMMAND CENTER";
+
+"profile.command_center.last_login" = "LAST LOGIN";
+
+"profile.command_center.member_since" = "MEMBER SINCE";
+
+"profile.command_center.no" = "No";
+
+"profile.command_center.profile_health" = "Profile health";
+
+"profile.command_center.role" = "ROLE";
+
+"profile.command_center.settings_hint" = "To change email, password, or other account settings, open Account settings below.";
+
+"profile.command_center.status" = "STATUS";
+
+"profile.command_center.subtitle" = "Your identity and account health in one place.";
+
+"profile.command_center.tap_to_expand" = "Tap to show details";
+
+"profile.command_center.a11y_header" = "Account command center";
+
+"profile.command_center.a11y_expand_hint" = "Shows profile health, employment link, and account details.";
+
+"profile.command_center.a11y_collapse_hint" = "Hides profile health, employment link, and account details.";
+
+"profile.command_center.timezone" = "TIMEZONE";
+
+"profile.command_center.yes" = "Yes";
+
+"profile.completeness.a11y_progress_format" = "Profile %lld percent complete";
+
+"profile.completeness.avatar" = "Upload an avatar";
+
+"profile.completeness.avatar_hint" = "Add a photo to personalize your account";
+
+"profile.completeness.bio" = "Write a short bio";
+
+"profile.completeness.bio_hint" = "Tell others a little about yourself";
+
+"profile.completeness.email" = "Verify your email";
+
+"profile.completeness.email_hint" = "Confirm your email address";
+
+"profile.completeness.name" = "Add your name";
+
+"profile.completeness.name_hint" = "Let others know who you are";
+
+"profile.completeness.timezone" = "Set your timezone";
+
+"profile.completeness.timezone_hint" = "Ensure times display correctly for your location";
+
+"profile.completeness.title" = "Complete your profile";
+
 "profile.edit_profile" = "Edit profile";
 
 "profile.edit_profile_nav" = "Edit Profile";
 
 "profile.edit_profile_subtitle" = "Name and photo";
+
+"profile.employee_status.active" = "Active";
+
+"profile.employee_status.inactive" = "Inactive";
+
+"profile.employee_status.on_leave" = "On Leave";
+
+"profile.employee_status.probation" = "Probation";
+
+"profile.employee_status.terminated" = "Terminated";
+
+"profile.employment.additional_emails" = "ADDITIONAL EMAILS";
+
+"profile.employment.checking_link" = "Checking employment link…";
+
+"profile.employment.company_role" = "Company role";
+
+"profile.employment.compensation" = "COMPENSATION & HOURS";
+
+"profile.employment.department" = "Department";
+
+"profile.employment.empty_body" = "No employment record is linked to your account. If you expect to see a profile here, ask an administrator to link your user to an employee record.";
+
+"profile.employment.empty_title" = "No employment record linked";
+
+"profile.employment.hours_worked" = "Hours worked";
+
+"profile.employment.job_title" = "Job title";
+
+"profile.employment.managers" = "MANAGERS";
+
+"profile.employment.monthly_expenses" = "Monthly expenses";
+
+"profile.employment.monthly_salary" = "Monthly salary";
+
+"profile.employment.role_org" = "ROLE & ORGANIZATION";
+
+"profile.employment.sheet_title" = "Employment details";
+
+"profile.employment.sick_days" = "Sick days (avail. / total)";
+
+"profile.employment.time_off" = "TIME OFF";
+
+"profile.employment.vacation_available" = "Vacation available";
+
+"profile.employment.vacation_planned" = "Vacation planned";
+
+"profile.employment.vacation_usage" = "Vacation usage";
+
+"profile.employment.vacation_used" = "Vacation used";
+
+"profile.employment.view_details" = "View employment details";
+
+"profile.employment.work_contact" = "WORK CONTACT";
+
+"profile.employment.work_email" = "Work email";
 
 "profile.first_name" = "First name";
 
@@ -806,6 +924,14 @@
 "profile.tap_to_change_photo" = "Tap to change photo";
 
 "profile.title" = "Profile";
+
+"profile.role.admin" = "Admin";
+
+"profile.role.agent" = "Agent";
+
+"profile.role.moderator" = "Moderator";
+
+"profile.role.user" = "User";
 
 "profile.view_profile" = "View Profile";
 

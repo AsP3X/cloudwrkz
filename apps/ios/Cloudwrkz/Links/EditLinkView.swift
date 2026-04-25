@@ -8,6 +8,9 @@
 
 import SwiftUI
 
+// Human: Power users edit tags, ratings, and collections in one sheet—parity with web avoids “fix it on desktop” support load.
+// Agent: EditLinkView mirrors Link fields; refetch metadata; PATCH LinkService.update; collections multi-select; onSaved dismiss.
+
 struct EditLinkView: View {
     @Environment(\.dismiss) private var dismiss
     let link: Link

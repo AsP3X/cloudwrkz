@@ -1,3 +1,6 @@
+// Human: Polls the public `/health` endpoint so the shell can warn when the API or database is unhealthy or unreachable.
+// Agent: FETCH /health with credentialsForApiFetch; PARSES services.database; SETS status error isServerUnreachable; INTERVAL poll.
+
 import { useState, useEffect, useCallback } from "react";
 import { credentialsForApiFetch, getApiBaseUrl } from "@/lib/apiBaseUrl";
 

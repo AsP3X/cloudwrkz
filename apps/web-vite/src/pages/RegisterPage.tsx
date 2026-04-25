@@ -6,6 +6,9 @@ import { SignupForm } from "@/features/auth/SignupForm";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 
+// Human: Public registration route that hosts SignupForm inside the standard marketing layout and spotlight surface.
+// Agent: RENDERS SignupForm; STATIC layout; NO page-level auth redirects.
+
 export default function RegisterPage() {
   return (
     <>

@@ -2,8 +2,10 @@ import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils/cn";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
+
 import { useSidebar } from "../SidebarContext";
 import { CollapsibleNavSection } from "@/components/ui/CollapsibleNavSection";
+import { IconMyTime } from "../sidebarNavIcons";
 
 const DashboardIcon = () => (
   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -20,12 +22,6 @@ const TicketsIcon = () => (
 const TodosIcon = () => (
   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-  </svg>
-);
-
-const TimeTrackingIcon = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
   </svg>
 );
 
@@ -89,6 +85,12 @@ const QueueIcon = () => (
   </svg>
 );
 
+const EmployeesIcon = () => (
+  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+  </svg>
+);
+
 export interface AdminSidebarProps {
   enabledModuleKeys: string[];
   canViewUsers: boolean;
@@ -103,6 +105,7 @@ export interface AdminSidebarProps {
   canManageSettings: boolean;
   /** View admin Background Jobs (queue + detail); also allow legacy access via Manage Settings. */
   canViewBackgroundJobs: boolean;
+  canViewEmployees: boolean;
 }
 
 export function AdminSidebar({
@@ -118,6 +121,7 @@ export function AdminSidebar({
   canViewDbConsole,
   canManageSettings,
   canViewBackgroundJobs,
+  canViewEmployees,
 }: AdminSidebarProps) {
   const pathname = useLocation().pathname;
   const { isMobileOpen, setIsMobileOpen, toolbarCompact } = useSidebar();
@@ -126,9 +130,13 @@ export function AdminSidebar({
   const moduleWorkItems = [
     { name: "Links", href: ROUTES.LINKS, icon: LinksIcon, key: "links" },
     { name: "Tickets", href: "/dashboard/tickets", icon: TicketsIcon, key: "tickets" },
-    { name: "My time", href: "/dashboard/time-tracking", icon: TimeTrackingIcon, key: "time_tracking" },
     { name: "ToDo", href: "/dashboard/todos", icon: TodosIcon, key: "todos" },
   ].filter((item) => enabledSet.has(item.key));
+
+  const timeAndLeaveMyTime = enabledSet.has("time_tracking")
+    ? { name: "My time", href: ROUTES.TIME_TRACKING, icon: IconMyTime }
+    : null;
+  const timeAndLeaveItems: { name: string; href: string; icon: () => JSX.Element; adminVisible?: boolean }[] = [];
 
   const workItems = [
     ...moduleWorkItems,
@@ -139,6 +147,10 @@ export function AdminSidebar({
     canViewUsers && { name: "Users", href: ROUTES.ADMIN_USERS, icon: UsersIcon },
     canManageGroups && { name: "Groups", href: ROUTES.ADMIN_GROUPS, icon: UsersIcon },
     canViewSessions && { name: "Sessions", href: ROUTES.ADMIN_SESSIONS, icon: ClipboardIcon },
+  ].filter(Boolean) as { name: string; href: string; icon: () => JSX.Element }[];
+
+  const hrItems = [
+    canViewEmployees && { name: "Employees", href: ROUTES.EMPLOYEES, icon: EmployeesIcon },
   ].filter(Boolean) as { name: string; href: string; icon: () => JSX.Element }[];
 
   const permissionsItems = (canViewPermissions || canManagePermissions)
@@ -160,11 +172,15 @@ export function AdminSidebar({
   const hrefIsActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   const userMgmtHasActive = userMgmtItems.some((item) => hrefIsActive(item.href));
+  const hrHasActive = hrItems.some((item) => hrefIsActive(item.href));
   const permissionsHasActive = permissionsItems.some((item) => hrefIsActive(item.href));
   const systemHasActive = systemItems.some((item) => hrefIsActive(item.href));
+  const timeAndLeaveHasActive =
+    Boolean(timeAndLeaveMyTime && hrefIsActive(timeAndLeaveMyTime.href)) ||
+    timeAndLeaveItems.some((item) => hrefIsActive(item.href));
 
   const NavLink = ({ item, icon: Icon }: { item: { name: string; href: string }; icon: () => JSX.Element }) => {
-    const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+    const isActive = hrefIsActive(item.href);
     return (
       <Link
         to={item.href}
@@ -248,16 +264,51 @@ export function AdminSidebar({
             </Link>
 
             {workItems.length > 0 && (
-              <CollapsibleNavSection title="Work" icon={<TicketsIcon />} defaultExpanded>
+              <CollapsibleNavSection title="Work" icon={<TicketsIcon />} defaultExpanded={workItems.some((item) => hrefIsActive(item.href))}>
                 {workItems.map((item) => (
                   <NavLink key={item.href} item={item} icon={item.icon} />
                 ))}
               </CollapsibleNavSection>
             )}
 
+            {(timeAndLeaveMyTime != null || timeAndLeaveItems.length > 0) && (
+              <CollapsibleNavSection title="Time & leave" icon={<IconMyTime />} defaultExpanded={timeAndLeaveHasActive}>
+                {[...(timeAndLeaveMyTime ? [timeAndLeaveMyTime] : []), ...timeAndLeaveItems].map((item, index) => {
+                  const isActive = hrefIsActive(item.href);
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={`${item.href}-${index}`}
+                      to={item.href}
+                      onClick={() => setIsMobileOpen(false)}
+                      className={cn(
+                        "flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
+                        isActive
+                          ? "bg-primary-50 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-800"
+                          : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:text-primary-600 dark:hover:text-primary-400"
+                      )}
+                    >
+                      <span className={cn(isActive ? "text-primary-600 dark:text-primary-400" : "text-neutral-500 dark:text-neutral-400")}>
+                        <Icon />
+                      </span>
+                      <span className="flex-1 truncate">{item.name}</span>
+                    </Link>
+                  );
+                })}
+              </CollapsibleNavSection>
+            )}
+
             {userMgmtItems.length > 0 && (
               <CollapsibleNavSection title="User Management" icon={<UsersIcon />} defaultExpanded={userMgmtHasActive}>
                 {userMgmtItems.map((item) => (
+                  <NavLink key={item.href} item={item} icon={item.icon} />
+                ))}
+              </CollapsibleNavSection>
+            )}
+
+            {hrItems.length > 0 && (
+              <CollapsibleNavSection title="HR" icon={<EmployeesIcon />} defaultExpanded={hrHasActive}>
+                {hrItems.map((item) => (
                   <NavLink key={item.href} item={item} icon={item.icon} />
                 ))}
               </CollapsibleNavSection>

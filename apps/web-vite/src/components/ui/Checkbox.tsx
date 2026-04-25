@@ -1,3 +1,5 @@
+// Human: Custom-styled checkbox with optional indeterminate state; the real input stays screen-reader only while the box is purely visual.
+// Agent: MERGES forwarded ref with internal ref; WRITES input.indeterminate in effect; RENDERS label + hidden input + styled span.
 import React from "react";
 import { cn } from "@/lib/utils/cn";
 
@@ -44,6 +46,8 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
       [ref]
     );
 
+    // Human: DOM checkboxes need `indeterminate` set imperatively; it is not driven by the `checked` prop alone.
+    // Agent: READS indeterminate; WRITES inputRef.current.indeterminate; RUNS on indeterminate change.
     React.useEffect(() => {
       const input = inputRef.current;
       if (input) input.indeterminate = indeterminate;

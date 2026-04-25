@@ -6,6 +6,9 @@ import { Input } from "@/components/ui/Input";
 import type { AdminSession } from "@/lib/types";
 import { formatDateTime } from "@/lib/hooks/useApi";
 
+// Human: Admin session inventory with search, revocation affordances, and metadata formatted for security reviews.
+// Agent: GET /admin/sessions?search=; STATE sessions,loading,search; ROLE gate; DISPLAYS via formatDateTime.
+
 export default function SessionsPage() {
   const { user } = useAuth();
   const [sessions, setSessions] = useState<AdminSession[]>([]);

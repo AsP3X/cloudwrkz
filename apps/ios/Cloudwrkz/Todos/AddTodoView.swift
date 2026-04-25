@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Create callbacks fire on the parent so optimistic rows and nav title mutations stay coordinated when this sheet dismisses early.
+// Agent: AddTodoView mutationHooks onCreateStarted onSaved onCreateFailed UUID correlation; TodoService.create parentTodoId optional; Field title description.
+
 struct AddTodoView: View {
     @Environment(\.dismiss) private var dismiss
     /// When set, creates a subtodo under this parent.
@@ -53,8 +56,11 @@ struct AddTodoView: View {
     }
 
     private var navigationTitle: String {
-        parentTodoId != nil ? String(localized: "add_todo.subtodo_title") : String(localized: "add_todo.title")
+        parentTodoId != nil ? String(localized: "add_todo.subtodo_title")             : String(localized: "add_todo.title")
     }
+
+    // Human: Subtodo mode surfaces parent title so users never wonder which nested list they are extending.
+    // Agent: NavigationStack ZStack ScrollView title description; submit Task TodoService.create mutationHooks; dismiss on success.
 
     var body: some View {
         NavigationStack {

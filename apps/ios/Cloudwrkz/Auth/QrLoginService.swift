@@ -7,6 +7,9 @@
 
 import Foundation
 
+// Human: When the phone is already signed in, approving a QR ties the browser session to the same tenant without retyping password.
+// Agent: POST api/v1/auth/qr-login/approve JSON requestId; Bearer AuthTokenStorage; maps 401→SessionExpiredNotifier 404/409/410.
+
 enum QrLoginApproveFailure: Equatable, Error {
     case noServerURL
     case noToken
@@ -20,6 +23,9 @@ enum QrLoginApproveFailure: Equatable, Error {
 }
 
 enum QrLoginService {
+    // Human: Request IDs from QR codes are bounded so we never POST megabyte payloads if someone scans garbage.
+    // Agent: approve(requestId) trim length<=100; URLSession 15s; AppIdentity headers; decode ServerMessage on 4xx/5xx.
+
     private static let timeout: TimeInterval = 15
     private static let approvePathSegments = ["api", "v1", "auth", "qr-login", "approve"]
 

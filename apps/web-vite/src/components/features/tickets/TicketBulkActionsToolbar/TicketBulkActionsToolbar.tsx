@@ -1,5 +1,7 @@
 import { Button } from "@/components/ui/Button";
 
+// Human: React UI for `TicketBulkActionsToolbar` in support tickets and related tooling: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE tickets; COMMENTS bulk filters timers; EXPORTS TicketBulkActionsToolbar; REACT component; READS props hooks; MAY CALL api client.
 interface TicketBulkActionsToolbarProps {
   selectedCount: number;
   onBulkStatusChange?: (status: string) => void;

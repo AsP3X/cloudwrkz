@@ -1,3 +1,5 @@
+// Human: Full-bleed canvas animation of drifting nodes and edges; respects reduced motion with a single static frame, and avoids resizing the canvas buffer unless dimensions or DPR actually change to prevent flicker loops.
+// Agent: useLayoutEffect OWNS rAF loop, ResizeObserver, nodes/particles; READS usePrefersReducedMotion; WRITES canvas 2d context; CLEANS up rAF and RO on unmount.
 import { useLayoutEffect, useRef } from "react";
 import { cn } from "@/lib/utils/cn";
 import { usePrefersReducedMotion } from "@/lib/hooks/usePrefersReducedMotion";
@@ -40,7 +42,7 @@ function fillRadialOrb(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
-  rCore: number,
+  _rCore: number,
   rHalo: number,
   centerA: number,
   midA: number,
@@ -134,12 +136,13 @@ export function OrganicNetworkCanvas({ variant, className }: OrganicNetworkCanva
   const particleCount = isContent ? 160 : 220;
 
   useLayoutEffect(() => {
-    const wrap = wrapRef.current;
     const canvas = canvasRef.current;
-    if (!wrap || !canvas) return;
+    if (!canvas) return;
+    const canvasEl: HTMLCanvasElement = canvas;
 
-    const ctx = canvas.getContext("2d", { alpha: false });
+    const ctx = canvasEl.getContext("2d", { alpha: false });
     if (!ctx) return;
+    const ctx2d: CanvasRenderingContext2D = ctx;
 
     let w = 1;
     let h = 1;
@@ -183,9 +186,10 @@ export function OrganicNetworkCanvas({ variant, className }: OrganicNetworkCanva
     }
 
     function measure() {
-      const r = wrap.getBoundingClientRect();
-      const nw = Math.max(1, r.width);
-      const nh = Math.max(1, r.height);
+      // Use viewport dimensions directly so elastic scroll / container reflow
+      // does not retrigger canvas buffer resets at page edges.
+      const nw = Math.max(1, window.innerWidth);
+      const nh = Math.max(1, window.innerHeight);
       const ndpr = Math.min(window.devicePixelRatio || 1, 2);
       const nextBufW = Math.floor(nw * ndpr);
       const nextBufH = Math.floor(nh * ndpr);
@@ -194,8 +198,8 @@ export function OrganicNetworkCanvas({ variant, className }: OrganicNetworkCanva
         Math.abs(nw - lastCanvasCssW) < 0.5 &&
         Math.abs(nh - lastCanvasCssH) < 0.5 &&
         ndpr === dpr &&
-        canvas.width === nextBufW &&
-        canvas.height === nextBufH;
+        canvasEl.width === nextBufW &&
+        canvasEl.height === nextBufH;
       w = nw;
       h = nh;
       dpr = ndpr;
@@ -204,19 +208,19 @@ export function OrganicNetworkCanvas({ variant, className }: OrganicNetworkCanva
       if (sizeUnchanged) return;
       lastCanvasCssW = nw;
       lastCanvasCssH = nh;
-      canvas.width = nextBufW;
-      canvas.height = nextBufH;
-      canvas.style.width = `${w}px`;
-      canvas.style.height = `${h}px`;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      canvasEl.width = nextBufW;
+      canvasEl.height = nextBufH;
+      canvasEl.style.width = `${w}px`;
+      canvasEl.style.height = `${h}px`;
+      ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
     /** Deep field (About-style); dots/lines bumped so they stay visible on this base. */
     const bgFill = "rgb(1, 2, 7)";
 
     function drawStaticFrame() {
-      ctx.fillStyle = bgFill;
-      ctx.fillRect(0, 0, w, h);
+      ctx2d.fillStyle = bgFill;
+      ctx2d.fillRect(0, 0, w, h);
       const grid0 = buildCellGrid(nodes, cellSize, w, h);
       const drawn = new Set<string>();
       for (let i = 0; i < nodes.length; i++) {
@@ -232,23 +236,23 @@ export function OrganicNetworkCanvas({ variant, className }: OrganicNetworkCanva
           if (edgeT <= 0) continue;
           const alpha = edgeT * (isContent ? 0.24 : 0.27);
           const lw = 1 + edgeT * 0.55;
-          ctx.lineCap = "round";
-          ctx.beginPath();
-          ctx.moveTo(nodes[a].x, nodes[a].y);
-          ctx.lineTo(nodes[b].x, nodes[b].y);
-          ctx.strokeStyle = `rgba(125,178,248,${alpha * 0.28})`;
-          ctx.lineWidth = lw * 5;
-          ctx.stroke();
-          ctx.strokeStyle = `rgba(198,222,255,${alpha})`;
-          ctx.lineWidth = lw;
-          ctx.stroke();
+          ctx2d.lineCap = "round";
+          ctx2d.beginPath();
+          ctx2d.moveTo(nodes[a].x, nodes[a].y);
+          ctx2d.lineTo(nodes[b].x, nodes[b].y);
+          ctx2d.strokeStyle = `rgba(125,178,248,${alpha * 0.28})`;
+          ctx2d.lineWidth = lw * 5;
+          ctx2d.stroke();
+          ctx2d.strokeStyle = `rgba(198,222,255,${alpha})`;
+          ctx2d.lineWidth = lw;
+          ctx2d.stroke();
         }
       }
       for (const p of particles) {
-        fillRadialOrb(ctx, p.x, p.y, p.r * 0.35, p.r * 4.2, p.a * 1.02, p.a * 0.28, 0, 1);
+        fillRadialOrb(ctx2d, p.x, p.y, p.r * 0.35, p.r * 4.2, p.a * 1.02, p.a * 0.28, 0, 1);
       }
       for (const n of nodes) {
-        fillRadialOrb(ctx, n.x, n.y, 1.45, isContent ? 10.5 : 11.5, 0.7, 0.17, 0, 1);
+        fillRadialOrb(ctx2d, n.x, n.y, 1.45, isContent ? 10.5 : 11.5, 0.7, 0.17, 0, 1);
       }
     }
 
@@ -306,8 +310,8 @@ export function OrganicNetworkCanvas({ variant, className }: OrganicNetworkCanva
         }
       }
 
-      ctx.fillStyle = bgFill;
-      ctx.fillRect(0, 0, w, h);
+      ctx2d.fillStyle = bgFill;
+      ctx2d.fillRect(0, 0, w, h);
 
       const grid = buildCellGrid(nodes, cellSize, w, h);
       const drawn = new Set<string>();
@@ -328,29 +332,29 @@ export function OrganicNetworkCanvas({ variant, className }: OrganicNetworkCanva
           const wave = 0.8 + 0.2 * Math.sin(tSec * 0.52 + (a + b) * 0.07);
           const alpha = u * (isContent ? 0.27 : 0.31) * breathe * wave * fadeIn;
           const lw = 1.08 + u * 0.58;
-          ctx.lineCap = "round";
-          ctx.beginPath();
-          ctx.moveTo(nodes[a].x, nodes[a].y);
-          ctx.lineTo(nodes[b].x, nodes[b].y);
-          ctx.strokeStyle = `rgba(120,175,245,${alpha * 0.3})`;
-          ctx.lineWidth = lw * 4.5;
-          ctx.stroke();
-          ctx.strokeStyle = `rgba(205,228,255,${alpha})`;
-          ctx.lineWidth = lw;
-          ctx.stroke();
+          ctx2d.lineCap = "round";
+          ctx2d.beginPath();
+          ctx2d.moveTo(nodes[a].x, nodes[a].y);
+          ctx2d.lineTo(nodes[b].x, nodes[b].y);
+          ctx2d.strokeStyle = `rgba(120,175,245,${alpha * 0.3})`;
+          ctx2d.lineWidth = lw * 4.5;
+          ctx2d.stroke();
+          ctx2d.strokeStyle = `rgba(205,228,255,${alpha})`;
+          ctx2d.lineWidth = lw;
+          ctx2d.stroke();
         }
       }
 
       for (const p of particles) {
         const tw = 0.84 + 0.16 * Math.sin(tSec * 0.76 + p.x * 0.008);
         const pa = p.a * tw * (isContent ? 1.18 : 1.22);
-        fillRadialOrb(ctx, p.x, p.y, p.r * 0.35, p.r * 4.2, pa * 1.02, pa * 0.28, 0, fadeIn);
+        fillRadialOrb(ctx2d, p.x, p.y, p.r * 0.35, p.r * 4.2, pa * 1.02, pa * 0.28, 0, fadeIn);
       }
 
       for (const n of nodes) {
         const g = n.pulse;
         const rHalo = (isContent ? 10.5 : 11.5) + g * 10;
-        fillRadialOrb(ctx, n.x, n.y, 1.25 + g * 1.65, rHalo, 0.66 + g * 0.34, 0.15 + g * 0.22, g, fadeIn);
+        fillRadialOrb(ctx2d, n.x, n.y, 1.25 + g * 1.65, rHalo, 0.66 + g * 0.34, 0.15 + g * 0.22, g, fadeIn);
       }
 
       raf = requestAnimationFrame(step);
@@ -394,24 +398,23 @@ export function OrganicNetworkCanvas({ variant, className }: OrganicNetworkCanva
       if (reduced) drawStaticFrame();
     }
 
-    const ro = new ResizeObserver(() => {
+    const onResize = () => {
       ensureRunningAfterResize();
-    });
-
-    ro.observe(wrap);
+    };
+    window.addEventListener("resize", onResize);
     layoutAndMaybeStart();
 
     return () => {
       cancelAnimationFrame(bootRaf);
       cancelAnimationFrame(raf);
-      ro.disconnect();
+      window.removeEventListener("resize", onResize);
     };
   }, [reduced, isContent, nodeCount, particleCount]);
 
   return (
     <div
       ref={wrapRef}
-      className={cn("pointer-events-none absolute inset-0 z-[1] overflow-hidden", className)}
+      className={cn("pointer-events-none fixed inset-0 z-[1] overflow-hidden", className)}
       aria-hidden
     >
       <canvas

@@ -14,6 +14,9 @@ import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { Checkbox } from "@/components/ui/Checkbox";
 import type { AdminGroup } from "@/lib/types";
 
+// Human: Deep admin user inspector covering bans, groups, permissions, and account edits.
+// Agent: FETCH /admin/users/:id + permissions; MULTIPLE dialogs; REQUIRES admin.users.*.
+
 const CARD_CLASS =
   "bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6";
 
@@ -41,6 +44,9 @@ interface UserDetailData {
   }>;
 }
 
+// Human: Maps user lifecycle statuses to badge color tokens for consistent admin list/detail styling.
+// Agent: SWITCH status ACTIVE|PENDING|SUSPENDED|BANNED|DELETED|default; RETURNS Badge variant token; PURE.
+
 function getStatusBadgeVariant(status: string) {
   switch (status) {
     case "ACTIVE": return "success" as const;
@@ -52,6 +58,9 @@ function getStatusBadgeVariant(status: string) {
   }
 }
 
+// Human: Maps coarse RBAC roles to badge variants so privileged accounts pop visually in admin surfaces.
+// Agent: SWITCH role ADMIN|MODERATOR|AGENT|default; RETURNS Badge variant token; PURE.
+
 function getRoleBadgeVariant(role: string) {
   switch (role) {
     case "ADMIN": return "error" as const;
@@ -60,6 +69,9 @@ function getRoleBadgeVariant(role: string) {
     default: return "default" as const;
   }
 }
+
+// Human: Page controller loading the user record, effective permissions, and orchestrating every admin sub-action.
+// Agent: useParams id; STATE user,effectivePermissions,loading*; navigate guards; COMPOSITION of many admin sections.
 
 export default function UserDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -689,7 +701,12 @@ export default function UserDetailPage() {
       </Dialog>
 
       {/* Edit Dialog */}
-      <Dialog open={editOpen} onOpenChange={setEditOpen} title="Edit User" description={`Edit user: ${user.email}`}>
+      <Dialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        title="Edit User"
+        description={`Edit user: ${user.email}`}
+      >
         <form onSubmit={handleUpdate} className="p-6 space-y-4">
           {error && (
             <div className="p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-300 text-sm">
@@ -724,6 +741,7 @@ export default function UserDetailPage() {
             value={formData.status}
             onChange={(e) => setFormData((prev) => ({ ...prev, status: e.target.value }))}
           />
+
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-neutral-200 dark:border-neutral-800">
             <Button type="button" variant="outline" onClick={() => setEditOpen(false)} disabled={saving}>
               Cancel

@@ -12,6 +12,9 @@ pub use mutation_jobs::{
 };
 
 /// `SET LOCAL` for queued write transactions: lock wait + statement cap (session ends at COMMIT).
+// Human: Background mutations run with tighter lock and statement timeouts than the session default so one bad query cannot wedge workers.
+// Agent: CLAMPS lock_timeout_ms and statement_timeout_ms; EXECUTES SET LOCAL lock_timeout and statement_timeout on open tx.
+
 pub async fn apply_mutation_tx_settings(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     lock_timeout_ms: u64,

@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Small state machine for which full-screen auth surface is visible; animations use `isGoingBack` to pick slide direction.
+// Agent: AuthScreen enum splash|login|register|main; AuthFlowController @Observable screen; goForward/goBack withAnimation elasticSlide.
+
 enum AuthScreen {
     case splash
     case login
@@ -16,6 +19,9 @@ enum AuthScreen {
 
 @Observable
 final class AuthFlowController {
+    // Human: Cold start jumps straight to main when a Keychain token exists so returning users skip splash until validation fails.
+    // Agent: init screen token? .main : .splash; goForward sets isGoingBack false; goBack async dispatch sets isGoingBack true.
+
     var screen: AuthScreen
     /// Used for WhatsApp/Telegram-style push (forward) vs pop (back) transitions.
     var isGoingBack: Bool = false

@@ -10,6 +10,9 @@ import { SkipToContent } from "@/components/ui/SkipToContent";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { ROUTES } from "@/lib/constants/routes";
 
+// Human: Primary landing route that immediately sends authenticated (or connection-ready) users into the dashboard.
+// Agent: READS useAuth(user,loading,needsConnection); NAVIGATE ROUTES.DASHBOARD on success; SHOWS spinner while loading.
+
 export default function HomePage() {
   const { user, loading, needsConnection } = useAuth();
   const navigate = useNavigate();

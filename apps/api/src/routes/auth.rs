@@ -1,3 +1,8 @@
+//! Email/password auth: queued login/register with 202 + polling, logout, password change, session extension.
+
+// Human: Login and register always enqueue async jobs (202 + poll) so credential checks and inserts can retry transient DB errors without blocking the HTTP thread.
+// Agent: router login/register + status routes; spawn_login_retry spawn_register_retry; logout/change-password/extend-session mutate sessions + audit.
+
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -21,6 +26,9 @@ use crate::error::AppError;
 use crate::models::user::*;
 use crate::routes::AppState;
 
+// Human: Auth routes are merged under `/api/v1` and wrapped by IP rate limiting in `routes::mod` for brute-force protection.
+// Agent: Router POST login register logout change-password extend-session; GET login/status register/status job_id.
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/auth/login", post(login))
@@ -31,6 +39,9 @@ pub fn router() -> Router<AppState> {
         .route("/auth/change-password", post(change_password))
         .route("/auth/extend-session", post(extend_session))
 }
+
+// Human: Audit rows prefer explicit body `user_agent` when mobile sends it, but fall back to the HTTP header for browser clients.
+// Agent: READS audit::client_ip_from_headers; OR body user_agent with header User-Agent fallback.
 
 fn audit_ip_and_agent(
     headers: &HeaderMap,
@@ -45,6 +56,9 @@ fn audit_ip_and_agent(
     });
     (ip, ua)
 }
+
+// Human: `POST /auth/login` always responds `202 Accepted` with a `job_id` while `spawn_login_retry` completes password verification and session creation asynchronously.
+// Agent: insert_auth_login_job best-effort; login_jobs.insert_pending; spawn_login_retry PendingLoginPayload; RETURNS LoginQueuedResponse JSON.
 
 async fn login(
     State(state): State<AppState>,
@@ -174,13 +188,9 @@ async fn register(
         })?;
 
     let job_id = new_job_id();
-    if let Err(e) = crate::auth::bg_job_record::insert_auth_register_job(
-        &state.pool,
-        &job_id,
-        &email,
-        &name,
-    )
-    .await
+    if let Err(e) =
+        crate::auth::bg_job_record::insert_auth_register_job(&state.pool, &job_id, &email, &name)
+            .await
     {
         warn!(
             event = "auth.bg_job.insert_register_failed",

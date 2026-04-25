@@ -1,3 +1,5 @@
+// Human: Lightweight client-only tabs: button row toggles which tab body node is shown; empty `tabs` renders nothing.
+// Agent: STATE activeTab string; READS defaultTab or first tab id; RETURNS null when tabs length zero.
 import React from "react";
 import { cn } from "@/lib/utils/cn";
 

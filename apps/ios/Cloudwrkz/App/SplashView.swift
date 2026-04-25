@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: First-launch marketing surface with sign-in / register entry points; uses the same gradient language as the signed-in dashboard.
+// Agent: ZStack gradient; VStack logo + localized title; glass primary/secondary buttons CALL onLogin onRegister; onAppear animate appeared.
+
 struct SplashView: View {
     @State private var appeared = false
     var onLogin: () -> Void = {}

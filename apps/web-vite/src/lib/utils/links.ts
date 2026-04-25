@@ -1,3 +1,6 @@
+// Human: URL helpers for detecting video hosts, normalizing links for previews, and building embed-friendly identifiers.
+// Agent: PURE string/URL parsing; isYouTubeUrl extractYouTubeVideoId etc.; NO fetch; CONSUMED BY link cards and search.
+
 /**
  * Check if a URL is a YouTube link
  */

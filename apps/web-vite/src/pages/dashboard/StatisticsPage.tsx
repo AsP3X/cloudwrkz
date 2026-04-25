@@ -8,6 +8,9 @@ import { api } from "@/api/client";
 import { Select } from "@/components/ui/Select";
 import { STATISTICS_TIMEFRAMES, type StatisticsTimeframe } from "@/lib/constants/statistics";
 
+// Human: Agent-facing analytics dashboard with timeframe controls, ticket filters, and mixed chart summaries.
+// Agent: SYNC URL searchParams timeframe+ticketStatus; FETCH agent statistics payload; RENDERS Recharts visualizations.
+
 const COLORS = {
   primary: "#3b82f6",
   secondary: "#8b5cf6",
@@ -33,6 +36,9 @@ interface StatCardProps {
   helperText?: string;
   tone?: "default" | "positive" | "negative";
 }
+
+// Human: Compact metric tile used across the statistics grid with optional helper copy and tone-based coloring.
+// Agent: READS StatCardProps; DERIVES toneClass; RETURNS bordered card JSX; PURE presentation.
 
 function StatCard({ label, value, helperText, tone = "default" }: StatCardProps) {
   const toneClass =
@@ -86,6 +92,9 @@ const TICKET_STATUS_FILTER_OPTIONS = [
   { value: "CLOSED", label: "Closed" },
   { value: "CANCELLED", label: "Cancelled" },
 ] as const;
+
+// Human: Loads aggregate ticket/time metrics, keeps filters in the query string, and composes StatCards plus charts.
+// Agent: STATE stats,loading; useNavigate+useSearchParams; useCallback load; MAPS API AgentStatistics to UI sections.
 
 export default function StatisticsPage() {
   const [searchParams] = useSearchParams();

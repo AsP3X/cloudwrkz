@@ -5,6 +5,8 @@ import { Dialog } from "@/components/ui/Dialog";
 import { api } from "@/api/client";
 import { ROUTES } from "@/lib/constants/routes";
 
+// Human: React UI for `TicketDetailHeaderActions` in support tickets and related tooling: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE tickets; COMMENTS bulk filters timers; EXPORTS TicketDetailHeaderActions; REACT component; READS props hooks; MAY CALL api client.
 export interface TicketDetailHeaderActionsProps {
   ticketId: string;
   ticketNumber: string;

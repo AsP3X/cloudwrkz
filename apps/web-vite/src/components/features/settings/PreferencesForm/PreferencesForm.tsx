@@ -10,6 +10,8 @@ import {
 import { useTheme } from "@/components/providers/ThemeProvider";
 import { api } from "@/api/client";
 
+// Human: React UI for `PreferencesForm` in account, privacy, and session settings: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE settings; SECURITY sessions delete-account; EXPORTS PreferencesForm; REACT component; READS props hooks; MAY CALL api client.
 const COMMON_TIMEZONES = [
   { value: "UTC", label: "UTC" },
   { value: "Europe/Berlin", label: "Europe/Berlin" },

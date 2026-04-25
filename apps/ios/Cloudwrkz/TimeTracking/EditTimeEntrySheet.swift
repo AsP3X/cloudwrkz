@@ -9,6 +9,12 @@
 
 import SwiftUI
 
+// Human: Break rows in the edit sheet are a local draft until Save; then PATCH entry plus delete/add break API calls to match the draft.
+// Agent: DraftTimeEntryBreak baselineBreaks draftBreaks; AddBreakSheet onPersistLocally; syncDraftBreaksToServer after updateTimeEntry.
+
+// Human: Full edit sheet for an existing entry: identity, timing window, tags, billable, breaks add/remove, and PATCH save with change detection.
+// Agent: EditTimeEntrySheet draft breaks until Save; TimeTrackingService PATCH update; showAddBreakSheet; onSaved dismiss; tracks hasChanges vs server snapshot.
+
 struct EditTimeEntrySheet: View {
     @Environment(\.dismiss) private var dismiss
     let entry: TimeEntry
@@ -28,10 +34,10 @@ struct EditTimeEntrySheet: View {
 
     // MARK: - UI state
 
-    @State private var currentEntry: TimeEntry
+    private let baselineBreaks: [DraftTimeEntryBreak]
+    @State private var draftBreaks: [DraftTimeEntryBreak]
     @State private var isSaving = false
     @State private var showAddBreakSheet = false
-    @State private var deletingBreakId: String?
     @State private var errorMessage: String?
     @State private var successMessage: String?
     @State private var hasChanges = false
@@ -46,7 +52,9 @@ struct EditTimeEntrySheet: View {
     init(entry: TimeEntry, onSaved: (() -> Void)? = nil) {
         self.entry = entry
         self.onSaved = onSaved
-        _currentEntry = State(initialValue: entry)
+        let initialDraft = (entry.breaks ?? []).map(DraftTimeEntryBreak.init(from:))
+        baselineBreaks = initialDraft
+        _draftBreaks = State(initialValue: initialDraft)
         _name = State(initialValue: entry.name)
         _descriptionText = State(initialValue: entry.description ?? "")
         _location = State(initialValue: entry.location ?? "")
@@ -118,10 +126,13 @@ struct EditTimeEntrySheet: View {
             .onChange(of: startDate) { _, _ in trackChanges() }
             .onChange(of: endDate) { _, _ in trackChanges() }
             .onChange(of: hasEndDate) { _, _ in trackChanges() }
+            .onChange(of: draftBreaks) { _, _ in trackChanges() }
             .sheet(isPresented: $showAddBreakSheet) {
-                AddBreakSheet(timeEntryId: entry.id) {
-                    Task { await refreshEntryForBreaks() }
-                }
+                AddBreakSheet(timeEntryId: entry.id, onPersistLocally: { start, end, desc in
+                    let localId = "local-\(UUID().uuidString)"
+                    let newBreak = DraftTimeEntryBreak(localId: localId, startedAt: start, endedAt: end, description: desc)
+                    draftBreaks = draftBreaks + [newBreak]
+                })
             }
         }
     }
@@ -272,22 +283,48 @@ struct EditTimeEntrySheet: View {
     }
 
     private var durationSummary: some View {
-        let seconds = max(0, Int(endDate.timeIntervalSince(startDate)))
-        let durationText = TimeTrackingUtils.formatDuration(seconds)
-        return HStack(spacing: 10) {
-            Image(systemName: "clock.fill")
-                .font(.system(size: 16))
-                .foregroundStyle(CloudwrkzColors.primary400)
-            Text("Duration")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(CloudwrkzColors.neutral100)
-            Spacer()
-            Text(durationText)
-                .font(.system(size: 15, weight: .bold, design: .monospaced))
-                .foregroundStyle(CloudwrkzColors.primary400)
-                .contentTransition(.numericText())
+        // Human: Wall span is end−start; worked time subtracts draft breaks so the summary matches overview/detail counters before Save.
+        // Agent: READS endDate startDate draftBreaks; DISPLAYS span vs worked (span − breakSeconds).
+        let wallSeconds = max(0, Int(endDate.timeIntervalSince(startDate)))
+        let breakSeconds = draftBreaksTotalSeconds(draftBreaks)
+        let workedSeconds = max(0, wallSeconds - breakSeconds)
+        let wallText = TimeTrackingUtils.formatDuration(wallSeconds)
+        let workedText = TimeTrackingUtils.formatDuration(workedSeconds)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: "clock.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(CloudwrkzColors.primary400)
+                Text("Clock span")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(CloudwrkzColors.neutral100)
+                Spacer()
+                Text(wallText)
+                    .font(.system(size: 15, weight: .bold, design: .monospaced))
+                    .foregroundStyle(CloudwrkzColors.primary400)
+                    .contentTransition(.numericText())
+            }
+            if breakSeconds > 0 {
+                HStack(spacing: 10) {
+                    Image(systemName: "cup.and.saucer.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(CloudwrkzColors.warning400)
+                    Text("Worked (span − breaks)")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(CloudwrkzColors.neutral400)
+                    Spacer()
+                    Text(workedText)
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .foregroundStyle(CloudwrkzColors.neutral200)
+                }
+            }
         }
-        .id("\(startDate.timeIntervalSince1970)-\(endDate.timeIntervalSince1970)")
+        .id("\(startDate.timeIntervalSince1970)-\(endDate.timeIntervalSince1970)-\(breakSeconds)")
+    }
+
+    /// Sum break lengths for timing summaries (draft rows use `duration` or start/end interval).
+    private func draftBreaksTotalSeconds(_ breaks: [DraftTimeEntryBreak]) -> Int {
+        DraftTimeEntryBreak.totalBreakSeconds(in: breaks)
     }
 
     private var timingDivider: some View {
@@ -451,7 +488,7 @@ struct EditTimeEntrySheet: View {
                     }
                 }
 
-                let breaks = currentEntry.breaks ?? []
+                let breaks = draftBreaks
                 if breaks.isEmpty {
                     Text("No breaks recorded.")
                         .font(.system(size: 14, weight: .regular))
@@ -485,20 +522,23 @@ struct EditTimeEntrySheet: View {
                                         .foregroundStyle(CloudwrkzColors.warning500)
                                 }
                                 Button {
-                                    Task { await deleteBreak(breakId: breakItem.id) }
+                                    draftBreaks = draftBreaks.filter { $0.id != breakItem.id }
                                 } label: {
                                     Image(systemName: "trash")
                                         .font(.system(size: 14))
                                         .foregroundStyle(CloudwrkzColors.neutral500)
                                 }
-                                .disabled(deletingBreakId == breakItem.id)
                             }
                             .padding(.vertical, 8)
                             if breakItem.id != breaks.last?.id {
                                 infoDivider
                             }
                         }
-                        let totalBreak = TimeTrackingUtils.calculateTotalBreakDuration(breaks)
+                        let totalBreak = breaks.reduce(0) { total, br in
+                            if let d = br.duration { return total + d }
+                            if br.endedAt == nil { return total + Int(Date().timeIntervalSince(br.startedAt)) }
+                            return total
+                        }
                         HStack {
                             Spacer()
                             Text("Total: \(TimeTrackingUtils.formatDuration(totalBreak))")
@@ -659,7 +699,8 @@ struct EditTimeEntrySheet: View {
             tags != entry.tags ||
             billable != entry.billable ||
             startChanged ||
-            endChanged
+            endChanged ||
+            draftBreaks != baselineBreaks
     }
 
     // MARK: - Validation
@@ -674,22 +715,26 @@ struct EditTimeEntrySheet: View {
         return nil
     }
 
-    // MARK: - Breaks API
+    // MARK: - Breaks (persisted on Save with entry)
 
-    private func refreshEntryForBreaks() async {
-        let result = await TimeTrackingService.fetchTimeEntry(config: appState.config, id: entry.id)
-        if case .success(let updated) = result {
-            await MainActor.run { currentEntry = updated }
+    private func syncDraftBreaksToServer() async -> String? {
+        let draftIds = Set(draftBreaks.map(\.id))
+        for b in baselineBreaks where !draftIds.contains(b.id) {
+            let r = await TimeTrackingService.deleteBreak(config: appState.config, timeEntryId: entry.id, breakId: b.id)
+            if case .failure(let e) = r { return errorText(e) }
         }
-    }
-
-    private func deleteBreak(breakId: String) async {
-        await MainActor.run { deletingBreakId = breakId }
-        let result = await TimeTrackingService.deleteBreak(config: appState.config, timeEntryId: entry.id, breakId: breakId)
-        if case .success = result {
-            await refreshEntryForBreaks()
+        for d in draftBreaks where d.id.hasPrefix("local-") {
+            let end = d.endedAt ?? d.startedAt
+            let r = await TimeTrackingService.addBreak(
+                config: appState.config,
+                timeEntryId: entry.id,
+                startedAt: d.startedAt,
+                endedAt: end,
+                description: d.description
+            )
+            if case .failure(let e) = r { return errorText(e) }
         }
-        await MainActor.run { deletingBreakId = nil }
+        return nil
     }
 
     // MARK: - Network
@@ -717,12 +762,20 @@ struct EditTimeEntrySheet: View {
 
         let result = await TimeTrackingService.updateTimeEntry(config: appState.config, id: entry.id, input: input)
 
-        isSaving = false
         switch result {
         case .success:
+            if let syncErr = await syncDraftBreaksToServer() {
+                await MainActor.run {
+                    isSaving = false
+                    errorMessage = syncErr
+                }
+                return
+            }
+            await MainActor.run { isSaving = false }
             onSaved?()
             dismiss()
         case .failure(let error):
+            await MainActor.run { isSaving = false }
             errorMessage = errorText(error)
         }
     }

@@ -12,6 +12,11 @@ export interface DialogProps extends React.HTMLAttributes<HTMLDivElement> {
    * Raises backdrop + panel z-index so the overlay stacks above the parent dialog.
    */
   nested?: boolean;
+  /**
+   * When false, Escape does not call onOpenChange(false). Use while a nested overlay
+   * is open so the parent dialog does not dismiss before the child handles Escape.
+   */
+  closeOnEscape?: boolean;
 }
 
 const FOCUSABLE_SELECTOR =
@@ -31,6 +36,7 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
       description,
       className,
       nested = false,
+      closeOnEscape = true,
       ...props
     },
     ref
@@ -48,18 +54,20 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
       [ref]
     );
 
+    // Human: Escape dismisses the dialog unless the parent opted out (e.g. nested picker is open).
+    // Agent: READS open, closeOnEscape, onOpenChange; LISTENS document keydown Escape; CALLS onOpenChange(false).
     React.useEffect(() => {
       if (!open) return;
 
       const handleEscape = (e: KeyboardEvent) => {
-        if (e.key === "Escape") {
+        if (e.key === "Escape" && closeOnEscape) {
           onOpenChange?.(false);
         }
       };
 
       document.addEventListener("keydown", handleEscape);
       return () => document.removeEventListener("keydown", handleEscape);
-    }, [open, onOpenChange]);
+    }, [open, onOpenChange, closeOnEscape]);
 
     React.useEffect(() => {
       if (!open || !dialogRef.current) return;

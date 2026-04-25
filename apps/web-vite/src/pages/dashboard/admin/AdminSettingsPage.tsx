@@ -8,6 +8,9 @@ import { ROUTES } from "@/lib/constants/routes";
 import { getApiBaseUrl, credentialsForApiFetch } from "@/lib/apiBaseUrl";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 
+// Human: System administration console for quotas, dangerous purges, worker counts, and integration tuning knobs.
+// Agent: FETCH aggregated admin settings; PATCH various /admin/settings*; DOWNLOAD credentials; REQUIRES admin.settings.*.
+
 const MIN_QR_REQUESTS_PER_MINUTE = 1;
 const MAX_QR_REQUESTS_PER_MINUTE = 120;
 const LINKS_DEFAULT_PAGE_SIZE_VALUES = [10, 25, 50, 100, 10000] as const;
@@ -68,6 +71,9 @@ type JobWorkersListResponse = {
 
 const CARD_CLASS =
   "bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6";
+
+// Human: Stateful page wiring cards for stats, QR throttles, links defaults, purge workflows, and worker telemetry.
+// Agent: STATE data,loading,purge*,linksPageSize*; useCallback loaders; MULTIPLE api mutations with toast-like messages.
 
 export default function AdminSettingsPage() {
   const { can } = useAuth();

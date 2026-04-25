@@ -1,3 +1,8 @@
+//! Todo tree/list DTOs including nested subtodos and dependency summaries for the rich task UI.
+
+// Human: `TodoListItem` optionally nests child todos so one query can hydrate a collapsed subtree for drag-and-drop clients.
+// Agent: TodoRow flat DB mapping; TodoListItem serde skip on empty subtodos; dependency structs for graph edges.
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, sqlx::FromRow)]

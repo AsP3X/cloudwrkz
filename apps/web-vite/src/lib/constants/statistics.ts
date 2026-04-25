@@ -1,3 +1,6 @@
+// Human: Preset ranges for statistics dashboards so API queries and UI labels stay aligned on supported windows.
+// Agent: EXPORT readonly STATISTICS_TIMEFRAMES; DERIVES StatisticsTimeframe union; USED BY statistics filters.
+
 export const STATISTICS_TIMEFRAMES = [
   { value: "7d", label: "Last 7 days" },
   { value: "30d", label: "Last 30 days" },

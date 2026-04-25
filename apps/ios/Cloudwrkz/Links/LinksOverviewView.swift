@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Links is a high-throughput list—filters, bulk select, and pull refresh need to coexist without hiding the primary scroll affordance.
+// Agent: LinksOverviewView; LinkService fetch; filters sheet LinkFilters; selectionMode bulk delete/collections; NavigationStack detail push; appState.
+
 struct LinksOverviewView: View {
     @State private var links: [Link] = []
     @State private var collections: [Collection] = []
@@ -43,6 +46,9 @@ struct LinksOverviewView: View {
     @State private var bulkProgress: (completed: Int, total: Int) = (0, 0)
 
     @Environment(\.appState) private var appState
+
+    // Human: ZStack layers loading/error/empty above the same chrome so transitions don’t jump layout when the first fetch completes.
+    // Agent: ZStack background loadingView errorView emptyView linkList safeAreaInset refresh banner toolbar filters add.
 
     var body: some View {
         ZStack {

@@ -1,3 +1,8 @@
+//! Public contact form endpoint with a coarse in-process rate limiter (no DB persistence).
+
+// Human: Contact is intentionally unauthenticated marketing/support traffic, so we validate inputs and cap submissions per process hour before logging only.
+// Agent: router POST /contact; RATE_LIMIT Mutex global counter reset hourly max 20; tracing::info contact.submit; RETURNS JSON success message.
+
 use axum::{Json, Router, routing::post};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -6,6 +11,9 @@ use std::time::Instant;
 
 use crate::error::AppError;
 use crate::routes::AppState;
+
+// Human: Single-route module keeps the spam limiter state scoped to this router only.
+// Agent: Router POST /contact -> contact_form.
 
 pub fn router() -> Router<AppState> {
     Router::new().route("/contact", post(contact_form))
@@ -21,6 +29,9 @@ struct ContactRequest {
 
 static RATE_LIMIT: std::sync::LazyLock<Mutex<HashMap<String, (u32, Instant)>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+// Human: Basic length checks mirror frontend validation; the global counter prevents runaway spam if bots hit the endpoint continuously.
+// Agent: LOCK RATE_LIMIT; INCREMENT count per hour window max 20 -> 429 too_many_requests; ELSE info log fields RETURN success JSON.
 
 async fn contact_form(
     Json(body): Json<ContactRequest>,

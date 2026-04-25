@@ -1,3 +1,8 @@
+//! Link CRUD request/response shapes, including embedded collection metadata returned from list queries.
+
+// Human: `LinkRow` carries denormalized `collections` JSON so the web client can render chips without N+1 collection fetches.
+// Agent: sqlx::FromRow LinkRow; CreateLinkRequest flags extract_metadata allow_duplicates; UpdateLinkRequest serde alias archivedAt.
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, sqlx::FromRow)]

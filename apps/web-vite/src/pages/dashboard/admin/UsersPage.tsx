@@ -13,6 +13,12 @@ import { formatDate } from "@/lib/utils/date";
 import { OverviewContextMenu, type OverviewContextMenuItem } from "@/components/ui/OverviewContextMenu";
 import { cn } from "@/lib/utils/cn";
 
+// Human: Primary admin user grid with paging, bulk actions, creation flows, and contextual menus for account ops.
+// Agent: SYNC searchParams page; FETCH /admin/users; STATE selectedUsers; OverviewContextMenu; MULTI dialog workflows.
+
+// Human: Badge variant mapper for RBAC roles in the admin users table and related overview components.
+// Agent: SWITCH role ADMIN|MODERATOR|AGENT|default; RETURNS Badge variant literal; PURE const function.
+
 const getRoleBadgeVariant = (role: string) => {
   switch (role) {
     case "ADMIN": return "error" as const;
@@ -21,6 +27,9 @@ const getRoleBadgeVariant = (role: string) => {
     default: return "default" as const;
   }
 };
+
+// Human: Badge variant mapper for account statuses including suspended, banned, and soft-deleted users.
+// Agent: SWITCH status ACTIVE|PENDING|SUSPENDED|BANNED|DELETED|default; RETURNS Badge variant literal.
 
 const getStatusBadgeVariant = (status: string) => {
   switch (status) {
@@ -32,6 +41,9 @@ const getStatusBadgeVariant = (status: string) => {
     default: return "default" as const;
   }
 };
+
+// Human: Coordinates URL-driven pagination, fetches user batches, and renders filters plus bulk action toolbars.
+// Agent: STATE users,page,totalPages,loading,selectedUsers; useSearchParams; useNavigate; useMemo filtered subsets.
 
 export default function UsersPage() {
   const { user, can, permissions } = useAuth();
@@ -140,7 +152,7 @@ export default function UsersPage() {
     setIsLoading(true);
     setCreateUserError(null);
     try {
-      await api.post("/admin/users", data);
+      await api.post<{ user?: { id?: string } }>("/admin/users", data);
       setCreateDialogOpen(false);
       fetchUsers();
     } catch (e) {
@@ -484,7 +496,7 @@ export default function UsersPage() {
           setCreateDialogOpen(open);
           if (!open) setCreateUserError(null);
         }}
-        onSubmit={handleCreate}
+        onSubmit={(data) => void handleCreate(data)}
         isLoading={isLoading}
         submitError={createUserError}
       />
@@ -546,35 +558,62 @@ function UserCreateDialog({ open, onOpenChange, onSubmit, isLoading, submitError
   const [role, setRole] = useState("USER");
   const [status, setStatus] = useState("ACTIVE");
 
+  const handleOpenChange = (next: boolean) => {
+    if (!next) {
+      setEmail("");
+      setName("");
+      setPassword("");
+      setRole("USER");
+      setStatus("ACTIVE");
+    }
+    onOpenChange(next);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     void onSubmit({ email, name: name || undefined, password, role, status });
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} title="Create User" description="Create a new system user">
+    <Dialog open={open} onOpenChange={handleOpenChange} title="Create User" description="Create a new system user">
       <form onSubmit={handleSubmit} className="p-6 space-y-4">
         {submitError ? (
           <div className="p-3 rounded-lg bg-error-50 dark:bg-error-950/80 border border-error-200/80 dark:border-error-800/80 text-error-700 dark:text-error-300 text-sm">
             {submitError}
           </div>
         ) : null}
+
         <Input label="Email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
         <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} />
         <Input label="Password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-        <Select label="Role" options={[
-          { value: "USER", label: "User" },
-          { value: "AGENT", label: "Agent" },
-          { value: "MODERATOR", label: "Moderator" },
-          { value: "ADMIN", label: "Admin" },
-        ]} value={role} onChange={(e) => setRole(e.target.value)} />
-        <Select label="Status" options={[
-          { value: "ACTIVE", label: "Active" },
-          { value: "PENDING", label: "Pending" },
-        ]} value={status} onChange={(e) => setStatus(e.target.value)} />
+        <Select
+          label="Role"
+          options={[
+            { value: "USER", label: "User" },
+            { value: "AGENT", label: "Agent" },
+            { value: "MODERATOR", label: "Moderator" },
+            { value: "ADMIN", label: "Admin" },
+          ]}
+          value={role}
+          onChange={(e) => setRole(e.target.value)}
+        />
+        <Select
+          label="Status"
+          options={[
+            { value: "ACTIVE", label: "Active" },
+            { value: "PENDING", label: "Pending" },
+          ]}
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+        />
+
         <div className="flex items-center justify-end gap-3 pt-4 border-t border-neutral-200 dark:border-neutral-800">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>Cancel</Button>
-          <Button type="submit" variant="primary" loading={isLoading}>Create User</Button>
+          <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={isLoading}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="primary" loading={isLoading}>
+            Create User
+          </Button>
         </div>
       </form>
     </Dialog>

@@ -7,6 +7,8 @@ import { api } from "@/api/client";
 import type { Link as LinkType } from "@/lib/types";
 import { cn } from "@/lib/utils/cn";
 
+// Human: React UI for `EditLinkDialog` in saved links and collections: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE links; COLLECTIONS metadata GitHub YouTube; EXPORTS EditLinkDialog; REACT component; READS props hooks; MAY CALL api client.
 export interface EditLinkDialogLink {
   id: string;
   title: string;

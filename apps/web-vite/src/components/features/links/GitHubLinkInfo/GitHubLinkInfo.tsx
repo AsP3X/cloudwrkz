@@ -3,6 +3,8 @@ import { cn } from "@/lib/utils/cn";
 import { parseGitHubUrl } from "@/lib/utils/links";
 import { pickGithubMetadataFromRecord } from "@/lib/utils/github-repo-metadata";
 
+// Human: React UI for `GitHubLinkInfo` in saved links and collections: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE links; COLLECTIONS metadata GitHub YouTube; EXPORTS GitHubLinkInfo; REACT component; READS props hooks; MAY CALL api client.
 const INITIAL_BRANCHES_VISIBLE = 8;
 
 function formatRelative(date: Date): string {

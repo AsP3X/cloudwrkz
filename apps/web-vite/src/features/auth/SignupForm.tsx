@@ -1,3 +1,6 @@
+// Human: Registration form with live password strength, breach checks, and async job polling when the API returns HTTP 202.
+// Agent: registerSchema zod; CALLS getPwnedPasswordCount isCommonPassword; RENDERS RegistrationQueuedPanel PasswordStrengthBar.
+
 import React, { useCallback, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";

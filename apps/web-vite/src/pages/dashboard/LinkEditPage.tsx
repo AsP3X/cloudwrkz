@@ -7,6 +7,9 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import type { Link as LinkType } from "@/lib/types";
 
+// Human: Form page for updating a saved link’s title, URL, and description with permission-aware navigation.
+// Agent: GET/PATCH /links/:id; READS canViewLinks; navigate after save; MUTATES local controlled fields.
+
 export default function LinkEditPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();

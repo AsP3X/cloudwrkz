@@ -1,3 +1,5 @@
+// Human: Top-of-app banner when the browser is offline; banner tint follows dark mode by observing `html` class mutations.
+// Agent: READS documentElement classList via MutationObserver; STATE isDark; SETS inline backgroundColor for contrast.
 import { useEffect, useState } from "react";
 
 export function OfflineWarning() {

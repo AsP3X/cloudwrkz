@@ -7,6 +7,9 @@
 
 import Foundation
 
+// Human: Collections drive grouping for links/tickets/etc.; this client mirrors the same path derivation rules as other modules tied to `loginPath`.
+// Agent: GET collections from loginPath-derived segments; query archived; Bearer AuthTokenStorage; DECODES [Collection]; 401 SessionExpiredNotifier.
+
 enum CollectionServiceError: Equatable, Error {
     case noServerURL
     case noToken
@@ -16,6 +19,9 @@ enum CollectionServiceError: Equatable, Error {
 }
 
 enum CollectionService {
+    // Human: One shared timeout keeps collection fetches from hanging silently when the server is wedged behind TLS or captive portals.
+    // Agent: timeout 20s; fetchCollections builds URL appending path segments; URLRequest GET Authorization Bearer.
+
     private static let timeout: TimeInterval = 20
 
     /// Path for GET collections: derived from login path (api/auth/login → api/auth/collections).

@@ -3,7 +3,7 @@ description: >-
   Mandatory inline comments (human + optional AI-digestible line) on Rust and
   TypeScript/TSX in this repo
 globs: "**/*.{rs,ts,tsx}"
-alwaysApply: false
+alwaysApply: true
 ---
 
 # Inline documentation (required)

@@ -1,6 +1,12 @@
 //! API client for CloudWrkz backend. Used for User, Group, Module, Session management in interactive mode.
 
+// Human: Thin reqwest wrapper around `/api/v1` admin and auth endpoints so the CLI matches the same JSON contracts as the web app.
+// Agent: READS CLOUDWRKZ_API_URL + CLOUDWRKZ_TOKEN; POST auth/login with 202 polling; GET/PATCH/DELETE admin/* with Bearer when needed.
+
 use serde::Deserialize;
+
+// Human: When `CLOUDWRKZ_API_URL` is unset, operators only need `API_PORT` from the API’s `.env`—the CLI assumes localhost and `/api/v1`.
+// Agent: READS CLOUDWRKZ_API_URL trim strip trailing slash; ELSE READS API_PORT default 8080; RETURNS http://127.0.0.1:{port}/api/v1.
 
 fn default_api_url() -> String {
     if let Ok(url) = std::env::var("CLOUDWRKZ_API_URL") {
@@ -18,6 +24,9 @@ fn default_api_url() -> String {
 }
 
 /// Build API base URL and optional token from env.
+// Human: Interactive menus need both where to call and whether `Authorization` can be attached without prompting every screen.
+// Agent: CALLS default_api_url; READS CLOUDWRKZ_TOKEN trim non-empty; RETURNS (base, Some(token)).
+
 pub fn api_config() -> (String, Option<String>) {
     let base = default_api_url();
     let token = std::env::var("CLOUDWRKZ_TOKEN")
@@ -35,6 +44,9 @@ pub struct ApiClient {
 }
 
 impl ApiClient {
+    // Human: One client instance is reused for a whole TUI session so connection pooling and cookies behave like a single browser tab.
+    // Agent: STORES reqwest::Client + normalized base_url + optional token; NO cookie jar beyond defaults.
+
     pub fn new(base_url: String, token: Option<String>) -> Self {
         Self {
             client: reqwest::Client::new(),
@@ -43,10 +55,16 @@ impl ApiClient {
         }
     }
 
+    // Human: Callers pass paths like `admin/users` without a leading slash so concatenation cannot produce double slashes.
+    // Agent: TRIM leading / on path; FORMAT {base_url}/{path}.
+
     fn url(&self, path: &str) -> String {
         let path = path.trim_start_matches('/');
         format!("{}/{}", self.base_url, path)
     }
+
+    // Human: Only authenticated admin routes get a Bearer header; login itself stays unauthenticated.
+    // Agent: MAPS token Some -> `Bearer {token}` string.
 
     fn auth_header(&self) -> Option<String> {
         self.token.as_deref().map(|t| format!("Bearer {}", t))
@@ -57,6 +75,9 @@ impl ApiClient {
     }
 
     /// POST /auth/login (API returns 202; polls until completed or failed)
+    // Human: The API may queue login when Postgres is busy, so 202 must be followed by the job status URL instead of treating it as success.
+    // Agent: POST auth/login JSON; ON 202 DESERIALIZE job_id CALL poll_login_until_done; ON 2xx ELSE parse LoginResponse; ON failure READ body text Http err.
+
     pub async fn login(&self, email: &str, password: &str) -> Result<LoginResponse, ApiError> {
         let body = serde_json::json!({ "email": email, "password": password });
         let res = self
@@ -80,7 +101,14 @@ impl ApiClient {
         Ok(out)
     }
 
-    async fn poll_login_until_done(&self, job_id: &str, retry_secs: u32) -> Result<LoginResponse, ApiError> {
+    // Human: Mirrors the browser login banner behavior—poll every ~800ms until completed, failed, or deadline so scripts do not hang forever.
+    // Agent: LOOP GET auth/login/status/{job_id}; PARSE LoginJobStatusBody; completed RETURNS token+user; failed MAPS BANNED hint to 403; TIMEOUT 408.
+
+    async fn poll_login_until_done(
+        &self,
+        job_id: &str,
+        retry_secs: u32,
+    ) -> Result<LoginResponse, ApiError> {
         use std::time::{Duration, Instant};
         let max_wait = Duration::from_secs(u64::from(retry_secs.saturating_add(10)));
         let start = Instant::now();
@@ -107,12 +135,12 @@ impl ApiClient {
             let st: LoginJobStatusBody = res.json().await?;
             match st.status.as_str() {
                 "completed" => {
-                    let token = st
-                        .token
-                        .ok_or_else(|| ApiError::Http(500, "Login completed but token missing".into()))?;
-                    let user = st
-                        .user
-                        .ok_or_else(|| ApiError::Http(500, "Login completed but user missing".into()))?;
+                    let token = st.token.ok_or_else(|| {
+                        ApiError::Http(500, "Login completed but token missing".into())
+                    })?;
+                    let user = st.user.ok_or_else(|| {
+                        ApiError::Http(500, "Login completed but user missing".into())
+                    })?;
                     return Ok(LoginResponse { token, user });
                 }
                 "failed" => {
@@ -158,7 +186,10 @@ impl ApiClient {
             body.insert("role".to_string(), serde_json::Value::String(r.to_string()));
         }
         if let Some(s) = status {
-            body.insert("status".to_string(), serde_json::Value::String(s.to_string()));
+            body.insert(
+                "status".to_string(),
+                serde_json::Value::String(s.to_string()),
+            );
         }
         self.patch(&format!("admin/users/{}", id), body).await
     }
@@ -174,14 +205,24 @@ impl ApiClient {
     }
 
     /// GET /admin/users/:id/permissions (direct grants only)
-    pub async fn list_user_permissions(&self, user_id: &str) -> Result<UserPermissionsResponse, ApiError> {
-        self.get(&format!("admin/users/{}/permissions", user_id)).await
+    pub async fn list_user_permissions(
+        &self,
+        user_id: &str,
+    ) -> Result<UserPermissionsResponse, ApiError> {
+        self.get(&format!("admin/users/{}/permissions", user_id))
+            .await
     }
 
     /// POST /admin/users/:id/permissions (body: { "key": "tickets.view" })
+    // Human: Grant uses POST with a JSON body unlike GET list helpers, so it cannot share the generic `get` path.
+    // Agent: POST admin/users/{id}/permissions json {key}; SET Bearer; MAP non-success to Http with body text.
+
     pub async fn grant_user_permission(&self, user_id: &str, key: &str) -> Result<(), ApiError> {
         let body = serde_json::json!({ "key": key });
-        let mut req = self.client.post(self.url(&format!("admin/users/{}/permissions", user_id))).json(&body);
+        let mut req = self
+            .client
+            .post(self.url(&format!("admin/users/{}/permissions", user_id)))
+            .json(&body);
         if let Some(h) = self.auth_header() {
             req = req.header("Authorization", h);
         }
@@ -200,7 +241,14 @@ impl ApiClient {
         self.delete(&path).await
     }
 
-    async fn patch(&self, path: &str, body: serde_json::Map<String, serde_json::Value>) -> Result<(), ApiError> {
+    // Human: Admin PATCH endpoints share one helper so every mutating call consistently attaches Bearer and surfaces HTTP bodies on failure.
+    // Agent: BUILD reqwest patch + JSON body; SET Authorization if token; RETURN Err Http on !is_success.
+
+    async fn patch(
+        &self,
+        path: &str,
+        body: serde_json::Map<String, serde_json::Value>,
+    ) -> Result<(), ApiError> {
         let mut req = self.client.patch(self.url(path)).json(&body);
         if let Some(h) = self.auth_header() {
             req = req.header("Authorization", h);
@@ -213,6 +261,9 @@ impl ApiClient {
         }
         Ok(())
     }
+
+    // Human: DELETE helpers mirror PATCH: same auth header rules and same error mapping for permission denials.
+    // Agent: DELETE url(path); SET Authorization; ERR Http on non-success.
 
     async fn delete(&self, path: &str) -> Result<(), ApiError> {
         let mut req = self.client.delete(self.url(path));
@@ -242,6 +293,9 @@ impl ApiClient {
     pub async fn list_sessions(&self) -> Result<SessionListResponse, ApiError> {
         self.get("admin/sessions").await
     }
+
+    // Human: Typed GETs deserialize JSON straight into structs used by the TUI lists; failures keep the raw body for debugging.
+    // Agent: GET url(path); SET Authorization; res.json on success ELSE Http with text body.
 
     async fn get<T: for<'de> Deserialize<'de>>(&self, path: &str) -> Result<T, ApiError> {
         let mut req = self.client.get(self.url(path));
@@ -283,6 +337,9 @@ impl From<reqwest::Error> for ApiError {
 }
 
 /// Human-friendly message for CLI output (connection hints, current base URL).
+// Human: Operators often misconfigure only the port or forget to start the API—this expands transport errors with concrete next steps.
+// Agent: Http ERR passthrough; Reqwest NO status APPENDS multi-line hint with api_base + cargo run + CLOUDWRKZ_API_URL note + timeout suffix.
+
 pub fn user_message(err: &ApiError, api_base: &str) -> String {
     match err {
         ApiError::Http(code, body) => {

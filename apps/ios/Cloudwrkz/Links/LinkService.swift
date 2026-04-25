@@ -7,6 +7,9 @@
 
 import Foundation
 
+// Human: Links CRUD and list fetches share one module so collection filters and mutation-job polling stay consistent with web.
+// Agent: LinkService URLSession Bearer; paths from loginPath→links; JSONDecoder ApiTimestampParsing; HTTP 401 SessionExpiredNotifier; optional MutationJobTitleHooks.
+
 enum LinkServiceError: Equatable, Error {
     case noServerURL
     case noToken
@@ -16,6 +19,9 @@ enum LinkServiceError: Equatable, Error {
 }
 
 enum LinkService {
+    // Human: 20s covers heavier list payloads on slow networks without blocking the UI spinner unreasonably long.
+    // Agent: timeout 20s; dateDecoder snake_case custom dates; fetch create update delete archive flows.
+
     private static let timeout: TimeInterval = 20
 
     /// Path for GET links: derived from login path (api/auth/login → api/auth/links, api/login → api/links).

@@ -3,6 +3,12 @@ import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
 import { Button } from "@/components/ui/Button";
 
+// Human: Playful 404 route with animated cloud backdrop, brand home link, and back/home actions for missing URLs.
+// Agent: DEFAULT export NotFoundPage; LINK ROUTES.HOME; navigate(-1); LOCAL SVG helpers Cloud + LostCloud only.
+
+// Human: Variant cloud silhouette SVG reused across the background with different paths per variant id.
+// Agent: READS variant 1|2|3; RETURNS static SVG subtree; PURE presentation; NO hooks.
+
 function Cloud({ className, variant = 1 }: { className?: string; variant?: 1 | 2 | 3 }) {
   if (variant === 2) {
     return (
@@ -24,6 +30,9 @@ function Cloud({ className, variant = 1 }: { className?: string; variant?: 1 | 2
     </svg>
   );
 }
+
+// Human: Decorative hero graphic that layers SVG clouds with animated “lost” glyphs for the 404 illustration.
+// Agent: PURE presentational component; READS className; RETURNS stacked SVG + overlay spans.
 
 function LostCloud({ className }: { className?: string }) {
   return (
@@ -49,6 +58,9 @@ function LostCloud({ className }: { className?: string }) {
     </div>
   );
 }
+
+// Human: Default not-found route that keeps users oriented with home/back actions over the animated cloud backdrop.
+// Agent: useNavigate; RENDERS Link ROUTES.HOME; Button onClick navigate(-1); COMPOSES Cloud + LostCloud.
 
 export default function NotFoundPage() {
   const navigate = useNavigate();

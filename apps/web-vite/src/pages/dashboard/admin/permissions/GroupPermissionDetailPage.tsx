@@ -7,6 +7,9 @@ import { GroupPermissionsManager } from "@/components/features/admin/GroupPermis
 import { ROUTES } from "@/lib/constants/routes";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 
+// Human: Group-level permission matrix with membership preview and GroupPermissionsManager for bulk toggles.
+// Agent: FETCH /admin/groups/:id; STATE group,permissionCount; READS admin.permissions.*; navigate on missing id.
+
 interface GroupData {
   group: {
     id: string;
@@ -17,6 +20,9 @@ interface GroupData {
     members: Array<{ id: string; name: string | null; email: string; role: string }>;
   };
 }
+
+// Human: Loads group metadata, counts effective permissions, and mounts the manager once RBAC checks pass.
+// Agent: useParams id; useEffect guarded fetch; STATE loading,group; EARLY AccessDeniedWarning when unauthorized.
 
 export default function GroupPermissionDetailPage() {
   const { id } = useParams<{ id: string }>();

@@ -1,3 +1,6 @@
+// Human: Declares feature module identifiers and display copy used when admins enable modules for organizations.
+// Agent: EXPORTS MODULE_KEYS MODULE_CONFIG; TYPES ModuleKey; READ by admin module toggles and navigation gates.
+
 export const MODULE_KEYS = {
   TICKETS: "tickets",
   TIMETRACKING: "timetracking",

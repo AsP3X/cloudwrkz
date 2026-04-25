@@ -1,3 +1,5 @@
+// Human: Accessibility skip link that briefly blurs after mount so focus-visible styles do not stick on full page load.
+// Agent: READS linkRef; CALLS blur and body focus dance in rAF + timeout; LINKS to #main-content.
 import { useEffect, useRef } from "react";
 
 export const SkipToContent = () => {

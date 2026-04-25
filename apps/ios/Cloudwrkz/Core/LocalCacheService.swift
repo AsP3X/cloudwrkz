@@ -7,6 +7,9 @@
 
 import Foundation
 
+// Human: Logout and “clear cache” need to wipe both URLSession’s disk cache and on-disk temp so AsyncImage and 304s cannot leak prior tenant data.
+// Agent: LocalCacheService.clearAll URLCache.removeAllCachedResponses; RECURSIVE delete Caches tmp contents; totalCacheSizeBytes sums URLCache disk + dirs.
+
 enum LocalCacheService {
     /// Clears all local caches: URL response cache and app Caches directory.
     /// Call on logout to remove user-related cached data, or from Account Settings to free space.

@@ -4,6 +4,9 @@
 //! [`attempt_register_user`] until success, conflict, fatal error, or the deadline. Transient
 //! database errors retry for up to [`REGISTER_RETRY_MAX`], same as when the DB was only briefly down.
 
+// Human: Registration mirrors login: HTTP 202 plus polling, with hashed password already computed before the row insert retries.
+// Agent: RegisterJobs in-memory status; attempt_register_user INSERT users PENDING; classify_sqlx maps 23505 Conflict; register_retry_loop deadline REGISTER_RETRY_MAX.
+
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -72,6 +75,9 @@ pub enum RegisterAttemptError {
     Fatal(String),
 }
 
+// Human: In-memory job state lets the status endpoint answer without hammering Postgres for every poll during the retry window.
+// Agent: Mutex HashMap job_id JobRecord; insert_pending prune on insert; set_outcome mutates Done tuple; get_status clones response fields.
+
 impl RegisterJobs {
     pub fn insert_pending(&self, job_id: &str) {
         let mut map = self.0.lock().unwrap_or_else(|e| e.into_inner());
@@ -135,6 +141,9 @@ fn prune_stale_jobs_locked(map: &mut HashMap<String, JobRecord>) {
     });
 }
 
+// Human: Unique violations become a friendly “email taken” message, transient connect errors retry, and everything else is fatal.
+// Agent: BRANCHES is_transient_sqlx; MATCHES sqlx Error::Database code 23505 -> Conflict; ELSE Fatal string.
+
 fn classify_sqlx(err: sqlx::Error) -> RegisterAttemptError {
     if is_transient_sqlx(&err) {
         return RegisterAttemptError::Transient;
@@ -150,6 +159,9 @@ fn classify_sqlx(err: sqlx::Error) -> RegisterAttemptError {
 }
 
 /// One attempt to create a user row (duplicate check, insert, audit trigger).
+// Human: Pre-checks email existence to return a stable conflict before insert races, then inserts a pending user and logs audit `auth.register`.
+// Agent: SELECT users id by email; INSERT users role USER status PENDING email_verified false; DUPLICATE INSERT maps 23505; audit write.
+
 pub async fn attempt_register_user(
     pool: &PgPool,
     email: &str,
@@ -206,6 +218,9 @@ pub async fn attempt_register_user(
     Ok((user_id, email.to_string()))
 }
 
+// Human: Same fire-and-forget pattern as login: the HTTP handler stores the payload and this spawn runs the bounded retry loop.
+// Agent: tokio::spawn register_retry_loop; CLONES job_id into async block.
+
 pub fn spawn_register_retry(
     pool: PgPool,
     jobs: RegisterJobs,
@@ -217,6 +232,9 @@ pub fn spawn_register_retry(
         register_retry_loop(pool, jobs, jid, payload).await;
     });
 }
+
+// Human: Transient errors sleep 400ms between attempts; conflict and fatal paths finalize the background_jobs row via `finish_auth_register_job`.
+// Agent: LOOP deadline REGISTER_RETRY_MAX; MATCH attempt_register_user Ok/Transient/Conflict/Fatal; CALLS finish_auth_register_job; set_outcome for polling.
 
 async fn register_retry_loop(
     pool: PgPool,
@@ -235,7 +253,8 @@ async fn register_retry_loop(
                 email = %email,
                 "registration job timed out waiting for database"
             );
-            let msg = "The database did not become available in time. Please try registering again.";
+            let msg =
+                "The database did not become available in time. Please try registering again.";
             jobs.set_outcome(
                 &job_id,
                 RegisterJobStatusKind::Failed,
@@ -311,6 +330,9 @@ async fn register_retry_loop(
         }
     }
 }
+
+// Human: UUID v4 job ids are opaque to clients but unique enough for concurrent registrations without central coordination.
+// Agent: CALLS Uuid::new_v4 to_string; NO DB.
 
 pub fn new_job_id() -> String {
     Uuid::new_v4().to_string()

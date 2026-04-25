@@ -1,3 +1,5 @@
+// Human: Centered card for permission failures with optional primary/secondary navigation and query-string building for the primary link.
+// Agent: READS primaryHrefSearchParams; BUILDS URL via URL API with dummy host; RENDERS Button inside Links.
 import React from "react";
 import { Link } from "react-router-dom";
 import { Button } from "./Button";
@@ -23,6 +25,8 @@ export function AccessDeniedWarning({
   secondaryHref,
   secondaryLabel,
 }: AccessDeniedWarningProps) {
+  // Human: We only append search params that are defined and non-empty so callers can omit optional tracking keys cleanly.
+  // Agent: READS params entries; RETURNS pathname+search string; USES URL for parsing.
   const buildHref = (href: string, params?: Record<string, string | undefined>) => {
     if (!params || Object.keys(params).length === 0) return href;
     const url = new URL(href, "http://localhost");

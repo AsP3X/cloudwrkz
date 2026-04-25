@@ -7,6 +7,9 @@
 
 import SwiftUI
 
+// Human: Presents the same `/api/health` payload ops sees on web, styled for mobile so on-call checks don’t need a laptop.
+// Agent: ServerHealthStatusView; Task fetch ServerHealthDetail; ScrollView sections database cards; dismiss toolbar; loading error states.
+
 struct ServerHealthStatusView: View {
     let config: ServerConfig
     @Environment(\.dismiss) private var dismiss

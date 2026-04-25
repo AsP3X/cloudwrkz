@@ -1,3 +1,6 @@
+// Human: Shared TypeScript shapes for API entities (tickets, employees, time entries, etc.) used across pages and hooks.
+// Agent: DEFINES interfaces and unions only; NO runtime exports; CONSUMED by api client and React components.
+
 export interface UserSummary {
   id: string;
   name: string | null;
@@ -310,6 +313,47 @@ export interface AdminSession {
   userAgent: string | null;
   expiresAt: string;
   createdAt: string;
+}
+
+export type EmployeeStatus = "ACTIVE" | "INACTIVE" | "ON_LEAVE" | "PROBATION" | "TERMINATED";
+
+export interface EmployeeEmail {
+  id: string;
+  email: string;
+  label: string | null;
+  createdAt: string;
+}
+
+export interface EmployeeManager {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+}
+
+export interface Employee {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  title: string | null;
+  employeeStatus: EmployeeStatus;
+  companyRole: string | null;
+  department: string | null;
+  monthlySalary: number | null;
+  monthlyExpenses: number | null;
+  hoursWorked: number | null;
+  vacationAvailable: number;
+  vacationUsed: number;
+  vacationPlanned: number;
+  sickDaysTotal: number;
+  sickDaysAvailable: number;
+  linkedUserId: string | null;
+  linkedUser: { id: string; email: string; name: string | null } | null;
+  emails: EmployeeEmail[];
+  managers: EmployeeManager[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type TicketStatus = "OPEN" | "IN_PROGRESS" | "PENDING" | "RESOLVED" | "CLOSED";

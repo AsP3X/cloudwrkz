@@ -1,3 +1,5 @@
+// Human: Address field that merges OpenStreetMap Nominatim suggestions with server-backed recent locations, debounced fetch, keyboard listbox, and a portaled dropdown anchored to the input.
+// Agent: HTTP GET nominatim + GET /location-history; POST /location-history on select; ABORTABLE debounce 400ms; PORTALS listbox to document.body.
 import React from "react";
 import { createPortal } from "react-dom";
 import { Input, type InputProps } from "@/components/ui/Input";
@@ -19,6 +21,8 @@ interface LocationHistoryResponse {
   locations: string[];
 }
 
+// Human: Prefer a short street/city/postcode line built from structured address parts, and fall back to the raw display name when parts are missing.
+// Agent: READS suggestion.address keys; RETURNS joined string or display_name.
 function buildSuggestionLabel(suggestion: LocationSuggestion): string {
   const address = suggestion.address ?? {};
   const get = (key: string): string | undefined => {

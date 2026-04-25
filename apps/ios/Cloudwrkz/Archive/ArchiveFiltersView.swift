@@ -8,6 +8,9 @@
 
 import SwiftUI
 
+// Human: Modal filter sheet for the archive screen: text search, entity type, sort, archived-between dates, and reset.
+// Agent: SwiftUI NavigationStack sheet; @Binding ArchiveFilters searchQuery type sort archivedFrom archivedTo; DISMISS toolbar Done; glassPanel sections mirror TicketFiltersView style.
+
 struct ArchiveFiltersView: View {
     @Binding var filters: ArchiveFilters
     @Environment(\.dismiss) private var dismiss

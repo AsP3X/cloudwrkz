@@ -8,6 +8,9 @@
 
 import Foundation
 
+// Human: Location typing merges privacy-respecting OSM suggestions with tenant-specific history so repeat sites rank above random streets.
+// Agent: LocationAutocompleteService Nominatim GET + Bearer location-history path from loginPath; debounce minQuery 3; merges LocationSuggestion list.
+
 struct LocationSuggestion: Identifiable {
     var id: String { displayLabel }
     let displayLabel: String
@@ -64,6 +67,9 @@ private struct HistoryItem: Decodable {
 }
 
 enum LocationAutocompleteService {
+    // Human: Nominatim is rate-sensitive—shared debounce and timeouts avoid hammering OSM when users type quickly in the field.
+    // Agent: nominatimBase https nominatim.openstreetmap.org; timeout 10s; fetch merges history+OSM dedupe displayLabel.
+
     private static let nominatimBase = "https://nominatim.openstreetmap.org"
     private static let minQueryLength = 3
     private static let debounceNanoseconds: UInt64 = 400_000_000

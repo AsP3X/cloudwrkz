@@ -7,6 +7,8 @@ import { extractDomain, isGitHubUrl } from "@/lib/utils/links";
 import { ROUTES } from "@/lib/constants/routes";
 import type { Link as LinkType } from "@/lib/types";
 
+// Human: React UI for `LinkInformationSidebar` in saved links and collections: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE links; COLLECTIONS metadata GitHub YouTube; EXPORTS LinkInformationSidebar; REACT component; READS props hooks; MAY CALL api client.
 function getLinkTypeColor(type: string) {
   switch (type) {
     case "WEBSITE":

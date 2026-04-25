@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/Button";
 import type { LoginQueuedUiState } from "@/components/providers/AuthProvider";
 import { LoginQueuedBanner } from "@/features/auth/LoginQueuedBanner";
 
+// Human: React UI for `TodoBulkDeleteDialog` in tasks and todo lists: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE tasks; BULK filters forms; EXPORTS TodoBulkDeleteDialog; REACT component; READS props hooks; MAY CALL api client.
 interface TodoBulkDeleteDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;

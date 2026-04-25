@@ -9,6 +9,9 @@
 import SwiftUI
 import PhotosUI
 
+// Human: Photo picking can deliver huge assets—downscaling before upload avoids server rejects and saves cellular data.
+// Agent: ProfileEditView PhotosPicker; UIImage downscale profileImageMaxBytes profileImageMaxDimension; ProfileService.uploadAvatar; WRITES UserProfileStorage.
+
 /// Target max size for profile image (under 1MB to stay within API limit and reduce traffic).
 private let profileImageMaxBytes = 1000 * 1024 // 1000 KB
 /// Max dimension in points; large enough to stay sharp in UI (avatars, profile hero).
@@ -31,6 +34,9 @@ struct ProfileEditView: View {
     private enum Field {
         case firstName, lastName
     }
+
+    // Human: Same glass form language as login so “edit profile” doesn’t feel like a different product surface.
+    // Agent: NavigationStack gradient; TextField focus; save Task AuthService or profile endpoints; dismiss onSuccess onSave.
 
     var body: some View {
         NavigationStack {

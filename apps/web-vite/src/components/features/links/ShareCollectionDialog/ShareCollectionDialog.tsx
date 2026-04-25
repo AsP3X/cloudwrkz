@@ -4,6 +4,8 @@ import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { api, ApiError } from "@/api/client";
 
+// Human: React UI for `ShareCollectionDialog` in saved links and collections: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE links; COLLECTIONS metadata GitHub YouTube; EXPORTS ShareCollectionDialog; REACT component; READS props hooks; MAY CALL api client.
 export interface CollectionMemberRow {
   id: string;
   user_id: string;

@@ -4,6 +4,8 @@
  * Format: VITE_LOG_FORMAT=json for NDJSON suitable for log analysis (Datadog, ELK, Splunk).
  * In dev, error and warn are also sent to the Vite dev server so they appear in the terminal.
  */
+// Human: Central logging with env-driven level and optional NDJSON output for shipping logs to observability stacks.
+// Agent: READS VITE_LOG_LEVEL VITE_LOG_FORMAT; WRITES console; DEV POSTs warn/error to /__dev-log; EXPORTS log facade.
 
 const LEVELS = ["trace", "debug", "info", "warn", "error", "silent"] as const;
 type Level = (typeof LEVELS)[number];

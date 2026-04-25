@@ -1,5 +1,5 @@
-// Stub route for unified archive list until full backend is implemented.
-// Frontend shows empty list when items is [].
+// Human: Stub route for a unified archive list until the backend persists archived entities; the UI treats an empty `items` array as “nothing archived yet”.
+// Agent: GET /archive under v1; REQUIRES AuthUser; RETURNS JSON { items: [] }; READS no database.
 
 use axum::Json;
 
@@ -12,5 +12,7 @@ pub fn router() -> axum::Router<AppState> {
 }
 
 async fn list_archive(AuthUser(_user): AuthUser) -> Result<Json<serde_json::Value>, AppError> {
+    // Human: Authentication is enforced so the route shape matches future list endpoints, even though the payload is still empty.
+    // Agent: IGNORES user id today; RETURNS hard-coded empty items array; NO pool access.
     Ok(Json(serde_json::json!({ "items": [] })))
 }

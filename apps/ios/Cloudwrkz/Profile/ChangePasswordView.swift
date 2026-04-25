@@ -8,6 +8,9 @@
 
 import SwiftUI
 
+// Human: Password rotation stays in-app with the same validation hints as register (length, confirmation match).
+// Agent: ChangePasswordView; canSave guards; Task AuthService.changePassword appState.config; errorMessage mapping; onSuccess dismiss.
+
 struct ChangePasswordView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appState) private var appState
@@ -28,6 +31,9 @@ struct ChangePasswordView: View {
     private var canSave: Bool {
         !currentPassword.isEmpty && !newPassword.isEmpty && !confirmPassword.isEmpty && newPassword == confirmPassword && newPassword.count >= 8
     }
+
+    // Human: Three focused fields reduce accidental paste of new password into “current” compared to a single combined form.
+    // Agent: SecureField FocusState Field; glass fields; primary save disabled until canSave; NavigationStack toolbar cancel save.
 
     var body: some View {
         NavigationStack {

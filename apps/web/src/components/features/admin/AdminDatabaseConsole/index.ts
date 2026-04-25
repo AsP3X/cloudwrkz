@@ -1,2 +1,0 @@
-export { AdminDatabaseConsolePage } from "./AdminDatabaseConsole";
-

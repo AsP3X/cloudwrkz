@@ -84,6 +84,9 @@ async function pollMutationJobUntilDone<T>(
 ): Promise<T> {
   const maxWaitSecs = retryDeadlineSecs + 5;
   const deadline = Date.now() + maxWaitSecs * 1000;
+  // Human: `ok` tells listeners the background job finished successfully (vs failed, timeout, or HTTP error from job body).
+  // Agent: SETS mutationFinishedOk true only before successful return from completed status; FINALLY EMITS detail.ok.
+  let mutationFinishedOk = false;
   try {
     while (Date.now() < deadline) {
       await sleepMs(800);
@@ -92,16 +95,21 @@ async function pollMutationJobUntilDone<T>(
         `/mutation-jobs/${jobId}`,
         { method: "GET" },
       );
-      if (st.status === "completed") {
-        const code = st.http_status ?? 200;
+      const statusNorm =
+        typeof st.status === "string" ? st.status.toLowerCase() : "";
+      if (statusNorm === "completed") {
+        const raw = st.http_status;
+        const code =
+          typeof raw === "number" && Number.isFinite(raw) ? raw : 200;
         if (code >= 400) {
           const msg =
             typeof st.message === "string" ? st.message : "Request failed";
           throw new ApiError(code, msg, st.body);
         }
+        mutationFinishedOk = true;
         return st.body as T;
       }
-      if (st.status === "failed") {
+      if (statusNorm === "failed") {
         throw new ApiError(
           400,
           st.message || "Change could not be applied",
@@ -115,7 +123,11 @@ async function pollMutationJobUntilDone<T>(
       undefined,
     );
   } finally {
-    window.dispatchEvent(new CustomEvent("cloudwrkz:mutation-finished", { detail: { path, jobId } }));
+    window.dispatchEvent(
+      new CustomEvent("cloudwrkz:mutation-finished", {
+        detail: { path, jobId, ok: mutationFinishedOk },
+      }),
+    );
   }
 }
 

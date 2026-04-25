@@ -4,6 +4,8 @@ import type { SearchResult } from "../types";
 import { recordSearchResultAccess } from "../recordSearchAccess";
 import { cn } from "@/lib/utils/cn";
 
+// Human: React UI for `SearchPreviewPanel` in global search UX and result handling: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
+// Agent: SCOPE search; QUERY results preview; EXPORTS SearchPreviewPanel; REACT component; READS props hooks; MAY CALL api client.
 interface SearchPreviewPanelProps {
   result: SearchResult | null;
   onNavigate: () => void;

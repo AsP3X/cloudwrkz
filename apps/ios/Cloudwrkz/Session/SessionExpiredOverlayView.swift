@@ -8,10 +8,16 @@
 
 import SwiftUI
 
+// Human: Friendly “you’ve been signed out” moment instead of silently landing on a broken dashboard after a revoked session.
+// Agent: SessionExpiredOverlayView fullScreen gradient; onContinue CTA; subtle entrance animation appeared state.
+
 struct SessionExpiredOverlayView: View {
     var onContinue: () -> Void
 
     @State private var appeared = false
+
+    // Human: Matches other auth-adjacent overlays so the interruption feels like the same product chrome, not a system alert sheet.
+    // Agent: ZStack LinearGradient; VStack icon copy button onContinue; opacity scale onAppear.
 
     var body: some View {
         ZStack {

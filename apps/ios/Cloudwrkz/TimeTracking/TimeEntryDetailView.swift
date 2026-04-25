@@ -9,20 +9,24 @@
 import SwiftUI
 import Combine
 
+// Human: Running timers need local `liveEntry` state so pause/resume feedback is instant while the server catches up.
+// Agent: TimeEntryDetailView current = liveEntry ?? entry; break add/remove only via Edit sheet Save; sheets edit delete; Combine tick.
+
 struct TimeEntryDetailView: View {
     let entry: TimeEntry
     @State private var liveEntry: TimeEntry?
     @State private var showInfoSidebar = false
     @State private var showEditSheet = false
     @State private var showDeleteConfirm = false
-    @State private var showAddBreakSheet = false
     @State private var isPerformingAction = false
-    @State private var deletingBreakId: String?
     @Environment(\.dismiss) private var dismiss
 
     @Environment(\.appState) private var appState
 
     private var current: TimeEntry { liveEntry ?? entry }
+
+    // Human: Active entries surface pause/stop prominently; completed ones emphasize audit fields (duration, breaks) instead.
+    // Agent: ZStack ScrollView headerCard timerCard conditional actionCard breaks; toolbar edit delete; dismiss on delete success.
 
     var body: some View {
         ZStack {
@@ -70,11 +74,6 @@ struct TimeEntryDetailView: View {
         }
         .sheet(isPresented: $showInfoSidebar) {
             TimeEntryInfoSidebar(entry: current)
-        }
-        .sheet(isPresented: $showAddBreakSheet) {
-            AddBreakSheet(timeEntryId: current.id) {
-                Task { await refreshEntry() }
-            }
         }
         .alert("Delete Time Entry", isPresented: $showDeleteConfirm) {
             Button("Cancel", role: .cancel) { }
@@ -307,17 +306,21 @@ struct TimeEntryDetailView: View {
                         .foregroundStyle(CloudwrkzColors.neutral400)
                 }
                 Button {
-                    showAddBreakSheet = true
+                    showEditSheet = true
                 } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: "plus.circle.fill")
+                        Image(systemName: "pencil.circle.fill")
                             .font(.system(size: 14))
-                        Text("Add break")
+                        Text("Edit breaks")
                             .font(.system(size: 14, weight: .semibold))
                     }
                     .foregroundStyle(CloudwrkzColors.primary400)
                 }
             }
+
+            Text("Add or remove breaks in Edit, then tap Save.")
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(CloudwrkzColors.neutral500)
 
             if breaks.isEmpty {
                 Text("No breaks recorded.")
@@ -353,15 +356,6 @@ struct TimeEntryDetailView: View {
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(CloudwrkzColors.warning500)
                         }
-
-                        Button {
-                            Task { await deleteBreak(breakId: breakEntry.id) }
-                        } label: {
-                            Image(systemName: "trash")
-                                .font(.system(size: 14))
-                                .foregroundStyle(CloudwrkzColors.neutral500)
-                        }
-                        .disabled(deletingBreakId == breakEntry.id)
                     }
                     .padding(.vertical, 6)
 
@@ -596,15 +590,6 @@ struct TimeEntryDetailView: View {
         if case .success(let updated) = result {
             await MainActor.run { liveEntry = updated }
         }
-    }
-
-    private func deleteBreak(breakId: String) async {
-        await MainActor.run { deletingBreakId = breakId }
-        let result = await TimeTrackingService.deleteBreak(config: appState.config, timeEntryId: current.id, breakId: breakId)
-        if case .success = result {
-            await refreshEntry()
-        }
-        await MainActor.run { deletingBreakId = nil }
     }
 }
 

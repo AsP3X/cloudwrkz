@@ -1,3 +1,6 @@
+// Human: Top-level React Router map for marketing pages, authentication, and the nested dashboard layout with admin subtree.
+// Agent: BrowserRouter AuthProvider DatabaseHealthProvider; ROUTES import from ROUTES; AppBanners READS health+navigator.onLine.
+
 import { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/components/providers/AuthProvider";
@@ -57,11 +60,16 @@ import {
   AuditPage,
   DbConsolePage,
   UserDetailPage,
+  EmployeesPage,
+  EmployeeDetailPage,
   UserPermissionsListPage,
   UserPermissionDetailPage,
   GroupPermissionsListPage,
   GroupPermissionDetailPage,
 } from "@/pages";
+
+// Human: Sticky offline and database health notices that sit under the main header without pushing routed content.
+// Agent: LISTENS online/offline; READS useDatabaseHealthContext; RENDERS OfflineWarning DatabaseWarning; RETRIES health.checkHealth.
 
 function AppBanners() {
   const [isOnline, setIsOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
@@ -127,6 +135,9 @@ function AppBanners() {
   );
 }
 
+// Human: Wraps the full route tree in theme, auth, health, and error boundaries so every page shares consistent providers.
+// Agent: ErrorBoundary ThemeProvider BrowserRouter AuthProvider DatabaseHealthProvider Routes nested DashboardLayout admin.
+
 export default function App() {
   return (
     <ErrorBoundary>
@@ -173,6 +184,8 @@ export default function App() {
                   <Route path="notifications" element={<NotificationsPage />} />
                   <Route path="statistics" element={<StatisticsPage />} />
                   <Route path="archive" element={<ArchivePage />} />
+                  <Route path="employees" element={<EmployeesPage />} />
+                  <Route path="employees/:id" element={<EmployeeDetailPage />} />
 
                   {/* Admin routes */}
                   <Route path="users/:id" element={<UserViewPage />} />

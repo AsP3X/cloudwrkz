@@ -1,5 +1,8 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
+// Human: API rows use the same sortable string id style Prisma clients expect so web and DB migrations stay aligned.
+// Agent: PREFIX c + base36(ms since UNIX_EPOCH) + 16 random base36 chars; USES SystemTime::now; PANICS if clock before epoch.
+
 /// Generate a CUID-like identifier compatible with Prisma's cuid() default.
 /// Format: 25-char lowercase alphanumeric string.
 pub fn new_cuid() -> String {
@@ -21,6 +24,9 @@ pub fn new_cuid() -> String {
 
     format!("c{}{}", base36(timestamp as u64), random_part)
 }
+
+// Human: Encodes the millisecond timestamp into a short lowercase string using division/modulo base 36.
+// Agent: SPECIAL-CASE n==0 -> "0"; ELSE collects remainders against ASCII 0-9a-z then reverses into UTF-8 String.
 
 fn base36(mut n: u64) -> String {
     if n == 0 {

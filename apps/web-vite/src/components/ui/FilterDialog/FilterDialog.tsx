@@ -1,3 +1,5 @@
+// Human: Modal for editing list filters: reads and writes URL search params, optional local preset storage, optional date range fields, and applies changes via React Router navigation.
+// Agent: READS useSearchParams; WRITES navigate; READS WRITES localStorage preset keys; LAZY inner via Suspense wrapper on export.
 import React, { Suspense } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Dialog } from "@/components/ui/Dialog";

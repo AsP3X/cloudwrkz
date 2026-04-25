@@ -1,3 +1,8 @@
+//! Admin-only HTTP surface: RBAC, audit log, dangerous SQL explorer, system settings, job queue workers, and in-app notifications.
+
+// Human: Every handler checks explicit admin-style permissions (or `ADMIN` role for legacy paths) before exposing sensitive data or destructive operations.
+// Agent: router MERGES /admin/* + /notifications; USES check_permission + audit write_audit_log; job queue routes CALL persist_worker_count / supervisor; SSE worker logs BroadcastStream.
+
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -7,12 +12,12 @@ use axum::{
 };
 use futures_util::future::ready;
 use futures_util::stream::StreamExt;
-use std::convert::Infallible;
-use tokio_stream::wrappers::BroadcastStream;
 use rand::Rng;
 use serde::Deserialize;
 use sqlx::Row;
 use std::collections::HashSet;
+use std::convert::Infallible;
+use tokio_stream::wrappers::BroadcastStream;
 
 use crate::audit::{self, WriteAuditParams};
 use crate::auth::extractors::AuthUser;
@@ -112,7 +117,10 @@ pub fn router() -> Router<AppState> {
             "/admin/settings/diagnostics-health-token",
             post(rotate_diagnostics_health_token),
         )
-        .route("/admin/job-queue/workers", get(list_job_queue_workers).post(post_add_job_worker))
+        .route(
+            "/admin/job-queue/workers",
+            get(list_job_queue_workers).post(post_add_job_worker),
+        )
         .route(
             "/admin/job-queue/workers/desired-count",
             patch(patch_job_queue_workers_desired),
@@ -125,14 +133,17 @@ pub fn router() -> Router<AppState> {
             "/admin/job-queue/workers/{id}/log/stream",
             get(job_worker_log_sse),
         )
+        .route("/admin/job-queue/workers/{id}/log", get(get_job_worker_log))
         .route(
-            "/admin/job-queue/workers/{id}/log",
-            get(get_job_worker_log),
+            "/admin/job-queue/workers/{id}",
+            delete(delete_dismiss_job_worker),
         )
-        .route("/admin/job-queue/workers/{id}", delete(delete_dismiss_job_worker))
         .route("/notifications", get(list_notifications))
         .route("/notifications/{id}/read", post(mark_notification_read))
 }
+
+// Human: Audit listing and CSV export share tight query limits so an admin cannot accidentally download the entire log in one request.
+// Agent: SECTION audit_entries audit_actions audit_export audit_events; CONST MAX_AUDIT_PAGE_LIMIT AUDIT_EXPORT_LIMIT; dynamic WHERE filters with user_search ILIKE.
 
 const MAX_AUDIT_PAGE_LIMIT: i64 = 200;
 const AUDIT_EXPORT_LIMIT: i64 = 10_000;
@@ -508,10 +519,16 @@ async fn audit_events(
     Ok(Json(serde_json::json!({ "events": events })))
 }
 
+// Human: Raw SQL endpoints power the emergency admin console—they are gated by `admin.db.*` permissions and still only allow constrained operations.
+// Agent: SECTION db_query db_tables db_row_update db_row_delete; VALIDATES SQL prefixes / allowed statements before execution.
+
 #[derive(Deserialize)]
 struct DbQueryRequest {
     query: String,
 }
+
+// Human: `db_query` runs read-only inspection SQL chosen by admins; misuse could exfiltrate data so permission checks precede any `sqlx::query`.
+// Agent: REQUIRES admin.db.view_entries OR role ADMIN; BINDS arbitrary text to sqlx; RETURNS JSON rows columns.
 
 async fn db_query(
     State(state): State<AppState>,
@@ -734,6 +751,9 @@ async fn require_admin_jobs_view(pool: &sqlx::PgPool, user_id: &str) -> Result<(
     Err(AppError::forbidden("admin.jobs.view required"))
 }
 
+// Human: Job worker routes let operators scale dispatcher count, read ring-buffer logs, and tail new lines over SSE without SSH access.
+// Agent: SECTION list_job_queue_workers patch desired post_add restart delete dismiss get log SSE; CALLS JobWorkerSupervisor + persist_worker_count.
+
 async fn list_job_queue_workers(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -782,7 +802,9 @@ async fn patch_job_queue_workers_desired(
                 .map(|s| s.to_string()),
         },
     );
-    Ok(Json(serde_json::json!({ "success": true, "desiredCount": c })))
+    Ok(Json(
+        serde_json::json!({ "success": true, "desiredCount": c }),
+    ))
 }
 
 async fn post_add_job_worker(
@@ -815,7 +837,9 @@ async fn post_add_job_worker(
                 .map(|s| s.to_string()),
         },
     );
-    Ok(Json(serde_json::json!({ "success": true, "desiredCount": n })))
+    Ok(Json(
+        serde_json::json!({ "success": true, "desiredCount": n }),
+    ))
 }
 
 async fn post_restart_job_worker(
@@ -876,8 +900,13 @@ async fn delete_dismiss_job_worker(
                 .map(|s| s.to_string()),
         },
     );
-    Ok(Json(serde_json::json!({ "success": true, "desiredCount": c })))
+    Ok(Json(
+        serde_json::json!({ "success": true, "desiredCount": c }),
+    ))
 }
+
+// Human: Polling returns a snapshot of the ring-buffer lines for one dispatcher id without opening an SSE connection.
+// Agent: require_admin_jobs_view; CALLS WorkerLogRegistry.lines_for(worker_id); JSON workerId + lines.
 
 async fn get_job_worker_log(
     State(state): State<AppState>,
@@ -891,6 +920,9 @@ async fn get_job_worker_log(
         "lines": lines,
     })))
 }
+
+// Human: SSE keeps the admin UI log panel live while still enforcing `admin.jobs.view` on the initial handshake.
+// Agent: require_admin_jobs_view; BroadcastStream filter worker_id; Event::default().data(line); KeepAlive.
 
 async fn job_worker_log_sse(
     State(state): State<AppState>,
@@ -1154,6 +1186,9 @@ struct UserListParams {
     offset: Option<i64>,
 }
 
+// Human: User/group administration covers CRUD, bans, password resets, and explicit permission rows—moderators get a subset, admins get full control.
+// Agent: SECTION list_users create_user get_user update_user delete_user ban unban reset_password permissions* groups* modules sessions statistics dashboard.
+
 async fn list_users(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -1248,10 +1283,11 @@ async fn create_user(
     if user.role != "ADMIN" && user.role != "MODERATOR" {
         return Err(AppError::forbidden("Admin access required"));
     }
-    if user.role != "ADMIN"
-        && !check_permission(&state.pool, &user.id, "admin.users.create").await
+    if user.role != "ADMIN" && !check_permission(&state.pool, &user.id, "admin.users.create").await
     {
-        return Err(AppError::forbidden("You do not have permission to create users"));
+        return Err(AppError::forbidden(
+            "You do not have permission to create users",
+        ));
     }
 
     let email = body.email.trim().to_lowercase();
@@ -1267,10 +1303,7 @@ async fn create_user(
     }
 
     let role = body.role.to_uppercase();
-    if !matches!(
-        role.as_str(),
-        "USER" | "AGENT" | "ADMIN" | "MODERATOR"
-    ) {
+    if !matches!(role.as_str(), "USER" | "AGENT" | "ADMIN" | "MODERATOR") {
         return Err(AppError::bad_request("Invalid role"));
     }
 
@@ -1282,17 +1315,14 @@ async fn create_user(
         return Err(AppError::bad_request("Invalid status"));
     }
 
-    let existing: Option<String> = sqlx::query_scalar(
-        "SELECT id FROM users WHERE lower(email) = lower($1)",
-    )
-    .bind(&email)
-    .fetch_optional(&state.pool)
-    .await?;
+    let existing: Option<String> =
+        sqlx::query_scalar("SELECT id FROM users WHERE lower(email) = lower($1)")
+            .bind(&email)
+            .fetch_optional(&state.pool)
+            .await?;
 
     if existing.is_some() {
-        return Err(AppError::bad_request(
-            "User with this email already exists",
-        ));
+        return Err(AppError::bad_request("User with this email already exists"));
     }
 
     let name_trimmed = body
@@ -1888,12 +1918,10 @@ async fn replace_user_permissions(
     let perm_rows: Vec<(String, String)> = if unique_keys.is_empty() {
         Vec::new()
     } else {
-        sqlx::query_as(
-            r#"SELECT id, key FROM permissions WHERE key = ANY($1)"#,
-        )
-        .bind(&unique_keys)
-        .fetch_all(&state.pool)
-        .await?
+        sqlx::query_as(r#"SELECT id, key FROM permissions WHERE key = ANY($1)"#)
+            .bind(&unique_keys)
+            .fetch_all(&state.pool)
+            .await?
     };
 
     let found: HashSet<String> = perm_rows.iter().map(|(_, k)| k.clone()).collect();
@@ -2113,12 +2141,10 @@ async fn replace_group_permissions(
     let perm_rows: Vec<(String, String)> = if unique_keys.is_empty() {
         Vec::new()
     } else {
-        sqlx::query_as(
-            r#"SELECT id, key FROM permissions WHERE key = ANY($1)"#,
-        )
-        .bind(&unique_keys)
-        .fetch_all(&state.pool)
-        .await?
+        sqlx::query_as(r#"SELECT id, key FROM permissions WHERE key = ANY($1)"#)
+            .bind(&unique_keys)
+            .fetch_all(&state.pool)
+            .await?
     };
 
     let found: HashSet<String> = perm_rows.iter().map(|(_, k)| k.clone()).collect();
