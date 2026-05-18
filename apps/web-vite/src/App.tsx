@@ -7,6 +7,7 @@ import { AuthProvider } from "@/components/providers/AuthProvider";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
 import { DatabaseHealthProvider, useDatabaseHealthContext } from "@/components/providers/DatabaseHealthProvider";
+import { SetupGuard } from "@/components/setup/SetupGuard";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { ROUTES } from "@/lib/constants/routes";
 import { DatabaseWarning } from "@/components/ui/DatabaseWarning";
@@ -14,6 +15,7 @@ import { OfflineWarning } from "@/components/ui/OfflineWarning";
 
 import {
   HomePage,
+  SetupPage,
   LoginPage,
   RegisterPage,
   AboutPage,
@@ -146,8 +148,10 @@ export default function App() {
           <AuthProvider>
             <DatabaseHealthProvider>
               <AppBanners />
+              <SetupGuard>
               <Routes>
                 {/* Public routes */}
+                <Route path={ROUTES.SETUP} element={<SetupPage />} />
                 <Route path={ROUTES.HOME} element={<HomePage />} />
                 <Route path={ROUTES.LOGIN} element={<LoginPage />} />
                 <Route path={ROUTES.REGISTER} element={<RegisterPage />} />
@@ -214,6 +218,7 @@ export default function App() {
                 {/* 404 */}
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>
+              </SetupGuard>
             </DatabaseHealthProvider>
           </AuthProvider>
         </BrowserRouter>

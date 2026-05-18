@@ -3,6 +3,7 @@
 
 export const ROUTES = {
   HOME: "/",
+  SETUP: "/setup",
   LOGIN: "/login",
   QR_LOGIN: "/qr-login",
   REGISTER: "/register",

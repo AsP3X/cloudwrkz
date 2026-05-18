@@ -2,6 +2,7 @@
 // Agent: RE-EXPORTS default page modules; NO side effects; ROUTER CONSUMES named exports from single entry.
 
 export { default as HomePage } from "./HomePage";
+export { default as SetupPage } from "./SetupPage";
 export { default as LoginPage } from "./LoginPage";
 export { default as RegisterPage } from "./RegisterPage";
 export { default as AboutPage } from "./AboutPage";

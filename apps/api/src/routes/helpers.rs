@@ -7,7 +7,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use axum::http::HeaderMap;
-use sqlx::{PgPool, Postgres, Row};
+use sqlx::{Executor, PgPool, Postgres, Row};
 
 use crate::models::ticket::{CommentAuthor, GroupSummary};
 use crate::models::user::UserSummary;
@@ -122,6 +122,24 @@ pub async fn get_user_permission_keys(pool: &PgPool, user_id: &str) -> Vec<Strin
     }
 
     keys.into_iter().collect()
+}
+
+// Human: First-run bootstrap admins need every permission key so `/me` and the Vite `can()` checks work (role alone is not enough).
+// Agent: INSERT user_permissions SELECT all permissions.id; id prefix bootstrap-{user_id}-; ON CONFLICT DO NOTHING; works on pool or tx Executor.
+pub async fn grant_all_permissions_to_user<'e, E>(executor: E, user_id: &str) -> Result<(), sqlx::Error>
+where
+    E: Executor<'e, Database = Postgres>,
+{
+    sqlx::query(
+        r#"INSERT INTO user_permissions (id, user_id, permission_id, created_at)
+           SELECT 'bootstrap-' || $1 || '-' || p.id, $1, p.id, NOW()
+           FROM permissions p
+           ON CONFLICT (user_id, permission_id) DO NOTHING"#,
+    )
+    .bind(user_id)
+    .execute(executor)
+    .await?;
+    Ok(())
 }
 
 // Human: Ticket list items embed a small user card; this helper maps `users` columns into `UserSummary` without leaking password hash.

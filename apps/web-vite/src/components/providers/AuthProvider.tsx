@@ -53,6 +53,8 @@ interface AuthContextType {
   >;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  /** After POST /setup succeeds, persist the session token and load `/me`. */
+  completeSetupSession: (token: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -392,6 +394,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await fetchUser();
   };
 
+  // Human: First-run setup returns a bearer token synchronously (unlike queued login); store it and hydrate `/me`.
+  // Agent: WRITES localStorage auth_token; CALLS fetchUser; CLEARS needsConnection.
+  const completeSetupSession = async (token: string) => {
+    localStorage.setItem("auth_token", token);
+    setNeedsConnection(false);
+    await fetchUser();
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -406,6 +416,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         register,
         logout,
         refreshUser,
+        completeSetupSession,
       }}
     >
       {children}

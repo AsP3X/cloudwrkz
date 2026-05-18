@@ -25,9 +25,14 @@ Monorepo for the Cloudwrkz product: **Vite + Rust API** stack, **Next.js** app, 
 - **Docker** and **Docker Compose** (v2: `docker compose`) — local PostgreSQL, optional API container
 - **Rust** (stable) — only if you build or run `apps/api` and `apps/cli` on the host instead of using the API container
 
-## Setup
+## Quick start (local API + Vite)
 
-### 1. Clone and install JavaScript dependencies
+### Prerequisites
+
+- **Node.js** ≥ 25.2.0, **pnpm** ≥ 9, **Rust** (stable), **Docker** (for PostgreSQL)
+- Optional: Git Bash or WSL on Windows to run `./init-env.sh` (or use `init-env.ps1` in PowerShell)
+
+### Install and configure
 
 From the repository root:
 
@@ -37,9 +42,60 @@ cd cloudwrkz
 pnpm install
 ```
 
-This installs the pnpm workspace packages under [apps/web](apps/web) and [apps/web-vite](apps/web-vite) (see [pnpm-workspace.yaml](pnpm-workspace.yaml)).
+Create local env files (copies `*.env.example` and fills `GENERATE_ME` secrets such as `CLOUDWRKZ_BOOTSTRAP_SECRET` for the CLI):
+
+```bash
+# macOS / Linux / Git Bash
+./init-env.sh
+
+# Windows PowerShell
+./init-env.ps1
+```
+
+Start PostgreSQL (from a Compose file in the repo root):
+
+```bash
+cp docker-compose.yml.example docker-compose.yml
+docker compose up -d postgres
+```
+
+### Start everything
+
+```bash
+pnpm run dev
+```
+
+- **API** → [http://localhost:8080/api/health](http://localhost:8080/api/health)
+- **Web (Vite)** → [http://localhost:5173](http://localhost:5173)
+
+On a **fresh database**, the app redirects to **`/setup`**. Complete the wizard to create the first admin account, then sign in to the dashboard. You can still use the CLI (`cloudwrkz-cli admin create-admin`) when the UI is not available — see [apps/cli/README.md](apps/cli/README.md).
+
+### Start services individually
+
+```bash
+pnpm run dev:api    # Rust API only
+pnpm run dev:vite   # Vite SPA only
+```
+
+### Docker: init env + full stack
+
+```bash
+docker compose --profile init run --rm init-env
+docker compose up -d
+pnpm run dev:vite   # optional: Vite on the host while API runs in Docker
+```
+
+---
+
+## Setup (reference)
+
+### 1. Clone and install JavaScript dependencies
+
+Same as **Quick start** above (`pnpm install`).
 
 ### 2. Environment files
+
+Prefer **`init-env.sh`** / **`init-env.ps1`** instead of manual copies. To configure by hand:
 
 
 | App         | Action                                                                                                                                             |
@@ -66,7 +122,7 @@ This starts:
 - **PostgreSQL** on port `5432` (user `cloudwrkz`, database `cloudwrkz`, default password `cloudwrkz_dev_password` unless you set `POSTGRES_PASSWORD`)
 - **Rust API** on port `8080` (applies SQLx migrations on startup)
 - **Vite dev server** on port `5173` (custom image: Node + bundled `**cloudwrkz-cli`** on `PATH`; dependencies baked in the image — rebuild after changing app deps)
-- **pgAdmin** on port `5050` (default login `admin@cloudwrkz.test` / `admin`)
+- **pgAdmin** on port `5050` (default login `admin@example.com` / `admin`)
 
 Check API health: [http://localhost:8080/api/health](http://localhost:8080/api/health).
 
@@ -98,7 +154,9 @@ Ensure Postgres is reachable at the `DATABASE_URL` in that file (e.g. after `doc
 
 ### 5. First admin account (bootstrap)
 
-With the database up, create the first admin (requires a bootstrap secret — see [apps/cli/README.md](apps/cli/README.md)).
+**Recommended:** open the Vite app after `pnpm run dev`; on an empty database you are sent to **`/setup`** to create the admin in the browser.
+
+**Alternative (CLI):** with the database up, create the first admin (requires a bootstrap secret — see [apps/cli/README.md](apps/cli/README.md)).
 
 **From the host** (after `cargo build --release -p cloudwrkz-cli`):
 

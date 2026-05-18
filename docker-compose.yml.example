@@ -8,6 +8,21 @@
 # API and web-vite images build from the repo root; Dockerfiles use `apps/...` paths.
 
 services:
+  init-env:
+    image: alpine:latest
+    container_name: cloudwrkz-init-env
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    # Human: Strip CR before running the script — YAML must not interpret \r as escape (use ''\r'' in single-quoted sh -c).
+    # Agent: RUNS tr -d literal CR; WRITES /tmp/init-env.sh; EXEC sh; PROFILE init only.
+    command:
+      - sh
+      - -c
+      - 'tr -d ''\r'' < /workspace/init-env.sh > /tmp/init-env.sh && sh /tmp/init-env.sh'
+    profiles:
+      - init
+
   api:
     build:
       context: ${CLOUDWRKZ_REPO_ROOT:-.}
@@ -84,7 +99,7 @@ services:
     container_name: cloudwrkz-pgadmin
     restart: unless-stopped
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@cloudwrkz.test
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
       PGADMIN_DEFAULT_PASSWORD: admin
       PGADMIN_CONFIG_SERVER_MODE: 'False'
     ports:

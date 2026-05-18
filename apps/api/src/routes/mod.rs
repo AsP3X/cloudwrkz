@@ -18,6 +18,7 @@ pub mod me;
 pub mod mutation_jobs;
 pub mod profile;
 pub mod search;
+pub mod setup;
 pub mod tickets;
 pub mod time_tracking;
 pub mod todos;
@@ -85,6 +86,7 @@ impl AppState {
 pub fn v1_router(config: &AppConfig) -> Router<AppState> {
     Router::new()
         .merge(health::v1_router())
+        .merge(setup::router())
         .merge(
             auth::router()
                 .nest("/auth/qr-login", auth_qr_login::scoped_router())

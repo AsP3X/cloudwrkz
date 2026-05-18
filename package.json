@@ -4,8 +4,10 @@
   "private": true,
   "description": "Cloudwrkz monorepo: web app and iOS app",
   "scripts": {
-    "dev": "pnpm --filter web dev",
+    "dev": "concurrently \"pnpm run dev:api\" \"pnpm run dev:vite\" --names \"API,WEB\" --prefix-colors \"cyan,magenta\"",
+    "dev:api": "cargo run -p cloudwrkz-api",
     "dev:vite": "pnpm --filter web-vite dev",
+    "dev:next": "pnpm --filter web dev",
     "build": "pnpm --filter web build",
     "build:vite": "pnpm --filter web-vite build",
     "start": "pnpm --filter web start",
@@ -21,6 +23,9 @@
     "db:reset": "pnpm --filter web db:reset",
     "db:seed-permissions": "pnpm --filter web db:seed-permissions",
     "db:studio": "pnpm --filter web db:studio"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
   },
   "engines": {
     "node": ">=25.2.0",

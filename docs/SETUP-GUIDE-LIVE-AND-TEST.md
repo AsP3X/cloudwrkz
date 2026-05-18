@@ -70,7 +70,7 @@ docker compose up -d postgres pgadmin
 Default credentials:
 
 - **PostgreSQL:** user `cloudwrkz`, password `cloudwrkz_dev_password`, database `cloudwrkz`, port `5432`
-- **pgAdmin:** email `admin@cloudwrkz.test`, password `admin`
+- **pgAdmin:** email `admin@example.com`, password `admin`
 
 **Option B: Local PostgreSQL**
 
