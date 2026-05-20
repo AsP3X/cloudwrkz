@@ -2,6 +2,7 @@ import React from "react";
 import { Dialog } from "@/components/ui/Dialog";
 import { TimeEntryEditForm, type TimeEntryEditSavePayload } from "../TimeEntryEditForm";
 import { api } from "@/api/client";
+import { useAuth } from "@/components/providers/AuthProvider";
 import type { TimeEntry as ViteTimeEntry } from "@/lib/types";
 import { parseApiDate } from "@/lib/utils/date";
 import type { TimeEntryBreakDraftRow } from "../TimeEntryBreaks";
@@ -53,6 +54,10 @@ interface EditTimeEntryDialogProps {
 }
 
 export function EditTimeEntryDialog({ open, onOpenChange, entry, userTimezone = "UTC", onUpdated }: EditTimeEntryDialogProps) {
+  const { modules, can } = useAuth();
+  const customersModuleEnabled =
+    modules.includes("customers") &&
+    (can("customers.view") || can("modules.customers.view"));
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const baselineBreaksRef = React.useRef<TimeEntryBreakDraftRow[]>([]);
@@ -70,6 +75,11 @@ export function EditTimeEntryDialog({ open, onOpenChange, entry, userTimezone = 
     startedAt: parseApiDate(entry.started_at),
     stoppedAt: entry.stopped_at ? parseApiDate(entry.stopped_at) : null,
     ticket: entry.ticket_id ? { id: entry.ticket_id, ticketNumber: "", title: "" } : null,
+    billing: {
+      customerId: entry.customer_id,
+      customerDisplayName: entry.customer?.display_name ?? null,
+      hourlyRate: entry.hourly_rate,
+    },
   }), [entry]);
 
   const formBreaks = React.useMemo(() =>
@@ -109,6 +119,8 @@ export function EditTimeEntryDialog({ open, onOpenChange, entry, userTimezone = 
         timezone: data.timezone === "" ? null : (data.timezone ?? null),
         started_at: data.startedAt ? data.startedAt.toISOString() : undefined,
         stopped_at: data.stoppedAt ? data.stoppedAt.toISOString() : null,
+        customer_id: data.billing.customerId,
+        hourly_rate: data.billing.hourlyRate,
       });
       await syncTimeEntryBreakDraft(entry.id, baselineBreaksRef.current, data.breaks);
       onOpenChange(false);
@@ -144,6 +156,7 @@ export function EditTimeEntryDialog({ open, onOpenChange, entry, userTimezone = 
           userTimezone={userTimezone}
           entryTimezone={entry.timezone}
           breaks={formBreaks}
+          customersModuleEnabled={customersModuleEnabled}
         />
       </div>
     </Dialog>

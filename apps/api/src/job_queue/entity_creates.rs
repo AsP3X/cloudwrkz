@@ -1467,11 +1467,25 @@ async fn exec_time_entry_timer_create(
         .and_then(parse_api_utc_naive_datetime)
         .unwrap_or_else(|| chrono::Utc::now().naive_utc());
 
+    let billing = match crate::time_entry_billing::resolve_time_entry_billing(
+        pool,
+        &user_id,
+        crate::time_entry_billing::TimeEntryBillingInput {
+            customer_id: body.customer_id.clone(),
+            hourly_rate: body.hourly_rate,
+        },
+    )
+    .await
+    {
+        Ok(b) => b,
+        Err(ae) => return JobExecOutcome::Fail(ae),
+    };
+
     let res = sqlx::query(
         r#"INSERT INTO time_entries (id, name, description, status, started_at, last_resumed_at,
-                             total_duration, user_id, ticket_id, tags, billable, location,
-                             created_at, updated_at)
-           VALUES ($1, $2, $3, 'RUNNING', $4, $4, 0, $5, $6, $7, $8, $9, $4, $4)"#,
+                             total_duration, user_id, ticket_id, customer_id, hourly_rate,
+                             tags, billable, location, created_at, updated_at)
+           VALUES ($1, $2, $3, 'RUNNING', $4, $4, 0, $5, $6, $7, $8, $9, $10, $11, $4, $4)"#,
     )
     .bind(&id)
     .bind(&name)
@@ -1479,6 +1493,8 @@ async fn exec_time_entry_timer_create(
     .bind(now)
     .bind(&user_id)
     .bind(&body.ticket_id)
+    .bind(&billing.customer_id)
+    .bind(billing.hourly_rate)
     .bind(&tags)
     .bind(body.billable.unwrap_or(false))
     .bind(&body.location)
@@ -1611,11 +1627,25 @@ async fn exec_time_entry_manual_create(
 
     let tags = body.tags.unwrap_or_default();
 
+    let billing = match crate::time_entry_billing::resolve_time_entry_billing(
+        pool,
+        &user_id,
+        crate::time_entry_billing::TimeEntryBillingInput {
+            customer_id: body.customer_id.clone(),
+            hourly_rate: body.hourly_rate,
+        },
+    )
+    .await
+    {
+        Ok(b) => b,
+        Err(ae) => return JobExecOutcome::Fail(ae),
+    };
+
     let res = sqlx::query(
         r#"INSERT INTO time_entries (id, name, description, status, started_at, stopped_at,
-                             total_duration, user_id, tags, billable, location,
+                             total_duration, user_id, customer_id, hourly_rate, tags, billable, location,
                              created_at, updated_at)
-           VALUES ($1, $2, $3, 'STOPPED', $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())"#,
+           VALUES ($1, $2, $3, 'STOPPED', $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())"#,
     )
     .bind(&id)
     .bind(&body.name)
@@ -1624,6 +1654,8 @@ async fn exec_time_entry_manual_create(
     .bind(stopped_at)
     .bind(wall_secs_i32)
     .bind(&user_id)
+    .bind(&billing.customer_id)
+    .bind(billing.hourly_rate)
     .bind(&tags)
     .bind(body.billable.unwrap_or(false))
     .bind(&body.location)

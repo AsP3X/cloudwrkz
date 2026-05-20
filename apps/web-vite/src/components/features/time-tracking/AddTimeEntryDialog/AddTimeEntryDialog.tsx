@@ -7,6 +7,11 @@ import { api } from "@/api/client";
 import { LocationAutocompleteInput } from "@/components/ui/LocationAutocompleteInput";
 import { TagAutocompleteInput } from "@/components/ui/TagAutocompleteInput";
 import { DateTimeFields } from "@/components/ui/DateTimeFields";
+import { useAuth } from "@/components/providers/AuthProvider";
+import {
+  TimeEntryBillingField,
+  type TimeEntryBillingState,
+} from "../TimeEntryBillingDialog";
 
 // Human: React UI for `AddTimeEntryDialog` in time entries and live timers: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
 // Agent: SCOPE time-tracking; ENTRIES breaks floating-timer; EXPORTS AddTimeEntryDialog; REACT component; READS props hooks; MAY CALL api client.
@@ -27,6 +32,10 @@ function SectionHeader({ icon, label }: { icon: React.ReactNode; label: string }
 }
 
 export function AddTimeEntryDialog({ open, onOpenChange, onCreated }: AddTimeEntryDialogProps) {
+  const { modules, can } = useAuth();
+  const customersModuleEnabled =
+    modules.includes("customers") &&
+    (can("customers.view") || can("modules.customers.view"));
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [name, setName] = React.useState("");
@@ -36,6 +45,11 @@ export function AddTimeEntryDialog({ open, onOpenChange, onCreated }: AddTimeEnt
   const [stoppedAt, setStoppedAt] = React.useState<Date | null>(null);
   const [tags, setTags] = React.useState<string[]>([]);
   const [tagInput, setTagInput] = React.useState("");
+  const [billing, setBilling] = React.useState<TimeEntryBillingState>({
+    customerId: null,
+    customerDisplayName: null,
+    hourlyRate: null,
+  });
 
   React.useEffect(() => {
     if (open && !startedAt && !stoppedAt) {
@@ -55,6 +69,7 @@ export function AddTimeEntryDialog({ open, onOpenChange, onCreated }: AddTimeEnt
       setStoppedAt(null);
       setTags([]);
       setTagInput("");
+      setBilling({ customerId: null, customerDisplayName: null, hourlyRate: null });
       setServerError(null);
     }
   }, [open]);
@@ -101,6 +116,8 @@ export function AddTimeEntryDialog({ open, onOpenChange, onCreated }: AddTimeEnt
         total_duration: totalSeconds,
         started_at: start.toISOString(),
         stopped_at: stop.toISOString(),
+        customer_id: billing.customerId ?? undefined,
+        hourly_rate: billing.hourlyRate ?? undefined,
       });
       onOpenChange(false);
       onCreated?.();
@@ -200,6 +217,14 @@ export function AddTimeEntryDialog({ open, onOpenChange, onCreated }: AddTimeEnt
               placeholder="Where were you working?"
               value={location}
               onChange={setLocation}
+            />
+          </div>
+
+          <div className="animate-field-in" style={{ "--field-delay": "300ms" } as React.CSSProperties}>
+            <TimeEntryBillingField
+              billing={billing}
+              onChange={setBilling}
+              customersModuleEnabled={customersModuleEnabled}
             />
           </div>
 

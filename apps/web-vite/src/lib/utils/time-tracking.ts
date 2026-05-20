@@ -121,6 +121,30 @@ export function parseTimerNumber(timerName: string): { prefix: string; sequence:
   return { prefix: "TMR", sequence: parseInt(match[1], 10) };
 }
 
+// Human: Earned amount uses worked seconds (excluding breaks) times the snapshot hourly rate stored on the entry.
+// Agent: READS hourly_rate; CALLS calculateElapsedTime; RETURNS null when rate missing; PURE currency math.
+export function calculateEarnedAmount(entry: {
+  status: string;
+  total_duration: number;
+  last_resumed_at: string | null;
+  started_at: string;
+  hourly_rate: number | null;
+  breaks?: Array<{ started_at: string; ended_at: string | null; duration: number }>;
+}): number | null {
+  if (entry.hourly_rate == null) return null;
+  const workedSeconds = calculateElapsedTime(entry);
+  return (workedSeconds / 3600) * entry.hourly_rate;
+}
+
+export function formatCurrencyAmount(amount: number, currency = "EUR"): string {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
 export function formatTimerNumber(timerName: string, entryId?: string): string {
   const parsed = parseTimerNumber(timerName);
   if (parsed) return generateTimerNumber(parsed.sequence);

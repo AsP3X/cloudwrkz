@@ -1,0 +1,48 @@
+---
+description: sqlx migrations are immutable once applied; add new numbered files instead of editing old ones
+globs: apps/api/migrations/**/*
+alwaysApply: true
+---
+
+# sqlx migrations (immutable after apply)
+
+This project uses **sqlx** migrations under `apps/api/migrations/`. The API runs them at startup; Docker Compose fails if a migration file’s checksum no longer matches `_sqlx_migrations`.
+
+## Rule
+
+**Never edit a migration file that has already been applied** (locally, in Docker, CI, or production)—**unless the user explicitly specifies and instructs you to do so**. Schema changes after ship must be a **new** sequentially numbered file (e.g. `003_…sql`, `004_…sql`).
+
+- **Do:** add `ALTER TABLE …`, new tables, indexes, seeds in a new migration.
+- **Do not:** change SQL in `001_…`, `002_…`, etc. after any environment has run them—even “small” fixes—**unless the user has clearly asked you to edit that specific applied migration** (and you warn them about checksum drift and the need for `migrate-repair` or equivalent).
+
+Editing an applied migration causes:
+
+```text
+migration N was previously applied but has been modified (sqlx checksum mismatch)
+```
+
+and the API container exits before serving traffic.
+
+## If checksum drift already happened (local dev only)
+
+Align checksums **without re-running SQL** when the database schema already matches the files on disk:
+
+```bash
+# From repo root; DATABASE_URL must point at the affected database
+cargo run -p cloudwrkz-api -- migrate-repair
+```
+
+Alternatives (data loss acceptable):
+
+- `sqlx migrate repair` from `apps/api` (sqlx-cli installed)
+- `sqlx database reset` from `apps/api`
+
+**Production:** do not edit old migrations or run ad-hoc repair without an explicit ops plan; add a forward migration instead.
+
+## Agent behavior
+
+When a task needs a schema change:
+
+1. Check existing files in `apps/api/migrations/` and pick the **next** number.
+2. Create a new `.sql` file only; leave prior migrations untouched **unless the user explicitly instructs editing an existing applied migration**.
+3. If the user reports checksum mismatch, explain the cause and recommend `migrate-repair` for local Docker/dev—not rewriting applied migration history (unless they directed that edit).

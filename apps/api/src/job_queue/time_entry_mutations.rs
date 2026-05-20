@@ -23,6 +23,7 @@ use super::entity_creates::{JobExecOutcome, map_sqlx_ticket};
 const ENTRY_SELECT: &str = r#"SELECT id, name, description, status::text as status,
        started_at, paused_at, stopped_at, completed_at,
        total_duration, last_resumed_at, user_id, ticket_id,
+       customer_id, hourly_rate::float8 as hourly_rate,
        tags, billable, location, timezone, archived_at,
        created_at, updated_at"#;
 
@@ -40,6 +41,8 @@ fn row_to_entry(r: &sqlx::postgres::PgRow) -> TimeEntryRow {
         last_resumed_at: r.get("last_resumed_at"),
         user_id: r.get("user_id"),
         ticket_id: r.get("ticket_id"),
+        customer_id: r.get("customer_id"),
+        hourly_rate: r.get("hourly_rate"),
         tags: r.get("tags"),
         billable: r.get("billable"),
         location: r.get("location"),
@@ -219,6 +222,73 @@ pub(super) async fn exec_time_entry_update(
                 .bind(&time_entry_id)
                 .execute(&mut *tx)
                 .await
+        {
+            let _ = tx.rollback().await;
+            return map_sqlx_ticket(e);
+        }
+    }
+
+    // Human: Billing updates store the client-selected customer link and hourly rate snapshot (no re-resolve on PATCH).
+    // Agent: PARSE customer_id JSON null|string; PARSE hourly_rate JSON null|number; VALIDATE via time_entry_billing helpers; UPDATE columns.
+    if body.customer_id.is_some() || body.hourly_rate.is_some() {
+        if body.customer_id.is_some() && !crate::time_entry_billing::customers_module_enabled(pool).await {
+            let _ = tx.rollback().await;
+            return JobExecOutcome::Fail(AppError::bad_request(
+                "Customer linking is unavailable while the Customers module is disabled",
+            ));
+        }
+
+        let customer_id = match body.customer_id.as_ref() {
+            None => existing.customer_id.clone(),
+            Some(value) if value.is_null() => None,
+            Some(value) => value.as_str().map(|s| s.to_string()),
+        };
+
+        let hourly_rate = match body.hourly_rate.as_ref() {
+            None => existing.hourly_rate,
+            Some(value) if value.is_null() => None,
+            Some(value) => value
+                .as_f64()
+                .or_else(|| value.as_str().and_then(|s| s.parse().ok())),
+        };
+
+        if let Some(ref cid) = customer_id {
+            let exists: Option<String> = sqlx::query_scalar(
+                "SELECT id FROM customers WHERE id = $1 AND archived_at IS NULL",
+            )
+            .bind(cid)
+            .fetch_optional(&mut *tx)
+            .await
+            .ok()
+            .flatten();
+            if exists.is_none() {
+                let _ = tx.rollback().await;
+                return JobExecOutcome::Fail(AppError::not_found("Customer not found"));
+            }
+        }
+
+        if let Some(rate) = hourly_rate {
+            if let Err(ae) = (|| {
+                if rate.is_nan() || rate.is_infinite() || rate < 0.0 {
+                    return Err(AppError::bad_request(
+                        "hourly_rate must be a non-negative number",
+                    ));
+                }
+                Ok(())
+            })() {
+                let _ = tx.rollback().await;
+                return JobExecOutcome::Fail(ae);
+            }
+        }
+
+        if let Err(e) = sqlx::query(
+            "UPDATE time_entries SET customer_id = $1, hourly_rate = $2, updated_at = NOW() WHERE id = $3",
+        )
+        .bind(&customer_id)
+        .bind(hourly_rate)
+        .bind(&time_entry_id)
+        .execute(&mut *tx)
+        .await
         {
             let _ = tx.rollback().await;
             return map_sqlx_ticket(e);

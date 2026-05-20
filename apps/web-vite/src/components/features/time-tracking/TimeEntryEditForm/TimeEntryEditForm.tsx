@@ -10,6 +10,10 @@ import { updateTimeEntrySchema, type UpdateTimeEntryInput } from "@/lib/validati
 import { TimeEntryBreaks, type TimeEntryBreakDraftRow } from "../TimeEntryBreaks";
 import { COMMON_TIMEZONES } from "@/lib/constants/timezones";
 import { LocationAutocompleteInput } from "@/components/ui/LocationAutocompleteInput";
+import {
+  TimeEntryBillingField,
+  type TimeEntryBillingState,
+} from "../TimeEntryBillingDialog";
 
 // Human: React UI for `TimeEntryEditForm` in time entries and live timers: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
 // Agent: SCOPE time-tracking; ENTRIES breaks floating-timer; EXPORTS TimeEntryEditForm; REACT component; READS props hooks; MAY CALL api client.
@@ -29,9 +33,14 @@ type TimeEntry = {
     ticketNumber: string;
     title: string;
   } | null;
+  billing: TimeEntryBillingState;
 };
 
-export type TimeEntryEditSavePayload = UpdateTimeEntryInput & { tags: string[]; breaks: TimeEntryBreakDraftRow[] };
+export type TimeEntryEditSavePayload = UpdateTimeEntryInput & {
+  tags: string[];
+  breaks: TimeEntryBreakDraftRow[];
+  billing: TimeEntryBillingState;
+};
 
 interface TimeEntryEditFormProps {
   entry: TimeEntry;
@@ -41,6 +50,7 @@ interface TimeEntryEditFormProps {
   userTimezone: string;
   entryTimezone?: string | null;
   breaks?: TimeEntryBreakDraftRow[];
+  customersModuleEnabled: boolean;
 }
 
 const EMPTY_BREAKS: TimeEntryBreakDraftRow[] = [];
@@ -55,10 +65,11 @@ function SectionHeader({ icon, label }: { icon: React.ReactNode; label: string }
   );
 }
 
-export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting, userTimezone, entryTimezone, breaks = EMPTY_BREAKS }: TimeEntryEditFormProps) {
+export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting, userTimezone, entryTimezone, breaks = EMPTY_BREAKS, customersModuleEnabled }: TimeEntryEditFormProps) {
   const [tags, setTags] = React.useState<string[]>(entry.tags);
   const [tagInput, setTagInput] = React.useState("");
   const [draftBreaks, setDraftBreaks] = React.useState<TimeEntryBreakDraftRow[]>(breaks);
+  const [billing, setBilling] = React.useState<TimeEntryBillingState>(entry.billing);
 
   const breaksSyncKey = React.useMemo(
     () =>
@@ -109,7 +120,8 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting, userT
       stoppedAt: entry.stoppedAt ?? undefined,
     });
     setTags(entry.tags);
-  }, [entry.id, entry.name, entry.description, entry.tags, entry.billable, entry.location, entry.timezone, entry.startedAt, entry.stoppedAt, reset]);
+    setBilling(entry.billing);
+  }, [entry.id, entry.name, entry.description, entry.tags, entry.billable, entry.location, entry.timezone, entry.startedAt, entry.stoppedAt, entry.billing, reset]);
 
   const handleAddTag = () => {
     const trimmed = tagInput.trim();
@@ -124,7 +136,7 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting, userT
   };
 
   const onSubmit = async (data: UpdateTimeEntryInput) => {
-    await onSave({ ...data, tags, breaks: draftBreaks });
+    await onSave({ ...data, tags, breaks: draftBreaks, billing });
   };
 
   return (
@@ -303,6 +315,14 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting, userT
                 ))}
               </div>
             )}
+          </div>
+
+          <div className="animate-field-in" style={{ "--field-delay": "340ms" } as React.CSSProperties}>
+            <TimeEntryBillingField
+              billing={billing}
+              onChange={setBilling}
+              customersModuleEnabled={customersModuleEnabled}
+            />
           </div>
 
           <div className="animate-field-in" style={{ "--field-delay": "360ms" } as React.CSSProperties}>

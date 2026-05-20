@@ -146,6 +146,7 @@ async fn list_tag_suggestions(
 const ENTRY_SELECT: &str = r#"SELECT id, name, description, status::text as status,
        started_at, paused_at, stopped_at, completed_at,
        total_duration, last_resumed_at, user_id, ticket_id,
+       customer_id, hourly_rate::float8 as hourly_rate,
        tags, billable, location, timezone, archived_at,
        created_at, updated_at"#;
 
@@ -163,6 +164,8 @@ fn row_to_entry(r: &sqlx::postgres::PgRow) -> TimeEntryRow {
         last_resumed_at: r.get("last_resumed_at"),
         user_id: r.get("user_id"),
         ticket_id: r.get("ticket_id"),
+        customer_id: r.get("customer_id"),
+        hourly_rate: r.get("hourly_rate"),
         tags: r.get("tags"),
         billable: r.get("billable"),
         location: r.get("location"),
@@ -171,6 +174,28 @@ fn row_to_entry(r: &sqlx::postgres::PgRow) -> TimeEntryRow {
         created_at: r.get("created_at"),
         updated_at: r.get("updated_at"),
     }
+}
+
+// Human: List/detail responses embed an optional customer summary when a timer is linked for billing context.
+// Agent: entry_to_json READS TimeEntryRow+breaks; MAY CALL customer_summary_json; EMITS flat entry fields + breaks array.
+async fn entry_to_json(
+    pool: &sqlx::PgPool,
+    entry: TimeEntryRow,
+    breaks: Vec<TimeEntryBreakRow>,
+) -> serde_json::Value {
+    let customer = match entry.customer_id.as_deref() {
+        Some(cid) => crate::time_entry_billing::customer_summary_json(pool, cid)
+            .await
+            .ok(),
+        None => None,
+    };
+    let mut val = serde_json::to_value(TimeEntryWithBreaks { entry, breaks })
+        .map_err(|e| AppError::internal(format!("serialize time entry: {e}")))
+        .unwrap_or_else(|_| serde_json::json!({}));
+    if let Some(c) = customer {
+        val["customer"] = c;
+    }
+    val
 }
 
 fn row_to_break(r: &sqlx::postgres::PgRow) -> TimeEntryBreakRow {
@@ -228,7 +253,7 @@ async fn list_entries(
     for r in &rows {
         let entry = row_to_entry(r);
         let breaks = fetch_breaks(&state.pool, &entry.id).await;
-        result.push(TimeEntryWithBreaks { entry, breaks });
+        result.push(entry_to_json(&state.pool, entry, breaks).await);
     }
 
     Ok(Json(serde_json::json!({ "timeEntries": result })))
@@ -253,7 +278,7 @@ async fn active_entries(
     for r in &rows {
         let entry = row_to_entry(r);
         let breaks = fetch_breaks(&state.pool, &entry.id).await;
-        result.push(TimeEntryWithBreaks { entry, breaks });
+        result.push(entry_to_json(&state.pool, entry, breaks).await);
     }
 
     Ok(Json(serde_json::json!({ "timeEntries": result })))
@@ -276,7 +301,7 @@ async fn get_entry(
     let breaks = fetch_breaks(&state.pool, &id).await;
 
     Ok(Json(
-        serde_json::json!({ "timeEntry": TimeEntryWithBreaks { entry, breaks } }),
+        serde_json::json!({ "timeEntry": entry_to_json(&state.pool, entry, breaks).await }),
     ))
 }
 

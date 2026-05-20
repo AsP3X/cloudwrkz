@@ -19,6 +19,7 @@ mod link_preview;
 mod models;
 mod request_tracking;
 pub mod routes;
+mod time_entry_billing;
 
 pub use config::AppConfig;
 pub use job_queue::supervisor::{

@@ -14,6 +14,7 @@ import {
   calculateTotalBreakDuration,
   formatDuration,
 } from "@/lib/utils/time-tracking";
+import { EarnedAmountDisplay } from "../EarnedAmountDisplay";
 import { formatDateTimeInTimezone } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
 import type { TimeEntry, TimeEntryStatus } from "@/lib/types";
@@ -451,7 +452,22 @@ export function TimeEntryList({ entries, userTimezone = "UTC", onRefresh }: Time
                       entry={{ ...entry, breaks: entry.breaks || [] }}
                       className="font-mono text-sm text-neutral-700 dark:text-neutral-300"
                     />
+                    <EarnedAmountDisplay
+                      entry={entry}
+                      className="text-sm font-medium text-emerald-700 dark:text-emerald-400"
+                    />
                   </div>
+                  {(entry.customer?.display_name || entry.hourly_rate != null) && (
+                    <div className="text-xs text-neutral-600 dark:text-neutral-400 mb-2">
+                      {entry.customer?.display_name && (
+                        <span>{entry.customer.display_name}</span>
+                      )}
+                      {entry.customer?.display_name && entry.hourly_rate != null && " · "}
+                      {entry.hourly_rate != null && (
+                        <span className="font-mono">{entry.hourly_rate.toFixed(2)}/h</span>
+                      )}
+                    </div>
+                  )}
                   {entry.breaks && entry.breaks.length > 0 && (
                     <div className="text-xs text-neutral-600 dark:text-neutral-400">
                       <span className="font-medium">Breaks deducted:</span>{" "}
@@ -706,6 +722,10 @@ export function TimeEntryList({ entries, userTimezone = "UTC", onRefresh }: Time
                     <DurationDisplay
                       entry={{ ...entry, breaks: entry.breaks || [] }}
                       className="font-mono text-sm"
+                    />
+                    <EarnedAmountDisplay
+                      entry={entry}
+                      className="block text-xs font-medium text-emerald-700 dark:text-emerald-400 mt-0.5"
                     />
                   </td>
                   {hasAnyBreaks && (

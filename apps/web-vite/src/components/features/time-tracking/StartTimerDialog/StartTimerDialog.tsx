@@ -7,6 +7,11 @@ import { api } from "@/api/client";
 import { LocationAutocompleteInput } from "@/components/ui/LocationAutocompleteInput";
 import { TagAutocompleteInput } from "@/components/ui/TagAutocompleteInput";
 import { DateTimeFields } from "@/components/ui/DateTimeFields";
+import { useAuth } from "@/components/providers/AuthProvider";
+import {
+  TimeEntryBillingField,
+  type TimeEntryBillingState,
+} from "../TimeEntryBillingDialog";
 
 // Human: React UI for `StartTimerDialog` in time entries and live timers: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
 // Agent: SCOPE time-tracking; ENTRIES breaks floating-timer; EXPORTS StartTimerDialog; REACT component; READS props hooks; MAY CALL api client.
@@ -27,6 +32,10 @@ interface StartTimerDialogProps {
 }
 
 export function StartTimerDialog({ open, onOpenChange, onCreated }: StartTimerDialogProps) {
+  const { modules, can } = useAuth();
+  const customersModuleEnabled =
+    modules.includes("customers") &&
+    (can("customers.view") || can("modules.customers.view"));
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [name, setName] = React.useState("");
@@ -35,6 +44,11 @@ export function StartTimerDialog({ open, onOpenChange, onCreated }: StartTimerDi
   const [startedAt, setStartedAt] = React.useState<Date | null>(null);
   const [tags, setTags] = React.useState<string[]>([]);
   const [tagInput, setTagInput] = React.useState("");
+  const [billing, setBilling] = React.useState<TimeEntryBillingState>({
+    customerId: null,
+    customerDisplayName: null,
+    hourlyRate: null,
+  });
 
   React.useEffect(() => {
     if (!open) {
@@ -44,6 +58,7 @@ export function StartTimerDialog({ open, onOpenChange, onCreated }: StartTimerDi
       setStartedAt(null);
       setTags([]);
       setTagInput("");
+      setBilling({ customerId: null, customerDisplayName: null, hourlyRate: null });
       setServerError(null);
     }
   }, [open]);
@@ -78,6 +93,8 @@ export function StartTimerDialog({ open, onOpenChange, onCreated }: StartTimerDi
         tags: tags.length > 0 ? tags : undefined,
         location: location.trim() || undefined,
         started_at: startedAt?.toISOString(),
+        customer_id: billing.customerId ?? undefined,
+        hourly_rate: billing.hourlyRate ?? undefined,
       });
       onOpenChange(false);
       onCreated?.();
@@ -170,6 +187,14 @@ export function StartTimerDialog({ open, onOpenChange, onCreated }: StartTimerDi
               placeholder="Where are you working?"
               value={location}
               onChange={setLocation}
+            />
+          </div>
+
+          <div className="animate-field-in" style={{ "--field-delay": "260ms" } as React.CSSProperties}>
+            <TimeEntryBillingField
+              billing={billing}
+              onChange={setBilling}
+              customersModuleEnabled={customersModuleEnabled}
             />
           </div>
 

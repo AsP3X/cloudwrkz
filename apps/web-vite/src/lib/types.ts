@@ -197,6 +197,13 @@ export interface TimeEntry {
   last_resumed_at: string | null;
   user_id: string;
   ticket_id: string | null;
+  customer_id: string | null;
+  hourly_rate: number | null;
+  customer?: {
+    id: string;
+    customer_number: string;
+    display_name: string;
+  } | null;
   tags: string[];
   billable: boolean;
   location: string | null;

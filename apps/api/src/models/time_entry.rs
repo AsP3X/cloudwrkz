@@ -19,6 +19,8 @@ pub struct TimeEntryRow {
     pub last_resumed_at: Option<chrono::NaiveDateTime>,
     pub user_id: String,
     pub ticket_id: Option<String>,
+    pub customer_id: Option<String>,
+    pub hourly_rate: Option<f64>,
     pub tags: Vec<String>,
     pub billable: bool,
     pub location: Option<String>,
@@ -55,6 +57,10 @@ pub struct CreateTimeEntryRequest {
     pub location: Option<String>,
     pub billable: Option<bool>,
     pub ticket_id: Option<String>,
+    #[serde(default, alias = "customerId")]
+    pub customer_id: Option<String>,
+    #[serde(default, alias = "hourlyRate")]
+    pub hourly_rate: Option<f64>,
     #[serde(default, alias = "startedAt")]
     pub started_at: Option<String>,
 }
@@ -76,6 +82,10 @@ pub struct AddTimeEntryRequest {
     pub tags: Option<Vec<String>>,
     pub location: Option<String>,
     pub billable: Option<bool>,
+    #[serde(default, alias = "customerId")]
+    pub customer_id: Option<String>,
+    #[serde(default, alias = "hourlyRate")]
+    pub hourly_rate: Option<f64>,
     pub hours: Option<i32>,
     pub minutes: Option<i32>,
     pub seconds: Option<i32>,
@@ -98,6 +108,10 @@ pub struct UpdateTimeEntryRequest {
     pub tags: Option<Vec<String>>,
     pub location: Option<String>,
     pub billable: Option<bool>,
+    #[serde(default, alias = "customerId")]
+    pub customer_id: Option<serde_json::Value>,
+    #[serde(default, alias = "hourlyRate")]
+    pub hourly_rate: Option<serde_json::Value>,
     #[serde(default, alias = "startedAt")]
     pub started_at: Option<String>,
     #[serde(default, alias = "stoppedAt")]
