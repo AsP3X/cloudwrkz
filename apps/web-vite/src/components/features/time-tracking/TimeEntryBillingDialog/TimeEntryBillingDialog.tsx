@@ -115,6 +115,7 @@ export function TimeEntryBillingDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
+      nested
       title="Company & hourly rate"
       description={
         customersModuleEnabled

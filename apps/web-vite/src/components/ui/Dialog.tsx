@@ -123,12 +123,13 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
 
     const dialogContent = (
       <>
-        {/* Backdrop */}
+        {/* Human: Nested dialogs use a stronger blur so the parent panel reads clearly beneath the overlay picker. */}
+        {/* Agent: backdrop-blur-sm default; backdrop-blur-md when nested; z-index stacks above parent dialog. */}
         <div
           role="presentation"
           className={cn(
             "fixed inset-0 bg-black/40 animate-dialog-backdrop",
-            nested ? "z-[100]" : "z-[40]"
+            nested ? "z-[100] backdrop-blur-md" : "z-[40] backdrop-blur-sm",
           )}
           onClick={() => onOpenChange?.(false)}
         />
