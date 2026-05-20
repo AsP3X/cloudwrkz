@@ -40,6 +40,8 @@ export { default as ArchivePage } from "./dashboard/ArchivePage";
 export { default as UserViewPage } from "./dashboard/UserViewPage";
 export { default as EmployeesPage } from "./dashboard/EmployeesPage";
 export { default as EmployeeDetailPage } from "./dashboard/EmployeeDetailPage";
+export { default as CustomersPage } from "./dashboard/CustomersPage";
+export { default as CustomerDetailPage } from "./dashboard/CustomerDetailPage";
 
 export { default as UsersPage } from "./dashboard/admin/UsersPage";
 export { default as GroupsPage } from "./dashboard/admin/GroupsPage";

@@ -91,6 +91,19 @@ const EmployeesIcon = () => (
   </svg>
 );
 
+// Human: Admin Work nav uses the same building icon as the user sidebar for customer overview.
+// Agent: SVG icon; USED moduleWorkItems Customers entry when customers module enabled.
+const CustomersIcon = () => (
+  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+    />
+  </svg>
+);
+
 export interface AdminSidebarProps {
   enabledModuleKeys: string[];
   canViewUsers: boolean;
@@ -106,6 +119,7 @@ export interface AdminSidebarProps {
   /** View admin Background Jobs (queue + detail); also allow legacy access via Manage Settings. */
   canViewBackgroundJobs: boolean;
   canViewEmployees: boolean;
+  canViewCustomers: boolean;
 }
 
 export function AdminSidebar({
@@ -122,6 +136,7 @@ export function AdminSidebar({
   canManageSettings,
   canViewBackgroundJobs,
   canViewEmployees,
+  canViewCustomers,
 }: AdminSidebarProps) {
   const pathname = useLocation().pathname;
   const { isMobileOpen, setIsMobileOpen, toolbarCompact } = useSidebar();
@@ -151,6 +166,9 @@ export function AdminSidebar({
 
   const hrItems = [
     canViewEmployees && { name: "Employees", href: ROUTES.EMPLOYEES, icon: EmployeesIcon },
+    // Human: Customer overview lives in HR beside Employees—permission-gated like Employees, not moduleWorkItems.
+    // Agent: SHOW Customers WHEN canViewCustomers; href ROUTES.CUSTOMERS; NO enabledModuleKeys requirement.
+    canViewCustomers && { name: "Customers", href: ROUTES.CUSTOMERS, icon: CustomersIcon },
   ].filter(Boolean) as { name: string; href: string; icon: () => JSX.Element }[];
 
   const permissionsItems = (canViewPermissions || canManagePermissions)

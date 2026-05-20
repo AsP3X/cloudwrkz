@@ -72,6 +72,14 @@ function DashboardLayoutContent() {
             can("employees.update") ||
             can("employees.delete")
           }
+          canViewCustomers={
+            user.role === "ADMIN" ||
+            can("modules.customers.view") ||
+            can("customers.view") ||
+            can("customers.create") ||
+            can("customers.update") ||
+            can("customers.delete")
+          }
         />
         <DashboardHeader user={user} />
       </>

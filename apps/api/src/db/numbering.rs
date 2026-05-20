@@ -21,3 +21,13 @@ pub async fn next_todo_number(tx: &mut Transaction<'_, Postgres>) -> Result<Stri
         .await?;
     Ok(format!("#TDO-{n:06}"))
 }
+
+// Human: Customer numbers are public identifiers (`CUS-000123`) allocated inside the create transaction.
+// Agent: READS nextval('customer_number_seq'); RETURNS CUS- + 6-digit zero-padded i64.
+
+pub async fn next_customer_number(tx: &mut Transaction<'_, Postgres>) -> Result<String, sqlx::Error> {
+    let n: i64 = sqlx::query_scalar("SELECT nextval('customer_number_seq')")
+        .fetch_one(&mut **tx)
+        .await?;
+    Ok(format!("CUS-{n:06}"))
+}

@@ -356,6 +356,59 @@ export interface Employee {
   updatedAt: string;
 }
 
+export type CustomerType = "INDIVIDUAL" | "COMPANY";
+export type CustomerStatus = "ACTIVE" | "INACTIVE";
+
+export interface CustomerContactEmployeeRate {
+  id: string;
+  employeeId: string;
+  hourlyRate: number;
+  employee: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
+}
+
+export interface CustomerContact {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string | null;
+  title: string | null;
+  isPrimary: boolean;
+  notes: string | null;
+  employeeRates: CustomerContactEmployeeRate[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Customer {
+  id: string;
+  customerNumber: string;
+  customerType: CustomerType;
+  status: CustomerStatus;
+  displayName: string;
+  firstName: string | null;
+  lastName: string | null;
+  companyName: string | null;
+  email: string | null;
+  phone: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  postalCode: string | null;
+  country: string | null;
+  notes: string | null;
+  defaultHourlyRate: number | null;
+  contacts: CustomerContact[];
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type TicketStatus = "OPEN" | "IN_PROGRESS" | "PENDING" | "RESOLVED" | "CLOSED";
 export type TicketPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 export type TicketType = "QUESTION" | "BUG" | "FEATURE_REQUEST" | "TASK";

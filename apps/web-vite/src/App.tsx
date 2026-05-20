@@ -64,6 +64,8 @@ import {
   UserDetailPage,
   EmployeesPage,
   EmployeeDetailPage,
+  CustomersPage,
+  CustomerDetailPage,
   UserPermissionsListPage,
   UserPermissionDetailPage,
   GroupPermissionsListPage,
@@ -190,6 +192,8 @@ export default function App() {
                   <Route path="archive" element={<ArchivePage />} />
                   <Route path="employees" element={<EmployeesPage />} />
                   <Route path="employees/:id" element={<EmployeeDetailPage />} />
+                  <Route path="customers" element={<CustomersPage />} />
+                  <Route path="customers/:id" element={<CustomerDetailPage />} />
 
                   {/* Admin routes */}
                   <Route path="users/:id" element={<UserViewPage />} />

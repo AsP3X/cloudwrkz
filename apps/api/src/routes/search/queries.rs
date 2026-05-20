@@ -115,7 +115,37 @@ ORDER BY match_score DESC NULLS LAST, te.updated_at DESC
 LIMIT $3
 "#;
 
-/// Bind: `$1` user_id (reserved, unused for row filter — any user with employees.view sees all), `$2` query, `$3` limit.
+/// Bind: `$1` user_id (reserved), `$2` query, `$3` limit — any user with customers.view sees all active customers.
+pub const CUSTOMER_SEARCH_SQL: &str = r#"
+SELECT c.id, c.customer_number, c.customer_type::text AS customer_type,
+       c.first_name, c.last_name, c.company_name, c.email,
+  GREATEST(
+    COALESCE(similarity(COALESCE(c.company_name, ''), $2), 0),
+    COALESCE(similarity(COALESCE(c.first_name, '') || ' ' || COALESCE(c.last_name, ''), $2), 0),
+    COALESCE(similarity(COALESCE(c.customer_number, ''), $2), 0),
+    COALESCE(similarity(COALESCE(c.email, ''), $2), 0),
+    CASE WHEN COALESCE(c.company_name, '') ILIKE '%' || $2 || '%' THEN 0.82 ELSE 0 END,
+    CASE WHEN COALESCE(c.first_name, '') || ' ' || COALESCE(c.last_name, '') ILIKE '%' || $2 || '%' THEN 0.78 ELSE 0 END,
+    CASE WHEN COALESCE(c.customer_number, '') ILIKE '%' || $2 || '%' THEN 0.75 ELSE 0 END,
+    CASE WHEN COALESCE(c.email, '') ILIKE '%' || $2 || '%' THEN 0.70 ELSE 0 END
+  ) AS match_score
+FROM customers c
+WHERE c.archived_at IS NULL
+  AND (
+    COALESCE(similarity(COALESCE(c.company_name, ''), $2), 0) > 0.1
+    OR COALESCE(similarity(COALESCE(c.first_name, '') || ' ' || COALESCE(c.last_name, ''), $2), 0) > 0.1
+    OR COALESCE(similarity(COALESCE(c.customer_number, ''), $2), 0) > 0.1
+    OR COALESCE(similarity(COALESCE(c.email, ''), $2), 0) > 0.1
+    OR COALESCE(c.company_name, '') ILIKE '%' || $2 || '%'
+    OR COALESCE(c.first_name, '') || ' ' || COALESCE(c.last_name, '') ILIKE '%' || $2 || '%'
+    OR COALESCE(c.customer_number, '') ILIKE '%' || $2 || '%'
+    OR COALESCE(c.email, '') ILIKE '%' || $2 || '%'
+  )
+ORDER BY match_score DESC NULLS LAST, c.updated_at DESC
+LIMIT $3
+"#;
+
+/// Bind: `$1` user_id (reserved, unused for row filter), `$2` query, `$3` limit.
 pub const EMPLOYEE_SEARCH_SQL: &str = r#"
 SELECT id,
        first_name, last_name, email, title,

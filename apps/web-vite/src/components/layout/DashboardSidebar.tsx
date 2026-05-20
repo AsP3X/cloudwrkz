@@ -4,6 +4,7 @@ import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils/cn";
 import { APP_CONFIG } from "@/lib/constants/config";
 import { ROUTES } from "@/lib/constants/routes";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { useSidebar } from "./SidebarContext";
 import { CollapsibleNavSection } from "@/components/ui/CollapsibleNavSection";
 import { IconMyTime } from "./sidebarNavIcons";
@@ -97,6 +98,19 @@ const EmployeesIcon = () => (
   </svg>
 );
 
+// Human: Building icon for the customer overview so Work nav distinguishes clients from internal employees.
+// Agent: SVG icon; USED by Work section Customers link; moduleKey customers gates visibility.
+const CustomersIcon = () => (
+  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+    />
+  </svg>
+);
+
 type NavItem = {
   readonly name: string;
   readonly href: string;
@@ -184,6 +198,12 @@ const NAV_SECTIONS = Object.freeze([
         moduleKey: "todos",
         countKey: "todos" as const,
       }),
+      Object.freeze({
+        name: "Customers",
+        href: ROUTES.CUSTOMERS,
+        icon: CustomersIcon,
+        moduleKey: "customers",
+      }),
     ]),
   }),
   Object.freeze({
@@ -260,12 +280,25 @@ export const DashboardSidebar = ({
 }: DashboardSidebarProps) => {
   const pathname = useLocation().pathname;
   const { isMobileOpen, setIsMobileOpen, toolbarCompact } = useSidebar();
+  const { user, can } = useAuth();
 
   const enabledModulesSet = new Set(enabledModuleKeys);
+
+  const canViewCustomersNav =
+    user?.role === "ADMIN" ||
+    enabledModulesSet.has("customers") ||
+    can("modules.customers.view") ||
+    can("customers.view") ||
+    can("customers.create") ||
+    can("customers.update") ||
+    can("customers.delete");
 
   const filterItem = (item: NavItem) => {
     if (item.agentOnly && userRole !== "AGENT") {
       return false;
+    }
+    if (item.moduleKey === "customers") {
+      return canViewCustomersNav;
     }
     if (item.moduleKey) {
       return enabledModulesSet.has(item.moduleKey);

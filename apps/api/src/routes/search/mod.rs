@@ -22,8 +22,8 @@ use crate::routes::helpers::{check_permission, get_user_permission_keys};
 
 use engine::{ScoredHit, fetch_recent_access_counts, rank_and_truncate};
 use queries::{
-    EMPLOYEE_SEARCH_SQL, LINK_SEARCH_SQL, TICKET_SEARCH_SQL, TIME_ENTRY_SEARCH_SQL,
-    TODO_SEARCH_SQL, USER_SEARCH_SQL,
+    CUSTOMER_SEARCH_SQL, EMPLOYEE_SEARCH_SQL, LINK_SEARCH_SQL, TICKET_SEARCH_SQL,
+    TIME_ENTRY_SEARCH_SQL, TODO_SEARCH_SQL, USER_SEARCH_SQL,
 };
 
 // Human: `POST /search/access` records lightweight telemetry used only for ranking boosts inside the sliding window.
@@ -71,6 +71,7 @@ struct SearchContext {
     mod_links: bool,
     mod_time: bool,
     mod_employees: bool,
+    mod_customers: bool,
     mod_users: bool,
     can_view_all_tickets: bool,
     can_view_all_time: bool,
@@ -93,6 +94,7 @@ async fn load_search_context(pool: &sqlx::PgPool, user_id: &str) -> SearchContex
     let mod_links = module_enabled(pool, "links").await;
     let mod_time = module_enabled(pool, "timetracking").await;
     let mod_employees = module_enabled(pool, "employees").await;
+    let mod_customers = module_enabled(pool, "customers").await;
     let mod_users = module_enabled(pool, "users").await;
     let can_view_all_tickets = check_permission(pool, user_id, "tickets.view_all").await
         || check_permission(pool, user_id, "admin.tickets.manage").await;
@@ -105,6 +107,7 @@ async fn load_search_context(pool: &sqlx::PgPool, user_id: &str) -> SearchContex
         mod_links,
         mod_time,
         mod_employees,
+        mod_customers,
         mod_users,
         can_view_all_tickets,
         can_view_all_time,
@@ -138,6 +141,10 @@ fn can_search_time(ctx: &SearchContext) -> bool {
 
 fn can_search_employees(ctx: &SearchContext) -> bool {
     ctx.mod_employees && has_perm(&ctx.perm_keys, "employees.view")
+}
+
+fn can_search_customers(ctx: &SearchContext) -> bool {
+    ctx.mod_customers && has_perm(&ctx.perm_keys, "customers.view")
 }
 
 fn can_search_users(ctx: &SearchContext) -> bool {
@@ -266,6 +273,37 @@ fn employee_to_result(r: &sqlx::postgres::PgRow) -> Result<serde_json::Value, Ap
     }))
 }
 
+fn customer_to_result(r: &sqlx::postgres::PgRow) -> Result<serde_json::Value, AppError> {
+    let id: String = r.get("id");
+    let customer_type: String = r.get("customer_type");
+    let title = if customer_type == "COMPANY" {
+        r.get::<Option<String>, _>("company_name")
+            .unwrap_or_else(|| "Company".to_string())
+    } else {
+        format!(
+            "{} {}",
+            r.get::<Option<String>, _>("first_name")
+                .unwrap_or_default(),
+            r.get::<Option<String>, _>("last_name")
+                .unwrap_or_default()
+        )
+        .trim()
+        .to_string()
+    };
+    Ok(json!({
+        "type": "customer",
+        "id": id,
+        "title": title,
+        "description": r.get::<Option<String>, _>("email"),
+        "url": format!("/dashboard/customers/{}", id),
+        "metadata": {
+            "customerNumber": r.get::<String, _>("customer_number"),
+            "customerType": customer_type,
+            "email": r.get::<Option<String>, _>("email"),
+        },
+    }))
+}
+
 fn user_to_result(r: &sqlx::postgres::PgRow) -> Result<serde_json::Value, AppError> {
     let id: String = r.get("id");
     Ok(json!({
@@ -300,32 +338,37 @@ async fn execute_unified_search(
     let run_tickets = can_search_tickets(&ctx)
         && tf
             .as_deref()
-            .map(|t| !["todo", "link", "timeentry", "employee", "user"].contains(&t))
+            .map(|t| !["todo", "link", "timeentry", "employee", "customer", "user"].contains(&t))
             .unwrap_or(true);
     let run_todos = can_search_todos(&ctx)
         && tf
             .as_deref()
-            .map(|t| !["ticket", "link", "timeentry", "employee", "user"].contains(&t))
+            .map(|t| !["ticket", "link", "timeentry", "employee", "customer", "user"].contains(&t))
             .unwrap_or(true);
     let run_links = can_search_links(&ctx)
         && tf
             .as_deref()
-            .map(|t| !["ticket", "todo", "timeentry", "employee", "user"].contains(&t))
+            .map(|t| !["ticket", "todo", "timeentry", "employee", "customer", "user"].contains(&t))
             .unwrap_or(true);
     let run_time = can_search_time(&ctx)
         && tf
             .as_deref()
-            .map(|t| !["ticket", "todo", "link", "employee", "user"].contains(&t))
+            .map(|t| !["ticket", "todo", "link", "employee", "customer", "user"].contains(&t))
             .unwrap_or(true);
     let run_employees = can_search_employees(&ctx)
         && tf
             .as_deref()
-            .map(|t| !["ticket", "todo", "link", "timeentry", "user"].contains(&t))
+            .map(|t| !["ticket", "todo", "link", "timeentry", "customer", "user"].contains(&t))
+            .unwrap_or(true);
+    let run_customers = can_search_customers(&ctx)
+        && tf
+            .as_deref()
+            .map(|t| !["ticket", "todo", "link", "timeentry", "employee", "user"].contains(&t))
             .unwrap_or(true);
     let run_users = can_search_users(&ctx)
         && tf
             .as_deref()
-            .map(|t| !["ticket", "todo", "link", "timeentry", "employee"].contains(&t))
+            .map(|t| !["ticket", "todo", "link", "timeentry", "employee", "customer"].contains(&t))
             .unwrap_or(true);
 
     let mut hits: Vec<ScoredHit> = Vec::new();
@@ -424,6 +467,25 @@ async fn execute_unified_search(
                 entity_id: id,
                 match_score: score,
                 result: employee_to_result(&r)?,
+            });
+        }
+    }
+
+    if run_customers {
+        let rows = sqlx::query(CUSTOMER_SEARCH_SQL)
+            .bind(user_id)
+            .bind(q)
+            .bind(cap)
+            .fetch_all(&state.pool)
+            .await?;
+        for r in rows {
+            let score = row_match_score(&r);
+            let id: String = r.get("id");
+            hits.push(ScoredHit {
+                entity_type: "customer".to_string(),
+                entity_id: id,
+                match_score: score,
+                result: customer_to_result(&r)?,
             });
         }
     }

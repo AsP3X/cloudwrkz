@@ -19,6 +19,7 @@ const MODULE_VIEW_PERMISSION: &[(&str, &str)] = &[
     ("todos", "modules.todos.view"),
     ("links", "modules.links.view"),
     ("employees", "modules.employees.view"),
+    ("customers", "modules.customers.view"),
 ];
 
 // Human: Single authenticated endpoint mounted under the v1 router for session bootstrap after login.
@@ -64,6 +65,7 @@ async fn me(
                     "todos" => Some("todos".to_string()),
                     "links" => Some("links".to_string()),
                     "employees" => Some("employees".to_string()),
+                    "customers" => Some("customers".to_string()),
                     _ => None,
                 }
             } else {

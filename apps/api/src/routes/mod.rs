@@ -8,6 +8,7 @@ pub mod auth;
 pub mod auth_qr_login;
 pub mod collections;
 pub mod contact;
+pub mod customers;
 pub mod favicons;
 pub mod filter_preferences;
 pub mod health;
@@ -101,6 +102,7 @@ pub fn v1_router(config: &AppConfig) -> Router<AppState> {
         .merge(collections::router())
         .merge(time_tracking::router())
         .merge(employees::router())
+        .merge(customers::router())
         .merge(search::router())
         .merge(profile::router())
         .merge(contact::router())
