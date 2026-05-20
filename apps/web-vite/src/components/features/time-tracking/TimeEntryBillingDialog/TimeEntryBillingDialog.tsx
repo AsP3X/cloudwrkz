@@ -2,15 +2,18 @@ import React from "react";
 import { Dialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { api } from "@/api/client";
-import type { Customer } from "@/lib/types";
+import { Select } from "@/components/ui/Select";
+import { getCustomer } from "@/api/customers";
+import { listCustomers } from "@/api/customers";
+import type { Customer, CustomerContact } from "@/lib/types";
 import { formatCurrencyAmount } from "@/lib/utils/time-tracking";
 
-// Human: Optional billing picker — search customers when the module is on, or set a manual hourly rate for earned-amount math.
-// Agent: FETCH GET /customers?search=; STATE customerId+hourlyRate; EMITS TimeEntryBillingState on confirm; GATED customersModuleEnabled.
+// Human: Billing picker—search active customers, optional billing contact for companies, manual hourly rate.
+// Agent: FETCH listCustomers status=ACTIVE; FETCH getCustomer for contacts; EMITS customerId+contactId+rate.
 
 export interface TimeEntryBillingState {
   customerId: string | null;
+  customerContactId: string | null;
   customerDisplayName: string | null;
   hourlyRate: number | null;
 }
@@ -35,6 +38,8 @@ export function TimeEntryBillingDialog({
   const [searching, setSearching] = React.useState(false);
   const [searchError, setSearchError] = React.useState<string | null>(null);
   const [draftCustomerId, setDraftCustomerId] = React.useState<string | null>(value.customerId);
+  const [draftContactId, setDraftContactId] = React.useState<string | null>(value.customerContactId);
+  const [contacts, setContacts] = React.useState<CustomerContact[]>([]);
   const [draftCustomerName, setDraftCustomerName] = React.useState<string | null>(value.customerDisplayName);
   const [rateInput, setRateInput] = React.useState(
     value.hourlyRate != null ? String(value.hourlyRate) : "",
@@ -43,12 +48,14 @@ export function TimeEntryBillingDialog({
   React.useEffect(() => {
     if (!open) return;
     setDraftCustomerId(value.customerId);
+    setDraftContactId(value.customerContactId);
     setDraftCustomerName(value.customerDisplayName);
     setRateInput(value.hourlyRate != null ? String(value.hourlyRate) : "");
     setSearch("");
     setResults([]);
+    setContacts([]);
     setSearchError(null);
-  }, [open, value.customerId, value.customerDisplayName, value.hourlyRate]);
+  }, [open, value.customerId, value.customerContactId, value.customerDisplayName, value.hourlyRate]);
 
   React.useEffect(() => {
     if (!open || !customersModuleEnabled) return;
@@ -62,8 +69,14 @@ export function TimeEntryBillingDialog({
       setSearching(true);
       setSearchError(null);
       try {
-        const params = new URLSearchParams({ search: trimmed, limit: "10", page: "1" });
-        const data = await api.get<{ customers: Customer[] }>(`/customers?${params.toString()}`);
+        const params = new URLSearchParams({
+          search: trimmed,
+          limit: "10",
+          page: "1",
+          status: "ACTIVE",
+          archive: "unarchived",
+        });
+        const data = await listCustomers(params);
         setResults(data.customers ?? []);
       } catch (err: unknown) {
         setResults([]);
@@ -76,26 +89,48 @@ export function TimeEntryBillingDialog({
     return () => window.clearTimeout(timer);
   }, [open, search, customersModuleEnabled]);
 
+  const loadContactsForCustomer = async (customerId: string, contactIdToKeep: string | null) => {
+    try {
+      const full = await getCustomer(customerId);
+      setContacts(full.contacts ?? []);
+      if (full.contacts.length === 1) {
+        setDraftContactId(full.contacts[0].id);
+      } else if (contactIdToKeep && full.contacts.some((c) => c.id === contactIdToKeep)) {
+        setDraftContactId(contactIdToKeep);
+      } else {
+        const primary = full.contacts.find((c) => c.isPrimary);
+        setDraftContactId(primary?.id ?? full.contacts[0]?.id ?? null);
+      }
+    } catch {
+      setContacts([]);
+      setDraftContactId(null);
+    }
+  };
+
   const parsedRate = rateInput.trim() === "" ? null : Number.parseFloat(rateInput);
   const rateInvalid = rateInput.trim() !== "" && (Number.isNaN(parsedRate!) || parsedRate! < 0);
 
-  const handleSelectCustomer = (customer: Customer) => {
+  const handleSelectCustomer = async (customer: Customer) => {
     setDraftCustomerId(customer.id);
     setDraftCustomerName(customer.displayName);
     if (customer.defaultHourlyRate != null) {
       setRateInput(String(customer.defaultHourlyRate));
     }
+    await loadContactsForCustomer(customer.id, null);
   };
 
   const handleClearCustomer = () => {
     setDraftCustomerId(null);
+    setDraftContactId(null);
     setDraftCustomerName(null);
+    setContacts([]);
   };
 
   const handleConfirm = () => {
     if (rateInvalid) return;
     onConfirm({
       customerId: draftCustomerId,
+      customerContactId: draftCustomerId ? draftContactId : null,
       customerDisplayName: draftCustomerName,
       hourlyRate: parsedRate,
     });
@@ -105,21 +140,28 @@ export function TimeEntryBillingDialog({
   const handleClearAll = () => {
     onConfirm({
       customerId: null,
+      customerContactId: null,
       customerDisplayName: null,
       hourlyRate: null,
     });
     onOpenChange(false);
   };
 
+  React.useEffect(() => {
+    if (open && draftCustomerId && contacts.length === 0) {
+      loadContactsForCustomer(draftCustomerId, draftContactId);
+    }
+  }, [open, draftCustomerId]);
+
   return (
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
       nested
-      title="Company & hourly rate"
+      title="Customer & hourly rate"
       description={
         customersModuleEnabled
-          ? "Link a customer for billing or set a manual hourly rate."
+          ? "Link an active customer for billing or set a manual hourly rate."
           : "Set an hourly rate to calculate earned amount for this entry."
       }
     >
@@ -127,7 +169,7 @@ export function TimeEntryBillingDialog({
         {customersModuleEnabled && (
           <div className="space-y-3">
             <Input
-              label="Search company / customer"
+              label="Search customer"
               placeholder="Type at least 2 characters…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -146,9 +188,22 @@ export function TimeEntryBillingDialog({
                 </Button>
               </div>
             )}
-            {searching && (
-              <p className="text-sm text-neutral-500 dark:text-neutral-400">Searching…</p>
+            {draftCustomerId && contacts.length > 1 && (
+              <Select
+                label="Billing contact"
+                value={draftContactId ?? ""}
+                onChange={(e) => setDraftContactId(e.target.value || null)}
+              >
+                <option value="">Default (primary contact)</option>
+                {contacts.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.firstName} {c.lastName}
+                    {c.isPrimary ? " (primary)" : ""}
+                  </option>
+                ))}
+              </Select>
             )}
+            {searching && <p className="text-sm text-neutral-500 dark:text-neutral-400">Searching…</p>}
             {!searching && results.length > 0 && (
               <ul className="max-h-48 overflow-y-auto rounded-xl border border-neutral-200 dark:border-neutral-700 divide-y divide-neutral-200/80 dark:divide-neutral-700/80">
                 {results.map((customer) => (

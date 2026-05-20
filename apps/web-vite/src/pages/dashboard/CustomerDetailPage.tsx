@@ -1,9 +1,21 @@
-// Human: Customer detail with contacts and per-contact employee hourly rate overrides for billing.
-// Agent: FETCH /customers/:id + /employees; POST/PATCH/DELETE contact and rate routes; permission gates customers.update.
+// Human: Customer detail—edit/archive/delete, contacts & rates, linked time entries, billing contact context.
+// Agent: FETCH getCustomer listCustomerTimeEntries; MUTATE contacts/rates archive; DIALOGS Edit Delete RemoveContact.
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { api, ApiError } from "@/api/client";
+import {
+  archiveCustomer,
+  getCustomer,
+  listCustomerTimeEntries,
+  restoreCustomer,
+  type CustomerTimeEntrySummary,
+} from "@/api/customers";
+import {
+  DeleteCustomerDialog,
+  EditCustomerDialog,
+  RemoveContactDialog,
+} from "@/components/features/customers";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -13,7 +25,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { ROUTES } from "@/lib/constants/routes";
 import type { Customer, CustomerContact, Employee } from "@/lib/types";
 import { formatDateTimeFull } from "@/lib/utils/date";
-import { formatCurrencyAmount } from "@/lib/utils/time-tracking";
+import { formatCurrencyAmount, formatDuration } from "@/lib/utils/time-tracking";
 
 const CARD_CLASS =
   "bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 p-6";
@@ -72,15 +84,23 @@ export default function CustomerDetailPage() {
   const [rateHourly, setRateHourly] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [removeContactTarget, setRemoveContactTarget] = useState<CustomerContact | null>(null);
+  const [timeEntries, setTimeEntries] = useState<CustomerTimeEntrySummary[]>([]);
+  const [timeEntriesTotal, setTimeEntriesTotal] = useState(0);
+
   const canUpdate = can("customers.update");
+  const canDelete = can("customers.delete");
+  const isArchived = !!customer?.archivedAt;
 
   const loadCustomer = useCallback(async () => {
     if (!id) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await api.get<{ customer: Customer }>(`/customers/${id}`);
-      setCustomer(data.customer);
+      const data = await getCustomer(id);
+      setCustomer(data);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Customer not found.");
       setCustomer(null);
@@ -98,10 +118,23 @@ export default function CustomerDetailPage() {
     }
   }, []);
 
+  const loadTimeEntries = useCallback(async () => {
+    if (!id) return;
+    try {
+      const data = await listCustomerTimeEntries(id, 1, 10);
+      setTimeEntries(data.timeEntries ?? []);
+      setTimeEntriesTotal(data.total ?? 0);
+    } catch {
+      setTimeEntries([]);
+      setTimeEntriesTotal(0);
+    }
+  }, [id]);
+
   useEffect(() => {
     loadCustomer();
     loadEmployees();
-  }, [loadCustomer, loadEmployees]);
+    loadTimeEntries();
+  }, [loadCustomer, loadEmployees, loadTimeEntries]);
 
   const stats = useMemo(() => {
     if (!customer) {
@@ -181,14 +214,33 @@ export default function CustomerDetailPage() {
     }
   };
 
-  const deleteContact = async (contact: CustomerContact) => {
-    if (!id || !window.confirm(`Remove contact ${contact.firstName} ${contact.lastName}?`)) return;
+  const deleteContact = async () => {
+    if (!id || !removeContactTarget) return;
+    setSaving(true);
     setError(null);
     try {
-      await api.delete(`/customers/${id}/contacts/${contact.id}`);
+      await api.delete(`/customers/${id}/contacts/${removeContactTarget.id}`);
+      setRemoveContactTarget(null);
       await loadCustomer();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not remove contact.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleArchive = async () => {
+    if (!id || !customer) return;
+    setError(null);
+    try {
+      if (isArchived) {
+        await restoreCustomer(id);
+      } else {
+        await archiveCustomer(id);
+      }
+      await loadCustomer();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not update archive status.");
     }
   };
 
@@ -278,14 +330,35 @@ export default function CustomerDetailPage() {
             {customer.email ? ` · ${customer.email}` : ""}
           </p>
         </div>
-        {canUpdate && customer.customerType === "COMPANY" && (
-          <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {canUpdate && !isArchived && (
+            <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+              Edit
+            </Button>
+          )}
+          {canUpdate && (
+            <Button variant="outline" size="sm" onClick={handleArchive}>
+              {isArchived ? "Restore" : "Archive"}
+            </Button>
+          )}
+          {canDelete && (
+            <Button variant="danger" size="sm" onClick={() => setDeleteOpen(true)}>
+              Delete
+            </Button>
+          )}
+          {canUpdate && !isArchived && customer.customerType === "COMPANY" && (
             <Button variant="primary" size="sm" onClick={openAddContact}>
               Add Contact
             </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
+
+      {isArchived && (
+        <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+          This customer is archived. Restore it to edit contacts or link new time entries.
+        </div>
+      )}
 
       {error && (
         <div className="p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-300 text-sm">
@@ -358,21 +431,17 @@ export default function CustomerDetailPage() {
             <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
               {customer.customerType === "COMPANY"
                 ? "Manage company contacts and per-employee hourly rate overrides for time tracking."
-                : "Individual customers use the default hourly rate; contacts apply to companies only."}
+                : "Primary contact mirrors the person record and is used for employee-specific billing overrides."}
             </p>
           </div>
-          {canUpdate && customer.customerType === "COMPANY" && (
+          {canUpdate && !isArchived && customer.customerType === "COMPANY" && (
             <Button variant="outline" size="sm" onClick={openAddContact}>
               Add Contact
             </Button>
           )}
         </div>
 
-        {customer.customerType !== "COMPANY" ? (
-          <p className="text-neutral-600 dark:text-neutral-400">
-            Switch this record to a company customer to add contacts and employee-specific billing rates.
-          </p>
-        ) : customer.contacts.length === 0 ? (
+        {customer.contacts.length === 0 ? (
           <p className="text-neutral-600 dark:text-neutral-400">
             No contacts yet.{canUpdate ? " Use Add Contact to create one." : ""}
           </p>
@@ -404,12 +473,12 @@ export default function CustomerDetailPage() {
                       </p>
                     )}
                   </div>
-                  {canUpdate && (
+                  {canUpdate && !isArchived && customer.customerType === "COMPANY" && (
                     <div className="flex gap-2 shrink-0">
                       <Button size="sm" variant="outline" onClick={() => openEditContact(contact)}>
                         Edit
                       </Button>
-                      <Button size="sm" variant="danger" onClick={() => deleteContact(contact)}>
+                      <Button size="sm" variant="danger" onClick={() => setRemoveContactTarget(contact)}>
                         Remove
                       </Button>
                     </div>
@@ -421,7 +490,7 @@ export default function CustomerDetailPage() {
                     <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
                       Employee hourly rates
                     </h3>
-                    {canUpdate && (
+                    {canUpdate && !isArchived && (
                       <Button size="sm" variant="primary" onClick={() => openAddRate(contact)}>
                         Add rate
                       </Button>
@@ -487,6 +556,61 @@ export default function CustomerDetailPage() {
           </div>
         )}
       </div>
+
+      <div className={CARD_CLASS}>
+        <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">
+          Linked time entries ({timeEntriesTotal})
+        </h2>
+        {timeEntries.length === 0 ? (
+          <p className="text-sm text-neutral-600 dark:text-neutral-400">No time entries linked to this customer yet.</p>
+        ) : (
+          <ul className="divide-y divide-neutral-200 dark:divide-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+            {timeEntries.map((entry) => (
+              <li key={entry.id} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-neutral-50 dark:hover:bg-neutral-800/40">
+                <div>
+                  <Link
+                    to={`${ROUTES.TIME_TRACKING}/${entry.id}`}
+                    className="text-sm font-medium text-primary-600 dark:text-primary-400 hover:underline"
+                  >
+                    {entry.name}
+                  </Link>
+                  <p className="text-xs text-neutral-500 mt-0.5">
+                    {formatDateTimeFull(entry.startedAt)} · {formatDuration(entry.totalDuration)}
+                    {entry.hourlyRate != null ? ` · ${formatCurrencyAmount(entry.hourlyRate)}/h` : ""}
+                  </p>
+                </div>
+                <Badge variant="default" size="sm">{entry.status}</Badge>
+              </li>
+            ))}
+          </ul>
+        )}
+        {timeEntriesTotal > timeEntries.length && (
+          <p className="text-xs text-neutral-500 mt-3">Showing latest {timeEntries.length} of {timeEntriesTotal}.</p>
+        )}
+      </div>
+
+      <EditCustomerDialog
+        open={editOpen}
+        customer={customer}
+        onClose={() => setEditOpen(false)}
+        onSaved={() => {
+          setEditOpen(false);
+          loadCustomer();
+        }}
+      />
+      <DeleteCustomerDialog
+        open={deleteOpen}
+        customer={customer}
+        onClose={() => setDeleteOpen(false)}
+        onDeleted={() => navigate(ROUTES.CUSTOMERS)}
+      />
+      <RemoveContactDialog
+        open={!!removeContactTarget}
+        contact={removeContactTarget}
+        onClose={() => setRemoveContactTarget(null)}
+        onConfirm={deleteContact}
+        isLoading={saving}
+      />
 
       <Dialog
         open={contactDialogOpen}

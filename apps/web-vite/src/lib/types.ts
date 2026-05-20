@@ -198,6 +198,7 @@ export interface TimeEntry {
   user_id: string;
   ticket_id: string | null;
   customer_id: string | null;
+  customer_contact_id?: string | null;
   hourly_rate: number | null;
   customer?: {
     id: string;

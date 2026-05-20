@@ -46,6 +46,7 @@ export function StartTimerDialog({ open, onOpenChange, onCreated }: StartTimerDi
   const [tagInput, setTagInput] = React.useState("");
   const [billing, setBilling] = React.useState<TimeEntryBillingState>({
     customerId: null,
+    customerContactId: null,
     customerDisplayName: null,
     hourlyRate: null,
   });
@@ -58,7 +59,7 @@ export function StartTimerDialog({ open, onOpenChange, onCreated }: StartTimerDi
       setStartedAt(null);
       setTags([]);
       setTagInput("");
-      setBilling({ customerId: null, customerDisplayName: null, hourlyRate: null });
+      setBilling({ customerId: null, customerContactId: null, customerDisplayName: null, hourlyRate: null });
       setServerError(null);
     }
   }, [open]);
@@ -94,6 +95,7 @@ export function StartTimerDialog({ open, onOpenChange, onCreated }: StartTimerDi
         location: location.trim() || undefined,
         started_at: startedAt?.toISOString(),
         customer_id: billing.customerId ?? undefined,
+        customer_contact_id: billing.customerContactId ?? undefined,
         hourly_rate: billing.hourlyRate ?? undefined,
       });
       onOpenChange(false);

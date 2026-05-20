@@ -77,6 +77,7 @@ export function EditTimeEntryDialog({ open, onOpenChange, entry, userTimezone = 
     ticket: entry.ticket_id ? { id: entry.ticket_id, ticketNumber: "", title: "" } : null,
     billing: {
       customerId: entry.customer_id,
+      customerContactId: entry.customer_contact_id ?? null,
       customerDisplayName: entry.customer?.display_name ?? null,
       hourlyRate: entry.hourly_rate,
     },
@@ -120,6 +121,7 @@ export function EditTimeEntryDialog({ open, onOpenChange, entry, userTimezone = 
         started_at: data.startedAt ? data.startedAt.toISOString() : undefined,
         stopped_at: data.stoppedAt ? data.stoppedAt.toISOString() : null,
         customer_id: data.billing.customerId,
+        customer_contact_id: data.billing.customerContactId,
         hourly_rate: data.billing.hourlyRate,
       });
       await syncTimeEntryBreakDraft(entry.id, baselineBreaksRef.current, data.breaks);

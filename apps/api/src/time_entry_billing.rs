@@ -1,7 +1,7 @@
 //! Optional customer ↔ time-tracking billing: resolve hourly rates and validate cross-module links.
 
-// Human: Time entries store a snapshot hourly rate so earned amounts stay stable even when customer defaults change later.
-// Agent: resolve_time_entry_billing READS modules/customers/employees; WRITES customer_id+hourly_rate for INSERT/UPDATE; REJECTS customer_id when customers module disabled.
+// Human: Time entries store a snapshot hourly rate and optional billing contact for per-contact employee overrides.
+// Agent: resolve_time_entry_billing READS customers/contacts/employees; WRITES customer_id+customer_contact_id+hourly_rate; REQUIRES ACTIVE non-archived customer.
 
 use sqlx::{PgPool, Row};
 
@@ -11,6 +11,7 @@ use crate::error::AppError;
 #[derive(Debug, Clone, Default)]
 pub struct TimeEntryBillingInput {
     pub customer_id: Option<String>,
+    pub customer_contact_id: Option<String>,
     pub hourly_rate: Option<f64>,
 }
 
@@ -18,6 +19,7 @@ pub struct TimeEntryBillingInput {
 #[derive(Debug, Clone)]
 pub struct ResolvedTimeEntryBilling {
     pub customer_id: Option<String>,
+    pub customer_contact_id: Option<String>,
     pub hourly_rate: Option<f64>,
 }
 
@@ -38,18 +40,17 @@ fn validate_hourly_rate(rate: f64) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Resolve employee-specific rate for the timer owner, else customer default rate.
+/// Resolve employee-specific rate for the timer owner using an explicit or primary contact.
 async fn resolve_customer_hourly_rate(
     pool: &PgPool,
     user_id: &str,
     customer_id: &str,
+    customer_contact_id: Option<&str>,
 ) -> Result<Option<f64>, AppError> {
     let row = sqlx::query(
-        r#"SELECT customer_type::text AS customer_type,
-                  first_name, last_name, company_name,
-                  default_hourly_rate::float8 AS default_hourly_rate
+        r#"SELECT default_hourly_rate::float8 AS default_hourly_rate
            FROM customers
-           WHERE id = $1 AND archived_at IS NULL"#,
+           WHERE id = $1 AND archived_at IS NULL AND status::text = 'ACTIVE'"#,
     )
     .bind(customer_id)
     .fetch_optional(pool)
@@ -58,15 +59,20 @@ async fn resolve_customer_hourly_rate(
 
     let default_rate: Option<f64> = row.get("default_hourly_rate");
 
-    let employee_id: Option<String> = sqlx::query_scalar(
-        "SELECT id FROM employees WHERE linked_user_id = $1 LIMIT 1",
-    )
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await?;
-
-    if let Some(emp_id) = employee_id {
-        let contact_id: Option<String> = sqlx::query_scalar(
+    let contact_id: Option<String> = if let Some(cid) = customer_contact_id.map(str::trim).filter(|s| !s.is_empty()) {
+        let ok: Option<String> = sqlx::query_scalar(
+            "SELECT id FROM customer_contacts WHERE id = $1 AND customer_id = $2",
+        )
+        .bind(cid)
+        .bind(customer_id)
+        .fetch_optional(pool)
+        .await?;
+        if ok.is_none() {
+            return Err(AppError::not_found("Customer contact not found"));
+        }
+        Some(cid.to_string())
+    } else {
+        sqlx::query_scalar(
             r#"SELECT id FROM customer_contacts
                WHERE customer_id = $1
                ORDER BY is_primary DESC, created_at ASC
@@ -74,22 +80,29 @@ async fn resolve_customer_hourly_rate(
         )
         .bind(customer_id)
         .fetch_optional(pool)
+        .await?
+    };
+
+    let employee_id: Option<String> = sqlx::query_scalar(
+        "SELECT id FROM employees WHERE linked_user_id = $1 LIMIT 1",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    if let (Some(emp_id), Some(cid)) = (employee_id, contact_id) {
+        let employee_rate: Option<f64> = sqlx::query_scalar(
+            r#"SELECT hourly_rate::float8
+               FROM customer_contact_employee_rates
+               WHERE customer_contact_id = $1 AND employee_id = $2"#,
+        )
+        .bind(&cid)
+        .bind(&emp_id)
+        .fetch_optional(pool)
         .await?;
 
-        if let Some(cid) = contact_id {
-            let employee_rate: Option<f64> = sqlx::query_scalar(
-                r#"SELECT hourly_rate::float8
-                   FROM customer_contact_employee_rates
-                   WHERE customer_contact_id = $1 AND employee_id = $2"#,
-            )
-            .bind(&cid)
-            .bind(&emp_id)
-            .fetch_optional(pool)
-            .await?;
-
-            if let Some(rate) = employee_rate {
-                return Ok(Some(rate));
-            }
+        if let Some(rate) = employee_rate {
+            return Ok(Some(rate));
         }
     }
 
@@ -104,7 +117,7 @@ pub async fn resolve_time_entry_billing(
 ) -> Result<ResolvedTimeEntryBilling, AppError> {
     let customers_on = customers_module_enabled(pool).await;
 
-    if input.customer_id.is_some() && !customers_on {
+    if (input.customer_id.is_some() || input.customer_contact_id.is_some()) && !customers_on {
         return Err(AppError::bad_request(
             "Customer linking is unavailable while the Customers module is disabled",
         ));
@@ -119,28 +132,67 @@ pub async fn resolve_time_entry_billing(
         Some(id) => Some(id.to_string()),
     };
 
+    let customer_contact_id = match input.customer_contact_id.as_deref().map(str::trim) {
+        None | Some("") => None,
+        Some(id) => Some(id.to_string()),
+    };
+
+    if customer_contact_id.is_some() && customer_id.is_none() {
+        return Err(AppError::bad_request(
+            "customer_contact_id requires customer_id",
+        ));
+    }
+
     if let Some(ref cid) = customer_id {
         let exists: Option<String> = sqlx::query_scalar(
-            "SELECT id FROM customers WHERE id = $1 AND archived_at IS NULL",
+            r#"SELECT id FROM customers
+               WHERE id = $1 AND archived_at IS NULL AND status::text = 'ACTIVE'"#,
         )
         .bind(cid)
         .fetch_optional(pool)
         .await?;
         if exists.is_none() {
-            return Err(AppError::not_found("Customer not found"));
+            return Err(AppError::not_found("Customer not found or inactive"));
         }
     }
+
+    let resolved_contact = if customer_id.is_some() {
+        if let Some(ref ccid) = customer_contact_id {
+            let ok: Option<String> = sqlx::query_scalar(
+                "SELECT id FROM customer_contacts WHERE id = $1 AND customer_id = $2",
+            )
+            .bind(ccid)
+            .bind(customer_id.as_ref().unwrap())
+            .fetch_optional(pool)
+            .await?;
+            if ok.is_none() {
+                return Err(AppError::not_found("Customer contact not found"));
+            }
+            Some(ccid.clone())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
 
     let hourly_rate = if let Some(rate) = input.hourly_rate {
         Some(rate)
     } else if let Some(ref cid) = customer_id {
-        resolve_customer_hourly_rate(pool, user_id, cid).await?
+        resolve_customer_hourly_rate(
+            pool,
+            user_id,
+            cid,
+            resolved_contact.as_deref(),
+        )
+        .await?
     } else {
         None
     };
 
     Ok(ResolvedTimeEntryBilling {
         customer_id,
+        customer_contact_id: resolved_contact,
         hourly_rate,
     })
 }

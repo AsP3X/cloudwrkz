@@ -47,6 +47,7 @@ export function AddTimeEntryDialog({ open, onOpenChange, onCreated }: AddTimeEnt
   const [tagInput, setTagInput] = React.useState("");
   const [billing, setBilling] = React.useState<TimeEntryBillingState>({
     customerId: null,
+    customerContactId: null,
     customerDisplayName: null,
     hourlyRate: null,
   });
@@ -69,7 +70,7 @@ export function AddTimeEntryDialog({ open, onOpenChange, onCreated }: AddTimeEnt
       setStoppedAt(null);
       setTags([]);
       setTagInput("");
-      setBilling({ customerId: null, customerDisplayName: null, hourlyRate: null });
+      setBilling({ customerId: null, customerContactId: null, customerDisplayName: null, hourlyRate: null });
       setServerError(null);
     }
   }, [open]);
@@ -117,6 +118,7 @@ export function AddTimeEntryDialog({ open, onOpenChange, onCreated }: AddTimeEnt
         started_at: start.toISOString(),
         stopped_at: stop.toISOString(),
         customer_id: billing.customerId ?? undefined,
+        customer_contact_id: billing.customerContactId ?? undefined,
         hourly_rate: billing.hourlyRate ?? undefined,
       });
       onOpenChange(false);

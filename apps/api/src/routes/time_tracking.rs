@@ -146,7 +146,7 @@ async fn list_tag_suggestions(
 const ENTRY_SELECT: &str = r#"SELECT id, name, description, status::text as status,
        started_at, paused_at, stopped_at, completed_at,
        total_duration, last_resumed_at, user_id, ticket_id,
-       customer_id, hourly_rate::float8 as hourly_rate,
+       customer_id, customer_contact_id, hourly_rate::float8 as hourly_rate,
        tags, billable, location, timezone, archived_at,
        created_at, updated_at"#;
 
@@ -165,6 +165,7 @@ fn row_to_entry(r: &sqlx::postgres::PgRow) -> TimeEntryRow {
         user_id: r.get("user_id"),
         ticket_id: r.get("ticket_id"),
         customer_id: r.get("customer_id"),
+        customer_contact_id: r.get("customer_contact_id"),
         hourly_rate: r.get("hourly_rate"),
         tags: r.get("tags"),
         billable: r.get("billable"),

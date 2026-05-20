@@ -3,7 +3,7 @@
 //! Customers are module-independent records that other modules may optionally reference via `customer_id`.
 
 // Human: Customers can be a single person or a company; billing defaults live on the customer with optional per-contact/per-employee overrides.
-// Agent: router /customers; check_permission customers.*; module gate customers enabled; sync SQL writes; nested contacts + employee rates.
+// Agent: router /customers; check_permission customers.*; module gate; archive PATCH; usage + time-entries sub-routes.
 
 use axum::{
     Json, Router,
@@ -13,6 +13,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::Row;
+use std::collections::HashMap;
 
 use crate::auth::extractors::AuthUser;
 use crate::db::numbering::next_customer_number;
@@ -31,6 +32,8 @@ pub fn router() -> Router<AppState> {
                 .patch(update_customer)
                 .delete(delete_customer),
         )
+        .route("/customers/{id}/usage", get(get_customer_usage))
+        .route("/customers/{id}/time-entries", get(list_customer_time_entries))
         .route("/customers/{id}/contacts", post(add_contact))
         .route(
             "/customers/{id}/contacts/{contact_id}",
@@ -57,6 +60,20 @@ struct ListCustomersQuery {
     search: Option<String>,
     status: Option<String>,
     customer_type: Option<String>,
+    /// `unarchived` (default) or `archived`.
+    archive: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeleteCustomerQuery {
+    /// When true, delete even if time entries reference this customer.
+    force: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ListCustomerTimeEntriesQuery {
+    page: Option<u32>,
+    limit: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -88,7 +105,6 @@ struct CreateCustomerRequest {
     country: Option<String>,
     notes: Option<String>,
     default_hourly_rate: Option<f64>,
-    /// For COMPANY customers, initial contacts to create alongside the record.
     contacts: Option<Vec<ContactInput>>,
 }
 
@@ -96,18 +112,20 @@ struct CreateCustomerRequest {
 #[serde(rename_all = "camelCase")]
 struct UpdateCustomerRequest {
     status: Option<String>,
-    first_name: Option<String>,
-    last_name: Option<String>,
-    company_name: Option<String>,
-    email: Option<String>,
-    phone: Option<String>,
-    address_line1: Option<String>,
-    address_line2: Option<String>,
-    city: Option<String>,
-    postal_code: Option<String>,
-    country: Option<String>,
-    notes: Option<String>,
-    default_hourly_rate: Option<f64>,
+    first_name: Option<serde_json::Value>,
+    last_name: Option<serde_json::Value>,
+    company_name: Option<serde_json::Value>,
+    email: Option<serde_json::Value>,
+    phone: Option<serde_json::Value>,
+    address_line1: Option<serde_json::Value>,
+    address_line2: Option<serde_json::Value>,
+    city: Option<serde_json::Value>,
+    postal_code: Option<serde_json::Value>,
+    country: Option<serde_json::Value>,
+    notes: Option<serde_json::Value>,
+    default_hourly_rate: Option<serde_json::Value>,
+    #[serde(default, alias = "archivedAt")]
+    archived_at: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -118,7 +136,7 @@ struct SetEmployeeRateRequest {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Validation & parsing
 // ---------------------------------------------------------------------------
 
 fn validate_customer_type(s: &str) -> bool {
@@ -128,6 +146,90 @@ fn validate_customer_type(s: &str) -> bool {
 fn validate_customer_status(s: &str) -> bool {
     matches!(s.to_uppercase().as_str(), "ACTIVE" | "INACTIVE")
 }
+
+fn validate_email(email: &str) -> Result<(), AppError> {
+    let t = email.trim();
+    if t.is_empty() {
+        return Ok(());
+    }
+    if t.len() > 254 {
+        return Err(AppError::bad_request("Email is too long"));
+    }
+    if !t.contains('@') || t.starts_with('@') || t.ends_with('@') {
+        return Err(AppError::bad_request("Invalid email address"));
+    }
+    Ok(())
+}
+
+fn validate_hourly_rate(rate: f64) -> Result<(), AppError> {
+    if rate.is_nan() || rate.is_infinite() || rate < 0.0 {
+        return Err(AppError::bad_request(
+            "default_hourly_rate must be a non-negative number",
+        ));
+    }
+    Ok(())
+}
+
+/// Absent = no change; JSON null = clear; string = set (trimmed).
+fn parse_patch_string(field: &Option<serde_json::Value>) -> Result<Option<Option<String>>, AppError> {
+    match field {
+        None => Ok(None),
+        Some(v) if v.is_null() => Ok(Some(None)),
+        Some(v) => {
+            let s = v
+                .as_str()
+                .map(str::trim)
+                .map(str::to_string)
+                .ok_or_else(|| AppError::bad_request("Expected a string or null"))?;
+            Ok(Some(Some(s)))
+        }
+    }
+}
+
+fn parse_patch_f64(field: &Option<serde_json::Value>) -> Result<Option<Option<f64>>, AppError> {
+    match field {
+        None => Ok(None),
+        Some(v) if v.is_null() => Ok(Some(None)),
+        Some(v) => {
+            let rate = v
+                .as_f64()
+                .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+                .ok_or_else(|| AppError::bad_request("Expected a number or null"))?;
+            validate_hourly_rate(rate)?;
+            Ok(Some(Some(rate)))
+        }
+    }
+}
+
+fn list_archive_mode(archive: Option<&str>) -> &'static str {
+    match archive.map(str::trim).map(str::to_lowercase).as_deref() {
+        Some("archived") => "archived",
+        _ => "unarchived",
+    }
+}
+
+fn customer_display_name(
+    customer_type: &str,
+    first_name: Option<&str>,
+    last_name: Option<&str>,
+    company_name: Option<&str>,
+) -> String {
+    if customer_type == "COMPANY" {
+        company_name.unwrap_or("Company").to_string()
+    } else {
+        format!(
+            "{} {}",
+            first_name.unwrap_or(""),
+            last_name.unwrap_or("")
+        )
+        .trim()
+        .to_string()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DB helpers
+// ---------------------------------------------------------------------------
 
 async fn customers_module_enabled(pool: &sqlx::PgPool) -> bool {
     sqlx::query_scalar("SELECT enabled FROM modules WHERE key = 'customers'")
@@ -169,32 +271,71 @@ async fn require_customers_delete(state: &AppState, user: &CurrentUser) -> Resul
     Ok(())
 }
 
-fn customer_display_name(
-    customer_type: &str,
-    first_name: Option<&str>,
-    last_name: Option<&str>,
-    company_name: Option<&str>,
-) -> String {
-    if customer_type == "COMPANY" {
-        company_name.unwrap_or("Company").to_string()
-    } else {
-        format!(
-            "{} {}",
-            first_name.unwrap_or(""),
-            last_name.unwrap_or("")
-        )
-        .trim()
-        .to_string()
-    }
-}
-
-async fn customer_exists(pool: &sqlx::PgPool, customer_id: &str) -> Result<bool, AppError> {
+async fn customer_exists_active(pool: &sqlx::PgPool, customer_id: &str) -> Result<bool, AppError> {
     let exists: Option<String> =
         sqlx::query_scalar("SELECT id FROM customers WHERE id = $1 AND archived_at IS NULL")
             .bind(customer_id)
             .fetch_optional(pool)
             .await?;
     Ok(exists.is_some())
+}
+
+async fn customer_exists_any(pool: &sqlx::PgPool, customer_id: &str) -> Result<bool, AppError> {
+    let exists: Option<String> = sqlx::query_scalar("SELECT id FROM customers WHERE id = $1")
+        .bind(customer_id)
+        .fetch_optional(pool)
+        .await?;
+    Ok(exists.is_some())
+}
+
+async fn customer_usage_counts(
+    pool: &sqlx::PgPool,
+    customer_id: &str,
+) -> Result<serde_json::Value, AppError> {
+    let time_entries: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM time_entries WHERE customer_id = $1",
+    )
+    .bind(customer_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(json!({ "timeEntries": time_entries }))
+}
+
+async fn find_duplicate_email(
+    pool: &sqlx::PgPool,
+    email: &str,
+    exclude_id: Option<&str>,
+) -> Result<Option<String>, AppError> {
+    let normalized = email.trim().to_lowercase();
+    if normalized.is_empty() {
+        return Ok(None);
+    }
+    let row: Option<String> = if let Some(ex_id) = exclude_id {
+        sqlx::query_scalar(
+            r#"SELECT id FROM customers
+               WHERE archived_at IS NULL
+                 AND email IS NOT NULL
+                 AND lower(trim(email)) = $1
+                 AND id <> $2
+               LIMIT 1"#,
+        )
+        .bind(&normalized)
+        .bind(ex_id)
+        .fetch_optional(pool)
+        .await?
+    } else {
+        sqlx::query_scalar(
+            r#"SELECT id FROM customers
+               WHERE archived_at IS NULL
+                 AND email IS NOT NULL
+                 AND lower(trim(email)) = $1
+               LIMIT 1"#,
+        )
+        .bind(&normalized)
+        .fetch_optional(pool)
+        .await?
+    };
+    Ok(row)
 }
 
 async fn contact_belongs_to_customer(
@@ -223,6 +364,9 @@ async fn insert_contact(
     if first_name.is_empty() || last_name.is_empty() {
         return Err(AppError::bad_request("Contact first and last name are required"));
     }
+    if let Some(ref email) = input.email {
+        validate_email(email)?;
+    }
     if input.is_primary == Some(true) {
         sqlx::query("UPDATE customer_contacts SET is_primary = false WHERE customer_id = $1")
             .bind(customer_id)
@@ -248,7 +392,6 @@ async fn insert_contact(
     Ok(contact_id)
 }
 
-/// Fetch contacts + nested employee rates for a customer and return full JSON.
 async fn customer_full_json(
     pool: &sqlx::PgPool,
     customer_id: &str,
@@ -260,8 +403,7 @@ async fn customer_full_json(
                   email, phone, address_line1, address_line2, city, postal_code, country,
                   notes, default_hourly_rate::float8 AS default_hourly_rate,
                   archived_at, created_at, updated_at
-           FROM customers
-           WHERE id = $1"#,
+           FROM customers WHERE id = $1"#,
     )
     .bind(customer_id)
     .fetch_optional(pool)
@@ -269,79 +411,64 @@ async fn customer_full_json(
     .ok_or_else(|| AppError::not_found("Customer not found"))?;
 
     let customer_type: String = row.get("customer_type");
-    let contacts: Vec<serde_json::Value> = sqlx::query(
+    let contact_rows = sqlx::query(
         r#"SELECT id, first_name, last_name, email, phone, title, is_primary, notes, created_at, updated_at
-           FROM customer_contacts
-           WHERE customer_id = $1
+           FROM customer_contacts WHERE customer_id = $1
            ORDER BY is_primary DESC, last_name ASC, first_name ASC"#,
     )
     .bind(customer_id)
     .fetch_all(pool)
-    .await?
-    .iter()
-    .map(|c| {
-        json!({
-            "id": c.get::<String, _>("id"),
-            "firstName": c.get::<String, _>("first_name"),
-            "lastName": c.get::<String, _>("last_name"),
-            "email": c.get::<Option<String>, _>("email"),
-            "phone": c.get::<Option<String>, _>("phone"),
-            "title": c.get::<Option<String>, _>("title"),
-            "isPrimary": c.get::<bool, _>("is_primary"),
-            "notes": c.get::<Option<String>, _>("notes"),
-            "createdAt": c.get::<chrono::NaiveDateTime, _>("created_at"),
-            "updatedAt": c.get::<chrono::NaiveDateTime, _>("updated_at"),
-        })
-    })
-    .collect();
+    .await?;
 
-    let mut contacts_with_rates = Vec::with_capacity(contacts.len());
-    for contact in contacts {
-        let contact_id = contact
-            .get("id")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_string();
-        let rates: Vec<serde_json::Value> = sqlx::query(
-            r#"SELECT r.id, r.employee_id, r.hourly_rate::float8 AS hourly_rate,
-                      e.first_name, e.last_name, e.email
-               FROM customer_contact_employee_rates r
-               JOIN employees e ON e.id = r.employee_id
-               WHERE r.customer_contact_id = $1
-               ORDER BY e.last_name ASC, e.first_name ASC"#,
-        )
-        .bind(&contact_id)
-        .fetch_all(pool)
-        .await?
+    let rate_rows = sqlx::query(
+        r#"SELECT r.id, r.customer_contact_id, r.employee_id, r.hourly_rate::float8 AS hourly_rate,
+                  e.first_name, e.last_name, e.email
+           FROM customer_contact_employee_rates r
+           JOIN customer_contacts c ON c.id = r.customer_contact_id
+           JOIN employees e ON e.id = r.employee_id
+           WHERE c.customer_id = $1
+           ORDER BY e.last_name ASC, e.first_name ASC"#,
+    )
+    .bind(customer_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut rates_by_contact: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
+    for r in &rate_rows {
+        let cid: String = r.get("customer_contact_id");
+        rates_by_contact.entry(cid).or_default().push(json!({
+            "id": r.get::<String, _>("id"),
+            "employeeId": r.get::<String, _>("employee_id"),
+            "hourlyRate": r.get::<f64, _>("hourly_rate"),
+            "employee": {
+                "id": r.get::<String, _>("employee_id"),
+                "firstName": r.get::<String, _>("first_name"),
+                "lastName": r.get::<String, _>("last_name"),
+                "email": r.get::<String, _>("email"),
+            },
+        }));
+    }
+
+    let contacts_with_rates: Vec<serde_json::Value> = contact_rows
         .iter()
-        .map(|r| {
+        .map(|c| {
+            let contact_id: String = c.get("id");
+            let rates = rates_by_contact.remove(&contact_id).unwrap_or_default();
             json!({
-                "id": r.get::<String, _>("id"),
-                "employeeId": r.get::<String, _>("employee_id"),
-                "hourlyRate": r.get::<f64, _>("hourly_rate"),
-                "employee": {
-                    "id": r.get::<String, _>("employee_id"),
-                    "firstName": r.get::<String, _>("first_name"),
-                    "lastName": r.get::<String, _>("last_name"),
-                    "email": r.get::<String, _>("email"),
-                },
+                "id": contact_id,
+                "firstName": c.get::<String, _>("first_name"),
+                "lastName": c.get::<String, _>("last_name"),
+                "email": c.get::<Option<String>, _>("email"),
+                "phone": c.get::<Option<String>, _>("phone"),
+                "title": c.get::<Option<String>, _>("title"),
+                "isPrimary": c.get::<bool, _>("is_primary"),
+                "notes": c.get::<Option<String>, _>("notes"),
+                "employeeRates": rates,
+                "createdAt": c.get::<chrono::NaiveDateTime, _>("created_at"),
+                "updatedAt": c.get::<chrono::NaiveDateTime, _>("updated_at"),
             })
         })
         .collect();
-        contacts_with_rates.push(json!({
-            "id": contact.get("id"),
-            "firstName": contact.get("firstName"),
-            "lastName": contact.get("lastName"),
-            "email": contact.get("email"),
-            "phone": contact.get("phone"),
-            "title": contact.get("title"),
-            "isPrimary": contact.get("isPrimary"),
-            "notes": contact.get("notes"),
-            "employeeRates": rates,
-            "createdAt": contact.get("createdAt"),
-            "updatedAt": contact.get("updatedAt"),
-        }));
-    }
 
     Ok(json!({
         "id": row.get::<String, _>("id"),
@@ -377,9 +504,6 @@ async fn customer_full_json(
 // Handlers
 // ---------------------------------------------------------------------------
 
-// Human: Paginated customer list with optional search across name, number, and email fields.
-// Agent: READ customers WHERE archived_at IS NULL; FILTER search/status/type; RETURN page envelope.
-
 async fn list_customers(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -387,12 +511,20 @@ async fn list_customers(
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_customers_view(&state, &user).await?;
     if !customers_module_enabled(&state.pool).await {
-        return Ok(Json(json!({ "customers": [], "total": 0, "page": 1, "limit": 50, "totalPages": 0 })));
+        return Ok(Json(json!({
+            "customers": [],
+            "total": 0,
+            "page": 1,
+            "limit": 50,
+            "totalPages": 0,
+            "moduleDisabled": true,
+        })));
     }
 
     let page = q.page.unwrap_or(1).max(1);
     let limit = q.limit.unwrap_or(50).min(200).max(1);
     let offset: i64 = (page - 1) as i64 * limit as i64;
+    let archive_mode = list_archive_mode(q.archive.as_deref());
 
     let search_pat: Option<String> = q.search.as_ref().and_then(|s| {
         let t = s.trim();
@@ -423,7 +555,8 @@ async fn list_customers(
 
     let total: i64 = sqlx::query_scalar(
         r#"SELECT COUNT(*) FROM customers
-           WHERE archived_at IS NULL
+           WHERE (($4 = 'archived' AND archived_at IS NOT NULL)
+                  OR ($4 != 'archived' AND archived_at IS NULL))
              AND ($1::text IS NULL OR status::text = $1)
              AND ($2::text IS NULL OR customer_type::text = $2)
              AND (
@@ -438,6 +571,7 @@ async fn list_customers(
     .bind(&status_filter)
     .bind(&type_filter)
     .bind(&search_pat)
+    .bind(archive_mode)
     .fetch_one(&state.pool)
     .await?;
 
@@ -446,9 +580,10 @@ async fn list_customers(
                   status::text AS status,
                   first_name, last_name, company_name, email, phone,
                   default_hourly_rate::float8 AS default_hourly_rate,
-                  created_at, updated_at
+                  archived_at, created_at, updated_at
            FROM customers
-           WHERE archived_at IS NULL
+           WHERE (($4 = 'archived' AND archived_at IS NOT NULL)
+                  OR ($4 != 'archived' AND archived_at IS NULL))
              AND ($1::text IS NULL OR status::text = $1)
              AND ($2::text IS NULL OR customer_type::text = $2)
              AND (
@@ -460,11 +595,12 @@ async fn list_customers(
                OR COALESCE(email, '') ILIKE $3
              )
            ORDER BY updated_at DESC
-           LIMIT $4 OFFSET $5"#,
+           LIMIT $5 OFFSET $6"#,
     )
     .bind(&status_filter)
     .bind(&type_filter)
     .bind(&search_pat)
+    .bind(archive_mode)
     .bind(limit as i64)
     .bind(offset)
     .fetch_all(&state.pool)
@@ -491,6 +627,7 @@ async fn list_customers(
                 "email": r.get::<Option<String>, _>("email"),
                 "phone": r.get::<Option<String>, _>("phone"),
                 "defaultHourlyRate": r.get::<Option<f64>, _>("default_hourly_rate"),
+                "archivedAt": r.get::<Option<chrono::NaiveDateTime>, _>("archived_at"),
                 "createdAt": r.get::<chrono::NaiveDateTime, _>("created_at"),
                 "updatedAt": r.get::<chrono::NaiveDateTime, _>("updated_at"),
             })
@@ -504,11 +641,9 @@ async fn list_customers(
         "page": page,
         "limit": limit,
         "totalPages": total_pages,
+        "moduleDisabled": false,
     })))
 }
-
-// Human: Return one customer with nested contacts and per-contact employee hourly rates.
-// Agent: READ customers + customer_contacts + customer_contact_employee_rates; 404 when missing.
 
 async fn get_customer(
     State(state): State<AppState>,
@@ -516,15 +651,88 @@ async fn get_customer(
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_customers_view(&state, &user).await?;
-    if !customers_module_enabled(&state.pool).await {
+    if !customers_module_enabled(&state.pool).await || !customer_exists_any(&state.pool, &id).await?
+    {
         return Err(AppError::not_found("Customer not found"));
     }
     let data = customer_full_json(&state.pool, &id).await?;
     Ok(Json(json!({ "customer": data })))
 }
 
-// Human: Create an individual or company customer; individuals get an implicit primary contact row.
-// Agent: TX INSERT customers + contacts; INDIVIDUAL auto primary contact; RETURN full customer JSON.
+async fn get_customer_usage(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_customers_view(&state, &user).await?;
+    if !customers_module_enabled(&state.pool).await || !customer_exists_any(&state.pool, &id).await?
+    {
+        return Err(AppError::not_found("Customer not found"));
+    }
+    let usage = customer_usage_counts(&state.pool, &id).await?;
+    Ok(Json(json!({ "usage": usage })))
+}
+
+async fn list_customer_time_entries(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+    Query(q): Query<ListCustomerTimeEntriesQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_customers_view(&state, &user).await?;
+    if !customers_module_enabled(&state.pool).await || !customer_exists_any(&state.pool, &id).await?
+    {
+        return Err(AppError::not_found("Customer not found"));
+    }
+
+    let page = q.page.unwrap_or(1).max(1);
+    let limit = q.limit.unwrap_or(20).min(100).max(1);
+    let offset: i64 = (page - 1) as i64 * limit as i64;
+
+    let total: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM time_entries WHERE customer_id = $1",
+    )
+    .bind(&id)
+    .fetch_one(&state.pool)
+    .await?;
+
+    let rows = sqlx::query(
+        r#"SELECT id, name, status::text AS status, started_at, stopped_at,
+                  total_duration, hourly_rate::float8 AS hourly_rate, archived_at
+           FROM time_entries WHERE customer_id = $1
+           ORDER BY started_at DESC LIMIT $2 OFFSET $3"#,
+    )
+    .bind(&id)
+    .bind(limit as i64)
+    .bind(offset)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let entries: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            json!({
+                "id": r.get::<String, _>("id"),
+                "name": r.get::<String, _>("name"),
+                "status": r.get::<String, _>("status"),
+                "startedAt": r.get::<chrono::NaiveDateTime, _>("started_at"),
+                "stoppedAt": r.get::<Option<chrono::NaiveDateTime>, _>("stopped_at"),
+                "totalDuration": r.get::<i32, _>("total_duration"),
+                "hourlyRate": r.get::<Option<f64>, _>("hourly_rate"),
+                "archivedAt": r.get::<Option<chrono::NaiveDateTime>, _>("archived_at"),
+            })
+        })
+        .collect();
+
+    let total_pages = ((total as f64) / (limit as f64)).ceil() as i64;
+    Ok(Json(json!({
+        "timeEntries": entries,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "totalPages": total_pages,
+    })))
+}
 
 async fn create_customer(
     State(state): State<AppState>,
@@ -547,6 +755,18 @@ async fn create_customer(
         .unwrap_or_else(|| "ACTIVE".into());
     if !validate_customer_status(&status) {
         return Err(AppError::bad_request("Invalid customer status"));
+    }
+    if let Some(rate) = body.default_hourly_rate {
+        validate_hourly_rate(rate)?;
+    }
+    if let Some(ref email) = body.email {
+        validate_email(email)?;
+        if find_duplicate_email(&state.pool, email, None).await?.is_some() {
+            return Err(AppError::validation(
+                "A customer with this email already exists",
+                json!({ "email": "duplicate" }),
+            ));
+        }
     }
 
     if customer_type == "INDIVIDUAL" {
@@ -620,9 +840,6 @@ async fn create_customer(
     Ok(Json(json!({ "customer": data })))
 }
 
-// Human: Partial update of customer fields; does not replace contacts (use contact routes).
-// Agent: PATCH customers SET COALESCE fields; TOUCH updated_at; RETURN full record.
-
 async fn update_customer(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -633,69 +850,156 @@ async fn update_customer(
     if !customers_module_enabled(&state.pool).await {
         return Err(AppError::forbidden("Customers module is disabled"));
     }
+    if !customer_exists_any(&state.pool, &id).await? {
+        return Err(AppError::not_found("Customer not found"));
+    }
     if let Some(ref s) = body.status {
         if !validate_customer_status(s) {
             return Err(AppError::bad_request("Invalid customer status"));
         }
     }
-    if !customer_exists(&state.pool, &id).await? {
-        return Err(AppError::not_found("Customer not found"));
-    }
 
-    let result = sqlx::query(
-        r#"UPDATE customers SET
-             status = COALESCE($2::customer_status_enum, status),
-             first_name = COALESCE($3, first_name),
-             last_name = COALESCE($4, last_name),
-             company_name = COALESCE($5, company_name),
-             email = COALESCE($6, email),
-             phone = COALESCE($7, phone),
-             address_line1 = COALESCE($8, address_line1),
-             address_line2 = COALESCE($9, address_line2),
-             city = COALESCE($10, city),
-             postal_code = COALESCE($11, postal_code),
-             country = COALESCE($12, country),
-             notes = COALESCE($13, notes),
-             default_hourly_rate = COALESCE($14, default_hourly_rate),
-             updated_at = NOW()
-           WHERE id = $1 AND archived_at IS NULL"#,
+    let row = sqlx::query(
+        r#"SELECT status::text AS status, first_name, last_name, company_name, email, phone,
+                  address_line1, address_line2, city, postal_code, country, notes,
+                  default_hourly_rate::float8 AS default_hourly_rate
+           FROM customers WHERE id = $1"#,
     )
     .bind(&id)
-    .bind(body.status.as_deref().map(|s| s.to_uppercase()))
-    .bind(body.first_name.as_deref().map(str::trim))
-    .bind(body.last_name.as_deref().map(str::trim))
-    .bind(body.company_name.as_deref().map(str::trim))
-    .bind(body.email.as_deref().map(str::trim))
-    .bind(body.phone.as_deref().map(str::trim))
-    .bind(body.address_line1.as_deref().map(str::trim))
-    .bind(body.address_line2.as_deref().map(str::trim))
-    .bind(body.city.as_deref().map(str::trim))
-    .bind(body.postal_code.as_deref().map(str::trim))
-    .bind(body.country.as_deref().map(str::trim))
-    .bind(body.notes.as_deref().map(str::trim))
-    .bind(body.default_hourly_rate)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::not_found("Customer not found"))?;
+
+    let mut status: String = row.get("status");
+    let mut first_name: Option<String> = row.get("first_name");
+    let mut last_name: Option<String> = row.get("last_name");
+    let mut company_name: Option<String> = row.get("company_name");
+    let mut email: Option<String> = row.get("email");
+    let mut phone: Option<String> = row.get("phone");
+    let mut address_line1: Option<String> = row.get("address_line1");
+    let mut address_line2: Option<String> = row.get("address_line2");
+    let mut city: Option<String> = row.get("city");
+    let mut postal_code: Option<String> = row.get("postal_code");
+    let mut country: Option<String> = row.get("country");
+    let mut notes: Option<String> = row.get("notes");
+    let mut default_hourly_rate: Option<f64> = row.get("default_hourly_rate");
+
+    if let Some(s) = body.status.as_deref() {
+        status = s.trim().to_uppercase();
+    }
+    if let Some(v) = parse_patch_string(&body.first_name)? {
+        first_name = v;
+    }
+    if let Some(v) = parse_patch_string(&body.last_name)? {
+        last_name = v;
+    }
+    if let Some(v) = parse_patch_string(&body.company_name)? {
+        company_name = v;
+    }
+    if let Some(v) = parse_patch_string(&body.email)? {
+        if let Some(ref e) = v {
+            validate_email(e)?;
+            if find_duplicate_email(&state.pool, e, Some(&id)).await?.is_some() {
+                return Err(AppError::validation(
+                    "A customer with this email already exists",
+                    json!({ "email": "duplicate" }),
+                ));
+            }
+        }
+        email = v;
+    }
+    if let Some(v) = parse_patch_string(&body.phone)? {
+        phone = v;
+    }
+    if let Some(v) = parse_patch_string(&body.address_line1)? {
+        address_line1 = v;
+    }
+    if let Some(v) = parse_patch_string(&body.address_line2)? {
+        address_line2 = v;
+    }
+    if let Some(v) = parse_patch_string(&body.city)? {
+        city = v;
+    }
+    if let Some(v) = parse_patch_string(&body.postal_code)? {
+        postal_code = v;
+    }
+    if let Some(v) = parse_patch_string(&body.country)? {
+        country = v;
+    }
+    if let Some(v) = parse_patch_string(&body.notes)? {
+        notes = v;
+    }
+    if let Some(v) = parse_patch_f64(&body.default_hourly_rate)? {
+        default_hourly_rate = v;
+    }
+
+    sqlx::query(
+        r#"UPDATE customers SET
+             status = $2::customer_status_enum,
+             first_name = $3, last_name = $4, company_name = $5,
+             email = $6, phone = $7, address_line1 = $8, address_line2 = $9,
+             city = $10, postal_code = $11, country = $12, notes = $13,
+             default_hourly_rate = $14, updated_at = NOW()
+           WHERE id = $1"#,
+    )
+    .bind(&id)
+    .bind(&status)
+    .bind(&first_name)
+    .bind(&last_name)
+    .bind(&company_name)
+    .bind(&email)
+    .bind(&phone)
+    .bind(&address_line1)
+    .bind(&address_line2)
+    .bind(&city)
+    .bind(&postal_code)
+    .bind(&country)
+    .bind(&notes)
+    .bind(&default_hourly_rate)
     .execute(&state.pool)
     .await?;
 
-    if result.rows_affected() == 0 {
-        return Err(AppError::not_found("Customer not found"));
+    if let Some(ref archived) = body.archived_at {
+        if archived.is_null() {
+            sqlx::query("UPDATE customers SET archived_at = NULL, updated_at = NOW() WHERE id = $1")
+                .bind(&id)
+                .execute(&state.pool)
+                .await?;
+        } else {
+            sqlx::query("UPDATE customers SET archived_at = NOW(), updated_at = NOW() WHERE id = $1")
+                .bind(&id)
+                .execute(&state.pool)
+                .await?;
+        }
     }
 
     let data = customer_full_json(&state.pool, &id).await?;
     Ok(Json(json!({ "customer": data })))
 }
 
-// Human: Hard-delete a customer; cascades contacts and employee rates via FK.
-// Agent: DELETE customers WHERE id; 404 if missing; cross-module FKs SET NULL on delete.
-
 async fn delete_customer(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    Query(q): Query<DeleteCustomerQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_customers_delete(&state, &user).await?;
     if !customers_module_enabled(&state.pool).await {
         return Err(AppError::forbidden("Customers module is disabled"));
+    }
+    if !customer_exists_any(&state.pool, &id).await? {
+        return Err(AppError::not_found("Customer not found"));
+    }
+
+    let usage = customer_usage_counts(&state.pool, &id).await?;
+    let time_entries = usage
+        .get("timeEntries")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    if time_entries > 0 && !q.force.unwrap_or(false) {
+        return Err(AppError::bad_request(
+            "Customer has linked time entries. Archive instead, or pass force=true to delete.",
+        ));
     }
 
     let result = sqlx::query("DELETE FROM customers WHERE id = $1")
@@ -710,8 +1014,14 @@ async fn delete_customer(
     Ok(Json(json!({ "success": true })))
 }
 
-// Human: Add a contact to a company customer (or additional contact for individuals).
-// Agent: INSERT customer_contacts; optional is_primary clears other primaries on same customer.
+async fn require_customer_mutable(pool: &sqlx::PgPool, id: &str) -> Result<(), AppError> {
+    if !customer_exists_active(pool, id).await? {
+        return Err(AppError::bad_request(
+            "Customer is archived. Restore it before making changes.",
+        ));
+    }
+    Ok(())
+}
 
 async fn add_contact(
     State(state): State<AppState>,
@@ -723,9 +1033,7 @@ async fn add_contact(
     if !customers_module_enabled(&state.pool).await {
         return Err(AppError::forbidden("Customers module is disabled"));
     }
-    if !customer_exists(&state.pool, &id).await? {
-        return Err(AppError::not_found("Customer not found"));
-    }
+    require_customer_mutable(&state.pool, &id).await?;
 
     let mut tx = state.pool.begin().await?;
     insert_contact(&mut tx, &id, &body).await?;
@@ -734,9 +1042,6 @@ async fn add_contact(
     let data = customer_full_json(&state.pool, &id).await?;
     Ok(Json(json!({ "customer": data })))
 }
-
-// Human: Update an existing contact; primary flag clears siblings when set true.
-// Agent: UPDATE customer_contacts WHERE id + customer_id match.
 
 async fn update_contact(
     State(state): State<AppState>,
@@ -748,6 +1053,7 @@ async fn update_contact(
     if !customers_module_enabled(&state.pool).await {
         return Err(AppError::forbidden("Customers module is disabled"));
     }
+    require_customer_mutable(&state.pool, &id).await?;
     if !contact_belongs_to_customer(&state.pool, &id, &contact_id).await? {
         return Err(AppError::not_found("Contact not found"));
     }
@@ -756,6 +1062,9 @@ async fn update_contact(
     let last_name = body.last_name.trim();
     if first_name.is_empty() || last_name.is_empty() {
         return Err(AppError::bad_request("Contact first and last name are required"));
+    }
+    if let Some(ref email) = body.email {
+        validate_email(email)?;
     }
 
     let mut tx = state.pool.begin().await?;
@@ -789,9 +1098,6 @@ async fn update_contact(
     Ok(Json(json!({ "customer": data })))
 }
 
-// Human: Remove a contact and its employee rate rows (cascade).
-// Agent: DELETE customer_contacts WHERE id; block when sole primary on company with no others.
-
 async fn remove_contact(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -801,6 +1107,7 @@ async fn remove_contact(
     if !customers_module_enabled(&state.pool).await {
         return Err(AppError::forbidden("Customers module is disabled"));
     }
+    require_customer_mutable(&state.pool, &id).await?;
     if !contact_belongs_to_customer(&state.pool, &id, &contact_id).await? {
         return Err(AppError::not_found("Contact not found"));
     }
@@ -819,9 +1126,6 @@ async fn remove_contact(
     Ok(Json(json!({ "customer": data })))
 }
 
-// Human: Set or replace the hourly rate for one employee on a specific customer contact.
-// Agent: UPSERT customer_contact_employee_rates; validates employee exists.
-
 async fn set_contact_employee_rate(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -832,12 +1136,11 @@ async fn set_contact_employee_rate(
     if !customers_module_enabled(&state.pool).await {
         return Err(AppError::forbidden("Customers module is disabled"));
     }
+    require_customer_mutable(&state.pool, &id).await?;
     if !contact_belongs_to_customer(&state.pool, &id, &contact_id).await? {
         return Err(AppError::not_found("Contact not found"));
     }
-    if body.hourly_rate < 0.0 {
-        return Err(AppError::bad_request("Hourly rate must be zero or positive"));
-    }
+    validate_hourly_rate(body.hourly_rate)?;
 
     let employee_exists: Option<String> =
         sqlx::query_scalar("SELECT id FROM employees WHERE id = $1")
@@ -867,9 +1170,6 @@ async fn set_contact_employee_rate(
     Ok(Json(json!({ "customer": data })))
 }
 
-// Human: Remove a per-contact employee rate override so billing falls back to customer default.
-// Agent: DELETE customer_contact_employee_rates WHERE contact + employee match.
-
 async fn remove_contact_employee_rate(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -879,6 +1179,7 @@ async fn remove_contact_employee_rate(
     if !customers_module_enabled(&state.pool).await {
         return Err(AppError::forbidden("Customers module is disabled"));
     }
+    require_customer_mutable(&state.pool, &id).await?;
     if !contact_belongs_to_customer(&state.pool, &id, &contact_id).await? {
         return Err(AppError::not_found("Contact not found"));
     }
@@ -897,4 +1198,30 @@ async fn remove_contact_employee_rate(
 
     let data = customer_full_json(&state.pool, &id).await?;
     Ok(Json(json!({ "customer": data })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_customer_type_accepts_known_values() {
+        assert!(validate_customer_type("INDIVIDUAL"));
+        assert!(validate_customer_type("company"));
+        assert!(!validate_customer_type("PARTNER"));
+    }
+
+    #[test]
+    fn validate_email_rejects_obvious_invalid() {
+        assert!(validate_email("").is_ok());
+        assert!(validate_email("a@b.co").is_ok());
+        assert!(validate_email("@bad").is_err());
+    }
+
+    #[test]
+    fn parse_patch_string_null_clears() {
+        let field = Some(serde_json::Value::Null);
+        let parsed = parse_patch_string(&field).unwrap();
+        assert_eq!(parsed, Some(None));
+    }
 }

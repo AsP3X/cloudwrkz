@@ -20,6 +20,7 @@ pub struct TimeEntryRow {
     pub user_id: String,
     pub ticket_id: Option<String>,
     pub customer_id: Option<String>,
+    pub customer_contact_id: Option<String>,
     pub hourly_rate: Option<f64>,
     pub tags: Vec<String>,
     pub billable: bool,
@@ -59,6 +60,8 @@ pub struct CreateTimeEntryRequest {
     pub ticket_id: Option<String>,
     #[serde(default, alias = "customerId")]
     pub customer_id: Option<String>,
+    #[serde(default, alias = "customerContactId")]
+    pub customer_contact_id: Option<String>,
     #[serde(default, alias = "hourlyRate")]
     pub hourly_rate: Option<f64>,
     #[serde(default, alias = "startedAt")]
@@ -84,6 +87,8 @@ pub struct AddTimeEntryRequest {
     pub billable: Option<bool>,
     #[serde(default, alias = "customerId")]
     pub customer_id: Option<String>,
+    #[serde(default, alias = "customerContactId")]
+    pub customer_contact_id: Option<String>,
     #[serde(default, alias = "hourlyRate")]
     pub hourly_rate: Option<f64>,
     pub hours: Option<i32>,
@@ -110,6 +115,8 @@ pub struct UpdateTimeEntryRequest {
     pub billable: Option<bool>,
     #[serde(default, alias = "customerId")]
     pub customer_id: Option<serde_json::Value>,
+    #[serde(default, alias = "customerContactId")]
+    pub customer_contact_id: Option<serde_json::Value>,
     #[serde(default, alias = "hourlyRate")]
     pub hourly_rate: Option<serde_json::Value>,
     #[serde(default, alias = "startedAt")]
