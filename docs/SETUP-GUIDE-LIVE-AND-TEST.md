@@ -4,8 +4,8 @@ Step-by-step guide to set up the CloudWrkz project in a **test/development** env
 
 - **Web** — Vite + React SPA (static assets, CDN-ready)
 - **API** — Rust (Axum + SQLx) HTTP API
-- **Database** — PostgreSQL 16
-- **Optional** — pgAdmin for DB management; load balancer/reverse proxy in production
+- **Database** — PostgreSQL 16 (managed in production; bundled volume in local dev only)
+- **Optional** — load balancer/reverse proxy in production
 
 ---
 
@@ -51,7 +51,16 @@ git clone <your-repo-url> Cloudwrkz
 cd Cloudwrkz
 ```
 
-**Docker Compose file:** the repo ships `docker-compose.yml.example`. From the repository root, either copy it once (`cp docker-compose.yml.example docker-compose.yml`) so plain `docker compose …` commands work, or pass `-f docker-compose.yml.example` on every command below. Builds expect that directory to contain `apps/` and the rest of the monorepo; if the compose file lives elsewhere, set `CLOUDWRKZ_REPO_ROOT` in `.env` to the absolute path of the clone.
+**Docker Compose file (local dev only):** use `docker-compose.dev.yml.example` (or copy it to gitignored `docker-compose.yml`). From the repository root:
+
+```bash
+cp docker-compose.dev.yml.example docker-compose.yml
+docker compose up -d --build
+```
+
+Builds expect the compose file directory to contain `apps/` and the rest of the monorepo. If the compose file lives elsewhere, set `CLOUDWRKZ_REPO_ROOT` in `.env` to the absolute path of the clone.
+
+**Production:** never use the dev compose file. Use `docker-compose.prod.yml.example` with an external `DATABASE_URL` (managed PostgreSQL). See [§3 Live / production host](#3-live--production-host).
 
 ### Step 2.2 — Set up the database (PostgreSQL)
 
@@ -60,17 +69,13 @@ cd Cloudwrkz
 From the **repository root**:
 
 ```bash
-# Start PostgreSQL (and optionally pgAdmin)
+# Start PostgreSQL (dev stack only)
 docker compose up -d postgres
-
-# Optional: start pgAdmin for DB management at http://localhost:5050
-docker compose up -d postgres pgadmin
 ```
 
 Default credentials:
 
-- **PostgreSQL:** user `cloudwrkz`, password `cloudwrkz_dev_password`, database `cloudwrkz`, port `5432`
-- **pgAdmin:** email `admin@example.com`, password `admin`
+- **PostgreSQL:** user `cloudwrkz`, password `cloudwrkz_dev_password`, database `cloudwrkz`, host port **`5433`** by default (`POSTGRES_HOST_PORT`)
 
 **Option B: Local PostgreSQL**
 
@@ -217,6 +222,19 @@ With the **Rust API**, seeding is done via SQL migrations. No separate Node/Pris
 
 ## 3. Live / production host
 
+**Critical:** Production must use **managed PostgreSQL** (RDS, Cloud SQL, Azure Database, etc.) with automated backups and point-in-time recovery. Do **not** run the dev Compose stack (`docker-compose.dev.yml.example`) on a production host — it includes a local Postgres volume that can be destroyed by `docker compose down -v`.
+
+Use **`docker-compose.prod.yml.example`**, which defines **only the API** (no Postgres service, no data volumes). Copy `.env.production.example` to `.env.production` and set `DATABASE_URL`, `CORS_ORIGINS`, and cookie settings.
+
+```bash
+cp docker-compose.prod.yml.example docker-compose.prod.yml
+cp .env.production.example .env.production
+# Edit .env.production — set DATABASE_URL to managed Postgres, CORS_ORIGINS, secrets
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build api
+```
+
+Set `CLOUDWRKZ_DEPLOYMENT=production` (included in `.env.production.example`). This disables dev-only commands such as `migrate-repair`. Applied migrations are **immutable** — ship fixes as new migration files only.
+
 ### Step 3.1 — Prepare the host
 
 - Install Docker and Docker Compose (or your chosen runtime).
@@ -233,44 +251,39 @@ cd /opt/cloudwrkz
 Create a **production** env file (do not commit secrets):
 
 ```bash
-# .env.production at repo root
-POSTGRES_PASSWORD=<strong-random-password>
+cp .env.production.example .env.production
+# Edit: DATABASE_URL (managed Postgres), CORS_ORIGINS, COOKIE_*, strong secrets
 ```
 
 ### Step 3.3 — Database on the live host
 
-**Option A: Docker Compose (API + Postgres on same host)**
-
-```bash
-docker compose --env-file .env.production build api
-docker compose --env-file .env.production up -d postgres
-# Wait for postgres to be healthy, then:
-docker compose --env-file .env.production up -d api
-```
-
-**Option B: Managed PostgreSQL**
+**Required: Managed PostgreSQL**
 
 - Create a PostgreSQL 16 instance (e.g. AWS RDS, DigitalOcean, Supabase).
 - Note the connection string (e.g. `postgresql://user:pass@host:5432/cloudwrkz?sslmode=require`).
+- Configure automated backups and PITR on the provider — **not** Docker volumes.
 - The API runs migrations on startup automatically.
+
+**Do not** use the dev Compose Postgres service or `docker compose down -v` for production data.
 
 ### Step 3.4 — API on the live host
 
 **Option A: Docker**
 
-Set production env for the API service:
+Set production env for the API service (see `.env.production.example`):
 
+- `CLOUDWRKZ_DEPLOYMENT=production`
 - `CORS_ORIGINS=https://app.example.com`
 - `COOKIE_DOMAIN=.example.com`
 - `COOKIE_SECURE=true`
 - `RUST_LOG=info`
-- `DATABASE_URL` pointing at your Postgres
+- `DATABASE_URL` pointing at **managed** Postgres (`?sslmode=require` when supported)
 - (Optional) `API_REGION` — label for this API instance (e.g. `eu-west-1`); shown on `/health` and the public health page for future multi-region routing
 - (Optional) `API_NODES_AVAILABLE` — how many API nodes this deployment reports (default `1` until you run multiple endpoints behind a global router)
 
 ```bash
-docker compose --env-file .env.production build api
-docker compose --env-file .env.production up -d api
+docker compose -f docker-compose.prod.yml --env-file .env.production build api
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d api
 ```
 
 **Option B: Binary + systemd**
@@ -297,7 +310,8 @@ docker compose --env-file .env.production up -d api
    Type=simple
    ExecStart=/opt/cloudwrkz/cloudwrkz-api
    WorkingDirectory=/opt/cloudwrkz
-   Environment=DATABASE_URL=postgresql://cloudwrkz:PASSWORD@localhost:5432/cloudwrkz
+   Environment=DATABASE_URL=postgresql://user:pass@db.example.com:5432/cloudwrkz?sslmode=require
+   Environment=CLOUDWRKZ_DEPLOYMENT=production
    Environment=API_HOST=0.0.0.0
    Environment=API_PORT=8080
    Environment=CORS_ORIGINS=https://app.example.com
@@ -387,7 +401,8 @@ server {
 
 ### Step 3.7 — Production checklist
 
-- [ ] `DATABASE_URL` uses a strong password and (if remote) `?sslmode=require`
+- [ ] `CLOUDWRKZ_DEPLOYMENT=production` on all API processes
+- [ ] `DATABASE_URL` uses managed PostgreSQL with a strong password and `?sslmode=require` when remote
 - [ ] `CORS_ORIGINS` lists only your real web origin(s) (e.g. `https://app.example.com`)
 - [ ] (Optional) `API_REGION` set per instance if you rely on `/health` or the public health page for region-aware status
 - [ ] (Optional) `API_NODES_AVAILABLE` matches how many API backends your global router treats as available (usually `1` per process)
@@ -396,7 +411,8 @@ server {
 - [ ] HTTPS everywhere; no API or web over plain HTTP in production
 - [ ] Firewall: only 80/443 (and optionally 22) open; API port (8080) not exposed publicly if behind a reverse proxy
 - [ ] Reverse proxy sets `X-Forwarded-For` / `Forwarded` from the edge only (trusted), so per-IP auth rate limits and logs see real clients
-- [ ] Backups configured for PostgreSQL data volume
+- [ ] Backups and PITR configured on the **managed** PostgreSQL provider (not Docker volumes)
+- [ ] Dev compose (`docker-compose.dev.yml.example`) is **not** used on this host
 
 ---
 
@@ -506,7 +522,7 @@ curl -s http://localhost:8080/api/ping
 
 ### Database connection from host to Docker
 
-- From the host, use `localhost:5432` with the same user/password/database.
+- From the host, use `localhost:5433` by default (`POSTGRES_HOST_PORT`) with the same user/password/database.
 - If both API and Postgres are in the same Compose project, use hostname `postgres` and port `5432` in `DATABASE_URL`.
 
 ### Docker API healthcheck failing
@@ -527,6 +543,7 @@ curl -s http://localhost:8080/api/ping
 
 | Variable          | Required | Default           | Description                                    |
 |-------------------|----------|-------------------|------------------------------------------------|
+| `CLOUDWRKZ_DEPLOYMENT` | No | (unset) | Set to `production` on live hosts; disables `migrate-repair` and marks prod compose |
 | `DATABASE_URL`    | Yes      | —                 | PostgreSQL connection string                   |
 | `API_HOST`        | No       | `0.0.0.0`        | Bind address                                   |
 | `API_PORT`        | No       | `8080`            | Listen port                                    |
@@ -566,4 +583,4 @@ curl -s http://localhost:8080/api/ping
 | Environment | Database         | API                    | Web                                  |
 |-------------|------------------|------------------------|--------------------------------------|
 | **Test**    | Docker Postgres  | Docker or `cargo run`  | `pnpm dev` (Vite dev server)         |
-| **Live**    | Docker or managed| Docker or systemd      | Build `pnpm build`; serve `dist/` via Nginx/Caddy/CDN |
+| **Live**    | Managed Postgres | `docker-compose.prod.yml` or systemd | Build `pnpm build`; serve `dist/` via Nginx/Caddy/CDN |

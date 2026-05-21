@@ -12,6 +12,7 @@ import type { AdminUser } from "@/lib/types";
 import { formatDate } from "@/lib/utils/date";
 import { OverviewContextMenu, type OverviewContextMenuItem } from "@/components/ui/OverviewContextMenu";
 import { cn } from "@/lib/utils/cn";
+import { PERM } from "@/lib/permissions";
 
 // Human: Primary admin user grid with paging, bulk actions, creation flows, and contextual menus for account ops.
 // Agent: SYNC searchParams page; FETCH /admin/users; STATE selectedUsers; OverviewContextMenu; MULTI dialog workflows.
@@ -46,7 +47,7 @@ const getStatusBadgeVariant = (status: string) => {
 // Agent: STATE users,page,totalPages,loading,selectedUsers; useSearchParams; useNavigate; useMemo filtered subsets.
 
 export default function UsersPage() {
-  const { user, can, permissions } = useAuth();
+  const { can } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -70,24 +71,27 @@ export default function UsersPage() {
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; user: AdminUser } | null>(null);
 
-  /** Aligns with Next.js admin users: gate items by admin.users.* when /me returns permissions. */
-  const rowContextCaps = useMemo(() => {
-    if (permissions.length === 0) {
-      return { canViewDetail: true, canUpdate: true, canDelete: true };
-    }
-    return {
+  // Human: Row actions follow explicit admin.users.* grants from the session permission list.
+  // Agent: READS can(); DERIVES canViewDetail|canUpdate|canDelete from PERM.ADMIN_USERS_* keys.
+  const rowContextCaps = useMemo(
+    () => ({
       canViewDetail:
-        can("admin.users.view") ||
-        can("admin.users.update") ||
-        can("admin.users.delete"),
-      canUpdate: can("admin.users.update"),
-      canDelete: can("admin.users.delete"),
-    };
-  }, [permissions, can]);
+        can(PERM.ADMIN_USERS_VIEW) ||
+        can(PERM.ADMIN_USERS_UPDATE) ||
+        can(PERM.ADMIN_USERS_DELETE),
+      canUpdate: can(PERM.ADMIN_USERS_UPDATE),
+      canDelete: can(PERM.ADMIN_USERS_DELETE),
+      canBan: can(PERM.ADMIN_USERS_BAN),
+      canResetPassword: can(PERM.ADMIN_USERS_RESET_PASSWORD),
+    }),
+    [can]
+  );
 
   const showUserRowContextMenu =
-    (user?.role === "ADMIN" || user?.role === "MODERATOR") &&
-    (rowContextCaps.canViewDetail || rowContextCaps.canUpdate || rowContextCaps.canDelete);
+    rowContextCaps.canViewDetail ||
+    rowContextCaps.canUpdate ||
+    rowContextCaps.canDelete ||
+    rowContextCaps.canBan;
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -247,6 +251,8 @@ export default function UsersPage() {
             setEditDialogOpen(true);
           },
         });
+      }
+      if (rowContextCaps.canBan) {
         if (rowUser.status === "BANNED") {
           items.push({
             id: "unban",
@@ -288,7 +294,8 @@ export default function UsersPage() {
     [navigate, rowContextCaps]
   );
 
-  if (user?.role !== "ADMIN" && user?.role !== "MODERATOR") {
+  const canViewUsersPage = can(PERM.ADMIN_USERS_VIEW);
+  if (!canViewUsersPage) {
     return (
       <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-12 text-center">
         <p className="text-neutral-500">Access denied. Admin privileges required.</p>
@@ -441,21 +448,27 @@ export default function UsersPage() {
                         <Link to={`/dashboard/admin/users/${u.id}`}>
                           <Button variant="ghost" size="sm">View</Button>
                         </Link>
-                        <Button variant="ghost" size="sm" onClick={() => { setSelectedUser(u); setEditDialogOpen(true); }}>
-                          Edit
-                        </Button>
-                        {u.status === "BANNED" ? (
-                          <Button variant="primary" size="sm" onClick={() => { setSelectedUser(u); setUnbanDialogOpen(true); }}>
-                            Unban
-                          </Button>
-                        ) : (
-                          <Button variant="danger" size="sm" onClick={() => { setSelectedUser(u); setBanDialogOpen(true); }}>
-                            Ban
+                        {rowContextCaps.canUpdate && (
+                          <Button variant="ghost" size="sm" onClick={() => { setSelectedUser(u); setEditDialogOpen(true); }}>
+                            Edit
                           </Button>
                         )}
-                        <Button variant="danger" size="sm" onClick={() => { setSelectedUser(u); setDeleteDialogOpen(true); }}>
-                          Delete
-                        </Button>
+                        {rowContextCaps.canBan && (
+                          u.status === "BANNED" ? (
+                            <Button variant="primary" size="sm" onClick={() => { setSelectedUser(u); setUnbanDialogOpen(true); }}>
+                              Unban
+                            </Button>
+                          ) : (
+                            <Button variant="danger" size="sm" onClick={() => { setSelectedUser(u); setBanDialogOpen(true); }}>
+                              Ban
+                            </Button>
+                          )
+                        )}
+                        {rowContextCaps.canDelete && (
+                          <Button variant="danger" size="sm" onClick={() => { setSelectedUser(u); setDeleteDialogOpen(true); }}>
+                            Delete
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -510,13 +523,17 @@ export default function UsersPage() {
               await handleEdit(selectedUser.id, data);
             }}
             isLoading={isLoading}
-            onResetPassword={async () => {
-              const res = await api.post<{ plainPassword: string }>(
-                `/admin/users/${selectedUser.id}/reset-password`,
-                {},
-              );
-              return res.plainPassword;
-            }}
+            onResetPassword={
+              rowContextCaps.canResetPassword
+                ? async () => {
+                    const res = await api.post<{ plainPassword: string }>(
+                      `/admin/users/${selectedUser.id}/reset-password`,
+                      {},
+                    );
+                    return res.plainPassword;
+                  }
+                : undefined
+            }
           />
           <UserBanDialog
             open={banDialogOpen}
@@ -637,7 +654,7 @@ function UserEditDialog({
   user: AdminUser;
   onSubmit: (data: { name?: string; role: string; status: string; password?: string }) => Promise<void>;
   isLoading: boolean;
-  onResetPassword: () => Promise<string>;
+  onResetPassword?: () => Promise<string>;
 }) {
   const [name, setName] = useState(editUser.name || "");
   const [role, setRole] = useState(editUser.role);
@@ -669,6 +686,7 @@ function UserEditDialog({
   };
 
   const handleGenerate = async () => {
+    if (!onResetPassword) return;
     setError(null);
     setCopyHint(null);
     setResetLoading(true);
@@ -766,6 +784,7 @@ function UserEditDialog({
             </div>
           </section>
 
+          {onResetPassword && (
           <section className="space-y-4 pt-2 border-t border-neutral-200 dark:border-neutral-800" aria-labelledby="vite-edit-password">
             <div id="vite-edit-password">
               <FieldGroupTitle>Password</FieldGroupTitle>
@@ -831,6 +850,7 @@ function UserEditDialog({
               )}
             </div>
           </section>
+          )}
 
         <div className="flex justify-end gap-3 pt-4 border-t border-neutral-200 dark:border-neutral-800">
           <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={isLoading || resetLoading}>

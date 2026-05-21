@@ -47,7 +47,7 @@ async function refetchGroup(id: string): Promise<GroupDetail | null> {
 
 export default function GroupDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { can, user: authUser } = useAuth();
+  const { can } = useAuth();
   const [group, setGroup] = useState<GroupDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [addMemberOpen, setAddMemberOpen] = useState(false);
@@ -58,8 +58,7 @@ export default function GroupDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const canManagePermissions = can("admin.permissions.manage");
-  const canManageGroupMembers =
-    authUser?.role === "ADMIN" || can("admin.groups.manage");
+  const canManageGroupMembers = can("admin.groups.manage");
 
   const loadGroup = useCallback(async () => {
     if (!id) return;

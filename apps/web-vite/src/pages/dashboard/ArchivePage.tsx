@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/Badge";
 import { Dialog } from "@/components/ui/Dialog";
 import { cn } from "@/lib/utils/cn";
 import { formatDateTime } from "@/lib/utils/date";
+import { useAuth } from "@/components/providers/AuthProvider";
+import { PERM } from "@/lib/permissions";
 
 // Human: Unified archive browser for tickets, todos, time entries, and links with restore flows and type filters.
 // Agent: READS useSearchParams type; FETCHES archived items via api; MUTATES items state; SUPPORTS restore dialogs.
@@ -42,6 +44,7 @@ const typePill = (type: ArchiveItem["type"]) => {
 // Agent: STATE items,loading,activeType; SYNC URL searchParams; CALLS api archive endpoints; RENDERS Dialog restore UX.
 
 export default function ArchivePage() {
+  const { can } = useAuth();
   const [searchParams] = useSearchParams();
   const [items, setItems] = useState<ArchiveItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -194,6 +197,14 @@ export default function ArchivePage() {
     { key: "time", label: "Time Entries", count: allTypeCounts.time },
     { key: "links", label: "Links", count: allTypeCounts.links },
   ];
+
+  if (!can(PERM.ARCHIVE_VIEW)) {
+    return (
+      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-12 text-center">
+        <p className="text-neutral-500">Access denied.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

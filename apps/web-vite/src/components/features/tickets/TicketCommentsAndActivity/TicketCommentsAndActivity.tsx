@@ -37,7 +37,8 @@ export interface TicketCommentsAndActivityProps {
   ticketId: string;
   comments: TicketComment[];
   activities: TicketActivity[];
-  userRole: string;
+  /** When true, comment form may post agent-only notes and status shortcuts. */
+  showAgentCommentOptions?: boolean;
   onCommentAdded?: () => void;
   onStatusChange?: (status: string) => void;
 }
@@ -46,7 +47,7 @@ export function TicketCommentsAndActivity({
   ticketId,
   comments,
   activities,
-  userRole,
+  showAgentCommentOptions = false,
   onCommentAdded,
   onStatusChange,
 }: TicketCommentsAndActivityProps) {
@@ -166,7 +167,7 @@ export function TicketCommentsAndActivity({
       <div className="border-t border-neutral-200 dark:border-neutral-800 pt-6">
         <TicketCommentForm
           ticketId={ticketId}
-          userRole={userRole}
+          showAgentCommentOptions={showAgentCommentOptions}
           onCommentAdded={onCommentAdded}
           onStatusChange={onStatusChange}
         />

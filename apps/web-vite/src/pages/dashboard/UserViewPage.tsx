@@ -26,7 +26,7 @@ type UserInfo = {
 export default function UserViewPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, can } = useAuth();
   const [user, setUser] = useState<UserInfo | null>(null);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,7 +38,10 @@ export default function UserViewPage() {
       navigate(ROUTES.DASHBOARD, { replace: true });
       return;
     }
-    if (currentUser?.role === "USER" && currentUser.id !== id) {
+    // Human: Viewing another user's profile requires admin.users.view; own profile is always allowed.
+    // Agent: BLOCKS when id !== session user AND NOT can(admin.users.view); NAVIGATES to dashboard.
+    const isOwnProfile = currentUser?.id === id;
+    if (!isOwnProfile && !can("admin.users.view")) {
       navigate(ROUTES.DASHBOARD, { replace: true });
       return;
     }
@@ -62,7 +65,7 @@ export default function UserViewPage() {
     return () => {
       cancelled = true;
     };
-  }, [id, currentUser, navigate]);
+  }, [id, currentUser, can, navigate]);
 
   if (loading) {
     return (

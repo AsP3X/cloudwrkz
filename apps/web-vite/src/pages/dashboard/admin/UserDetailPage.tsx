@@ -13,6 +13,7 @@ import { formatDateTimeFull } from "@/lib/utils/date";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { Checkbox } from "@/components/ui/Checkbox";
 import type { AdminGroup } from "@/lib/types";
+import { PERM } from "@/lib/permissions";
 
 // Human: Deep admin user inspector covering bans, groups, permissions, and account edits.
 // Agent: FETCH /admin/users/:id + permissions; MULTIPLE dialogs; REQUIRES admin.users.*.
@@ -76,11 +77,14 @@ function getRoleBadgeVariant(role: string) {
 export default function UserDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { can, user: authUser } = useAuth();
-  const canViewUsers = can("admin.users.view");
-  const canManagePermissions = can("admin.permissions.manage");
-  const canManageGroups = authUser?.role === "ADMIN" || can("admin.groups.manage");
-  const canUpdateUser = authUser?.role === "ADMIN" || can("admin.users.update");
+  const { can } = useAuth();
+  const canViewUsers = can(PERM.ADMIN_USERS_VIEW);
+  const canManagePermissions = can(PERM.ADMIN_PERMISSIONS_MANAGE);
+  const canManageGroups = can(PERM.ADMIN_GROUPS_MANAGE);
+  const canViewGroups = can(PERM.ADMIN_GROUPS_VIEW) || canManageGroups;
+  const canUpdateUser = can(PERM.ADMIN_USERS_UPDATE);
+  const canDeleteUser = can(PERM.ADMIN_USERS_DELETE);
+  const canBanUser = can(PERM.ADMIN_USERS_BAN);
   const [user, setUser] = useState<UserDetailData | null>(null);
   const [effectivePermissions, setEffectivePermissions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -156,7 +160,7 @@ export default function UserDetailPage() {
   }, [id, user]);
 
   useEffect(() => {
-    if (!addToGroupOpen || !canManageGroups || !id) return;
+    if (!addToGroupOpen || !canViewGroups || !id) return;
     let cancelled = false;
     api
       .get<{ groups?: AdminGroup[] }>("/admin/groups")
@@ -367,17 +371,21 @@ export default function UserDetailPage() {
               <Button variant="outline">Manage Permissions</Button>
             </Link>
           )}
-          {user.status === "BANNED" && (
+          {user.status === "BANNED" && canBanUser && (
             <Button variant="primary" onClick={() => setUnbanOpen(true)}>
               Unban User
             </Button>
           )}
-          <Button variant="outline" onClick={() => setEditOpen(true)}>
-            Edit User
-          </Button>
-          <Button variant="danger" onClick={() => setDeleteOpen(true)}>
-            Delete User
-          </Button>
+          {canUpdateUser && (
+            <Button variant="outline" onClick={() => setEditOpen(true)}>
+              Edit User
+            </Button>
+          )}
+          {canDeleteUser && (
+            <Button variant="danger" onClick={() => setDeleteOpen(true)}>
+              Delete User
+            </Button>
+          )}
         </div>
       </div>
 

@@ -1,0 +1,64 @@
+# PRODUCTION-STYLE Compose — API (+ optional Vite dev front) against EXTERNAL PostgreSQL only.
+#
+# There is NO bundled Postgres service and NO named data volumes in this file.
+# `docker compose down -v` cannot wipe a database that is not defined here.
+#
+# Prerequisites:
+#   - Managed PostgreSQL (RDS, Cloud SQL, Azure Database, etc.) or a DBA-operated instance
+#   - DATABASE_URL in .env.production (never commit secrets)
+#
+# Usage:
+#   cp docker-compose.prod.yml.example docker-compose.prod.yml
+#   # Edit .env.production: set DATABASE_URL, CORS_ORIGINS, COOKIE_* , secrets
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build api
+#
+# Run migrations: they apply automatically when the API container starts.
+# For multi-replica deploys, run a single API instance or one-off task first, then scale.
+
+services:
+  api:
+    build:
+      context: ${CLOUDWRKZ_REPO_ROOT:-.}
+      dockerfile: apps/api/Dockerfile
+    container_name: cloudwrkz-api
+    restart: unless-stopped
+    environment:
+      CLOUDWRKZ_DEPLOYMENT: production
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to your managed PostgreSQL connection string}
+      API_HOST: "0.0.0.0"
+      API_PORT: "8080"
+      CORS_ORIGINS: ${CORS_ORIGINS:?Set CORS_ORIGINS to your public web origin(s)}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      RUST_LOG: ${RUST_LOG:-info}
+      API_REGION: ${API_REGION:-}
+      API_NODES_AVAILABLE: ${API_NODES_AVAILABLE:-1}
+    ports:
+      - "${API_HOST_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 120s
+
+  # Optional: only if you serve the Vite dev server behind a reverse proxy on the same host.
+  # For real production, prefer `pnpm --filter web-vite build` + static CDN/nginx instead.
+  web-vite:
+    profiles:
+      - with-vite-dev
+    build:
+      context: ${CLOUDWRKZ_REPO_ROOT:-.}
+      dockerfile: apps/web-vite/Dockerfile
+    image: cloudwrkz-web-vite:prod
+    container_name: cloudwrkz-web-vite
+    working_dir: /workspace
+    environment:
+      CLOUDWRKZ_DEPLOYMENT: production
+      DOCKER_API_PROXY_TARGET: ${DOCKER_API_PROXY_TARGET:-http://api:8080}
+      CLOUD_WRKZ_DEV_ALLOWED_HOSTS: ${CLOUD_WRKZ_DEV_ALLOWED_HOSTS:-}
+    ports:
+      - "${VITE_HOST_PORT:-5173}:5173"
+    depends_on:
+      api:
+        condition: service_healthy

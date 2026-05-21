@@ -37,10 +37,8 @@ export default function LinkDetailPage() {
   const [editLinkDialogOpen, setEditLinkDialogOpen] = useState(false);
 
   const canViewLinks = can("modules.links.view");
-  const canEditBase =
-    can("links.update") || user?.role === "ADMIN" || user?.role === "AGENT" || user?.role === "MODERATOR";
-  const canDeleteBase =
-    can("links.delete") || user?.role === "ADMIN" || user?.role === "AGENT" || user?.role === "MODERATOR";
+  const canEditBase = can("links.update");
+  const canDeleteBase = can("links.delete");
 
   const loadLink = useCallback(() => {
     if (!id || id === "undefined") {

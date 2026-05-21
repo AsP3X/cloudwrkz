@@ -8,6 +8,8 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { useSidebar } from "./SidebarContext";
 import { CollapsibleNavSection } from "@/components/ui/CollapsibleNavSection";
 import { IconMyTime } from "./sidebarNavIcons";
+import { useAuth } from "@/components/providers/AuthProvider";
+import { hasAgentCapabilities } from "@/lib/permissions";
 
 const DashboardIcon = () => (
   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -269,18 +271,17 @@ export interface NavCounts {
 
 interface DashboardSidebarProps {
   enabledModuleKeys: string[];
-  userRole?: "USER" | "AGENT" | "ADMIN" | "MODERATOR";
   navCounts?: NavCounts;
 }
 
 export const DashboardSidebar = ({
   enabledModuleKeys,
-  userRole,
   navCounts,
 }: DashboardSidebarProps) => {
   const pathname = useLocation().pathname;
   const { isMobileOpen, setIsMobileOpen, toolbarCompact } = useSidebar();
   const { user, can } = useAuth();
+  const agentNavAllowed = hasAgentCapabilities(can);
 
   const enabledModulesSet = new Set(enabledModuleKeys);
 
@@ -294,7 +295,9 @@ export const DashboardSidebar = ({
     can("customers.delete");
 
   const filterItem = (item: NavItem) => {
-    if (item.agentOnly && userRole !== "AGENT") {
+    // Human: Agent-only nav entries require ticket/agent capabilities, not the AGENT role string.
+    // Agent: agentOnly items; REQUIRES hasAgentCapabilities(can); HIDES My statistics without agent perms.
+    if (item.agentOnly && !agentNavAllowed) {
       return false;
     }
     if (item.moduleKey === "customers") {

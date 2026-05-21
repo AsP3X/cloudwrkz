@@ -610,30 +610,32 @@ async fn run_create_admin(
     .execute(&pool)
     .await;
 
-    pool.close().await;
-
     match res {
         Ok(_) => {
-            // Human: Bootstrap admins need explicit permission rows — same INSERT as `grant_all_permissions_to_user` in the API.
-            // Agent: INSERT user_permissions FROM permissions; ON CONFLICT DO NOTHING; BIND user id.
-            if let Err(e) = sqlx::query(
-                r#"INSERT INTO user_permissions (id, user_id, permission_id, created_at)
-                   SELECT 'bootstrap-' || $1 || '-' || p.id, $1, p.id, NOW()
-                   FROM permissions p
-                   ON CONFLICT (user_id, permission_id) DO NOTHING"#,
-            )
-            .bind(&id)
-            .execute(&pool)
-            .await
-            {
-                pool.close().await;
-                return Err(e.into());
+            // Human: Bootstrap admin gets Default + Admin group memberships so RBAC matches role label sync.
+            // Agent: INSERT group_memberships default-group-id + admin-group-id; ON CONFLICT DO NOTHING; THEN pool.close.
+            for (group_id, _label) in [
+                ("default-group-id", "Default"),
+                ("admin-group-id", "Admin"),
+            ] {
+                let _ = sqlx::query(
+                    r#"INSERT INTO group_memberships (id, user_id, group_id, created_at)
+                       SELECT $1, $2, g.id, NOW() FROM groups g WHERE g.id = $3
+                       ON CONFLICT (user_id, group_id) DO NOTHING"#,
+                )
+                .bind(new_cuid())
+                .bind(&id)
+                .bind(group_id)
+                .execute(&pool)
+                .await;
             }
+            pool.close().await;
             println!("{} Admin user created: {}", "✓".green(), email);
             println!("  Log in with: {} login", "cloudwrkz-cli".cyan());
             println!("  Then use the management menus or the web app.");
         }
         Err(e) => {
+            pool.close().await;
             if let Some(db_err) = e.as_database_error() {
                 if db_err.is_unique_violation() {
                     eprintln!("{} A user with that email already exists.", "✗".red());

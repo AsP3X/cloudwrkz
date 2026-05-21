@@ -25,7 +25,11 @@ use crate::models::link::{CreateLinkRequest, UpdateLinkRequest};
 use crate::models::ticket::{TicketCommentCreateRequest, TicketCreateRequest, TicketUpdateRequest};
 use crate::models::time_entry::{AddTimeEntryRequest, CreateTimeEntryRequest};
 use crate::models::todo::{CreateTodoRequest, UpdateTodoRequest};
-use crate::routes::helpers::{check_permission, check_permission_mut_tx};
+use crate::permissions::DEFAULT_GROUP_ID;
+use crate::routes::helpers::{
+    can_delete_others_ticket_mut_tx, can_update_others_ticket_mut_tx, check_permission,
+    check_permission_mut_tx, ensure_group_membership_tx,
+};
 
 use super::enqueue_github_link_metadata_job;
 
@@ -599,7 +603,7 @@ async fn exec_ticket_update(
     };
 
     let created_by_id: Option<String> = ticket.get("created_by_id");
-    let can_edit_all = check_permission_mut_tx(&mut tx, &user_id, "tickets.edit_all").await;
+    let can_edit_all = can_update_others_ticket_mut_tx(&mut tx, &user_id).await;
     if !can_edit_all && created_by_id.as_deref() != Some(&user_id) {
         let _ = tx.rollback().await;
         return JobExecOutcome::Fail(AppError::forbidden(
@@ -792,7 +796,7 @@ async fn exec_ticket_delete(
     };
 
     let created_by_id: Option<String> = ticket.get("created_by_id");
-    let can_delete_all = check_permission_mut_tx(&mut tx, &user_id, "tickets.delete_all").await;
+    let can_delete_all = can_delete_others_ticket_mut_tx(&mut tx, &user_id).await;
     if !can_delete_all && created_by_id.as_deref() != Some(&user_id) {
         let _ = tx.rollback().await;
         return JobExecOutcome::Fail(AppError::forbidden(
@@ -972,6 +976,11 @@ async fn exec_todo_create(
             return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
         }
     };
+    if !check_permission(pool, &user_id, "todos.create").await {
+        return JobExecOutcome::Fail(AppError::forbidden(
+            "You do not have permission to create todos",
+        ));
+    }
     let body_val = match payload.get("request") {
         Some(v) => v.clone(),
         None => {
@@ -1071,6 +1080,11 @@ async fn exec_todo_update(
             return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
         }
     };
+    if !check_permission(pool, &user_id, "todos.update").await {
+        return JobExecOutcome::Fail(AppError::forbidden(
+            "You do not have permission to update todos",
+        ));
+    }
     let todo_id = match payload.get("todo_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
         None => {
@@ -1343,6 +1357,11 @@ async fn exec_todo_delete(
             return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
         }
     };
+    if !check_permission(pool, &user_id, "todos.delete").await {
+        return JobExecOutcome::Fail(AppError::forbidden(
+            "You do not have permission to delete todos",
+        ));
+    }
     let todo_id = match payload.get("todo_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
         None => {
@@ -1434,6 +1453,11 @@ async fn exec_time_entry_timer_create(
             return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
         }
     };
+    if !check_permission(pool, &user_id, "time_tracking.create").await {
+        return JobExecOutcome::Fail(AppError::forbidden(
+            "You do not have permission to create time entries",
+        ));
+    }
     let body_val = match payload.get("request") {
         Some(v) => v.clone(),
         None => {
@@ -1539,6 +1563,11 @@ async fn exec_time_entry_manual_create(
             return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
         }
     };
+    if !check_permission(pool, &user_id, "time_tracking.create").await {
+        return JobExecOutcome::Fail(AppError::forbidden(
+            "You do not have permission to create time entries",
+        ));
+    }
     let body_val = match payload.get("request") {
         Some(v) => v.clone(),
         None => {
@@ -1768,6 +1797,11 @@ async fn exec_link_create(
             return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
         }
     };
+    if !check_permission(pool, &user_id, "links.create").await {
+        return JobExecOutcome::Fail(AppError::forbidden(
+            "You do not have permission to create links",
+        ));
+    }
     let body_val = match payload.get("request") {
         Some(v) => v.clone(),
         None => {
@@ -2166,10 +2200,17 @@ async fn exec_employee_create(
             }
             return map_sqlx_ticket(e);
         }
-        Some(new_user_id)
+        Some(new_user_id.clone())
     } else {
         None
     };
+
+    if let Some(ref uid) = linked_user_id {
+        if let Err(e) = ensure_group_membership_tx(&mut tx, uid, DEFAULT_GROUP_ID).await {
+            let _ = tx.rollback().await;
+            return JobExecOutcome::Fail(e);
+        }
+    }
 
     let emp_id = new_cuid();
     let res = sqlx::query(
@@ -2897,6 +2938,11 @@ async fn exec_link_update(
             return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
         }
     };
+    if !check_permission(pool, &user_id, "links.update").await {
+        return JobExecOutcome::Fail(AppError::forbidden(
+            "You do not have permission to update links",
+        ));
+    }
     let link_id = match payload.get("link_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
         None => {
@@ -3118,6 +3164,11 @@ async fn exec_link_delete(
             return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
         }
     };
+    if !check_permission(pool, &user_id, "links.delete").await {
+        return JobExecOutcome::Fail(AppError::forbidden(
+            "You do not have permission to delete links",
+        ));
+    }
     let link_id = match payload.get("link_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
         None => {

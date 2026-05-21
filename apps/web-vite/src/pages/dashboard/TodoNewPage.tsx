@@ -8,6 +8,7 @@ import { TaskForm } from "@/components/features/tasks/TaskForm";
 import type { TaskFormUser, TaskFormTicket } from "@/components/features/tasks/TaskForm";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { AccessIssueTicketDialog } from "@/components/features/tickets/AccessIssueTicketDialog";
+import { PERM } from "@/lib/permissions";
 
 // Human: Task creation page that preloads assignable users and related tickets when permissions allow linking work.
 // Agent: FETCH /admin/users conditional on canAssign; FETCH /tickets; RENDERS TaskForm; GATED modules.todos.view.
@@ -16,17 +17,13 @@ import { AccessIssueTicketDialog } from "@/components/features/tickets/AccessIss
 // Agent: STATE users,tickets,loading; canViewTodos early exit; Promise.all loader.
 
 export default function TodoNewPage() {
-  const { user, can } = useAuth();
+  const { can } = useAuth();
   const [users, setUsers] = useState<TaskFormUser[]>([]);
   const [tickets, setTickets] = useState<TaskFormTicket[]>([]);
   const [loading, setLoading] = useState(true);
 
   const canViewTodos = can("modules.todos.view");
-  const canAssign =
-    user?.role === "ADMIN" ||
-    user?.role === "AGENT" ||
-    user?.role === "MODERATOR" ||
-    can("todos.assign");
+  const canAssign = can(PERM.TODOS_ASSIGN);
 
   useEffect(() => {
     if (!canViewTodos) {

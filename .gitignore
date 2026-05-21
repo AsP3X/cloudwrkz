@@ -17,8 +17,9 @@
 # Rust (workspace and crates)
 /target/
 
-# Docker Compose (copy docker-compose.yml.example → docker-compose.yml locally)
+# Docker Compose (copy an example → gitignored local file)
 /docker-compose.yml
+/docker-compose.prod.yml
 
 # Misc
 .DS_Store

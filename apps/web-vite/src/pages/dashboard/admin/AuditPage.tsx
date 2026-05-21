@@ -104,7 +104,7 @@ export default function AuditPage() {
     );
   }
 
-  if (!canViewAudit && user.role !== "ADMIN") {
+  if (!canViewAudit) {
     return (
       <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-12 text-center">
         <p className="text-neutral-500">Access denied. View audit log permission required.</p>

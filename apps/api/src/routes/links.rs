@@ -27,7 +27,9 @@ use crate::job_queue::entity_creates;
 use crate::link_preview;
 use crate::models::link::*;
 use crate::routes::AppState;
-use crate::routes::helpers::{hash_json_for_idempotency, idempotency_key_from_headers};
+use crate::routes::helpers::{
+    hash_json_for_idempotency, idempotency_key_from_headers, require_links_read, require_permission,
+};
 
 // Human: Routes stay backward compatible by keeping both `/links/metadata` and the older `/links/extract-metadata` alias used by the Vite client.
 // Agent: Router GET list POST create; PUT/PATCH/DELETE by id; POST metadata x2; GET tag-suggestions; POST github-metadata refresh.
@@ -54,10 +56,12 @@ async fn list_links(
     AuthUser(user): AuthUser,
     Query(params): Query<LinkListParams>,
 ) -> Result<Json<LinkListResponse>, AppError> {
+    let archived = params.archive.as_deref().unwrap_or("false");
+    require_links_read(&state.pool, &user.id, archived == "true").await?;
+
     let limit = params.limit.unwrap_or(20).min(100);
     let page = params.page.unwrap_or(1).max(1);
     let offset = (page - 1) * limit;
-    let archived = params.archive.as_deref().unwrap_or("false");
     let is_fav = params.is_favorite.clone().filter(|s| !s.trim().is_empty());
     let collection_id = params
         .collection_id
@@ -203,6 +207,7 @@ async fn tag_suggestions(
     AuthUser(user): AuthUser,
     Query(params): Query<TagSuggestionsQuery>,
 ) -> Result<Json<Vec<String>>, AppError> {
+    require_permission(&state.pool, &user.id, "links.view").await?;
     let q = params.q.trim().to_lowercase();
     if q.is_empty() {
         return Ok(Json(vec![]));
@@ -252,6 +257,7 @@ async fn get_link(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    require_permission(&state.pool, &user.id, "links.view").await?;
     let row = sqlx::query(
         r#"SELECT l.id, l.title, l.url, l.normalized_url, l.description, l.favicon,
                   l.link_type::text as link_type, l.tags, l.notes, l.is_favorite, l.rating,
@@ -286,6 +292,11 @@ async fn get_link(
         return Err(AppError::not_found("Link not found"));
     };
 
+    let archived_at: Option<chrono::NaiveDateTime> = r.get("archived_at");
+    if archived_at.is_some() {
+        require_permission(&state.pool, &user.id, "links.archive").await?;
+    }
+
     let link = LinkRow {
         id: r.get("id"),
         title: r.get("title"),
@@ -315,6 +326,7 @@ async fn enqueue_github_metadata_refresh(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    require_permission(&state.pool, &user.id, "links.update").await?;
     let owns: bool =
         sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM links WHERE id = $1 AND user_id = $2)")
             .bind(&id)
@@ -341,6 +353,7 @@ async fn create_link(
     headers: HeaderMap,
     Json(body): Json<CreateLinkRequest>,
 ) -> Result<Response, AppError> {
+    require_permission(&state.pool, &user.id, "links.create").await?;
     if body.url.trim().is_empty() {
         return Err(AppError::bad_request("URL is required"));
     }
@@ -401,6 +414,7 @@ async fn update_link(
     headers: HeaderMap,
     Json(body): Json<UpdateLinkRequest>,
 ) -> Result<Response, AppError> {
+    require_permission(&state.pool, &user.id, "links.update").await?;
     let body_hash = hash_json_for_idempotency(&body);
     let route = format!("PUT /links/{id}");
     let ctx = MutationRunContext {
@@ -458,6 +472,7 @@ async fn delete_link(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
+    require_permission(&state.pool, &user.id, "links.delete").await?;
     let route = format!("DELETE /links/{id}");
     let ctx = MutationRunContext {
         user_id: user.id.clone(),
@@ -511,6 +526,7 @@ async fn extract_metadata(
     headers: HeaderMap,
     Json(body): Json<ExtractMetadataRequest>,
 ) -> Result<Response, AppError> {
+    require_permission(&state.pool, &user.id, "links.create").await?;
     let url_str = body.url.trim().to_string();
     if url_str.is_empty() {
         return Err(AppError::bad_request("URL is required"));

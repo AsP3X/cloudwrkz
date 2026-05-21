@@ -1,7 +1,7 @@
-//! Admin-only HTTP surface: RBAC, audit log, dangerous SQL explorer, system settings, job queue workers, and in-app notifications.
-
-// Human: Every handler checks explicit admin-style permissions (or `ADMIN` role for legacy paths) before exposing sensitive data or destructive operations.
-// Agent: router MERGES /admin/* + /notifications; USES check_permission + audit write_audit_log; job queue routes CALL persist_worker_count / supervisor; SSE worker logs BroadcastStream.
+//! Admin HTTP surface: RBAC, audit log, SQL explorer, system settings, job queue workers, and notifications.
+//!
+// Human: Every handler checks explicit permission keys; user roles are labels only and do not bypass authorization.
+// Agent: router MERGES /admin/* + /notifications; USES require_permission/require_any_permission; audit write_audit_log; job queue routes CALL persist_worker_count / supervisor; SSE worker logs BroadcastStream.
 
 use axum::{
     Json, Router,
@@ -27,7 +27,11 @@ use crate::error::AppError;
 use crate::models::audit_log::AuditLogRow;
 use crate::models::notification::NotificationRow;
 use crate::routes::AppState;
-use crate::routes::helpers::{check_permission, get_user_permission_keys};
+use crate::permissions::{self, validate_assignment_keys};
+use crate::routes::helpers::{
+    check_permission, get_permission_breakdown, require_any_permission, require_permission,
+    sync_groups_for_role_label,
+};
 use crate::{
     JOB_QUEUE_WORKER_MAX, JOB_QUEUE_WORKER_MIN, SYSTEM_SETTING_JOB_QUEUE_WORKER_COUNT,
     persist_worker_count, worker_hostname,
@@ -167,9 +171,7 @@ async fn audit_entries(
     AuthUser(user): AuthUser,
     Query(q): Query<AuditEntriesQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if !check_permission(&state.pool, &user.id, "audit.view").await && user.role != "ADMIN" {
-        return Err(AppError::forbidden("Insufficient permissions"));
-    }
+    require_permission(&state.pool, &user.id, "audit.view").await?;
 
     let page = q.page.unwrap_or(1).max(1);
     let limit = q
@@ -356,9 +358,7 @@ async fn audit_actions(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if !check_permission(&state.pool, &user.id, "audit.view").await && user.role != "ADMIN" {
-        return Err(AppError::forbidden("Insufficient permissions"));
-    }
+    require_permission(&state.pool, &user.id, "audit.view").await?;
     let rows: Vec<(String,)> =
         sqlx::query_as("SELECT DISTINCT action FROM audit_logs ORDER BY action")
             .fetch_all(&state.pool)
@@ -384,9 +384,7 @@ async fn audit_export(
     AuthUser(user): AuthUser,
     Query(q): Query<AuditExportQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if !check_permission(&state.pool, &user.id, "audit.export").await && user.role != "ADMIN" {
-        return Err(AppError::forbidden("Insufficient permissions"));
-    }
+    require_permission(&state.pool, &user.id, "audit.export").await?;
 
     let format = q.format.as_deref().unwrap_or("json");
     if format != "json" && format != "csv" {
@@ -487,9 +485,7 @@ async fn audit_events(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if !check_permission(&state.pool, &user.id, "audit.view").await && user.role != "ADMIN" {
-        return Err(AppError::forbidden("Insufficient permissions"));
-    }
+    require_permission(&state.pool, &user.id, "audit.view").await?;
 
     let rows: Vec<AuditLogRow> = sqlx::query_as(
         r#"SELECT id, user_id, action, resource_type, resource_id,
@@ -535,13 +531,11 @@ async fn db_query(
     AuthUser(user): AuthUser,
     Json(body): Json<DbQueryRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if !check_permission(&state.pool, &user.id, "admin.db.view_entries").await
-        && user.role != "ADMIN"
-    {
-        return Err(AppError::forbidden("Insufficient permissions"));
-    }
-
+    require_permission(&state.pool, &user.id, "admin.db.query").await?;
     let query = body.query.trim();
+    if query.is_empty() {
+        return Err(AppError::bad_request("Query is required"));
+    }
     if !query.to_uppercase().starts_with("SELECT") {
         return Err(AppError::bad_request("Only SELECT queries are allowed"));
     }
@@ -559,12 +553,12 @@ async fn db_tables(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if !check_permission(&state.pool, &user.id, "admin.db.view").await
-        && !check_permission(&state.pool, &user.id, "admin.db.view_entries").await
-        && user.role != "ADMIN"
-    {
-        return Err(AppError::forbidden("Insufficient permissions"));
-    }
+    require_any_permission(
+        &state.pool,
+        &user.id,
+        &["admin.db.view", "admin.db.view_entries"],
+    )
+    .await?;
 
     let table_names: Vec<String> = sqlx::query_scalar(
         "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name",
@@ -618,11 +612,7 @@ async fn db_row_update(
     AuthUser(user): AuthUser,
     Json(body): Json<DbRowUpdateRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if !check_permission(&state.pool, &user.id, "admin.db.edit_entries").await
-        && user.role != "ADMIN"
-    {
-        return Err(AppError::forbidden("Insufficient permissions"));
-    }
+    require_permission(&state.pool, &user.id, "admin.db.edit_entries").await?;
 
     let table = sanitize_identifier(body.table.trim())?;
     let id_column = body.id_column.as_deref().unwrap_or("id").trim();
@@ -677,11 +667,7 @@ async fn db_row_delete(
     AuthUser(user): AuthUser,
     Json(body): Json<DbRowDeleteRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if !check_permission(&state.pool, &user.id, "admin.db.delete_entries").await
-        && user.role != "ADMIN"
-    {
-        return Err(AppError::forbidden("Insufficient permissions"));
-    }
+    require_permission(&state.pool, &user.id, "admin.db.delete_entries").await?;
 
     let table = sanitize_identifier(body.table.trim())?;
     let id_column = body.id_column.as_deref().unwrap_or("id").trim();
@@ -1194,10 +1180,7 @@ async fn list_users(
     AuthUser(user): AuthUser,
     Query(params): Query<UserListParams>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" && user.role != "MODERATOR" {
-        return Err(AppError::forbidden("Admin access required"));
-    }
-
+    require_permission(&state.pool, &user.id, "admin.users.view").await?;
     let limit = params.limit.unwrap_or(50).min(200);
     let offset = params.offset.unwrap_or(0);
     let search = params.search.unwrap_or_default();
@@ -1280,15 +1263,7 @@ async fn create_user(
     headers: HeaderMap,
     Json(body): Json<CreateUserRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" && user.role != "MODERATOR" {
-        return Err(AppError::forbidden("Admin access required"));
-    }
-    if user.role != "ADMIN" && !check_permission(&state.pool, &user.id, "admin.users.create").await
-    {
-        return Err(AppError::forbidden(
-            "You do not have permission to create users",
-        ));
-    }
+    require_permission(&state.pool, &user.id, "admin.users.create").await?;
 
     let email = body.email.trim().to_lowercase();
     if email.is_empty() || !email.contains('@') {
@@ -1357,6 +1332,8 @@ async fn create_user(
         e.into()
     })?;
 
+    sync_groups_for_role_label(&state.pool, &user_id, &role).await?;
+
     audit::write_audit_log(
         &state.pool,
         WriteAuditParams {
@@ -1385,9 +1362,7 @@ async fn get_user(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" && user.role != "MODERATOR" {
-        return Err(AppError::forbidden("Admin access required"));
-    }
+    require_permission(&state.pool, &user.id, "admin.users.view").await?;
 
     let r = sqlx::query(
         r#"SELECT id, email, name, role::text as role, status::text as status,
@@ -1480,11 +1455,19 @@ async fn get_user_effective_permissions(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" && user.role != "MODERATOR" {
-        return Err(AppError::forbidden("Admin access required"));
-    }
-    let keys = get_user_permission_keys(&state.pool, &id).await;
-    Ok(Json(serde_json::json!({ "permissions": keys })))
+    require_any_permission(
+        &state.pool,
+        &user.id,
+        &["admin.permissions.view", "admin.permissions.manage"],
+    )
+    .await?;
+    let breakdown = get_permission_breakdown(&state.pool, &id).await?;
+    Ok(Json(serde_json::json!({
+        "direct": breakdown.direct,
+        "fromGroups": breakdown.from_groups,
+        "effective": breakdown.effective,
+        "permissions": breakdown.effective,
+    })))
 }
 
 #[derive(Deserialize)]
@@ -1498,9 +1481,7 @@ async fn ban_user(
     Path(id): Path<String>,
     Json(body): Json<BanUserRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" {
-        return Err(AppError::forbidden("Admin only"));
-    }
+    require_permission(&state.pool, &user.id, "admin.users.ban").await?;
     sqlx::query(
         r#"UPDATE users SET status = 'BANNED', banned_at = NOW(), ban_reason = $1, updated_at = NOW() WHERE id = $2"#,
     )
@@ -1534,9 +1515,7 @@ async fn unban_user(
     Path(id): Path<String>,
     Json(body): Json<UnbanUserRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" {
-        return Err(AppError::forbidden("Admin only"));
-    }
+    require_permission(&state.pool, &user.id, "admin.users.ban").await?;
     sqlx::query(
         r#"UPDATE users SET status = 'ACTIVE', banned_at = NULL, ban_reason = NULL, updated_at = NOW() WHERE id = $1"#,
     )
@@ -1577,9 +1556,7 @@ async fn reset_user_password(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" && user.role != "MODERATOR" {
-        return Err(AppError::forbidden("Admin access required"));
-    }
+    require_permission(&state.pool, &user.id, "admin.users.reset_password").await?;
     let plain = generate_secure_temp_password();
     let hash = password::hash_password(&plain).map_err(|e| AppError::internal(e.to_string()))?;
     let n = sqlx::query("UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2")
@@ -1626,9 +1603,7 @@ async fn update_user(
     Path(id): Path<String>,
     Json(body): Json<UpdateUserRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" {
-        return Err(AppError::forbidden("Admin only"));
-    }
+    require_permission(&state.pool, &user.id, "admin.users.update").await?;
 
     if let Some(ref raw_pw) = body.password {
         let pw = raw_pw.trim();
@@ -1655,6 +1630,7 @@ async fn update_user(
             .bind(&id)
             .execute(&state.pool)
             .await?;
+        sync_groups_for_role_label(&state.pool, &id, role).await?;
     }
     if let Some(ref status) = body.status {
         sqlx::query(
@@ -1700,9 +1676,7 @@ async fn delete_user(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" {
-        return Err(AppError::forbidden("Admin only"));
-    }
+    require_permission(&state.pool, &user.id, "admin.users.delete").await?;
     if id == user.id {
         return Err(AppError::bad_request("Cannot delete yourself"));
     }
@@ -1719,15 +1693,12 @@ async fn list_permissions(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let can_view = user.role == "ADMIN"
-        || user.role == "MODERATOR"
-        || check_permission(&state.pool, &user.id, "admin.permissions.view").await
-        || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
-    if !can_view {
-        return Err(AppError::forbidden(
-            "Permission required: admin.permissions.view or admin.permissions.manage",
-        ));
-    }
+    require_any_permission(
+        &state.pool,
+        &user.id,
+        &["admin.permissions.view", "admin.permissions.manage"],
+    )
+    .await?;
     let rows = sqlx::query(
         r#"SELECT id, key, name, description, category, module, created_at, updated_at
            FROM permissions ORDER BY category, key"#,
@@ -1757,15 +1728,13 @@ async fn list_user_permissions(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let can_view = user.role == "ADMIN"
-        || user.role == "MODERATOR"
-        || check_permission(&state.pool, &user.id, "admin.permissions.view").await
-        || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
-    if !can_view {
-        return Err(AppError::forbidden(
-            "Permission required: admin.permissions.view or admin.permissions.manage",
-        ));
-    }
+    require_any_permission(
+        &state.pool,
+        &user.id,
+        &["admin.permissions.view", "admin.permissions.manage"],
+    )
+    .await?;
+    let breakdown = get_permission_breakdown(&state.pool, &id).await?;
     let rows = sqlx::query(
         r#"SELECT p.id, p.key, p.name, p.category FROM user_permissions up
            JOIN permissions p ON up.permission_id = p.id
@@ -1785,7 +1754,16 @@ async fn list_user_permissions(
             })
         })
         .collect();
-    Ok(Json(serde_json::json!({ "permissions": permissions })))
+    let warnings = validate_assignment_keys(
+        &breakdown.effective.iter().cloned().collect::<HashSet<_>>(),
+    );
+    Ok(Json(serde_json::json!({
+        "permissions": permissions,
+        "direct": breakdown.direct,
+        "fromGroups": breakdown.from_groups,
+        "effective": breakdown.effective,
+        "validationWarnings": warnings,
+    })))
 }
 
 #[derive(Deserialize)]
@@ -1799,13 +1777,7 @@ async fn grant_user_permission(
     Path(id): Path<String>,
     Json(body): Json<GrantPermissionRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let can_manage = user.role == "ADMIN"
-        || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
-    if !can_manage {
-        return Err(AppError::forbidden(
-            "Permission required: admin.permissions.manage",
-        ));
-    }
+    require_permission(&state.pool, &user.id, "admin.permissions.manage").await?;
     let key = body.key.trim();
     if key.is_empty() {
         return Err(AppError::bad_request("Permission key is required"));
@@ -1846,13 +1818,7 @@ async fn revoke_user_permission(
     AuthUser(user): AuthUser,
     Path((id, key)): Path<(String, String)>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let can_manage = user.role == "ADMIN"
-        || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
-    if !can_manage {
-        return Err(AppError::forbidden(
-            "Permission required: admin.permissions.manage",
-        ));
-    }
+    require_permission(&state.pool, &user.id, "admin.permissions.manage").await?;
     let perm_id: Option<String> = sqlx::query_scalar("SELECT id FROM permissions WHERE key = $1")
         .bind(key.trim())
         .fetch_optional(&state.pool)
@@ -1890,13 +1856,7 @@ async fn replace_user_permissions(
     Path(id): Path<String>,
     Json(body): Json<ReplaceDirectPermissionsBody>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let can_manage = user.role == "ADMIN"
-        || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
-    if !can_manage {
-        return Err(AppError::forbidden(
-            "Permission required: admin.permissions.manage",
-        ));
-    }
+    require_permission(&state.pool, &user.id, "admin.permissions.manage").await?;
 
     let new_keys: HashSet<String> = body
         .keys
@@ -1905,6 +1865,15 @@ async fn replace_user_permissions(
         .filter(|s| !s.is_empty())
         .collect();
     let unique_keys: Vec<String> = new_keys.iter().cloned().collect();
+
+    let unknown = permissions::unknown_keys(&unique_keys);
+    if !unknown.is_empty() {
+        return Err(AppError::bad_request(format!(
+            "Unknown permission keys: {}",
+            unknown.join(", ")
+        )));
+    }
+    let validation_warnings = validate_assignment_keys(&new_keys);
 
     let old_keys: Vec<String> = sqlx::query_scalar(
         r#"SELECT p.key FROM user_permissions up
@@ -1978,7 +1947,10 @@ async fn replace_user_permissions(
         },
     );
 
-    Ok(Json(serde_json::json!({ "success": true })))
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "validationWarnings": validation_warnings,
+    })))
 }
 
 async fn list_group_permissions(
@@ -1986,15 +1958,12 @@ async fn list_group_permissions(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let can_view = user.role == "ADMIN"
-        || user.role == "MODERATOR"
-        || check_permission(&state.pool, &user.id, "admin.permissions.view").await
-        || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
-    if !can_view {
-        return Err(AppError::forbidden(
-            "Permission required: admin.permissions.view or admin.permissions.manage",
-        ));
-    }
+    require_any_permission(
+        &state.pool,
+        &user.id,
+        &["admin.permissions.view", "admin.permissions.manage"],
+    )
+    .await?;
     let rows = sqlx::query(
         r#"SELECT p.id, p.key, p.name, p.category FROM group_permissions gp
            JOIN permissions p ON gp.permission_id = p.id
@@ -2028,13 +1997,7 @@ async fn grant_group_permission(
     Path(id): Path<String>,
     Json(body): Json<GrantGroupPermissionRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let can_manage = user.role == "ADMIN"
-        || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
-    if !can_manage {
-        return Err(AppError::forbidden(
-            "Permission required: admin.permissions.manage",
-        ));
-    }
+    require_permission(&state.pool, &user.id, "admin.permissions.manage").await?;
     let key = body.key.trim();
     if key.is_empty() {
         return Err(AppError::bad_request("Permission key is required"));
@@ -2075,13 +2038,7 @@ async fn revoke_group_permission(
     AuthUser(user): AuthUser,
     Path((id, key)): Path<(String, String)>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let can_manage = user.role == "ADMIN"
-        || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
-    if !can_manage {
-        return Err(AppError::forbidden(
-            "Permission required: admin.permissions.manage",
-        ));
-    }
+    require_permission(&state.pool, &user.id, "admin.permissions.manage").await?;
     let perm_id: Option<String> = sqlx::query_scalar("SELECT id FROM permissions WHERE key = $1")
         .bind(key.trim())
         .fetch_optional(&state.pool)
@@ -2113,13 +2070,7 @@ async fn replace_group_permissions(
     Path(id): Path<String>,
     Json(body): Json<ReplaceDirectPermissionsBody>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let can_manage = user.role == "ADMIN"
-        || check_permission(&state.pool, &user.id, "admin.permissions.manage").await;
-    if !can_manage {
-        return Err(AppError::forbidden(
-            "Permission required: admin.permissions.manage",
-        ));
-    }
+    require_permission(&state.pool, &user.id, "admin.permissions.manage").await?;
 
     let new_keys: HashSet<String> = body
         .keys
@@ -2208,16 +2159,19 @@ async fn can_manage_group_memberships(
     pool: &sqlx::PgPool,
     user: &crate::models::user::CurrentUser,
 ) -> bool {
-    user.role == "ADMIN" || check_permission(pool, &user.id, "admin.groups.manage").await
+    check_permission(pool, &user.id, "admin.groups.manage").await
 }
 
 async fn list_groups(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" && user.role != "MODERATOR" {
-        return Err(AppError::forbidden("Admin access required"));
-    }
+    require_any_permission(
+        &state.pool,
+        &user.id,
+        &["admin.groups.view", "admin.groups.manage"],
+    )
+    .await?;
 
     let rows = sqlx::query(
         r#"SELECT g.id, g.name, g.description, g.created_at, g.updated_at,
@@ -2257,9 +2211,7 @@ async fn create_group(
     AuthUser(user): AuthUser,
     Json(body): Json<CreateGroupRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
-    if user.role != "ADMIN" {
-        return Err(AppError::forbidden("Admin only"));
-    }
+    require_permission(&state.pool, &user.id, "admin.groups.manage").await?;
 
     let id = crate::id::new_cuid();
     sqlx::query("INSERT INTO groups (id, name, description, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())")
@@ -2277,9 +2229,12 @@ async fn get_group(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" && user.role != "MODERATOR" {
-        return Err(AppError::forbidden("Admin access required"));
-    }
+    require_any_permission(
+        &state.pool,
+        &user.id,
+        &["admin.groups.view", "admin.groups.manage"],
+    )
+    .await?;
 
     let r = sqlx::query(
         "SELECT id, name, description, created_at, updated_at FROM groups WHERE id = $1",
@@ -2456,9 +2411,7 @@ async fn update_group(
     Path(id): Path<String>,
     Json(body): Json<UpdateGroupRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" {
-        return Err(AppError::forbidden("Admin only"));
-    }
+    require_permission(&state.pool, &user.id, "admin.groups.manage").await?;
 
     if let Some(ref name) = body.name {
         sqlx::query("UPDATE groups SET name = $1, updated_at = NOW() WHERE id = $2")
@@ -2483,9 +2436,7 @@ async fn delete_group(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" {
-        return Err(AppError::forbidden("Admin only"));
-    }
+    require_permission(&state.pool, &user.id, "admin.groups.manage").await?;
 
     sqlx::query("DELETE FROM group_memberships WHERE group_id = $1")
         .bind(&id)
@@ -2507,9 +2458,7 @@ async fn list_modules(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" {
-        return Err(AppError::forbidden("Admin only"));
-    }
+    require_permission(&state.pool, &user.id, "admin.modules.manage").await?;
 
     let rows = sqlx::query(
         "SELECT id, key, name, description, enabled, created_at FROM modules ORDER BY name ASC",
@@ -2545,9 +2494,7 @@ async fn toggle_module(
     Path(id): Path<String>,
     Json(body): Json<ToggleModuleRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" {
-        return Err(AppError::forbidden("Admin only"));
-    }
+    require_permission(&state.pool, &user.id, "admin.modules.manage").await?;
 
     sqlx::query("UPDATE modules SET enabled = $1 WHERE id = $2")
         .bind(body.enabled)
@@ -2568,9 +2515,7 @@ async fn list_sessions(
     AuthUser(user): AuthUser,
     Query(params): Query<SessionListParams>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" {
-        return Err(AppError::forbidden("Admin only"));
-    }
+    require_permission(&state.pool, &user.id, "admin.sessions.view").await?;
 
     let search = params.search.unwrap_or_default();
     let pattern = format!("%{search}%");
@@ -2617,15 +2562,16 @@ async fn revoke_session(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" {
-        return Err(AppError::forbidden("Admin only"));
-    }
+    require_permission(&state.pool, &user.id, "admin.sessions.revoke").await?;
 
     let target_user_id: Option<String> =
         sqlx::query_scalar("SELECT user_id FROM sessions WHERE id = $1")
             .bind(&id)
             .fetch_optional(&state.pool)
             .await?;
+    if target_user_id.is_none() {
+        return Err(AppError::not_found("Session not found"));
+    }
 
     sqlx::query("DELETE FROM sessions WHERE id = $1")
         .bind(&id)
@@ -2652,9 +2598,7 @@ async fn admin_statistics(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" {
-        return Err(AppError::forbidden("Admin only"));
-    }
+    require_permission(&state.pool, &user.id, "admin.statistics.view").await?;
 
     let user_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE status = 'ACTIVE'")
         .fetch_one(&state.pool)
@@ -2902,9 +2846,7 @@ async fn admin_dashboard_stats(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" {
-        return Err(AppError::forbidden("Admin only"));
-    }
+    require_permission(&state.pool, &user.id, "admin.statistics.view").await?;
 
     let total_users: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
         .fetch_one(&state.pool)
@@ -3041,9 +2983,7 @@ async fn admin_statistics_analytics(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if user.role != "ADMIN" {
-        return Err(AppError::forbidden("Admin only"));
-    }
+    require_permission(&state.pool, &user.id, "admin.statistics.view").await?;
 
     let days = 30;
     let start = chrono::Utc::now().naive_utc().date() - chrono::Duration::days(days);

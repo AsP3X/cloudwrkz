@@ -17,6 +17,7 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::audit::{self, WriteAuditParams};
+use crate::routes::helpers::ensure_default_group_membership;
 use crate::auth::bg_job_record::finish_auth_register_job;
 use crate::db::is_transient_sqlx;
 
@@ -201,6 +202,10 @@ pub async fn attempt_register_user(
         }
         _ => classify_sqlx(e),
     })?;
+
+    ensure_default_group_membership(pool, &user_id)
+        .await
+        .map_err(|e| RegisterAttemptError::Fatal(format!("{:?}", e)))?;
 
     audit::write_audit_log(
         pool,

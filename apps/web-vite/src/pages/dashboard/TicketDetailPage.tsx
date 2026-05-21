@@ -14,6 +14,7 @@ import { TicketTimerSection } from "@/components/features/tickets/TicketTimerSec
 import { TasksSection } from "@/components/features/tasks/TasksSection/TasksSection";
 import { getTicketTypeLabel, type TicketType } from "@/lib/utils/tickets";
 import type { TimeEntry } from "@/lib/types";
+import { canDeleteOthersTickets, hasAgentCapabilities, PERM } from "@/lib/permissions";
 
 // Human: Support ticket command center showing metadata, threaded activity, linked todos, and time tracking hooks.
 // Agent: GET /tickets/:id + related collections; LOCAL format helpers; RENDERS TicketCommentsAndActivity; RBAC gates.
@@ -96,10 +97,13 @@ export default function TicketDetailPage() {
   const [notFound, setNotFound] = useState(false);
 
   const canViewTickets = can("modules.tickets.view");
-  const canViewTimeTracking = can("modules.time_tracking.view") ?? true;
-  const isAgent = user?.role === "AGENT" || user?.role === "ADMIN" || user?.role === "MODERATOR";
+  const canViewTimeTracking = can(PERM.MODULES_TIMETRACKING_VIEW);
+  const isAgent = hasAgentCapabilities(can);
+  // Human: Deleting another user's ticket needs delete + view-all (or admin tickets); own tickets need tickets.delete.
+  // Agent: canDeleteOthersTickets(can) OR (PERM.TICKETS_DELETE + created_by matches session user id).
   const canDeleteTicket =
-    can("tickets.delete_all") || (ticket?.created_by?.id === user?.id);
+    canDeleteOthersTickets(can) ||
+    (can(PERM.TICKETS_DELETE) && ticket?.created_by?.id === user?.id);
 
   useEffect(() => {
     if (!id || id === "undefined") {
@@ -343,7 +347,7 @@ export default function TicketDetailPage() {
           <TasksSection
             ticketId={ticket.id}
             tasks={ticketTodos}
-            canManage={user?.role !== "USER"}
+            canManage={isAgent || can("todos.assign")}
             onRefresh={fetchTicketTodos}
           />
 
@@ -353,7 +357,7 @@ export default function TicketDetailPage() {
               ticketId={ticket.id}
               comments={comments}
               activities={activities}
-              userRole={user?.role ?? "USER"}
+              showAgentCommentOptions={isAgent || can(PERM.TICKETS_COMMENTS_AGENT_ONLY)}
               onCommentAdded={() => {
                 fetchComments();
                 fetchActivities();

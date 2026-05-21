@@ -1,26 +1,17 @@
-# Backward-compatible alias: local development stack (see docker-compose.dev.yml.example).
+# LOCAL DEVELOPMENT ONLY — do not run production workloads or store irreplaceable data here.
 #
-# Prefer copying the dev file explicitly:
+# Usage (from repo root):
 #   cp docker-compose.dev.yml.example docker-compose.yml
+#   docker compose up -d --build
 #
-# Production hosts must use docker-compose.prod.yml.example — never this file.
+# Or without copying:
+#   docker compose -f docker-compose.dev.yml.example up -d --build
+#
+# Production: use docker-compose.prod.yml.example with managed PostgreSQL (RDS, etc.).
+# Never use `docker compose down -v` unless you intend to destroy ALL local dev DB data.
+# Prefer: scripts/compose-dev-down.sh (never removes volumes unless explicitly confirmed).
 
 services:
-  init-env:
-    image: alpine:latest
-    container_name: cloudwrkz-init-env
-    volumes:
-      - .:/workspace
-    working_dir: /workspace
-    # Human: Strip CR before running the script — YAML must not interpret \r as escape (use ''\r'' in single-quoted sh -c).
-    # Agent: RUNS tr -d literal CR; WRITES /tmp/init-env.sh; EXEC sh; PROFILE init only.
-    command:
-      - sh
-      - -c
-      - 'tr -d ''\r'' < /workspace/init-env.sh > /tmp/init-env.sh && sh /tmp/init-env.sh'
-    profiles:
-      - init
-
   api:
     build:
       context: ${CLOUDWRKZ_REPO_ROOT:-.}
@@ -57,10 +48,12 @@ services:
     image: cloudwrkz-web-vite:local
     container_name: cloudwrkz-web-vite
     working_dir: /workspace
+    # Do not mount the repo over /workspace — that hides node_modules baked in at image build time.
     ports:
       - "5173:5173"
     environment:
       CLOUDWRKZ_DEPLOYMENT: development
+      # Dev proxy only (see apps/web-vite/vite.config.ts). Do not use VITE_API_URL=http://api:… — the browser cannot resolve Docker service names.
       DOCKER_API_PROXY_TARGET: "http://api:8080"
       CLOUD_WRKZ_DEV_ALLOWED_HOSTS: ${CLOUD_WRKZ_DEV_ALLOWED_HOSTS:-}
     depends_on:

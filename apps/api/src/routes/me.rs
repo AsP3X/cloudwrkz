@@ -75,10 +75,11 @@ async fn me(
         .collect();
 
     let mut modules = client_ids;
-    if modules.contains(&"tickets".to_string()) || modules.contains(&"links".to_string()) {
-        if !modules.contains(&"archive".to_string()) {
-            modules.push("archive".to_string());
-        }
+    if perm_set.contains("archive.view")
+        && (modules.contains(&"tickets".to_string()) || modules.contains(&"links".to_string()))
+        && !modules.contains(&"archive".to_string())
+    {
+        modules.push("archive".to_string());
     }
 
     let row = sqlx::query("SELECT created_at, bio, last_login_at FROM users WHERE id = $1")

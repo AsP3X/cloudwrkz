@@ -23,7 +23,8 @@ use crate::models::todo::{
 };
 use crate::routes::AppState;
 use crate::routes::helpers::{
-    check_permission, fetch_user_summary, hash_json_for_idempotency,     idempotency_key_from_headers,
+    check_permission, fetch_user_summary, hash_json_for_idempotency, idempotency_key_from_headers,
+    require_permission,
 };
 
 // Human: The router only exposes collection-level routes; nested subtodos are represented inside `TodoListItem` payloads from list/get.
@@ -144,6 +145,7 @@ async fn list_todos(
     AuthUser(user): AuthUser,
     Query(params): Query<TodoListParams>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    require_permission(&state.pool, &user.id, "todos.view").await?;
     let archive = params.archive.as_deref().unwrap_or("unarchived");
     // Align with `get-todos-handler.ts`: `ALL` means no filter (iOS always sends status=ALL & priority=ALL).
     let priority_filter: Option<String> = match params.priority.as_deref() {
@@ -255,6 +257,7 @@ async fn get_todo(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    require_permission(&state.pool, &user.id, "todos.view").await?;
     let can_view_all = check_permission(&state.pool, &user.id, "tickets.view_all").await;
     let row: Option<TodoRow> = sqlx::query_as(&format!("{TODO_SELECT} FROM todos WHERE id = $1"))
         .bind(&id)
@@ -381,6 +384,7 @@ async fn create_todo(
     headers: HeaderMap,
     Json(body): Json<CreateTodoRequest>,
 ) -> Result<Response, AppError> {
+    require_permission(&state.pool, &user.id, "todos.create").await?;
     if body.title.trim().is_empty() {
         return Err(AppError::bad_request("Title is required"));
     }
@@ -474,6 +478,7 @@ async fn update_todo(
     headers: HeaderMap,
     Json(body): Json<UpdateTodoRequest>,
 ) -> Result<Response, AppError> {
+    require_permission(&state.pool, &user.id, "todos.update").await?;
     let body_hash = hash_json_for_idempotency(&body);
     let route = format!("PATCH /todos/{id}");
     let ctx = MutationRunContext {
@@ -531,6 +536,7 @@ async fn delete_todo(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
+    require_permission(&state.pool, &user.id, "todos.delete").await?;
     let route = format!("DELETE /todos/{id}");
     let ctx = MutationRunContext {
         user_id: user.id.clone(),

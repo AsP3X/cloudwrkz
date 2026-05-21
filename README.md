@@ -106,33 +106,34 @@ Prefer **`init-env.sh`** / **`init-env.ps1`** instead of manual copies. To confi
 | **CLI**     | Optional: copy [apps/cli/.env.example](apps/cli/.env.example) to `apps/cli/.env` for tokens and local overrides.                                   |
 
 
-### 3. Database and API (recommended: Docker Compose from repo root)
+### 3. Database and API (local dev only — Docker Compose)
+
+The dev stack is **not for production**. It bundles a disposable Postgres volume (`cloudwrkz_postgres_data`, local dev only). For production, use **`docker-compose.prod.yml.example`** with **managed PostgreSQL** (see [docs/SETUP-GUIDE-LIVE-AND-TEST.md](docs/SETUP-GUIDE-LIVE-AND-TEST.md) §3).
 
 From the **repository root**, create a local Compose file (gitignored) from the example, then start the stack:
 
 ```bash
-cp docker-compose.yml.example docker-compose.yml
-docker compose up -d
+cp docker-compose.dev.yml.example docker-compose.yml
+docker compose up -d --build
 ```
 
-Alternatively, use the example file directly: `docker compose -f docker-compose.yml.example up -d` (no `cp` needed). The compose file must sit in the **clone root** (next to `apps/`). If you keep it in another directory, set `CLOUDWRKZ_REPO_ROOT` in `.env` to the absolute path of the clone.
+Alternatively: `docker compose -f docker-compose.dev.yml.example up -d --build`. The compose file must sit in the **clone root** (next to `apps/`). If you keep it in another directory, set `CLOUDWRKZ_REPO_ROOT` in `.env` to the absolute path of the clone.
 
 This starts:
 
-- **PostgreSQL** on port `5432` (user `cloudwrkz`, database `cloudwrkz`, default password `cloudwrkz_dev_password` unless you set `POSTGRES_PASSWORD`)
+- **PostgreSQL** on host port **`5433`** by default (`POSTGRES_HOST_PORT`; user `cloudwrkz`, database `cloudwrkz`, default password `cloudwrkz_dev_password`)
 - **Rust API** on port `8080` (applies SQLx migrations on startup)
-- **Vite dev server** on port `5173` (custom image: Node + bundled `**cloudwrkz-cli`** on `PATH`; dependencies baked in the image — rebuild after changing app deps)
-- **pgAdmin** on port `5050` (default login `admin@example.com` / `admin`)
+- **Vite dev server** on port `5173` (custom image: Node + bundled **`cloudwrkz-cli`** on `PATH`)
 
 Check API health: [http://localhost:8080/api/health](http://localhost:8080/api/health).
 
-`**cloudwrkz-cli` inside the Vite container** (after `docker compose up -d`), e.g. first admin bootstrap — use `postgres` as the DB host:
+**`cloudwrkz-cli` inside the Vite container** (after `docker compose up -d`), e.g. first admin bootstrap — use `postgres` as the DB host:
 
 ```bash
 docker compose exec -e CLOUDWRKZ_BOOTSTRAP_SECRET=local-dev -e DATABASE_URL="postgresql://cloudwrkz:cloudwrkz_dev_password@postgres:5432/cloudwrkz" web-vite cloudwrkz-cli admin create-admin you@example.com "YourPassword" "Your Name"
 ```
 
-To stop: `docker compose down`. To remove data volumes: `docker compose down -v`.
+To stop without deleting data: `scripts/compose-dev-down.sh` or `docker compose down`. **Do not** run `docker compose down -v` unless you intend to wipe all local dev database data.
 
 ### 4. Run the Vite web app
 
@@ -200,7 +201,7 @@ Open [apps/ios/Cloudwrkz.xcodeproj](apps/ios/Cloudwrkz.xcodeproj) in Xcode and b
 | `pnpm dev:vite`                                                                | Vite dev server (`apps/web-vite`)                                   |
 | `pnpm build` / `pnpm build:vite`                                               | Production builds                                                   |
 | `pnpm db:*`                                                                    | Prisma commands for `apps/web` (generate, push, migrate, studio, …) |
-| `cp docker-compose.yml.example docker-compose.yml` then `docker compose up -d` | Postgres + API + pgAdmin (see §3)                                   |
+| `cp docker-compose.dev.yml.example docker-compose.yml` then `docker compose up -d --build` | Local dev: Postgres + API + Vite (see §3) |
 | `cargo run -p cloudwrkz-api`                                                   | Run API locally                                                     |
 | `cargo build --release -p cloudwrkz-cli`                                       | Build CLI binary                                                    |
 

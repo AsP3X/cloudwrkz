@@ -239,7 +239,7 @@ export default function DbConsolePage() {
   }, [result, searchText]);
 
   // Access: require admin or admin.db.view
-  if (user?.role !== "ADMIN" && !canViewDb) {
+  if (!canViewDb) {
     return (
       <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-12 text-center">
         <p className="text-neutral-500 dark:text-neutral-400 mb-4">

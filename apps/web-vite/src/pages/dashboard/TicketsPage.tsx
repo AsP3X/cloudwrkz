@@ -12,12 +12,13 @@ import { TicketFilterLoader } from "@/components/features/tickets/TicketFilterLo
 import { TicketListView } from "@/components/features/tickets/TicketListView";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { AccessIssueTicketDialog } from "@/components/features/tickets/AccessIssueTicketDialog";
+import { hasAgentCapabilities } from "@/lib/permissions";
 
 // Human: Ticket inbox with filters, bulk actions, view modes, and permission-aware empty states.
 // Agent: FETCH tickets list; TicketViewProvider; READS canViewTickets,canCreateTicket; REFRESH via callbacks.
 
 export default function TicketsPage() {
-  const { user, can } = useAuth();
+  const { can } = useAuth();
   const canViewTickets = can("modules.tickets.view");
   const canCreateTicket = can("tickets.create") || can("admin.tickets.manage");
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -49,7 +50,7 @@ export default function TicketsPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
-  const isAgent = user?.role === "AGENT" || user?.role === "ADMIN" || user?.role === "MODERATOR";
+  const isAgent = hasAgentCapabilities(can);
 
   const fetchTickets = useCallback(async () => {
     try {

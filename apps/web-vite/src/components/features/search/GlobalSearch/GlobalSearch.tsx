@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { SearchDialog } from "../SearchDialog";
 import { cn } from "@/lib/utils/cn";
+import { useAuth } from "@/components/providers/AuthProvider";
+import { PERM } from "@/lib/permissions";
 
 // Human: React UI for `GlobalSearch` in global search UX and result handling: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
 // Agent: SCOPE search; QUERY results preview; EXPORTS GlobalSearch; REACT component; READS props hooks; MAY CALL api client.
@@ -10,9 +12,12 @@ type GlobalSearchProps = {
 };
 
 export const GlobalSearch = ({ compact = false }: GlobalSearchProps) => {
+  const { can } = useAuth();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const canUseSearch = can(PERM.SEARCH_USE);
 
   useEffect(() => {
+    if (!canUseSearch) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
         (e.ctrlKey || e.metaKey) && 
@@ -26,7 +31,11 @@ export const GlobalSearch = ({ compact = false }: GlobalSearchProps) => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [canUseSearch]);
+
+  if (!canUseSearch) {
+    return null;
+  }
 
   return (
     <>
