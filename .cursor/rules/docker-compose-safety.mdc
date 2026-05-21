@@ -21,7 +21,7 @@ Supplements **`data-safety.mdc`** — read both before any Compose or database o
 | `docker-compose.dev.yml.example` | **Local dev only** — bundled Postgres volume (`cloudwrkz_postgres_data`) |
 | `docker-compose.prod.yml.example` | **Production** — external `DATABASE_URL` only; **no** Postgres service; **no** data volumes |
 
-- **Do not** recommend production deployments using the dev Compose file or its Postgres service.
+- **Do not** rename Compose `container_name`, project `name`, or network identifiers without **explicit user request**.
 - Production database: managed PostgreSQL (RDS, Cloud SQL, etc.) with backups and PITR — not a Docker volume.
 
 ## Production environment variables

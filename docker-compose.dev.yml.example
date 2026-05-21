@@ -11,14 +11,12 @@
 # Never use `docker compose down -v` unless you intend to destroy ALL local dev DB data.
 # Prefer: scripts/compose-dev-down.sh (never removes volumes unless explicitly confirmed).
 
-name: cloudwrkz-dev
-
 services:
   api:
     build:
       context: ${CLOUDWRKZ_REPO_ROOT:-.}
       dockerfile: apps/api/Dockerfile
-    container_name: cloudwrkz-dev-api
+    container_name: cloudwrkz-api
     restart: unless-stopped
     environment:
       CLOUDWRKZ_DEPLOYMENT: development
@@ -41,14 +39,14 @@ services:
       retries: 12
       start_period: 90s
     networks:
-      - cloudwrkz-dev-network
+      - cloudwrkz-network
 
   web-vite:
     build:
       context: ${CLOUDWRKZ_REPO_ROOT:-.}
       dockerfile: apps/web-vite/Dockerfile
     image: cloudwrkz-web-vite:local
-    container_name: cloudwrkz-dev-web-vite
+    container_name: cloudwrkz-web-vite
     working_dir: /workspace
     # Do not mount the repo over /workspace — that hides node_modules baked in at image build time.
     ports:
@@ -62,11 +60,11 @@ services:
       api:
         condition: service_healthy
     networks:
-      - cloudwrkz-dev-network
+      - cloudwrkz-network
 
   postgres:
     image: postgres:16-alpine
-    container_name: cloudwrkz-dev-postgres
+    container_name: cloudwrkz-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: cloudwrkz
@@ -83,7 +81,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - cloudwrkz-dev-network
+      - cloudwrkz-network
 
 volumes:
   postgres_data:
@@ -93,6 +91,5 @@ volumes:
       cloudwrkz.warning: "LOCAL DEV DATA — not for production"
 
 networks:
-  cloudwrkz-dev-network:
-    name: cloudwrkz-dev-network
+  cloudwrkz-network:
     driver: bridge

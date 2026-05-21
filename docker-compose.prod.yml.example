@@ -15,14 +15,12 @@
 # Run migrations: they apply automatically when the API container starts.
 # For multi-replica deploys, run a single API instance or one-off task first, then scale.
 
-name: cloudwrkz-prod
-
 services:
   api:
     build:
       context: ${CLOUDWRKZ_REPO_ROOT:-.}
       dockerfile: apps/api/Dockerfile
-    container_name: cloudwrkz-prod-api
+    container_name: cloudwrkz-api
     restart: unless-stopped
     environment:
       CLOUDWRKZ_DEPLOYMENT: production
@@ -53,7 +51,7 @@ services:
       context: ${CLOUDWRKZ_REPO_ROOT:-.}
       dockerfile: apps/web-vite/Dockerfile
     image: cloudwrkz-web-vite:prod
-    container_name: cloudwrkz-prod-web-vite
+    container_name: cloudwrkz-web-vite
     working_dir: /workspace
     environment:
       CLOUDWRKZ_DEPLOYMENT: production
