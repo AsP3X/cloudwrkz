@@ -1,5 +1,5 @@
 ---
-description: Docker Compose dev vs prod and volume safety
+description: Docker Compose dev vs prod, no new variants, and volume safety
 alwaysApply: true
 ---
 
@@ -18,9 +18,17 @@ Supplements **`data-safety.mdc`** — read both before any Compose or database o
 
 | File | Purpose |
 |------|---------|
-| `docker-compose.dev.yml.example` | **Local dev only** — bundled Postgres volume (`cloudwrkz_postgres_data`) |
+| `docker-compose.yml.example` | **Default local stack** — Postgres volume + API + **production web** (nginx + Vite `dist/`) |
+| `docker-compose.dev.yml.example` | **Local dev only** — same Postgres/API; **Vite dev server** (hot reload); bundled `cloudwrkz-cli` in `web-vite` |
 | `docker-compose.prod.yml.example` | **Production** — external `DATABASE_URL` only; **no** Postgres service; **no** data volumes |
 
+Gitignored copies (`docker-compose.yml`, `docker-compose.prod.yml`) are fine; they are not new variants.
+
+## Do not create new Compose variants
+
+- **Never add** new `docker-compose*.yml` / `docker-compose*.yaml` files (examples or tracked) unless the user **explicitly** asks for a new variant by name.
+- **Forbidden without explicit request:** staging, CI, test, override, or environment-specific compose files (e.g. `docker-compose.staging.yml`, `docker-compose.ci.yml`, `docker-compose.override.yml`, `compose.test.yaml`).
+- **Instead:** change the existing **dev** or **prod** example, use Compose **profiles**, or drive differences with **env vars** (`.env`, `.env.production`) and documented `docker compose -f …` invocations.
 - **Do not** rename Compose `container_name`, project `name`, or network identifiers without **explicit user request**.
 - Production database: managed PostgreSQL (RDS, Cloud SQL, etc.) with backups and PITR — not a Docker volume.
 

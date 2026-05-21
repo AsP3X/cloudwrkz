@@ -1,9 +1,11 @@
-# Backward-compatible alias: local development stack (see docker-compose.dev.yml.example).
+# Default local stack — production Vite build served by nginx (port 5173 → nginx :80).
 #
-# Prefer copying the dev file explicitly:
-#   cp docker-compose.dev.yml.example docker-compose.yml
+# Prefer copying this file explicitly:
+#   cp docker-compose.yml.example docker-compose.yml
+#   docker compose up -d --build
 #
-# Production hosts must use docker-compose.prod.yml.example — never this file.
+# Hot-reload development (Vite dev server): docker-compose.dev.yml.example
+#   docker compose -f docker-compose.dev.yml.example up -d --build
 
 services:
   init-env:
@@ -54,18 +56,23 @@ services:
     build:
       context: ${CLOUDWRKZ_REPO_ROOT:-.}
       dockerfile: apps/web-vite/Dockerfile
+      args:
+        VITE_API_URL: "/api/v1"
+        VITE_APP_NAME: "CloudWrkz"
     image: cloudwrkz-web-vite:local
     container_name: cloudwrkz-web-vite
-    working_dir: /workspace
+    restart: unless-stopped
     ports:
-      - "5173:5173"
-    environment:
-      CLOUDWRKZ_DEPLOYMENT: development
-      DOCKER_API_PROXY_TARGET: "http://api:8080"
-      CLOUD_WRKZ_DEV_ALLOWED_HOSTS: ${CLOUD_WRKZ_DEV_ALLOWED_HOSTS:-}
+      - "5173:80"
     depends_on:
       api:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     networks:
       - cloudwrkz-network
 

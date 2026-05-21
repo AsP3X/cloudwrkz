@@ -1,17 +1,33 @@
-# LOCAL DEVELOPMENT ONLY — do not run production workloads or store irreplaceable data here.
+# Local development stack — Vite dev server (hot reload) + API + Postgres.
 #
 # Usage (from repo root):
-#   cp docker-compose.dev.yml.example docker-compose.yml
-#   docker compose up -d --build
-#
-# Or without copying:
 #   docker compose -f docker-compose.dev.yml.example up -d --build
 #
-# Production: use docker-compose.prod.yml.example with managed PostgreSQL (RDS, etc.).
+# Or copy to gitignored docker-compose.yml for the default `docker compose` command:
+#   cp docker-compose.dev.yml.example docker-compose.yml
+#
+# Open http://localhost:5173 — Vite proxies /api to the API container (DOCKER_API_PROXY_TARGET).
+# For production static assets (nginx + dist/), use docker-compose.yml.example instead.
+#
 # Never use `docker compose down -v` unless you intend to destroy ALL local dev DB data.
-# Prefer: scripts/compose-dev-down.sh (never removes volumes unless explicitly confirmed).
+# Prefer: COMPOSE_FILE=docker-compose.dev.yml.example scripts/compose-dev-down.sh
 
 services:
+  init-env:
+    image: alpine:latest
+    container_name: cloudwrkz-init-env
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    # Human: Strip CR before running the script — YAML must not interpret \r as escape (use ''\r'' in single-quoted sh -c).
+    # Agent: RUNS tr -d literal CR; WRITES /tmp/init-env.sh; EXEC sh; PROFILE init only.
+    command:
+      - sh
+      - -c
+      - 'tr -d ''\r'' < /workspace/init-env.sh > /tmp/init-env.sh && sh /tmp/init-env.sh'
+    profiles:
+      - init
+
   api:
     build:
       context: ${CLOUDWRKZ_REPO_ROOT:-.}
@@ -44,21 +60,26 @@ services:
   web-vite:
     build:
       context: ${CLOUDWRKZ_REPO_ROOT:-.}
-      dockerfile: apps/web-vite/Dockerfile
-    image: cloudwrkz-web-vite:local
+      dockerfile: apps/web-vite/Dockerfile.dev
+    image: cloudwrkz-web-vite:dev
     container_name: cloudwrkz-web-vite
     working_dir: /workspace
-    # Do not mount the repo over /workspace — that hides node_modules baked in at image build time.
+    restart: unless-stopped
     ports:
       - "5173:5173"
     environment:
       CLOUDWRKZ_DEPLOYMENT: development
-      # Dev proxy only (see apps/web-vite/vite.config.ts). Do not use VITE_API_URL=http://api:… — the browser cannot resolve Docker service names.
       DOCKER_API_PROXY_TARGET: "http://api:8080"
       CLOUD_WRKZ_DEV_ALLOWED_HOSTS: ${CLOUD_WRKZ_DEV_ALLOWED_HOSTS:-}
     depends_on:
       api:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:5173/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 45s
     networks:
       - cloudwrkz-network
 

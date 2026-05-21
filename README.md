@@ -106,31 +106,50 @@ Prefer **`init-env.sh`** / **`init-env.ps1`** instead of manual copies. To confi
 | **CLI**     | Optional: copy [apps/cli/.env.example](apps/cli/.env.example) to `apps/cli/.env` for tokens and local overrides.                                   |
 
 
-### 3. Database and API (local dev only — Docker Compose)
+### 3. Database and API (local only — Docker Compose)
 
-The dev stack is **not for production**. It bundles a disposable Postgres volume (`cloudwrkz_postgres_data`, local dev only). For production, use **`docker-compose.prod.yml.example`** with **managed PostgreSQL** (see [docs/SETUP-GUIDE-LIVE-AND-TEST.md](docs/SETUP-GUIDE-LIVE-AND-TEST.md) §3).
+Two Compose files are available from the **repository root** (both use the same local Postgres volume — do not run both stacks at once):
 
-From the **repository root**, create a local Compose file (gitignored) from the example, then start the stack:
+| File | Web | Use when |
+|------|-----|----------|
+| `docker-compose.yml.example` | Production build (nginx + `dist/`) | Default local / “live” stack, faster refresh |
+| `docker-compose.dev.yml.example` | Vite dev server (hot reload) | Active frontend work in Docker |
+
+**Production-like stack (recommended default):**
 
 ```bash
-cp docker-compose.dev.yml.example docker-compose.yml
+cp docker-compose.yml.example docker-compose.yml
 docker compose up -d --build
 ```
 
-Alternatively: `docker compose -f docker-compose.dev.yml.example up -d --build`. The compose file must sit in the **clone root** (next to `apps/`). If you keep it in another directory, set `CLOUDWRKZ_REPO_ROOT` in `.env` to the absolute path of the clone.
+**Dev stack (Vite hot reload):**
 
-This starts:
+```bash
+docker compose -f docker-compose.dev.yml.example up -d --build
+```
+
+The compose file must sit in the **clone root** (next to `apps/`). If it lives elsewhere, set `CLOUDWRKZ_REPO_ROOT` in `.env` to the absolute path of the clone.
+
+Both stacks start:
 
 - **PostgreSQL** on host port **`5433`** by default (`POSTGRES_HOST_PORT`; user `cloudwrkz`, database `cloudwrkz`, default password `cloudwrkz_dev_password`)
 - **Rust API** on port `8080` (applies SQLx migrations on startup)
-- **Vite dev server** on port `5173` (custom image: Node + bundled **`cloudwrkz-cli`** on `PATH`)
+- **Web** on port `5173` — nginx (prod file) or Vite dev server (dev file)
 
-Check API health: [http://localhost:8080/api/health](http://localhost:8080/api/health).
+Check API health: [http://localhost:8080/api/health](http://localhost:8080/api/health). The production web container also proxies health at [http://localhost:5173/api/health](http://localhost:5173/api/health).
 
-**`cloudwrkz-cli` inside the Vite container** (after `docker compose up -d`), e.g. first admin bootstrap — use `postgres` as the DB host:
+**`cloudwrkz-cli` in Docker** (after `docker compose up -d`):
+
+- **Production compose file** — CLI is in the `api` container:
 
 ```bash
-docker compose exec -e CLOUDWRKZ_BOOTSTRAP_SECRET=local-dev -e DATABASE_URL="postgresql://cloudwrkz:cloudwrkz_dev_password@postgres:5432/cloudwrkz" web-vite cloudwrkz-cli admin create-admin you@example.com "YourPassword" "Your Name"
+docker compose exec -e CLOUDWRKZ_BOOTSTRAP_SECRET=local-dev -e DATABASE_URL="postgresql://cloudwrkz:cloudwrkz_dev_password@postgres:5432/cloudwrkz" api cloudwrkz-cli admin create-admin you@example.com "YourPassword" "Your Name"
+```
+
+- **Dev compose file** — CLI is also bundled in the `web-vite` container:
+
+```bash
+docker compose -f docker-compose.dev.yml.example exec -e CLOUDWRKZ_BOOTSTRAP_SECRET=local-dev -e DATABASE_URL="postgresql://cloudwrkz:cloudwrkz_dev_password@postgres:5432/cloudwrkz" web-vite cloudwrkz-cli admin create-admin you@example.com "YourPassword" "Your Name"
 ```
 
 To stop without deleting data: `scripts/compose-dev-down.sh` or `docker compose down`. **Do not** run `docker compose down -v` unless you intend to wipe all local dev database data.
@@ -167,7 +186,7 @@ export CLOUDWRKZ_BOOTSTRAP_SECRET=local-dev
 ./target/release/cloudwrkz-cli admin create-admin you@example.com "YourPassword" "Your Name"
 ```
 
-**Or entirely in Docker** (use the bundled CLI in the `web-vite` service — see the `docker compose exec …` example in the Docker Compose list in **§3** above).
+**Or entirely in Docker** (use the bundled CLI in the `api` service — see the `docker compose exec …` example in the Docker Compose list in **§3** above).
 
 On **Windows** (PowerShell), after `cargo build`:
 
@@ -201,7 +220,8 @@ Open [apps/ios/Cloudwrkz.xcodeproj](apps/ios/Cloudwrkz.xcodeproj) in Xcode and b
 | `pnpm dev:vite`                                                                | Vite dev server (`apps/web-vite`)                                   |
 | `pnpm build` / `pnpm build:vite`                                               | Production builds                                                   |
 | `pnpm db:*`                                                                    | Prisma commands for `apps/web` (generate, push, migrate, studio, …) |
-| `cp docker-compose.dev.yml.example docker-compose.yml` then `docker compose up -d --build` | Local dev: Postgres + API + Vite (see §3) |
+| `cp docker-compose.yml.example docker-compose.yml` then `docker compose up -d --build` | Local stack: Postgres + API + production web (nginx) |
+| `docker compose -f docker-compose.dev.yml.example up -d --build` | Local dev: Postgres + API + Vite dev server (hot reload) |
 | `cargo run -p cloudwrkz-api`                                                   | Run API locally                                                     |
 | `cargo build --release -p cloudwrkz-cli`                                       | Build CLI binary                                                    |
 

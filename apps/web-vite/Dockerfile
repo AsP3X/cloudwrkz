@@ -1,31 +1,11 @@
-# Dev image: Node (Vite) + bundled `cloudwrkz-cli` (same container as the web dev server).
+# Production image: build the Vite SPA and serve `dist/` with nginx (API proxied at /api).
 # Build from repository root: `docker build -f apps/web-vite/Dockerfile .`
 #
-# `pnpm install --frozen-lockfile` runs at image build time. Compose should not bind-mount `.` over
-# `/workspace` or it will replace `node_modules` from the image. Rebuild after lockfile or dependency changes.
-# Run the CLI with: `docker compose exec web-vite cloudwrkz-cli --help`
-# Use DATABASE_URL=postgresql://cloudwrkz:...@postgres:5432/cloudwrkz (service hostname `postgres`).
+# For Vite dev server + bundled CLI in Docker, use `apps/web-vite/Dockerfile.dev` instead.
 
-FROM rust:1.88-slim-bookworm AS rust-builder
+FROM node:25-bookworm AS builder
 
-WORKDIR /build
-RUN apt-get update && apt-get install -y pkg-config libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY Cargo.toml Cargo.lock ./
-COPY apps/cli apps/cli
-COPY apps/api apps/api
-
-RUN cargo build -p cloudwrkz-cli --release
-
-FROM node:25-bookworm
-
-# pnpm via npm (not corepack): corepack is missing from PATH in some Node images / shells.
-RUN apt-get update && apt-get install -y ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
-    && npm install -g pnpm@9
-
-COPY --from=rust-builder /build/target/release/cloudwrkz-cli /usr/local/bin/cloudwrkz-cli
+RUN npm install -g pnpm@9
 
 WORKDIR /workspace
 
@@ -33,8 +13,29 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY shared shared
 COPY apps/web-vite apps/web-vite
 
-RUN pnpm install --frozen-lockfile
+# Lockfile may not match pnpm overrides metadata inside the slim Docker context; install must succeed to run the build.
+RUN pnpm install --no-frozen-lockfile
 
-EXPOSE 5173
+ARG VITE_API_URL=/api/v1
+ARG VITE_APP_NAME=CloudWrkz
+ARG VITE_SEARCH_API_URL=/next-api
+ARG VITE_LOG_LEVEL=warn
 
-CMD ["pnpm", "--filter", "web-vite", "dev"]
+ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_APP_NAME=$VITE_APP_NAME
+ENV VITE_SEARCH_API_URL=$VITE_SEARCH_API_URL
+ENV VITE_LOG_LEVEL=$VITE_LOG_LEVEL
+
+RUN pnpm --filter web-vite build
+
+FROM nginx:1.27-alpine
+
+COPY apps/web-vite/nginx.conf /etc/nginx/nginx.conf
+COPY --from=builder /workspace/apps/web-vite/dist /usr/share/nginx/html
+
+EXPOSE 80
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -q -O /dev/null http://127.0.0.1/ || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

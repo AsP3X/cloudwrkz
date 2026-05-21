@@ -68,7 +68,7 @@ jobs:
             ghcr.io/${{ steps.image.outputs.repo }}:${{ steps.vars.outputs.TAG }}
           labels: |
             org.opencontainers.image.title=cloudwrkz
-            org.opencontainers.image.description=Cloudwrkz web-vite application and CLI
+            org.opencontainers.image.description=CloudWrkz web application (production nginx + Vite build)
             org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
