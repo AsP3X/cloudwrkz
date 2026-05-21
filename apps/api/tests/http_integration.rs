@@ -637,6 +637,93 @@ async fn patch_time_entry_enqueues_time_entry_update_background_job(pool: PgPool
     assert_eq!(jt, "time_entry_update");
 }
 
+fn req_post_json(uri: &str, token: &str, json_body: &str) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri(uri)
+        .header("x-forwarded-for", "203.0.113.42")
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .body(Body::from(json_body.to_string()))
+        .unwrap()
+}
+
+async fn user_id_for_session_token(pool: &PgPool, token: &str) -> String {
+    sqlx::query_scalar::<_, String>("SELECT user_id FROM sessions WHERE token = $1")
+        .bind(token)
+        .fetch_one(pool)
+        .await
+        .expect("session user_id")
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn db_schema_without_permission_returns_403(pool: PgPool) {
+    let token = seed_user_with_session(&pool, "db-no-perm@example.com", "USER")
+        .await
+        .expect("seed");
+    let app = build_http_app(test_app_state(pool));
+    let res = app
+        .oneshot(req_get_bearer("/api/v1/admin/db/schema", &token))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn db_schema_with_view_permission_returns_tables(pool: PgPool) {
+    let token = seed_user_with_session(&pool, "db-view@example.com", "USER")
+        .await
+        .expect("seed");
+    let uid = user_id_for_session_token(&pool, &token).await;
+    grant_permission(&pool, &uid, "admin.db.view")
+        .await
+        .expect("grant");
+    let app = build_http_app(test_app_state(pool));
+    let res = app
+        .oneshot(req_get_bearer("/api/v1/admin/db/schema", &token))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let v: serde_json::Value = serde_json::from_slice(&body).expect("json");
+    assert!(v["tables"].as_array().map(|a| !a.is_empty()).unwrap_or(false));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn db_sql_rejects_writable_cte(pool: PgPool) {
+    let token = seed_user_with_session(&pool, "db-sql@example.com", "USER")
+        .await
+        .expect("seed");
+    let uid = user_id_for_session_token(&pool, &token).await;
+    grant_permission(&pool, &uid, "admin.db.query")
+        .await
+        .expect("grant");
+    let app = build_http_app(test_app_state(pool));
+    let body = r#"{"query":"WITH x AS (DELETE FROM users RETURNING id) SELECT * FROM x"}"#;
+    let res = app
+        .oneshot(req_post_json("/api/v1/admin/db/sql", &token, body))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn legacy_db_query_endpoint_removed(pool: PgPool) {
+    let token = seed_user_with_session(&pool, "db-legacy@example.com", "ADMIN")
+        .await
+        .expect("seed");
+    let app = build_http_app(test_app_state(pool));
+    let res = app
+        .oneshot(req_post_json(
+            "/api/v1/admin/db-query",
+            &token,
+            r#"{"query":"SELECT 1"}"#,
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
+
 #[sqlx::test(migrations = "./migrations")]
 async fn baseline_security_headers_on_responses(pool: PgPool) {
     let app = build_http_app(test_app_state(pool.clone()));

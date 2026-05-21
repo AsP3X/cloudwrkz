@@ -2,6 +2,7 @@
 // Agent: DEFINES AppState fields; v1_router MERGES domain routers + auth rate limit layer; mutation_broker_for_config WIRES idempotency + mutation queue limits.
 
 pub mod admin;
+mod admin_db;
 pub mod archive;
 pub mod employees;
 pub mod auth;

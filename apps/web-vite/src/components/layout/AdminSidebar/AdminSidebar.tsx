@@ -184,7 +184,7 @@ export function AdminSidebar({
     canViewStatistics && { name: "Statistics", href: ROUTES.ADMIN_STATISTICS, icon: ChartIcon },
     canManageModules && { name: "Modules", href: ROUTES.ADMIN_MODULES, icon: CubeIcon },
     canViewAuditLog && { name: "Audit Log", href: ROUTES.ADMIN_AUDIT, icon: ClipboardIcon },
-    canViewDbConsole && { name: "Database Console", href: ROUTES.ADMIN_DB_CONSOLE, icon: DatabaseIcon },
+    canViewDbConsole && { name: "Database Explorer", href: ROUTES.ADMIN_DB_CONSOLE, icon: DatabaseIcon },
     canManageSettings && { name: "System Settings", href: ROUTES.ADMIN_SETTINGS, icon: SettingsIcon },
     canViewBackgroundJobs && { name: "Jobs", href: ROUTES.ADMIN_BACKGROUND_JOBS, icon: QueueIcon },
   ].filter(Boolean) as { name: string; href: string; icon: () => JSX.Element }[];
