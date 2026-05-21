@@ -1,0 +1,126 @@
+---
+description: >-
+  Regression testing requirements when adding or changing features—identify
+  affected behavior, run the right checks, add tests, and verify existing flows
+  still work before marking work complete.
+alwaysApply: true
+---
+
+# Regression testing
+
+New features and refactors must **not break existing behavior**. Treat regression protection as part of the feature, not optional cleanup. This rule supplements `plan-execution.mdc`: every verification step here must pass (or be explicitly blocked with reason) before declaring work done.
+
+## Mindset
+
+- **Preserve contracts**: HTTP status codes, JSON shapes (`AppError` envelope per `api-error-shape.mdc`), permission gates, session/auth flows, migration behavior, and user-visible flows that worked before must still work after your change—unless the task explicitly documents a breaking change and updates all consumers in the same work.
+- **Test the blast radius, not just the diff**: Ask what existing code paths your change touches (shared helpers, middleware, permissions, DB queries, shared types, routing). Run checks for those areas even when you only edited one file.
+- **Add a guardrail when you fix a bug**: If you repair incorrect behavior, add or extend a test (or a documented manual smoke step) so the same regression cannot return silently.
+
+## Before you implement
+
+1. **Name affected surfaces** — List routes, UI pages, CLI commands, background jobs, permissions, and shared modules your change may touch.
+2. **Find existing coverage** — Search for tests and smoke paths already in the repo (see inventory below). Prefer extending them over inventing parallel checks.
+3. **Plan verification** — Decide which automated commands and manual smokes you will run when done. If the plan omits tests, include them in your implementation unless the user explicitly scoped them out.
+
+## Test inventory (this repo)
+
+| Area | Automated checks | Notes |
+| --- | --- | --- |
+| **API (`apps/api`)** | `cargo test -p cloudwrkz-api` | Requires `DATABASE_URL` (Postgres). Integration tests live in `apps/api/tests/http_integration.rs` (auth/session, permissions, tickets/idempotency, background jobs, security headers). Module unit tests live beside source (`error.rs`, `permissions/mod.rs`, `request_tracking.rs`, route modules, etc.). |
+| **API quality** | `cargo clippy -p cloudwrkz-api -- -D warnings` | Run on substantive Rust changes; fix new warnings you introduce. |
+| **Web Vite (`apps/web-vite`)** | `pnpm run lint:vite`, `pnpm run build:vite` | No Vitest/Playwright suite yet—build + lint catch type and import regressions; exercise critical UI paths manually when behavior changes. |
+| **CLI (`apps/cli`)** | `cargo test -p cloudwrkz-cli`, `cargo clippy -p cloudwrkz-cli -- -D warnings` | Add tests when CLI behavior changes; today coverage is minimal. |
+| **Shared permissions** | `cargo test -p cloudwrkz-api` (permission tests) | Changes to `shared/permissions/catalog.json` must stay aligned with API permission checks and any seed/bootstrap paths. |
+| **Migrations** | API startup / `cargo test -p cloudwrkz-api` | New migrations only (`api-sqlx-migrations.mdc`). Verify existing routes still work against migrated schema. |
+| **Deprecated Next (`apps/web`)** | Do not edit by default | Do not regress Vite behavior while porting; if user explicitly edits `apps/web`, run its lint/build per that app's README. |
+
+**Local API tests:** From repo root with Postgres running and `DATABASE_URL` set (e.g. `source apps/api/.env`):
+
+```bash
+cargo test -p cloudwrkz-api
+```
+
+See [docs/SETUP-GUIDE-LIVE-AND-TEST.md](../../docs/SETUP-GUIDE-LIVE-AND-TEST.md) §4 for full test-environment setup.
+
+## Verification matrix (by change type)
+
+Run **all rows that apply** to your diff. When in doubt, run the broader set.
+
+| You changed… | Required checks |
+| --- | --- |
+| **API handler, middleware, auth, permissions** | Full `cargo test -p cloudwrkz-api`; add/extend integration test in `http_integration.rs` when behavior is HTTP-visible or permission-gated |
+| **API domain logic (pure Rust module)** | `cargo test -p cloudwrkz-api` (unit tests in module); clippy if logic is non-trivial |
+| **SQL schema or queries** | New migration file only; full API test suite; manually verify affected list/detail/create/update flows if no integration test yet |
+| **Error responses or status codes** | API tests; confirm Vite client still parses errors via `getErrorMessage` (`api-error-shape.mdc`) |
+| **Background jobs / mutation broker** | API integration tests for job enqueue paths; confirm existing ticket/todo/time-entry job tests still pass |
+| **Vite pages, hooks, API client** | `pnpm run lint:vite` + `pnpm run build:vite`; manual smoke of login, the changed page, and one adjacent flow (e.g. list → detail) |
+| **Shared types, permissions catalog, env contract** | API tests + Vite build; grep for consumers and spot-check each |
+| **CLI commands** | `cargo test -p cloudwrkz-cli` (add test if missing); manual run of the command against a dev stack |
+| **Cross-cutting refactor** | Full API test suite + Vite lint/build + clippy on touched crates |
+
+## Adding regression tests
+
+**When to add automated tests (required unless blocked):**
+
+- New API endpoint or changed status/permission behavior → extend `apps/api/tests/http_integration.rs` or module `#[test]` blocks.
+- Bug fix where a test would have caught the failure → add that test in the same change set.
+- New permission key in `shared/permissions/catalog.json` → verify grant/deny paths in API tests.
+
+**How to write them:**
+
+- Integration tests: use existing helpers in `http_integration.rs` (`seed_user_with_session`, `grant_permission`, `req_get`, etc.); one focused assertion per scenario; name tests after the contract (`*_returns_401`, `*_with_grant_succeeds`).
+- Unit tests: colocate in the module under `#[cfg(test)]`; cover edge cases and parsing/validation, not framework boilerplate.
+- Frontend: until a test runner exists, document the manual smoke path in the PR/task summary when UI behavior changes.
+
+**Do not:**
+
+- Weaken or delete existing tests to make new code pass without user approval.
+- Skip integration tests because "only a small handler change" touched auth or permissions.
+- Rely solely on "it compiles" for API or Vite work.
+
+## Manual smoke paths (when automation is thin)
+
+Use these when you change user-visible behavior and no automated test exists yet. Adjust paths to match the feature, but always include **auth** and **one unrelated happy path** to catch broad regressions.
+
+1. **Auth** — Register/login (or session cookie), `GET /api/v1/me` returns 200 with expected shape.
+2. **Dashboard entry** — Vite app loads after login without console errors; primary nav works.
+3. **Changed feature** — Complete the full create/read/update/delete (or equivalent) flow you modified.
+4. **Adjacent feature** — One neighboring area (e.g. if you changed tickets, open customers or time entries list) still loads.
+5. **Admin-only** (if you touched permissions) — Non-admin receives 403 on protected routes; admin with grant succeeds.
+
+Record which smokes you ran when reporting completion.
+
+## Agent workflow before "done"
+
+1. **Run the verification matrix** for your change type; fix failures in a loop—do not stop at first green compile.
+2. **Compare to pre-change behavior** for any modified contract (response fields, redirect, error message, permission requirement).
+3. **Add missing tests** when the matrix requires them; if `DATABASE_URL` is unavailable, state that blocker and list the exact command the user must run—do not claim full verification.
+4. **Report evidence** — Name commands run and their outcome (e.g. `cargo test -p cloudwrkz-api`: 42 passed; `pnpm run build:vite`: success). For manual smokes, list paths exercised.
+
+## High-risk regression hotspots
+
+Pay extra attention when touching:
+
+- **Session and auth** — Cookie settings, `/me`, login/logout, rate limits (`auth` modules, `http_integration` 401/403 tests).
+- **Permissions** — `shared/permissions/catalog.json`, `permissions` module, admin routes, explicit grants vs role defaults.
+- **Tickets / idempotency / concurrent creates** — Existing integration tests encode numbering and idempotency contracts.
+- **Background job enqueue** — PATCH/POST handlers that insert into `jobs`; regressions are silent until async processing fails.
+- **Migrations** — Forward-only; never edit applied files; run API tests against migrated DB.
+- **Vite API client** — `apps/web-vite/src/api/client.ts` and route modules; breaking error parsing affects every page.
+- **CORS / proxy / `VITE_API_URL`** — Misconfiguration looks like "feature broken" in the browser only.
+
+## When tests cannot run
+
+- **No Postgres / `DATABASE_URL`**: Run `cargo clippy` and Vite lint/build if applicable; clearly tell the user API integration tests were not executed and provide the command to run locally.
+- **Blocked by environment** (missing secrets, Docker not running): Same—document blocker, run what you can, never imply full regression coverage.
+- **User explicitly skips tests**: Honor scope only if they said so in the current request; still note the risk.
+
+## Anti-patterns
+
+- Shipping a feature with tests only for the new path and zero checks on shared code it reuses.
+- Changing permission or auth logic without running or updating `http_integration.rs` tests.
+- Fixing a regression by deleting or loosening an existing test assertion.
+- Declaring complete after `cargo build` but not `cargo test` when Rust behavior changed.
+- Editing `apps/web` for generic web work (see `apps-web-deprecated.mdc`) and accidentally diverging from Vite behavior without intentional port.
+
+This rule exists because feature work has repeatedly broken auth, permissions, and ticket flows that already had integration coverage—agents must run and extend that coverage instead of assuming green compiles are enough.
