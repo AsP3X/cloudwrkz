@@ -8,7 +8,6 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { useSidebar } from "./SidebarContext";
 import { CollapsibleNavSection } from "@/components/ui/CollapsibleNavSection";
 import { IconMyTime } from "./sidebarNavIcons";
-import { useAuth } from "@/components/providers/AuthProvider";
 import { hasAgentCapabilities } from "@/lib/permissions";
 
 const DashboardIcon = () => (
