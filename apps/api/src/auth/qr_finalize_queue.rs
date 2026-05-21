@@ -7,6 +7,9 @@ use sqlx::{PgPool, Row};
 use tracing::{info, warn};
 
 use crate::audit::{self, WriteAuditParams};
+use crate::auth::device_identity::{
+    ClientDeviceReport, ClientHintHeaders, resolve_device_identity,
+};
 use crate::db::is_transient_sqlx;
 use crate::error::AppError;
 use crate::models::user::{LoginResponse, LoginUserInfo};
@@ -269,14 +272,30 @@ pub async fn attempt_qr_finalize_session(
         )));
     }
 
+    let device = resolve_device_identity(
+        user_agent.as_deref(),
+        &ClientDeviceReport::default(),
+        &ClientHintHeaders::default(),
+    );
+
     sqlx::query(
-        r#"UPDATE sessions SET user_agent = COALESCE($2, user_agent), ip_address = COALESCE($3, ip_address), updated_at = NOW()
+        r#"UPDATE sessions SET user_agent = COALESCE($2, user_agent),
+                              ip_address = COALESCE($3, ip_address),
+                              device_name = COALESCE($5, device_name),
+                              device_type = COALESCE($6, device_type),
+                              device_os = COALESCE($7, device_os),
+                              device_browser = COALESCE($8, device_browser),
+                              updated_at = NOW()
            WHERE token = $1 AND user_id = $4"#,
     )
     .bind(&session_token_existing)
     .bind(&user_agent)
     .bind(&ip)
     .bind(&user_id)
+    .bind(&device.device_name)
+    .bind(&device.device_type)
+    .bind(&device.device_os)
+    .bind(&device.device_browser)
     .execute(&mut *tx)
     .await
     .map_err(map_sqlx)?;

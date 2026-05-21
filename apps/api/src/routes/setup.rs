@@ -12,6 +12,10 @@ use axum::{
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use crate::audit::{self, WriteAuditParams};
+use crate::auth::device_identity::{
+    ClientDeviceReport, client_hints_from_headers, resolve_device_identity,
+};
+use crate::auth::session_activity::{SessionPolicy, initial_expires_at};
 use crate::auth::password::hash_password;
 use crate::auth::session::generate_token;
 use crate::error::AppError;
@@ -143,7 +147,8 @@ pub async fn setup(
 
     let token = generate_token();
     let session_secs: i64 = 24 * 60 * 60;
-    let expires_at = Utc::now().naive_utc() + chrono::Duration::seconds(session_secs);
+    let policy = SessionPolicy::from_config(&state.config);
+    let expires_at = initial_expires_at(Utc::now().naive_utc(), session_secs, &policy);
     let session_id = new_cuid();
 
     let ip = audit::client_ip_from_headers(&headers);
@@ -151,16 +156,24 @@ pub async fn setup(
         .get("user-agent")
         .and_then(|v| v.to_str().ok())
         .map(String::from);
+    let hints = client_hints_from_headers(&headers);
+    let device = resolve_device_identity(user_agent.as_deref(), &ClientDeviceReport::default(), &hints);
 
     sqlx::query(
-        r#"INSERT INTO sessions (id, token, user_id, expires_at, created_at, updated_at, user_agent)
-           VALUES ($1, $2, $3, $4, NOW(), NOW(), $5)"#,
+        r#"INSERT INTO sessions (id, token, user_id, expires_at, created_at, updated_at,
+                                  device_name, device_type, device_os, device_browser, user_agent, ip_address)
+           VALUES ($1, $2, $3, $4, NOW(), NOW(), $5, $6, $7, $8, $9, $10)"#,
     )
     .bind(&session_id)
     .bind(&token)
     .bind(&user_id)
     .bind(expires_at)
+    .bind(&device.device_name)
+    .bind(&device.device_type)
+    .bind(&device.device_os)
+    .bind(&device.device_browser)
     .bind(&user_agent)
+    .bind(&ip)
     .execute(&state.pool)
     .await?;
 

@@ -1,12 +1,17 @@
 //! Axum extractors that turn `Authorization: Bearer` or `session=` cookies into a validated [`CurrentUser`].
 
 // Human: Authenticated routes use `AuthUser` so handlers do not duplicate bearer-vs-cookie parsing or session expiry checks.
-// Agent: FromRequestParts READS headers; CALLS validate_session on PgPool; RETURNS 401 AppError on missing/invalid/expired/inactive user.
+// Agent: FromRequestParts READS headers; CALLS validate_session on PgPool; RETURNS 401 AppError on missing/invalid/expired/inactive user; SLIDING extend on activity.
 
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
+use chrono::Utc;
 use sqlx::Row;
 
+use crate::auth::session_activity::{
+    SessionPolicy, apply_activity_extension, invalidate_if_absolute_expired,
+    is_past_absolute_max,
+};
 use crate::error::AppError;
 use crate::models::user::CurrentUser;
 use crate::routes::AppState;
@@ -28,7 +33,8 @@ impl FromRequestParts<AppState> for AuthUser {
             .or_else(|| extract_cookie_token(parts))
             .ok_or_else(|| AppError::unauthorized("Missing authentication token"))?;
 
-        let user = validate_session(&state.pool, &token).await?;
+        let policy = SessionPolicy::from_config(&state.config);
+        let user = validate_session(&state.pool, &token, &policy).await?;
         Ok(AuthUser(user))
     }
 }
@@ -55,12 +61,16 @@ fn extract_cookie_token(parts: &Parts) -> Option<String> {
     None
 }
 
-// Human: Sessions must exist, not be expired, and belong to an active verified user before any protected handler runs.
-// Agent: SELECT sessions JOIN users WHERE token; CHECK expires_at naive_utc; REJECT DELETED/non-ACTIVE/unverified; MAPS CurrentUser defaults timezone/theme.
+// Human: Sessions must exist, respect idle and absolute expiry, and belong to an active verified user; activity slides idle expiry up to the creation cap.
+// Agent: SELECT sessions JOIN users; CHECK absolute max + expires_at; CALL apply_activity_extension; REJECT inactive users.
 
-async fn validate_session(pool: &sqlx::PgPool, token: &str) -> Result<CurrentUser, AppError> {
+async fn validate_session(
+    pool: &sqlx::PgPool,
+    token: &str,
+    policy: &SessionPolicy,
+) -> Result<CurrentUser, AppError> {
     let row = sqlx::query(
-        r#"SELECT s.id as session_id, s.expires_at,
+        r#"SELECT s.id as session_id, s.expires_at, s.created_at,
                   u.id as user_id, u.email, u.name,
                   u.role::text as role, u.status::text as status,
                   u.email_verified, u.timezone, u.theme, u.avatar
@@ -74,8 +84,17 @@ async fn validate_session(pool: &sqlx::PgPool, token: &str) -> Result<CurrentUse
     .map_err(|_| AppError::internal("Failed to validate session"))?
     .ok_or_else(|| AppError::unauthorized("Invalid or expired session"))?;
 
+    let session_id: String = row.get("session_id");
     let expires_at: chrono::NaiveDateTime = row.get("expires_at");
-    if expires_at < chrono::Utc::now().naive_utc() {
+    let created_at: chrono::NaiveDateTime = row.get("created_at");
+    let now = Utc::now().naive_utc();
+
+    if is_past_absolute_max(now, created_at, policy) {
+        let _ = invalidate_if_absolute_expired(pool, &session_id, created_at, policy).await;
+        return Err(AppError::unauthorized("Session expired"));
+    }
+
+    if expires_at < now {
         return Err(AppError::unauthorized("Session expired"));
     }
 
@@ -85,6 +104,10 @@ async fn validate_session(pool: &sqlx::PgPool, token: &str) -> Result<CurrentUse
     if status == "DELETED" || status != "ACTIVE" || !email_verified {
         return Err(AppError::unauthorized("Account not active"));
     }
+
+    let _ = apply_activity_extension(pool, &session_id, created_at, expires_at, policy)
+        .await
+        .map_err(|_| AppError::internal("Failed to extend session"))?;
 
     Ok(CurrentUser {
         id: row.get("user_id"),
@@ -107,11 +130,25 @@ async fn validate_session(pool: &sqlx::PgPool, token: &str) -> Result<CurrentUse
     })
 }
 
-/// Extract the raw bearer token from a request's headers (for use outside the extractor).
-// Human: Some flows (logout, token refresh helpers) need the bearer string without building a full `AuthUser` extractor context.
-// Agent: READS Authorization header; STRIPS Bearer ; TRIMS; RETURNS Option same as extract_bearer_token logic.
+// Human: Handlers outside `AuthUser` still need the same token source the extractor uses so logout and session management stay consistent.
+// Agent: READS Authorization Bearer OR Cookie session=; TRIMS; RETURNS Option<String>.
 
 pub fn extract_token_from_headers(headers: &axum::http::HeaderMap) -> Option<String> {
+    extract_bearer_from_headers(headers).or_else(|| extract_cookie_from_headers(headers))
+}
+
+fn extract_bearer_from_headers(headers: &axum::http::HeaderMap) -> Option<String> {
     let auth = headers.get("authorization")?.to_str().ok()?;
     auth.strip_prefix("Bearer ").map(|t| t.trim().to_string())
+}
+
+fn extract_cookie_from_headers(headers: &axum::http::HeaderMap) -> Option<String> {
+    let cookies = headers.get("cookie")?.to_str().ok()?;
+    for cookie in cookies.split(';') {
+        let cookie = cookie.trim();
+        if let Some(value) = cookie.strip_prefix("session=") {
+            return Some(value.to_string());
+        }
+    }
+    None
 }

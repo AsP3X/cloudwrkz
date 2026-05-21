@@ -34,6 +34,7 @@ fn test_config(database_url: String) -> AppConfig {
         cookie_domain: None,
         cookie_secure: false,
         session_max_age_secs: 3600,
+        session_absolute_max_secs: 30 * 24 * 60 * 60,
         max_body_size: 1024 * 1024,
         api_region: None,
         api_nodes_available: 1,
@@ -68,6 +69,16 @@ fn req_get(uri: &str) -> Request<Body> {
 fn req_get_bearer(uri: &str, token: &str) -> Request<Body> {
     Request::builder()
         .method("GET")
+        .uri(uri)
+        .header("x-forwarded-for", "203.0.113.42")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap()
+}
+
+fn req_delete_bearer(uri: &str, token: &str) -> Request<Body> {
+    Request::builder()
+        .method("DELETE")
         .uri(uri)
         .header("x-forwarded-for", "203.0.113.42")
         .header("authorization", format!("Bearer {token}"))
@@ -180,6 +191,48 @@ async fn seed_user_with_session(
     Ok(token)
 }
 
+async fn seed_extra_session(pool: &PgPool, user_id: &str) -> Result<String, sqlx::Error> {
+    let token = format!("sess_{}", Uuid::new_v4());
+    let session_id = Uuid::new_v4().to_string();
+    sqlx::query(
+        r#"INSERT INTO sessions (id, token, user_id, expires_at, created_at, updated_at, device_name)
+           VALUES ($1, $2, $3, NOW() + interval '1 day', NOW(), NOW(), 'Other device')"#,
+    )
+    .bind(&session_id)
+    .bind(&token)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+    Ok(token)
+}
+
+async fn seed_session_with_user_agent(
+    pool: &PgPool,
+    user_id: &str,
+    user_agent: &str,
+) -> Result<String, sqlx::Error> {
+    let token = format!("sess_{}", Uuid::new_v4());
+    let session_id = Uuid::new_v4().to_string();
+    sqlx::query(
+        r#"INSERT INTO sessions (id, token, user_id, expires_at, created_at, updated_at, user_agent)
+           VALUES ($1, $2, $3, NOW() + interval '1 day', NOW(), NOW(), $4)"#,
+    )
+    .bind(&session_id)
+    .bind(&token)
+    .bind(user_id)
+    .bind(user_agent)
+    .execute(pool)
+    .await?;
+    Ok(token)
+}
+
+async fn user_id_for_token(pool: &PgPool, token: &str) -> Result<String, sqlx::Error> {
+    sqlx::query_scalar("SELECT user_id FROM sessions WHERE token = $1")
+        .bind(token)
+        .fetch_one(pool)
+        .await
+}
+
 async fn grant_permission(pool: &PgPool, user_id: &str, perm_key: &str) -> Result<(), sqlx::Error> {
     let perm_id: String = sqlx::query_scalar("SELECT id FROM permissions WHERE key = $1")
         .bind(perm_key)
@@ -229,6 +282,148 @@ async fn me_with_valid_session_returns_200(pool: PgPool) {
     let body = res.into_body().collect().await.unwrap().to_bytes();
     let v: serde_json::Value = serde_json::from_slice(&body).expect("json");
     assert_eq!(v["email"], "me-test@example.com");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn me_sessions_without_token_returns_401(pool: PgPool) {
+    let app = build_http_app(test_app_state(pool.clone()));
+    let res = app
+        .oneshot(req_get("/api/v1/me/sessions"))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn me_sessions_lists_current_user_sessions(pool: PgPool) {
+    let token = seed_user_with_session(&pool, "me-sessions@example.com", "USER")
+        .await
+        .expect("seed");
+    let user_id = user_id_for_token(&pool, &token).await.expect("user id");
+    let _other = seed_extra_session(&pool, &user_id)
+        .await
+        .expect("extra session");
+
+    let app = build_http_app(test_app_state(pool.clone()));
+    let res = app
+        .oneshot(req_get_bearer("/api/v1/me/sessions", &token))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let v: serde_json::Value = serde_json::from_slice(&body).expect("json");
+    let sessions = v["sessions"].as_array().expect("sessions array");
+    assert_eq!(sessions.len(), 2);
+
+    let current_count = sessions
+        .iter()
+        .filter(|s| s["isCurrent"].as_bool() == Some(true))
+        .count();
+    assert_eq!(current_count, 1);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn me_sessions_revoke_other_sessions_keeps_current(pool: PgPool) {
+    let token = seed_user_with_session(&pool, "me-revoke-others@example.com", "USER")
+        .await
+        .expect("seed");
+    let user_id = user_id_for_token(&pool, &token).await.expect("user id");
+    let _other = seed_extra_session(&pool, &user_id)
+        .await
+        .expect("extra session");
+
+    let app = build_http_app(test_app_state(pool.clone()));
+    let res = app
+        .oneshot(req_delete_bearer("/api/v1/me/sessions/others", &token))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let remaining: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM sessions WHERE user_id = $1")
+            .bind(&user_id)
+            .fetch_one(&pool)
+            .await
+            .expect("count");
+    assert_eq!(remaining, 1);
+
+    let app = build_http_app(test_app_state(pool.clone()));
+    let res = app
+        .oneshot(req_get_bearer("/api/v1/me", &token))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn me_sessions_cannot_revoke_foreign_session(pool: PgPool) {
+    let token_a = seed_user_with_session(&pool, "me-session-a@example.com", "USER")
+        .await
+        .expect("seed a");
+    let token_b = seed_user_with_session(&pool, "me-session-b@example.com", "USER")
+        .await
+        .expect("seed b");
+    let user_b = user_id_for_token(&pool, &token_b).await.expect("user b");
+    let session_b_id: String = sqlx::query_scalar("SELECT id FROM sessions WHERE token = $1")
+        .bind(&token_b)
+        .fetch_one(&pool)
+        .await
+        .expect("session id");
+
+    let app = build_http_app(test_app_state(pool.clone()));
+    let res = app
+        .oneshot(req_delete_bearer(
+            &format!("/api/v1/me/sessions/{session_b_id}"),
+            &token_a,
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+    let still_there: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sessions WHERE user_id = $1")
+        .bind(&user_b)
+        .fetch_one(&pool)
+        .await
+        .expect("count");
+    assert_eq!(still_there, 1);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn me_sessions_enriches_device_from_user_agent(pool: PgPool) {
+    let token = seed_user_with_session(&pool, "me-device-ua@example.com", "USER")
+        .await
+        .expect("seed");
+    let user_id = user_id_for_token(&pool, &token).await.expect("user id");
+    let mac_ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+    let _ua_only = seed_session_with_user_agent(&pool, &user_id, mac_ua)
+        .await
+        .expect("ua session");
+
+    let app = build_http_app(test_app_state(pool.clone()));
+    let res = app
+        .oneshot(req_get_bearer("/api/v1/me/sessions", &token))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let v: serde_json::Value = serde_json::from_slice(&body).expect("json");
+    let sessions = v["sessions"].as_array().expect("sessions array");
+    let ua_session = sessions
+        .iter()
+        .find(|s| s["deviceName"].as_str().is_some_and(|n| n.contains("macOS")))
+        .or_else(|| {
+            sessions.iter().find(|s| {
+                s["deviceBrowser"]
+                    .as_str()
+                    .is_some_and(|b| b.contains("Chrome"))
+            })
+        });
+    assert!(
+        ua_session.is_some(),
+        "expected UA-only session to be enriched: {sessions:?}"
+    );
 }
 
 #[sqlx::test(migrations = "./migrations")]

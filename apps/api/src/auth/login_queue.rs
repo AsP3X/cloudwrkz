@@ -20,6 +20,10 @@ use tracing::{info, warn};
 
 use crate::audit::{self, WriteAuditParams};
 use crate::auth::bg_job_record::finish_auth_login_job;
+use crate::auth::device_identity::{
+    ClientDeviceReport, ClientHintHeaders, is_native_app_session, resolve_device_identity,
+};
+use crate::auth::session_activity::{SessionPolicy, initial_expires_at};
 use crate::auth::password::verify_password;
 use crate::auth::session::generate_token;
 use crate::db::is_transient_sqlx;
@@ -77,6 +81,8 @@ pub struct PendingLoginPayload {
     pub email_normalized: String,
     pub ip: Option<String>,
     pub user_agent: Option<String>,
+    pub client_hints: ClientHintHeaders,
+    pub session_policy: SessionPolicy,
 }
 
 pub enum LoginAttemptError {
@@ -110,6 +116,23 @@ fn failure_hint(err: &AppError) -> Option<String> {
     None
 }
 
+// Human: Web clients now send device metadata on every login, so only native Cloudwrkz apps get the 7-day app TTL—not every browser with a parsed OS string.
+// Agent: is_native_app_session ONLY; remember_me→30d; default web→24h; native app→7d.
+
+fn login_initial_session_secs(
+    body: &LoginRequest,
+    device: &crate::auth::device_identity::DeviceIdentity,
+    user_agent: Option<&str>,
+) -> i64 {
+    if is_native_app_session(device, user_agent) {
+        7 * 24 * 60 * 60
+    } else if body.remember_me {
+        30 * 24 * 60 * 60
+    } else {
+        24 * 60 * 60
+    }
+}
+
 /// Full sign-in attempt (used by the background login job after `POST /auth/login` returns 202).
 // Human: This is the synchronous password check, session insert, and audit write—the same rules the old inline login used, just callable from the retry loop.
 // Agent: SELECT users by email; verify_password; REJECTS wrong password inactive unverified banned suspended; INSERT sessions; WRITES audit auth.login; RETURNS LoginResponse.
@@ -120,6 +143,8 @@ pub async fn attempt_login(
     email_normalized: &str,
     ip: Option<String>,
     user_agent: Option<String>,
+    client_hints: &ClientHintHeaders,
+    session_policy: &SessionPolicy,
 ) -> Result<LoginResponse, LoginAttemptError> {
     let email = email_normalized.to_string();
 
@@ -275,32 +300,37 @@ pub async fn attempt_login(
         .map_err(map_sqlx_login)?;
 
     let token = generate_token();
-    let is_app =
-        body.device_type.is_some() || body.device_os.is_some() || body.device_name.is_some();
-    let session_secs: i64 = if is_app {
-        7 * 24 * 60 * 60
-    } else if body.remember_me {
-        30 * 24 * 60 * 60
-    } else {
-        24 * 60 * 60
-    };
-    let expires_at = Utc::now().naive_utc() + chrono::Duration::seconds(session_secs);
+    let client_report = ClientDeviceReport::from_login_body(body);
+    let stored_user_agent = body
+        .user_agent
+        .clone()
+        .or_else(|| user_agent.clone())
+        .filter(|s| !s.trim().is_empty());
+    let device = resolve_device_identity(
+        stored_user_agent.as_deref(),
+        &client_report,
+        client_hints,
+    );
+    let session_secs = login_initial_session_secs(body, &device, stored_user_agent.as_deref());
+    let now = Utc::now().naive_utc();
+    let expires_at = initial_expires_at(now, session_secs, session_policy);
     let session_id = crate::id::new_cuid();
 
     sqlx::query(
         r#"INSERT INTO sessions (id, token, user_id, expires_at, created_at, updated_at,
-                                  device_name, device_type, device_os, device_browser, user_agent)
-           VALUES ($1, $2, $3, $4, NOW(), NOW(), $5, $6, $7, $8, $9)"#,
+                                  device_name, device_type, device_os, device_browser, user_agent, ip_address)
+           VALUES ($1, $2, $3, $4, NOW(), NOW(), $5, $6, $7, $8, $9, $10)"#,
     )
     .bind(&session_id)
     .bind(&token)
     .bind(&user_id)
     .bind(expires_at)
-    .bind(&body.device_name)
-    .bind(&body.device_type)
-    .bind(&body.device_os)
-    .bind(&body.device_browser)
-    .bind(&body.user_agent)
+    .bind(&device.device_name)
+    .bind(&device.device_type)
+    .bind(&device.device_os)
+    .bind(&device.device_browser)
+    .bind(&stored_user_agent)
+    .bind(&ip)
     .execute(pool)
     .await
     .map_err(map_sqlx_login)?;
@@ -314,7 +344,7 @@ pub async fn attempt_login(
             resource_id: None,
             context: None,
             ip_address: ip,
-            user_agent,
+            user_agent: stored_user_agent,
         },
     );
 
@@ -456,6 +486,8 @@ async fn login_retry_loop(
             &payload.email_normalized,
             payload.ip.clone(),
             payload.user_agent.clone(),
+            &payload.client_hints,
+            &payload.session_policy,
         )
         .await
         {
@@ -481,5 +513,83 @@ async fn login_retry_loop(
                 break;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::auth::device_identity::DeviceIdentity;
+
+    #[test]
+    fn web_remember_me_with_device_metadata_gets_thirty_days() {
+        let body = LoginRequest {
+            email: "a@b.c".into(),
+            password: "x".into(),
+            remember_me: true,
+            device_name: Some("macOS · Chrome".into()),
+            device_type: Some("desktop".into()),
+            device_os: Some("macOS".into()),
+            device_browser: Some("Chrome".into()),
+            user_agent: Some("Mozilla/5.0 Chrome/131".into()),
+        };
+        let device = DeviceIdentity {
+            device_name: body.device_name.clone(),
+            device_type: body.device_type.clone(),
+            device_os: body.device_os.clone(),
+            device_browser: body.device_browser.clone(),
+        };
+        assert_eq!(
+            login_initial_session_secs(&body, &device, body.user_agent.as_deref()),
+            30 * 24 * 60 * 60
+        );
+    }
+
+    #[test]
+    fn web_without_remember_me_gets_twenty_four_hours() {
+        let body = LoginRequest {
+            email: "a@b.c".into(),
+            password: "x".into(),
+            remember_me: false,
+            device_name: Some("macOS · Chrome".into()),
+            device_type: Some("desktop".into()),
+            device_os: Some("macOS".into()),
+            device_browser: Some("Chrome".into()),
+            user_agent: Some("Mozilla/5.0 Chrome/131".into()),
+        };
+        let device = DeviceIdentity {
+            device_name: body.device_name.clone(),
+            device_type: body.device_type.clone(),
+            device_os: body.device_os.clone(),
+            device_browser: body.device_browser.clone(),
+        };
+        assert_eq!(
+            login_initial_session_secs(&body, &device, body.user_agent.as_deref()),
+            24 * 60 * 60
+        );
+    }
+
+    #[test]
+    fn native_app_gets_seven_days_even_with_remember_me() {
+        let body = LoginRequest {
+            email: "a@b.c".into(),
+            password: "x".into(),
+            remember_me: true,
+            device_name: Some("Mobile iOS (Cloudwrkz App)".into()),
+            device_type: Some("mobile".into()),
+            device_os: Some("iOS".into()),
+            device_browser: Some("Cloudwrkz App".into()),
+            user_agent: Some("Cloudwrkz-iOS/1.0 (1; iOS 17.0; iPhone15,2)".into()),
+        };
+        let device = DeviceIdentity {
+            device_name: body.device_name.clone(),
+            device_type: body.device_type.clone(),
+            device_os: body.device_os.clone(),
+            device_browser: body.device_browser.clone(),
+        };
+        assert_eq!(
+            login_initial_session_secs(&body, &device, body.user_agent.as_deref()),
+            7 * 24 * 60 * 60
+        );
     }
 }

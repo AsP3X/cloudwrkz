@@ -12,6 +12,8 @@ import {
   readCachedUser,
   writeUserCache,
 } from "@/lib/auth/userCache";
+import { collectDeviceMetadata } from "@/lib/deviceMetadata";
+import { startSessionActivityExtension } from "@/lib/sessionActivity";
 import type { User } from "@/lib/auth/types";
 
 export type { User };
@@ -230,6 +232,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("auth:unauthorized", handleUnauthorized);
   }, [navigate]);
 
+  // Human: While signed in and interacting, periodically ask the API to slide session expiry (capped at 30 days from sign-in).
+  // Agent: startSessionActivityExtension POST /auth/extend-session when user+token; CLEANUP on logout/unmount.
+  useEffect(() => {
+    if (!user || !hasAuthToken()) return;
+    return startSessionActivityExtension(async () => {
+      await api.post("/auth/extend-session", {});
+    });
+  }, [user]);
+
   const login = async (
     email: string,
     password: string,
@@ -239,10 +250,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     | { success: false; error: string; outageHint?: boolean; httpStatus?: number }
   > => {
     try {
+      const device = collectDeviceMetadata();
       const result = await api.post<LoginQueuedApiResponse>("/auth/login", {
         email,
         password,
         remember_me: rememberMe,
+        ...device,
       });
 
       if ("queued" in result && result.queued && result.job_id) {

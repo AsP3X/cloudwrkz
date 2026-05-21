@@ -17,6 +17,7 @@ interface MySession {
   deviceType: string | null;
   deviceOs: string | null;
   deviceBrowser: string | null;
+  userAgent: string | null;
   ipAddress: string | null;
   createdAt: string;
   expiresAt: string;
@@ -147,12 +148,18 @@ export const LoginSessionsDialog = ({ open, onOpenChange }: LoginSessionsDialogP
     if (session.deviceName) return session.deviceName;
 
     const parts: string[] = [];
-    if (session.deviceType) parts.push(session.deviceType);
     if (session.deviceOs) parts.push(session.deviceOs);
+    else if (session.deviceType) parts.push(session.deviceType);
     if (session.deviceBrowser) parts.push(session.deviceBrowser);
 
-    if (parts.length === 0) return "Unknown device";
-    return parts.join(" \u00B7 ");
+    if (parts.length > 0) return parts.join(" \u00B7 ");
+
+    const ua = session.userAgent?.trim();
+    if (ua) {
+      return ua.length <= 80 ? ua : `${ua.slice(0, 77)}…`;
+    }
+
+    return "Unknown device";
   };
 
   return (

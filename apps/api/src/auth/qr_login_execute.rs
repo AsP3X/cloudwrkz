@@ -9,6 +9,9 @@ use sqlx::Row;
 use tracing::{info, warn};
 
 use crate::audit::{self, WriteAuditParams};
+use crate::auth::device_identity::{
+    ClientDeviceReport, ClientHintHeaders, resolve_device_identity,
+};
 use crate::auth::session::generate_token;
 use crate::id::new_cuid;
 
@@ -183,6 +186,16 @@ async fn approve_in_db(
     let session_token = generate_token();
     let expires_at = Utc::now().naive_utc() + chrono::Duration::hours(24);
     let session_id = new_cuid();
+    let device = resolve_device_identity(
+        None,
+        &ClientDeviceReport {
+            device_name: Some("Desktop · QR Login (Web)".into()),
+            device_type: Some("desktop".into()),
+            device_os: None,
+            device_browser: Some("QR Login (Web)".into()),
+        },
+        &ClientHintHeaders::default(),
+    );
 
     sqlx::query(
         r#"INSERT INTO sessions (id, token, user_id, expires_at, created_at, updated_at,
@@ -193,10 +206,10 @@ async fn approve_in_db(
     .bind(&session_token)
     .bind(approver_id)
     .bind(expires_at)
-    .bind(None::<String>)
-    .bind(Some("desktop".to_string()))
-    .bind(None::<String>)
-    .bind(Some("QR Login (Web)".to_string()))
+    .bind(&device.device_name)
+    .bind(&device.device_type)
+    .bind(&device.device_os)
+    .bind(&device.device_browser)
     .bind(None::<String>)
     .execute(&mut *tx)
     .await

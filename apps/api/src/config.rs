@@ -32,6 +32,8 @@ pub struct AppConfig {
     pub cookie_domain: Option<String>,
     pub cookie_secure: bool,
     pub session_max_age_secs: i64,
+    /// Hard cap on session lifetime from `sessions.created_at` (default 30 days).
+    pub session_absolute_max_secs: i64,
     pub max_body_size: usize,
     /// Logical region for this API instance (global routing / status). `API_REGION` or `--region`.
     pub api_region: Option<String>,
@@ -94,7 +96,11 @@ impl AppConfig {
             session_max_age_secs: env::var("SESSION_MAX_AGE")
                 .ok()
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(7 * 24 * 60 * 60), // 7 days
+                .unwrap_or(7 * 24 * 60 * 60), // sliding idle window on activity
+            session_absolute_max_secs: env::var("SESSION_ABSOLUTE_MAX_AGE")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(30 * 24 * 60 * 60), // max lifetime from session creation
             max_body_size: env::var("MAX_BODY_SIZE")
                 .ok()
                 .and_then(|v| v.parse().ok())

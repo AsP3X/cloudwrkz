@@ -15,6 +15,13 @@ use sqlx::Row;
 use tracing::{info, warn};
 
 use crate::audit::{self, WriteAuditParams};
+use crate::auth::device_identity::{
+    ClientDeviceReport, client_hints_from_headers, resolve_device_identity,
+};
+use crate::auth::session_activity::{
+    SessionPolicy, compute_activity_extension, invalidate_if_absolute_expired,
+    initial_expires_at,
+};
 use crate::auth::extractors::{AuthUser, extract_token_from_headers};
 use crate::auth::login_queue::{LoginJobStatusResponse, PendingLoginPayload, spawn_login_retry};
 use crate::auth::password::{hash_password, verify_password};
@@ -110,6 +117,8 @@ async fn login(
             email_normalized: email.clone(),
             ip,
             user_agent,
+            client_hints: client_hints_from_headers(&headers),
+            session_policy: SessionPolicy::from_config(&state.config),
         },
     );
     info!(
@@ -324,7 +333,7 @@ async fn change_password(
     .fetch_optional(&state.pool)
     .await?;
 
-    let (device_name, device_type, device_os, device_browser, user_agent, ip_address) =
+    let (mut device_name, mut device_type, mut device_os, mut device_browser, mut user_agent, mut ip_address) =
         if let Some(ref row) = prev {
             (
                 row.try_get::<Option<String>, _>("device_name")
@@ -347,6 +356,25 @@ async fn change_password(
         } else {
             (None, None, None, None, None, None)
         };
+
+    let header_ua = headers
+        .get("user-agent")
+        .and_then(|v| v.to_str().ok())
+        .map(String::from);
+    let hints = client_hints_from_headers(&headers);
+    let resolved = resolve_device_identity(
+        user_agent.as_deref().or(header_ua.as_deref()),
+        &ClientDeviceReport::default(),
+        &hints,
+    );
+    device_name = device_name.or(resolved.device_name);
+    device_type = device_type.or(resolved.device_type);
+    device_os = device_os.or(resolved.device_os);
+    device_browser = device_browser.or(resolved.device_browser);
+    user_agent = user_agent.or(header_ua);
+    if ip_address.is_none() {
+        ip_address = audit::client_ip_from_headers(&headers);
+    }
 
     let db_hash = row.password.clone();
     let current = body.current_password.clone();
@@ -378,8 +406,12 @@ async fn change_password(
 
     let new_token = generate_token();
     let session_id = crate::id::new_cuid();
-    let expires_at =
-        Utc::now().naive_utc() + chrono::Duration::seconds(state.config.session_max_age_secs);
+    let policy = SessionPolicy::from_config(&state.config);
+    let expires_at = initial_expires_at(
+        Utc::now().naive_utc(),
+        state.config.session_max_age_secs,
+        &policy,
+    );
 
     sqlx::query(
         r#"INSERT INTO sessions (id, token, user_id, expires_at, created_at, updated_at,
@@ -424,9 +456,11 @@ async fn extend_session(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let token = crate::auth::extractors::extract_token_from_headers(&headers)
         .ok_or_else(|| AppError::unauthorized("Missing token"))?;
+    let policy = SessionPolicy::from_config(&state.config);
+    let now = Utc::now().naive_utc();
 
     let row = sqlx::query(
-        r#"SELECT s.id, s.expires_at, s.user_id, u.status::text as status
+        r#"SELECT s.id, s.expires_at, s.created_at, s.user_id, u.status::text as status
            FROM sessions s JOIN users u ON s.user_id = u.id
            WHERE s.token = $1"#,
     )
@@ -436,29 +470,59 @@ async fn extend_session(
     .ok_or_else(|| AppError::unauthorized("Invalid session"))?;
 
     let expires_at: chrono::NaiveDateTime = row.get("expires_at");
+    let created_at: chrono::NaiveDateTime = row.get("created_at");
     let session_id: String = row.get("id");
     let user_id: String = row.get("user_id");
     let status: String = row.get("status");
 
-    if expires_at < Utc::now().naive_utc() {
+    if invalidate_if_absolute_expired(&state.pool, &session_id, created_at, &policy)
+        .await
+        .map_err(|_| AppError::internal("Failed to validate session"))?
+    {
+        return Err(AppError::unauthorized("Session expired"));
+    }
+
+    if expires_at < now {
         return Err(AppError::unauthorized("Session expired"));
     }
     if status != "ACTIVE" {
         return Err(AppError::unauthorized("Account not active"));
     }
 
-    let max_age = chrono::Duration::seconds(state.config.session_max_age_secs);
-    let remaining = expires_at - Utc::now().naive_utc();
-    if remaining >= max_age {
+    let Some(new_expires) = compute_activity_extension(now, created_at, expires_at, &policy) else {
         return Ok(Json(serde_json::json!({ "extended": false })));
-    }
+    };
 
-    let new_expires = Utc::now().naive_utc() + max_age;
-    sqlx::query("UPDATE sessions SET expires_at = $1, updated_at = NOW() WHERE id = $2")
-        .bind(new_expires)
-        .bind(&session_id)
-        .execute(&state.pool)
-        .await?;
+    let user_agent = headers
+        .get("user-agent")
+        .and_then(|v| v.to_str().ok())
+        .map(String::from);
+    let hints = client_hints_from_headers(&headers);
+    let device = resolve_device_identity(
+        user_agent.as_deref(),
+        &ClientDeviceReport::default(),
+        &hints,
+    );
+
+    sqlx::query(
+        r#"UPDATE sessions SET expires_at = $1,
+                              user_agent = COALESCE($3, user_agent),
+                              device_name = COALESCE($4, device_name),
+                              device_type = COALESCE($5, device_type),
+                              device_os = COALESCE($6, device_os),
+                              device_browser = COALESCE($7, device_browser),
+                              updated_at = NOW()
+           WHERE id = $2"#,
+    )
+    .bind(new_expires)
+    .bind(&session_id)
+    .bind(&user_agent)
+    .bind(&device.device_name)
+    .bind(&device.device_type)
+    .bind(&device.device_os)
+    .bind(&device.device_browser)
+    .execute(&state.pool)
+    .await?;
 
     audit::write_audit_from_headers(
         &state.pool,
@@ -470,5 +534,8 @@ async fn extend_session(
         &headers,
     );
 
-    Ok(Json(serde_json::json!({ "extended": true })))
+    Ok(Json(serde_json::json!({
+        "extended": true,
+        "expiresAt": new_expires.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(),
+    })))
 }
