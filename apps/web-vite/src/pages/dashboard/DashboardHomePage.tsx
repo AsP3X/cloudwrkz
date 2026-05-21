@@ -16,6 +16,7 @@ import {
   type RecentSection,
 } from "@/components/features/dashboard";
 import { AdminDashboard } from "@/components/features/admin/AdminDashboard";
+import { hasAdminAreaAccess } from "@/lib/permissions";
 
 // Human: Authenticated home dashboard that aggregates tickets, todos, favorites, and admin widgets in one hub.
 // Agent: READS useAuth user+modules; FETCHES api dashboard endpoints; BRANCHES AdminDashboard when admin module; SETS loading states.
@@ -40,7 +41,7 @@ const IconClock = () => (
 // Agent: useEffect loads ticket/todo/favorite/time counts; RENDERS feature dashboard components; NULL-safe counts.
 
 export default function DashboardHomePage() {
-  const { user, modules } = useAuth();
+  const { user, modules, can } = useAuth();
   const [loading, setLoading] = useState(true);
   const [ticketCount, setTicketCount] = useState<number | null>(null);
   const [todoItems, setTodoItems] = useState<DashboardTodoItem[]>([]);
@@ -54,7 +55,9 @@ export default function DashboardHomePage() {
   useEffect(() => {
     async function load() {
       setLoading(true);
-      if (user?.role === "ADMIN") {
+      // Human: Users with any admin-area permission see AdminDashboard instead of the standard widget hub.
+      // Agent: hasAdminAreaAccess(can) short-circuits widget fetches; SKIPS ticket/todo loads for admin home.
+      if (hasAdminAreaAccess(can)) {
         setLoading(false);
         return;
       }
@@ -114,7 +117,7 @@ export default function DashboardHomePage() {
       setLoading(false);
     }
     load();
-  }, [modules, user?.role]);
+  }, [modules, can]);
 
   if (loading) {
     return (
@@ -124,7 +127,7 @@ export default function DashboardHomePage() {
     );
   }
 
-  if (user?.role === "ADMIN") {
+  if (hasAdminAreaAccess(can)) {
     return (
       <AdminDashboard
         displayName={displayName}

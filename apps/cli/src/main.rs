@@ -614,6 +614,22 @@ async fn run_create_admin(
 
     match res {
         Ok(_) => {
+            for (group_id, label) in [
+                ("default-group-id", "Default"),
+                ("admin-group-id", "Admin"),
+            ] {
+                let _ = sqlx::query(
+                    r#"INSERT INTO group_memberships (id, user_id, group_id, created_at)
+                       SELECT $1, $2, g.id, NOW() FROM groups g WHERE g.id = $3
+                       ON CONFLICT (user_id, group_id) DO NOTHING"#,
+                )
+                .bind(new_cuid())
+                .bind(&id)
+                .bind(group_id)
+                .execute(&pool)
+                .await;
+                let _ = label;
+            }
             println!("{} Admin user created: {}", "✓".green(), email);
             println!("  Log in with: {} login", "cloudwrkz-cli".cyan());
             println!("  Then use the management menus or the web app.");

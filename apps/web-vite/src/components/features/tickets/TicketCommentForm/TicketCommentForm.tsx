@@ -22,14 +22,15 @@ type CommentInput = z.infer<typeof commentSchema>;
 
 export interface TicketCommentFormProps {
   ticketId: string;
-  userRole: string;
+  /** When true, user may post agent-only comments and use agent status shortcuts. */
+  showAgentCommentOptions?: boolean;
   onCommentAdded?: () => void;
   onStatusChange?: (status: string) => void;
 }
 
 export function TicketCommentForm({
   ticketId,
-  userRole,
+  showAgentCommentOptions = false,
   onCommentAdded,
   onStatusChange,
 }: TicketCommentFormProps) {
@@ -38,8 +39,7 @@ export function TicketCommentForm({
   const [isDropdownOpen, setIsDropdownOpen] = React.useState(false);
   const dropdownRef = React.useRef<HTMLDivElement>(null);
 
-  const isAgent =
-    userRole === "AGENT" || userRole === "ADMIN" || userRole === "MODERATOR";
+  const isAgent = showAgentCommentOptions;
 
   React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

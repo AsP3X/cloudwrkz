@@ -20,6 +20,7 @@ RUN mkdir -p apps/api/src apps/cli/src \
 COPY apps/api/src apps/api/src
 COPY apps/api/migrations apps/api/migrations
 COPY apps/cli/src apps/cli/src
+COPY shared shared
 RUN touch apps/api/src/main.rs apps/cli/src/main.rs \
     && cargo build --release -p cloudwrkz-api -p cloudwrkz-cli
 

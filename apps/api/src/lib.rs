@@ -17,6 +17,7 @@ pub mod id;
 pub mod job_queue;
 mod link_preview;
 mod models;
+pub mod permissions;
 mod request_tracking;
 pub mod routes;
 
@@ -92,6 +93,7 @@ Commands:
 
   migrate-repair               Fix sqlx checksum drift in `_sqlx_migrations` after editing migration files
                                in dev (same as `sqlx migrate repair`). Requires DATABASE_URL; does not re-run SQL.
+                               Disabled when CLOUDWRKZ_DEPLOYMENT=production.
 
 Environment: LOG_VERBOSITY (debug|prod), LOG_FORMAT (json), RUST_LOG, DATABASE_URL,
              With LOG_VERBOSITY=debug the default filter includes jobs=debug (dispatcher + per-job tracing on target `jobs`).
@@ -401,6 +403,15 @@ pub async fn run() {
     }
 
     if args.len() >= 2 && args[1] == "migrate-repair" {
+        // Human: Checksum repair is a dev-only escape hatch; production must never rewrite migration history.
+        // Agent: READS CLOUDWRKZ_DEPLOYMENT; EXITS 1 when production; CALLS db::repair_migration_checksums otherwise.
+        if std::env::var("CLOUDWRKZ_DEPLOYMENT").as_deref() == Ok("production") {
+            eprintln!(
+                "migrate-repair is disabled when CLOUDWRKZ_DEPLOYMENT=production. \
+                 Never edit applied migrations in production; ship a new migration file instead."
+            );
+            std::process::exit(1);
+        }
         let db_url = match std::env::var("DATABASE_URL") {
             Ok(u) => u,
             Err(_) => {

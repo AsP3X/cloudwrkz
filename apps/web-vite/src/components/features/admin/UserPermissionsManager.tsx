@@ -22,6 +22,14 @@ interface UserPermissionsManagerProps {
   onSave?: () => void;
 }
 
+type UserPermissionsResponse = {
+  permissions?: Array<{ id: string; key: string }>;
+  direct?: string[];
+  fromGroups?: string[];
+  effective?: string[];
+  validationWarnings?: string[];
+};
+
 export function UserPermissionsManager({
   userId,
   initialPermissionIds = [],
@@ -29,6 +37,10 @@ export function UserPermissionsManager({
 }: UserPermissionsManagerProps) {
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(initialPermissionIds));
+  const [directKeys, setDirectKeys] = useState<string[]>([]);
+  const [fromGroupsKeys, setFromGroupsKeys] = useState<string[]>([]);
+  const [effectiveKeys, setEffectiveKeys] = useState<string[]>([]);
+  const [validationWarnings, setValidationWarnings] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -43,12 +55,21 @@ export function UserPermissionsManager({
       try {
         const [allRes, userRes] = await Promise.all([
           api.get<{ permissions: Permission[] }>("/admin/permissions"),
-          api.get<{ permissions: Array<{ id: string; key: string }> }>(`/admin/users/${userId}/permissions`),
+          api.get<UserPermissionsResponse>(`/admin/users/${userId}/permissions`),
         ]);
         if (cancelled) return;
         const all = allRes.permissions ?? [];
         setPermissions(all);
-        const ids = new Set((userRes.permissions ?? []).map((p) => p.id));
+        setDirectKeys(userRes.direct ?? []);
+        setFromGroupsKeys(userRes.fromGroups ?? []);
+        setEffectiveKeys(userRes.effective ?? []);
+        setValidationWarnings(userRes.validationWarnings ?? []);
+        const keyToId = new Map(all.map((p) => [p.key, p.id]));
+        const directIds = (userRes.direct ?? [])
+          .map((key) => keyToId.get(key))
+          .filter((id): id is string => Boolean(id));
+        const fallbackIds = (userRes.permissions ?? []).map((p) => p.id);
+        const ids = new Set(directIds.length > 0 ? directIds : fallbackIds);
         setSelectedIds(ids);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load permissions");
@@ -136,6 +157,11 @@ export function UserPermissionsManager({
       await api.put(`/admin/users/${userId}/permissions`, { keys });
       setSuccess("Permissions updated successfully");
       setTimeout(() => setSuccess(null), 3000);
+      const userRes = await api.get<UserPermissionsResponse>(`/admin/users/${userId}/permissions`);
+      setDirectKeys(userRes.direct ?? keys);
+      setFromGroupsKeys(userRes.fromGroups ?? []);
+      setEffectiveKeys(userRes.effective ?? []);
+      setValidationWarnings(userRes.validationWarnings ?? []);
       onSave?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update permissions");
@@ -150,6 +176,75 @@ export function UserPermissionsManager({
 
   return (
     <div className="space-y-4">
+      {validationWarnings.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/40">
+          <p className="text-sm font-medium text-amber-900 dark:text-amber-100">Validation warnings</p>
+          <ul className="mt-2 list-disc pl-5 text-sm text-amber-800 dark:text-amber-200 space-y-1">
+            {validationWarnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <section className="rounded-lg border border-neutral-200 dark:border-neutral-700 p-4">
+          <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+            Effective permissions ({effectiveKeys.length})
+          </h3>
+          <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+            Union of direct grants and group inheritance (read-only).
+          </p>
+          {effectiveKeys.length === 0 ? (
+            <p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400">None</p>
+          ) : (
+            <ul className="mt-3 max-h-40 overflow-y-auto space-y-1 text-sm font-mono text-neutral-700 dark:text-neutral-300">
+              {effectiveKeys.map((key) => (
+                <li key={key}>{key}</li>
+              ))}
+            </ul>
+          )}
+        </section>
+        <section className="rounded-lg border border-neutral-200 dark:border-neutral-700 p-4">
+          <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+            From groups ({fromGroupsKeys.length})
+          </h3>
+          <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+            Inherited via group membership (read-only).
+          </p>
+          {fromGroupsKeys.length === 0 ? (
+            <p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400">None</p>
+          ) : (
+            <ul className="mt-3 max-h-40 overflow-y-auto space-y-1 text-sm font-mono text-neutral-700 dark:text-neutral-300">
+              {fromGroupsKeys.map((key) => (
+                <li key={key}>{key}</li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+
+      <section className="rounded-lg border border-primary-200 dark:border-primary-800 p-4 bg-primary-50/50 dark:bg-primary-950/20">
+        <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+          Direct grants ({directKeys.length})
+        </h3>
+        <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+          Editable below; saving replaces direct user permissions only.
+        </p>
+        {directKeys.length > 0 && (
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {directKeys.map((key) => (
+              <li
+                key={key}
+                className="rounded-md bg-white dark:bg-neutral-900 px-2 py-0.5 text-xs font-mono border border-neutral-200 dark:border-neutral-700"
+              >
+                {key}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex-1 min-w-[200px]">
           <Input

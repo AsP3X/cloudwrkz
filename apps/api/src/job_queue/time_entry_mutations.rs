@@ -14,8 +14,27 @@ use crate::id::new_cuid;
 use crate::models::time_entry::{
     CreateBreakRequest, TimeEntryRow, UpdateBreakRequest, UpdateTimeEntryRequest,
 };
+use crate::routes::helpers::check_permission;
 
 use super::entity_creates::{JobExecOutcome, map_sqlx_ticket};
+
+// Human: Job workers re-check permissions because HTTP gates alone cannot stop replayed or forged background payloads.
+// Agent: CALLS check_permission on pool; RETURNS JobExecOutcome::Fail forbidden when key missing.
+
+async fn deny_without_time_permission(
+    pool: &PgPool,
+    user_id: &str,
+    permission_key: &str,
+    action: &str,
+) -> Option<JobExecOutcome> {
+    if check_permission(pool, user_id, permission_key).await {
+        None
+    } else {
+        Some(JobExecOutcome::Fail(AppError::forbidden(format!(
+            "You do not have permission to {action}"
+        ))))
+    }
+}
 
 // Human: Central SELECT list keeps `row_to_entry` aligned with every column the API returns for time entries after mutations.
 // Agent: STATIC SQL fragment reused in queries; PAIRED with row_to_entry field order.
@@ -123,6 +142,16 @@ pub(super) async fn exec_time_entry_update(
             return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
         }
     };
+    if let Some(denied) = deny_without_time_permission(
+        pool,
+        &user_id,
+        "time_tracking.update",
+        "update time entries",
+    )
+    .await
+    {
+        return denied;
+    }
     let time_entry_id = match payload.get("time_entry_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
         None => {
@@ -376,6 +405,16 @@ pub(super) async fn exec_time_entry_delete(
             return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
         }
     };
+    if let Some(denied) = deny_without_time_permission(
+        pool,
+        &user_id,
+        "time_tracking.delete",
+        "delete time entries",
+    )
+    .await
+    {
+        return denied;
+    }
     let time_entry_id = match payload.get("time_entry_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
         None => {
@@ -426,6 +465,16 @@ pub(super) async fn exec_time_entry_stop(
             return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
         }
     };
+    if let Some(denied) = deny_without_time_permission(
+        pool,
+        &user_id,
+        "time_tracking.update",
+        "update time entries",
+    )
+    .await
+    {
+        return denied;
+    }
     let time_entry_id = match payload.get("time_entry_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
         None => {
@@ -495,6 +544,16 @@ pub(super) async fn exec_time_entry_pause(
             return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
         }
     };
+    if let Some(denied) = deny_without_time_permission(
+        pool,
+        &user_id,
+        "time_tracking.update",
+        "update time entries",
+    )
+    .await
+    {
+        return denied;
+    }
     let time_entry_id = match payload.get("time_entry_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
         None => {
@@ -560,6 +619,16 @@ pub(super) async fn exec_time_entry_resume(
             return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
         }
     };
+    if let Some(denied) = deny_without_time_permission(
+        pool,
+        &user_id,
+        "time_tracking.update",
+        "update time entries",
+    )
+    .await
+    {
+        return denied;
+    }
     let time_entry_id = match payload.get("time_entry_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
         None => {
@@ -620,6 +689,16 @@ pub(super) async fn exec_time_entry_complete(
             return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
         }
     };
+    if let Some(denied) = deny_without_time_permission(
+        pool,
+        &user_id,
+        "time_tracking.update",
+        "update time entries",
+    )
+    .await
+    {
+        return denied;
+    }
     let time_entry_id = match payload.get("time_entry_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
         None => {
@@ -680,6 +759,16 @@ pub(super) async fn exec_time_entry_break_create(
             return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
         }
     };
+    if let Some(denied) = deny_without_time_permission(
+        pool,
+        &user_id,
+        "time_tracking.update",
+        "update time entries",
+    )
+    .await
+    {
+        return denied;
+    }
     let time_entry_id = match payload.get("time_entry_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
         None => {
@@ -763,6 +852,16 @@ pub(super) async fn exec_time_entry_break_update(
             return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
         }
     };
+    if let Some(denied) = deny_without_time_permission(
+        pool,
+        &user_id,
+        "time_tracking.update",
+        "update time entries",
+    )
+    .await
+    {
+        return denied;
+    }
     let time_entry_id = match payload.get("time_entry_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
         None => {
@@ -924,6 +1023,16 @@ pub(super) async fn exec_time_entry_break_delete(
             return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
         }
     };
+    if let Some(denied) = deny_without_time_permission(
+        pool,
+        &user_id,
+        "time_tracking.update",
+        "update time entries",
+    )
+    .await
+    {
+        return denied;
+    }
     let time_entry_id = match payload.get("time_entry_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
         None => {
@@ -985,6 +1094,16 @@ pub(super) async fn exec_time_entry_bulk_update(
             return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
         }
     };
+    if let Some(denied) = deny_without_time_permission(
+        pool,
+        &user_id,
+        "time_tracking.bulk_update",
+        "bulk update time entries",
+    )
+    .await
+    {
+        return denied;
+    }
     let body_val = match payload.get("request") {
         Some(v) => v.clone(),
         None => {
@@ -1047,6 +1166,16 @@ pub(super) async fn exec_time_entry_bulk_archive(
             return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
         }
     };
+    if let Some(denied) = deny_without_time_permission(
+        pool,
+        &user_id,
+        "time_tracking.bulk_archive",
+        "bulk archive time entries",
+    )
+    .await
+    {
+        return denied;
+    }
     let body_val = match payload.get("request") {
         Some(v) => v.clone(),
         None => {
@@ -1104,6 +1233,16 @@ pub(super) async fn exec_time_entry_bulk_delete(
             return JobExecOutcome::Fail(AppError::bad_request("Missing user_id in job payload"));
         }
     };
+    if let Some(denied) = deny_without_time_permission(
+        pool,
+        &user_id,
+        "time_tracking.bulk_delete",
+        "bulk delete time entries",
+    )
+    .await
+    {
+        return denied;
+    }
     let body_val = match payload.get("request") {
         Some(v) => v.clone(),
         None => {

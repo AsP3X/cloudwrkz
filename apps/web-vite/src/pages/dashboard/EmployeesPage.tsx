@@ -669,7 +669,7 @@ function DeleteEmployeeDialog({
 // ---------------------------------------------------------------------------
 
 export default function EmployeesPage() {
-  const { can, permissions } = useAuth();
+  const { can } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -687,16 +687,16 @@ export default function EmployeesPage() {
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; emp: Employee } | null>(null);
 
-  const caps = useMemo(() => {
-    if (permissions.length === 0) {
-      return { canCreate: true, canUpdate: true, canDelete: true };
-    }
-    return {
+  // Human: Employee CRUD affordances require explicit employees.* permissions from the session.
+  // Agent: READS can(); MAPS employees.create|update|delete to caps; NO empty-permission fallback.
+  const caps = useMemo(
+    () => ({
       canCreate: can("employees.create"),
       canUpdate: can("employees.update"),
       canDelete: can("employees.delete"),
-    };
-  }, [permissions, can]);
+    }),
+    [can]
+  );
 
   const fetchEmployees = useCallback(async () => {
     setLoading(true);

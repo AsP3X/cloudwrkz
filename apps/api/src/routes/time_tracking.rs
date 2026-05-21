@@ -20,7 +20,7 @@ use crate::error::AppError;
 use crate::job_queue::entity_creates;
 use crate::models::time_entry::*;
 use crate::routes::AppState;
-use crate::routes::helpers::{hash_json_for_idempotency, idempotency_key_from_headers};
+use crate::routes::helpers::{hash_json_for_idempotency, idempotency_key_from_headers, require_permission};
 
 // Human: Bulk routes are first-class POST endpoints so large batch operations can share one idempotency key and mutation deferral policy.
 // Agent: Router includes /time-tracking/bulk-update bulk-archive bulk-delete plus per-entry break subroutes.
@@ -59,6 +59,7 @@ async fn list_tag_suggestions(
     AuthUser(user): AuthUser,
     Query(params): Query<TagSuggestionParams>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    require_permission(&state.pool, &user.id, "time_tracking.view").await?;
     let query = params.q.unwrap_or_default();
     let trimmed = query.trim();
 
@@ -205,6 +206,7 @@ async fn list_entries(
     AuthUser(user): AuthUser,
     Query(params): Query<TimeEntryListParams>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    require_permission(&state.pool, &user.id, "time_tracking.view").await?;
     let archive = params.archive.as_deref().unwrap_or("unarchived");
     let status = params.status.clone();
     let _ = (&params.sort, &params.date_from, &params.date_to);
@@ -238,6 +240,7 @@ async fn active_entries(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    require_permission(&state.pool, &user.id, "time_tracking.view").await?;
     let sql = format!(
         "{ENTRY_SELECT} FROM time_entries
          WHERE user_id = $1 AND status IN ('RUNNING', 'PAUSED')
@@ -264,6 +267,7 @@ async fn get_entry(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    require_permission(&state.pool, &user.id, "time_tracking.view").await?;
     let sql = format!("{ENTRY_SELECT} FROM time_entries WHERE id = $1 AND user_id = $2");
     let row = sqlx::query(&sql)
         .bind(&id)
@@ -286,6 +290,7 @@ async fn create_entry(
     headers: HeaderMap,
     Json(body): Json<CreateTimeEntryRequest>,
 ) -> Result<Response, AppError> {
+    require_permission(&state.pool, &user.id, "time_tracking.create").await?;
     let body_hash = hash_json_for_idempotency(&body);
     let ctx = MutationRunContext {
         user_id: user.id.clone(),
@@ -341,6 +346,7 @@ async fn add_manual_entry(
     headers: HeaderMap,
     Json(body): Json<AddTimeEntryRequest>,
 ) -> Result<Response, AppError> {
+    require_permission(&state.pool, &user.id, "time_tracking.create").await?;
     let body_hash = hash_json_for_idempotency(&body);
     let ctx = MutationRunContext {
         user_id: user.id.clone(),
@@ -397,6 +403,7 @@ async fn update_entry(
     headers: HeaderMap,
     Json(body): Json<UpdateTimeEntryRequest>,
 ) -> Result<Response, AppError> {
+    require_permission(&state.pool, &user.id, "time_tracking.update").await?;
     let body_hash = hash_json_for_idempotency(&body);
     let route = format!("PATCH /time-tracking/{id}");
     let ctx = MutationRunContext {
@@ -454,6 +461,7 @@ async fn delete_entry(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
+    require_permission(&state.pool, &user.id, "time_tracking.delete").await?;
     let route = format!("DELETE /time-tracking/{id}");
     let ctx = MutationRunContext {
         user_id: user.id.clone(),
@@ -507,6 +515,7 @@ async fn stop_entry(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
+    require_permission(&state.pool, &user.id, "time_tracking.update").await?;
     let route = format!("POST /time-tracking/{id}/stop");
     let ctx = MutationRunContext {
         user_id: user.id.clone(),
@@ -558,6 +567,7 @@ async fn pause_entry(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
+    require_permission(&state.pool, &user.id, "time_tracking.update").await?;
     let route = format!("POST /time-tracking/{id}/pause");
     let ctx = MutationRunContext {
         user_id: user.id.clone(),
@@ -609,6 +619,7 @@ async fn resume_entry(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
+    require_permission(&state.pool, &user.id, "time_tracking.update").await?;
     let route = format!("POST /time-tracking/{id}/resume");
     let ctx = MutationRunContext {
         user_id: user.id.clone(),
@@ -660,6 +671,7 @@ async fn complete_entry(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
+    require_permission(&state.pool, &user.id, "time_tracking.update").await?;
     let route = format!("POST /time-tracking/{id}/complete");
     let ctx = MutationRunContext {
         user_id: user.id.clone(),
@@ -712,6 +724,7 @@ async fn add_break(
     headers: HeaderMap,
     Json(body): Json<CreateBreakRequest>,
 ) -> Result<Response, AppError> {
+    require_permission(&state.pool, &user.id, "time_tracking.update").await?;
     let body_hash = hash_json_for_idempotency(&body);
     let route = format!("POST /time-tracking/{id}/breaks");
     let ctx = MutationRunContext {
@@ -768,6 +781,7 @@ async fn update_break(
     headers: HeaderMap,
     Json(body): Json<UpdateBreakRequest>,
 ) -> Result<Response, AppError> {
+    require_permission(&state.pool, &user.id, "time_tracking.update").await?;
     let body_hash = hash_json_for_idempotency(&body);
     let route = format!("PATCH /time-tracking/{id}/breaks/{break_id}");
     let ctx = MutationRunContext {
@@ -824,6 +838,7 @@ async fn delete_break(
     Path((id, break_id)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
+    require_permission(&state.pool, &user.id, "time_tracking.update").await?;
     let route = format!("DELETE /time-tracking/{id}/breaks/{break_id}");
     let ctx = MutationRunContext {
         user_id: user.id.clone(),
@@ -887,6 +902,7 @@ async fn bulk_update_entries(
     headers: HeaderMap,
     Json(body): Json<BulkUpdateTimeEntriesRequest>,
 ) -> Result<Response, AppError> {
+    require_permission(&state.pool, &user.id, "time_tracking.bulk_update").await?;
     match body.status.as_deref() {
         Some("RUNNING" | "PAUSED" | "STOPPED" | "COMPLETED") => {}
         _ => return Err(AppError::bad_request("Invalid or missing status")),
@@ -944,6 +960,7 @@ async fn bulk_archive_entries(
     headers: HeaderMap,
     Json(body): Json<BulkIdsRequest>,
 ) -> Result<Response, AppError> {
+    require_permission(&state.pool, &user.id, "time_tracking.bulk_archive").await?;
     let body_hash = hash_json_for_idempotency(&body);
     let ctx = MutationRunContext {
         user_id: user.id.clone(),
@@ -997,6 +1014,7 @@ async fn bulk_delete_entries(
     headers: HeaderMap,
     Json(body): Json<BulkIdsRequest>,
 ) -> Result<Response, AppError> {
+    require_permission(&state.pool, &user.id, "time_tracking.bulk_delete").await?;
     let body_hash = hash_json_for_idempotency(&body);
     let ctx = MutationRunContext {
         user_id: user.id.clone(),

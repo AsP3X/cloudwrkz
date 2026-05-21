@@ -94,6 +94,7 @@ const EmployeesIcon = () => (
 export interface AdminSidebarProps {
   enabledModuleKeys: string[];
   canViewUsers: boolean;
+  canViewGroups: boolean;
   canManageGroups: boolean;
   canViewSessions: boolean;
   canViewPermissions: boolean;
@@ -111,7 +112,8 @@ export interface AdminSidebarProps {
 export function AdminSidebar({
   enabledModuleKeys,
   canViewUsers,
-  canManageGroups,
+  canViewGroups,
+  canManageGroups: _canManageGroups,
   canViewSessions,
   canViewPermissions,
   canManagePermissions,
@@ -145,7 +147,7 @@ export function AdminSidebar({
 
   const userMgmtItems = [
     canViewUsers && { name: "Users", href: ROUTES.ADMIN_USERS, icon: UsersIcon },
-    canManageGroups && { name: "Groups", href: ROUTES.ADMIN_GROUPS, icon: UsersIcon },
+    canViewGroups && { name: "Groups", href: ROUTES.ADMIN_GROUPS, icon: UsersIcon },
     canViewSessions && { name: "Sessions", href: ROUTES.ADMIN_SESSIONS, icon: ClipboardIcon },
   ].filter(Boolean) as { name: string; href: string; icon: () => JSX.Element }[];
 

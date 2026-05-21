@@ -16,6 +16,7 @@ import { formatUserName } from "@/lib/utils/users";
 import { RichTextDisplay } from "@/components/features/tickets/RichTextDisplay";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { AccessIssueTicketDialog } from "@/components/features/tickets/AccessIssueTicketDialog";
+import { hasAgentCapabilities } from "@/lib/permissions";
 import { TaskDeleteDialog } from "@/components/features/tasks/TaskDeleteDialog/TaskDeleteDialog";
 import { SubtasksSection } from "@/components/features/tasks/SubtasksSection/SubtasksSection";
 import { updateTodoSchema, type UpdateTodoInput } from "@/lib/validations/todos";
@@ -123,7 +124,7 @@ export default function TaskDetailPage() {
 
   const modeEdit = searchParams.get("mode") === "edit";
   const canViewTodos = can("modules.todos.view");
-  const isAgent = user?.role === "AGENT" || user?.role === "ADMIN" || user?.role === "MODERATOR";
+  const isAgent = hasAgentCapabilities(can);
 
   /* ─── Form ─── */
   const form = useForm<UpdateTodoInput>({

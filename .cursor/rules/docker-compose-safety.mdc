@@ -1,0 +1,34 @@
+---
+description: Docker Compose dev vs prod and volume safety
+alwaysApply: true
+---
+
+# Docker Compose and database safety
+
+Supplements **`data-safety.mdc`** — read both before any Compose or database operation.
+
+## Mandatory for agents
+
+- **Never run `docker compose down -v`** (or `docker volume rm`) unless the user **explicitly** requests destruction of local database volumes and confirms data loss is acceptable.
+- **Never assume** the dev Compose Postgres volume is disposable. Users may store important data there.
+- Prefer **`scripts/compose-dev-down.sh`** (no `-v`) to stop the dev stack.
+- If volume removal is truly required, require **`CLOUDWRKZ_CONFIRM_DESTROY_DATA=yes scripts/compose-dev-down.sh --destroy-volumes`** and explicit user confirmation first.
+
+## Dev vs production Compose files
+
+| File | Purpose |
+|------|---------|
+| `docker-compose.dev.yml.example` | **Local dev only** — bundled Postgres volume (`cloudwrkz_postgres_data`) |
+| `docker-compose.prod.yml.example` | **Production** — external `DATABASE_URL` only; **no** Postgres service; **no** data volumes |
+
+- **Do not** recommend production deployments using the dev Compose file or its Postgres service.
+- Production database: managed PostgreSQL (RDS, Cloud SQL, etc.) with backups and PITR — not a Docker volume.
+
+## Production environment variables
+
+- Set `CLOUDWRKZ_DEPLOYMENT=production` on production API hosts (see `.env.production.example`).
+- `migrate-repair` is **disabled** when `CLOUDWRKZ_DEPLOYMENT=production`.
+
+## Migrations
+
+- Applied migrations are **immutable**. Production fixes are **new migration files** only — never edit `001_*`, `002_*`, etc. after they have shipped.

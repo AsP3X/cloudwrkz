@@ -299,9 +299,7 @@ async fn list_employees(
     AuthUser(user): AuthUser,
     Query(q): Query<ListEmployeesQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if !check_permission(&state.pool, &user.id, "employees.view").await
-        && user.role != "ADMIN"
-    {
+    if !check_permission(&state.pool, &user.id, "employees.view").await {
         return Err(AppError::forbidden("Insufficient permissions"));
     }
 
@@ -414,9 +412,7 @@ async fn check_email(
     AuthUser(user): AuthUser,
     Query(q): Query<CheckEmailQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if !check_permission(&state.pool, &user.id, "employees.create").await
-        && user.role != "ADMIN"
-    {
+    if !check_permission(&state.pool, &user.id, "employees.create").await {
         return Err(AppError::forbidden("Insufficient permissions"));
     }
 
@@ -456,9 +452,7 @@ async fn get_employee(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if !check_permission(&state.pool, &user.id, "employees.view").await
-        && user.role != "ADMIN"
-    {
+    if !check_permission(&state.pool, &user.id, "employees.view").await {
         return Err(AppError::forbidden("Insufficient permissions"));
     }
 
@@ -498,9 +492,7 @@ async fn create_employee(
     headers: HeaderMap,
     Json(body): Json<CreateEmployeeRequest>,
 ) -> Result<Response, AppError> {
-    if !check_permission(&state.pool, &user.id, "employees.create").await
-        && user.role != "ADMIN"
-    {
+    if !check_permission(&state.pool, &user.id, "employees.create").await {
         return Err(AppError::forbidden("Insufficient permissions"));
     }
     let first_name = body.first_name.trim();
@@ -550,9 +542,7 @@ async fn update_employee(
     headers: HeaderMap,
     Json(body): Json<UpdateEmployeeRequest>,
 ) -> Result<Response, AppError> {
-    if !check_permission(&state.pool, &user.id, "employees.update").await
-        && user.role != "ADMIN"
-    {
+    if !check_permission(&state.pool, &user.id, "employees.update").await {
         return Err(AppError::forbidden("Insufficient permissions"));
     }
 
@@ -587,9 +577,7 @@ async fn delete_employee(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
-    if !check_permission(&state.pool, &user.id, "employees.delete").await
-        && user.role != "ADMIN"
-    {
+    if !check_permission(&state.pool, &user.id, "employees.delete").await {
         return Err(AppError::forbidden("Insufficient permissions"));
     }
 
@@ -617,9 +605,7 @@ async fn add_employee_email(
     headers: HeaderMap,
     Json(body): Json<AddEmailRequest>,
 ) -> Result<Response, AppError> {
-    if !check_permission(&state.pool, &user.id, "employees.update").await
-        && user.role != "ADMIN"
-    {
+    if !check_permission(&state.pool, &user.id, "employees.update").await {
         return Err(AppError::forbidden("Insufficient permissions"));
     }
 
@@ -654,9 +640,7 @@ async fn remove_employee_email(
     Path((id, email_id)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
-    if !check_permission(&state.pool, &user.id, "employees.update").await
-        && user.role != "ADMIN"
-    {
+    if !check_permission(&state.pool, &user.id, "employees.update").await {
         return Err(AppError::forbidden("Insufficient permissions"));
     }
 
@@ -684,9 +668,7 @@ async fn add_employee_manager(
     headers: HeaderMap,
     Json(body): Json<AddManagerRequest>,
 ) -> Result<Response, AppError> {
-    if !check_permission(&state.pool, &user.id, "employees.update").await
-        && user.role != "ADMIN"
-    {
+    if !check_permission(&state.pool, &user.id, "employees.update").await {
         return Err(AppError::forbidden("Insufficient permissions"));
     }
 
@@ -722,9 +704,7 @@ async fn remove_employee_manager(
     Path((id, manager_id)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
-    if !check_permission(&state.pool, &user.id, "employees.update").await
-        && user.role != "ADMIN"
-    {
+    if !check_permission(&state.pool, &user.id, "employees.update").await {
         return Err(AppError::forbidden("Insufficient permissions"));
     }
 
@@ -752,9 +732,7 @@ async fn link_user(
     headers: HeaderMap,
     Json(body): Json<LinkUserRequest>,
 ) -> Result<Response, AppError> {
-    if !check_permission(&state.pool, &user.id, "employees.update").await
-        && user.role != "ADMIN"
-    {
+    if !check_permission(&state.pool, &user.id, "employees.update").await {
         return Err(AppError::forbidden("Insufficient permissions"));
     }
 
@@ -784,9 +762,7 @@ async fn unlink_user(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
-    if !check_permission(&state.pool, &user.id, "employees.update").await
-        && user.role != "ADMIN"
-    {
+    if !check_permission(&state.pool, &user.id, "employees.update").await {
         return Err(AppError::forbidden("Insufficient permissions"));
     }
 

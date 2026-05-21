@@ -84,7 +84,7 @@ function fillMissingDays<T extends { date: string }>(
 // Agent: STATE stats,analytics,analyticsUnavailable,loading; useEffect load(); MAPS data into Recharts containers.
 
 export default function AdminStatisticsPage() {
-  const { user } = useAuth();
+  const { can } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [analyticsUnavailable, setAnalyticsUnavailable] = useState(false);
@@ -171,7 +171,7 @@ export default function AdminStatisticsPage() {
     }));
   }, [analytics]);
 
-  if (user?.role !== "ADMIN") {
+  if (!can("admin.statistics.view")) {
     return (
       <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-12 text-center">
         <p className="text-neutral-500">Access denied.</p>

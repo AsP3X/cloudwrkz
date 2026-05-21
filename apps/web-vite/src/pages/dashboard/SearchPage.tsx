@@ -5,6 +5,7 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { SearchFilters } from "@/components/features/search/SearchFilters";
 import { SearchResultsTable } from "@/components/features/search/SearchResultsTable";
 import type { SearchResult } from "@/components/features/search/types";
+import { hasAgentCapabilities } from "@/lib/permissions";
 
 // Human: Global search surface combining text query parameters, agent-only user filters, and grouped result tables.
 // Agent: READS searchParams q; CONDITIONAL GET /admin/users for agents; POST/GET search endpoint via performSearch.
@@ -20,14 +21,14 @@ interface UserSummary {
 // Agent: STATE results,total,loading,users; useCallback performSearch; READS isAgent from user.role.
 
 export default function SearchPage() {
-  const { user } = useAuth();
+  const { can } = useAuth();
   const [searchParams] = useSearchParams();
   const [results, setResults] = useState<SearchResult[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState<UserSummary[]>([]);
 
-  const isAgent = user?.role === "AGENT" || user?.role === "ADMIN" || user?.role === "MODERATOR";
+  const isAgent = hasAgentCapabilities(can);
   const query = searchParams.get("q") || "";
 
   useEffect(() => {

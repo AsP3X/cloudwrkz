@@ -266,8 +266,7 @@ async fn create_ticket(
     let permission_keys = get_user_permission_keys(&state.pool, &user.id).await;
     let can_create = permission_keys
         .iter()
-        .any(|k| k == "tickets.create" || k == "admin.tickets.manage")
-        || permission_keys.is_empty(); // Allow when user has no permissions (e.g. create ticket to request access)
+        .any(|k| k == "tickets.create" || k == "admin.tickets.manage");
     if !can_create {
         return Err(AppError::forbidden(
             "You don't have permission to create tickets",

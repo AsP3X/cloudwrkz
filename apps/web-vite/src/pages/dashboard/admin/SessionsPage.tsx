@@ -5,12 +5,14 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import type { AdminSession } from "@/lib/types";
 import { formatDateTime } from "@/lib/hooks/useApi";
+import { PERM } from "@/lib/permissions";
 
 // Human: Admin session inventory with search, revocation affordances, and metadata formatted for security reviews.
-// Agent: GET /admin/sessions?search=; STATE sessions,loading,search; ROLE gate; DISPLAYS via formatDateTime.
+// Agent: GET /admin/sessions?search=; PERM admin.sessions.view + revoke; STATE sessions,loading,search; DISPLAYS via formatDateTime.
 
 export default function SessionsPage() {
-  const { user } = useAuth();
+  const { can } = useAuth();
+  const canRevokeSessions = can(PERM.ADMIN_SESSIONS_REVOKE);
   const [sessions, setSessions] = useState<AdminSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -39,7 +41,7 @@ export default function SessionsPage() {
     } catch { /* ignore */ }
   };
 
-  if (user?.role !== "ADMIN") {
+  if (!can("admin.sessions.view")) {
     return (
       <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-12 text-center">
         <p className="text-neutral-500">Access denied.</p>
@@ -100,7 +102,9 @@ export default function SessionsPage() {
                     <td className="p-3 text-neutral-500">{formatDateTime(s.createdAt)}</td>
                     <td className="p-3 text-neutral-500">{formatDateTime(s.expiresAt)}</td>
                     <td className="p-3 text-right">
-                      <Button variant="ghost" size="sm" onClick={() => handleRevoke(s.id)} className="text-error-600">Revoke</Button>
+                      {canRevokeSessions && (
+                        <Button variant="ghost" size="sm" onClick={() => handleRevoke(s.id)} className="text-error-600">Revoke</Button>
+                      )}
                     </td>
                   </tr>
                 ))}

@@ -7,6 +7,7 @@ import { TicketForm } from "@/components/features/tickets/TicketForm";
 import type { TicketFormUser, TicketFormGroup } from "@/components/features/tickets/TicketForm";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { TipsTooltip } from "@/components/features/tickets/TipsTooltip";
+import { hasAgentCapabilities } from "@/lib/permissions";
 
 // Human: Ticket creation flow loading assignee metadata for agents and embedding TicketForm with access gating.
 // Agent: FETCH /admin/users + /admin/groups when isAgent; READS canCreateTicket; REDIRECT if unauthorized.
@@ -19,7 +20,7 @@ export default function TicketNewPage() {
   const [loading, setLoading] = useState(true);
 
   const canCreateTicket = can("tickets.create") || can("admin.tickets.manage");
-  const isAgent = user?.role === "AGENT" || user?.role === "ADMIN" || user?.role === "MODERATOR";
+  const isAgent = hasAgentCapabilities(can);
 
   useEffect(() => {
     if (!user) {

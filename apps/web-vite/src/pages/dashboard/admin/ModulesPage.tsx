@@ -8,7 +8,7 @@ import type { Module } from "@/lib/types";
 // Agent: GET /admin/modules; PATCH toggles; CALLS refreshUser after changes; REQUIRES admin role gate in UI.
 
 export default function ModulesPage() {
-  const { user, refreshUser } = useAuth();
+  const { can, refreshUser } = useAuth();
   const [modules, setModules] = useState<Module[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -34,7 +34,7 @@ export default function ModulesPage() {
     } catch { /* ignore */ }
   };
 
-  if (user?.role !== "ADMIN") {
+  if (!can("admin.modules.manage")) {
     return (
       <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-12 text-center">
         <p className="text-neutral-500">Access denied. Admin privileges required.</p>

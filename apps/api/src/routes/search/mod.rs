@@ -18,7 +18,7 @@ use sqlx::Row;
 use crate::auth::extractors::AuthUser;
 use crate::error::AppError;
 use crate::routes::AppState;
-use crate::routes::helpers::{check_permission, get_user_permission_keys};
+use crate::routes::helpers::{check_permission, get_user_permission_keys, require_permission};
 
 use engine::{ScoredHit, fetch_recent_access_counts, rank_and_truncate};
 use queries::{LINK_SEARCH_SQL, TICKET_SEARCH_SQL, TIME_ENTRY_SEARCH_SQL, TODO_SEARCH_SQL};
@@ -364,6 +364,7 @@ async fn global_search(
     AuthUser(user): AuthUser,
     Query(params): Query<SearchParams>,
 ) -> Result<Json<SearchResponse>, AppError> {
+    require_permission(&state.pool, &user.id, "search.use").await?;
     let query = params.q.unwrap_or_default().trim().to_string();
     if query.is_empty() {
         return Ok(Json(SearchResponse {
@@ -382,6 +383,7 @@ async fn advanced_search(
     AuthUser(user): AuthUser,
     Query(params): Query<AdvancedSearchParams>,
 ) -> Result<Json<SearchResponse>, AppError> {
+    require_permission(&state.pool, &user.id, "search.use").await?;
     let query = params.q.as_deref().unwrap_or("").trim();
     if query.is_empty() {
         return Ok(Json(SearchResponse {
@@ -401,6 +403,7 @@ async fn record_search_access(
     AuthUser(user): AuthUser,
     Json(body): Json<SearchAccessBody>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    require_permission(&state.pool, &user.id, "search.use").await?;
     let et = body.entity_type.trim();
     let eid = body.entity_id.trim();
     if eid.is_empty() {

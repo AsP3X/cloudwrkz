@@ -333,7 +333,7 @@ function LinkUserDialog({
 export default function EmployeeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { can, permissions } = useAuth();
+  const { can } = useAuth();
 
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
@@ -345,7 +345,9 @@ export default function EmployeeDetailPage() {
   const [unlinkConfirmOpen, setUnlinkConfirmOpen] = useState(false);
   const [isUnlinking, setIsUnlinking] = useState(false);
 
-  const canUpdate = permissions.length === 0 || can("employees.update");
+  // Human: Editing employee records requires employees.update; no legacy allow-all when permissions are empty.
+  // Agent: READS can("employees.update"); GATES edit dialogs and save actions.
+  const canUpdate = can("employees.update");
 
   const fetchEmployee = useCallback(async () => {
     if (!id) return;

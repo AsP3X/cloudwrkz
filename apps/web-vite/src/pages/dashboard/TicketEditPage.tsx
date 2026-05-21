@@ -13,6 +13,7 @@ import { Controller } from "react-hook-form";
 import type { Ticket } from "@/lib/types";
 import { updateTicketSchema, type UpdateTicketInput } from "@/lib/validations/tickets";
 import { TICKET_TYPE_LABELS, type TicketType } from "@/lib/utils/tickets";
+import { hasAgentCapabilities } from "@/lib/permissions";
 
 const TYPE_OPTIONS: Array<{ value: TicketType; label: string }> = [
   { value: "BUG", label: TICKET_TYPE_LABELS.BUG },
@@ -42,7 +43,7 @@ const STATUS_OPTIONS = [
 export default function TicketEditPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { can } = useAuth();
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [agents, setAgents] = useState<Array<{ id: string; email: string; name: string | null }>>([]);
   const [groups, setGroups] = useState<Array<{ id: string; name: string; description: string | null }>>([]);
@@ -125,7 +126,9 @@ export default function TicketEditPage() {
     }
   };
 
-  if (user?.role !== "AGENT" && user?.role !== "ADMIN" && user?.role !== "MODERATOR") {
+  // Human: Ticket edit UI is limited to users with agent ticket capabilities (assign/update flows).
+  // Agent: REQUIRES hasAgentCapabilities(can); NAVIGATES away when false.
+  if (!hasAgentCapabilities(can)) {
     navigate(ROUTES.DASHBOARD, { replace: true });
     return null;
   }

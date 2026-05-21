@@ -7,12 +7,15 @@ import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { Dialog } from "@/components/ui/Dialog";
 import type { AdminGroup } from "@/lib/types";
+import { PERM } from "@/lib/permissions";
 
 // Human: Admin directory of groups with create/delete dialogs, client-side search, and membership summaries.
-// Agent: GET /admin/groups; ROLE gate via user.role; STATE dialogs+formData; MUTATES groups list after actions.
+// Agent: GET /admin/groups; PERM gate admin.groups.view|manage; STATE dialogs+formData; MUTATES groups list after actions.
 
 export default function GroupsPage() {
-  const { user } = useAuth();
+  const { can } = useAuth();
+  const canViewGroups = can(PERM.ADMIN_GROUPS_VIEW) || can(PERM.ADMIN_GROUPS_MANAGE);
+  const canManageGroups = can(PERM.ADMIN_GROUPS_MANAGE);
   const [groups, setGroups] = useState<AdminGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -84,7 +87,7 @@ export default function GroupsPage() {
     setIsLoading(false);
   };
 
-  if (user?.role !== "ADMIN" && user?.role !== "MODERATOR") {
+  if (!canViewGroups) {
     return (
       <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-12 text-center">
         <p className="text-neutral-500">Access denied.</p>
@@ -137,9 +140,11 @@ export default function GroupsPage() {
             Manage agent groups ({groups.length} total{localSearch.trim() && filteredGroups.length !== groups.length ? `, ${filteredGroups.length} shown` : ""})
           </p>
         </div>
-        <Button variant="primary" onClick={() => setCreateDialogOpen(true)}>
-          Create Group
-        </Button>
+        {canManageGroups && (
+          <Button variant="primary" onClick={() => setCreateDialogOpen(true)}>
+            Create Group
+          </Button>
+        )}
       </div>
 
       <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm rounded-xl shadow-soft-lg border border-neutral-200/50 dark:border-neutral-800/50 overflow-hidden">
@@ -176,7 +181,9 @@ export default function GroupsPage() {
                 </svg>
                 <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">No groups yet</h3>
                 <p className="text-neutral-600 dark:text-neutral-400 mb-4">Create your first agent group to get started.</p>
-                <Button variant="primary" onClick={() => setCreateDialogOpen(true)}>Create Group</Button>
+                {canManageGroups && (
+                  <Button variant="primary" onClick={() => setCreateDialogOpen(true)}>Create Group</Button>
+                )}
               </>
             )}
           </div>
@@ -217,16 +224,18 @@ export default function GroupsPage() {
                         <Link to={`/dashboard/admin/groups/${group.id}`}>
                           <Button variant="ghost" size="sm">View</Button>
                         </Link>
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedGroup(group);
-                            setDeleteDialogOpen(true);
-                          }}
-                        >
-                          Delete
-                        </Button>
+                        {canManageGroups && (
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedGroup(group);
+                              setDeleteDialogOpen(true);
+                            }}
+                          >
+                            Delete
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>

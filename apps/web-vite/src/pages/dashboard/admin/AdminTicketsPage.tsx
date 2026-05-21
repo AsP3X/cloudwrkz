@@ -10,7 +10,7 @@ import { relativeTime } from "@/lib/hooks/useApi";
 // Agent: GET /tickets?status=; ROLE gate ADMIN|MODERATOR; STATE tickets,loading,statusFilter; USES relativeTime.
 
 export default function AdminTicketsPage() {
-  const { user } = useAuth();
+  const { can } = useAuth();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -29,7 +29,7 @@ export default function AdminTicketsPage() {
 
   useEffect(() => { fetchTickets(); }, [fetchTickets]);
 
-  if (user?.role !== "ADMIN" && user?.role !== "MODERATOR") {
+  if (!can("admin.tickets.manage")) {
     return (
       <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-12 text-center">
         <p className="text-neutral-500">Access denied.</p>

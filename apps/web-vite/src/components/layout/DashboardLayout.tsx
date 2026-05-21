@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils/cn";
 import { api } from "@/api/client";
 import { MutationQueueNotice } from "@/components/ui/MutationQueueNotice";
 import { MouseSpotlightSurface } from "@/components/ui/MouseSpotlightSurface";
+import { hasAdminAreaAccess, PERM } from "@/lib/permissions";
 
 function hasStoredAuthToken(): boolean {
   return Boolean(localStorage.getItem("auth_token"));
@@ -48,15 +49,18 @@ function DashboardLayoutContent() {
 
   if (!user) return null;
 
-  const isAdmin = user.role === "ADMIN";
+  // Human: Admin chrome is shown when any admin-area permission is granted, not from the role label alone.
+  // Agent: READS can(); CALLS hasAdminAreaAccess; RENDERS AdminSidebar vs DashboardSidebar.
+  const showAdminSidebar = hasAdminAreaAccess(can);
 
-  if (isAdmin) {
+  if (showAdminSidebar) {
     return (
       <>
         <AdminSidebar
           enabledModuleKeys={modules}
           canViewUsers={can("admin.users.view") || can("admin.users.create") || can("admin.users.update") || can("admin.users.delete")}
-          canManageGroups={can("admin.groups.manage")}
+          canViewGroups={can(PERM.ADMIN_GROUPS_VIEW) || can(PERM.ADMIN_GROUPS_MANAGE)}
+          canManageGroups={can(PERM.ADMIN_GROUPS_MANAGE)}
           canViewSessions={can("admin.sessions.view")}
           canViewPermissions={can("admin.permissions.view") || can("admin.permissions.manage")}
           canManagePermissions={can("admin.permissions.manage")}
@@ -82,7 +86,6 @@ function DashboardLayoutContent() {
     <>
       <DashboardSidebar
         enabledModuleKeys={modules}
-        userRole={user.role}
         navCounts={navCounts}
       />
       <DashboardHeader user={user} />
