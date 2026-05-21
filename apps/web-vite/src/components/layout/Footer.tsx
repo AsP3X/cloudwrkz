@@ -21,7 +21,7 @@ export const Footer = () => {
   };
 
   return (
-    <footer className="bg-neutral-900 dark:bg-neutral-950 text-neutral-300 dark:text-neutral-400">
+    <footer className="relative z-10 bg-neutral-900 dark:bg-neutral-950 text-neutral-300 dark:text-neutral-400">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 mb-8">
           {/* Brand */}
