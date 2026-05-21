@@ -23,6 +23,7 @@ export const ROUTES = {
   ADMIN_SESSIONS: "/dashboard/admin/sessions",
   ADMIN_TICKETS: "/dashboard/admin/tickets",
   ADMIN_AUDIT: "/dashboard/admin/audit",
+  ADMIN_AUDIT_DETAIL: "/dashboard/admin/audit/:id",
   ADMIN_DB_CONSOLE: "/dashboard/admin/db",
   ADMIN_BACKGROUND_JOBS: "/dashboard/admin/background-jobs",
   TIME_TRACKING: "/dashboard/time-tracking",

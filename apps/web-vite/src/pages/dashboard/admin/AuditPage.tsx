@@ -1,16 +1,24 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "@/api/client";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { Badge } from "@/components/ui/Badge";
+import { OverviewContextMenu, type OverviewContextMenuItem } from "@/components/ui/OverviewContextMenu";
+import { ROUTES } from "@/lib/constants/routes";
 import type { AuditEntry, AuditEntriesResponse } from "@/lib/types";
 import { formatDateTime } from "@/lib/hooks/useApi";
 
 const PAGE_LIMIT = 50;
 
-// Human: Searchable audit log explorer with filters, CSV export, and permission-aware data access for compliance.
-// Agent: FETCH /admin/audit*; QUERY action,user,date range,sort; REQUIRES audit.view|audit.export; PAGE_LIMIT paging.
+// Human: Searchable audit log explorer with filters, row navigation to detail, context menu, and export.
+// Agent: FETCH /admin/audit*; NAVIGATE audit/:id on row click; OverviewContextMenu view details; REQUIRES audit.view|audit.export.
+
+function auditDetailPath(entryId: string): string {
+  return ROUTES.ADMIN_AUDIT_DETAIL.replace(":id", encodeURIComponent(entryId));
+}
 
 export default function AuditPage() {
+  const navigate = useNavigate();
   const { user, can } = useAuth();
   const [data, setData] = useState<AuditEntriesResponse | null>(null);
   const [actions, setActions] = useState<string[]>([]);
@@ -23,9 +31,28 @@ export default function AuditPage() {
   const [toDate, setToDate] = useState("");
   const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
   const [exporting, setExporting] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; entry: AuditEntry } | null>(null);
 
   const canViewAudit = can("audit.view");
   const canExportAudit = can("audit.export");
+
+  const openEntryDetail = useCallback(
+    (entryId: string) => {
+      navigate(auditDetailPath(entryId));
+    },
+    [navigate],
+  );
+
+  const getContextMenuItems = useCallback(
+    (entry: AuditEntry): OverviewContextMenuItem[] => [
+      {
+        id: "view-details",
+        label: "View details",
+        onClick: () => openEntryDetail(entry.id),
+      },
+    ],
+    [openEntryDetail],
+  );
 
   const fetchEntries = useCallback(async () => {
     if (!canViewAudit) return;
@@ -249,7 +276,23 @@ export default function AuditPage() {
                 </thead>
                 <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
                   {entries.map((e) => (
-                    <tr key={e.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
+                    <tr
+                      key={e.id}
+                      role="button"
+                      tabIndex={0}
+                      className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 cursor-pointer [&_td]:cursor-pointer"
+                      onClick={() => openEntryDetail(e.id)}
+                      onKeyDown={(ev) => {
+                        if (ev.key === "Enter" || ev.key === " ") {
+                          ev.preventDefault();
+                          openEntryDetail(e.id);
+                        }
+                      }}
+                      onContextMenu={(ev) => {
+                        ev.preventDefault();
+                        setContextMenu({ x: ev.clientX, y: ev.clientY, entry: e });
+                      }}
+                    >
                       <td className="p-3 text-neutral-500 whitespace-nowrap">{formatDateTime(e.created_at)}</td>
                       <td className="p-3"><Badge variant={actionVariant(e.action)} size="sm">{e.action}</Badge></td>
                       <td className="p-3 text-neutral-600 dark:text-neutral-400">
@@ -297,6 +340,14 @@ export default function AuditPage() {
           </>
         )}
       </div>
+
+      <OverviewContextMenu
+        open={contextMenu != null}
+        x={contextMenu?.x ?? 0}
+        y={contextMenu?.y ?? 0}
+        onClose={() => setContextMenu(null)}
+        items={contextMenu ? getContextMenuItems(contextMenu.entry) : []}
+      />
     </div>
   );
 }

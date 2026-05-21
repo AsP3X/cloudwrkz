@@ -60,6 +60,7 @@ import {
   AdminTicketsPage,
   AdminStatisticsPage,
   AuditPage,
+  AuditDetailPage,
   DbConsolePage,
   UserDetailPage,
   EmployeesPage,
@@ -211,6 +212,7 @@ export default function App() {
                     <Route path="tickets" element={<AdminTicketsPage />} />
                     <Route path="statistics" element={<AdminStatisticsPage />} />
                     <Route path="audit" element={<AuditPage />} />
+                    <Route path="audit/:id" element={<AuditDetailPage />} />
                     <Route path="db" element={<DbConsolePage />} />
                     <Route path="permissions">
                       <Route path="users" element={<UserPermissionsListPage />} />

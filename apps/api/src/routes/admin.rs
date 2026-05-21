@@ -39,6 +39,7 @@ use crate::{
 
 pub fn router() -> Router<AppState> {
     Router::new()
+        .route("/admin/audit/entries/{id}", get(audit_entry))
         .route("/admin/audit/entries", get(audit_entries))
         .route("/admin/audit/actions", get(audit_actions))
         .route("/admin/audit/export", get(audit_export))
@@ -188,6 +189,56 @@ struct AuditEntriesQuery {
     to: Option<String>,
     user_search: Option<String>,
     sort_order: Option<String>,
+}
+
+// Human: One audit row from SQL becomes the JSON shape the admin audit list and detail pages expect.
+// Agent: MAPS audit_logs columns + optional joined user email/name; FORMATS created_at ISO-like string.
+
+fn audit_log_row_to_json(r: &sqlx::postgres::PgRow) -> serde_json::Value {
+    let created_at: chrono::NaiveDateTime = r.get("created_at");
+    serde_json::json!({
+        "id": r.get::<String, _>("id"),
+        "user_id": r.get::<Option<String>, _>("user_id"),
+        "action": r.get::<String, _>("action"),
+        "resource_type": r.get::<Option<String>, _>("resource_type"),
+        "resource_id": r.get::<Option<String>, _>("resource_id"),
+        "context": r.get::<Option<serde_json::Value>, _>("context"),
+        "ip_address": r.get::<Option<String>, _>("ip_address"),
+        "user_agent": r.get::<Option<String>, _>("user_agent"),
+        "created_at": created_at.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(),
+        "user": match (
+            r.get::<Option<String>, _>("user_email"),
+            r.get::<Option<String>, _>("user_name"),
+        ) {
+            (Some(email), name) => serde_json::json!({ "email": email, "name": name }),
+            (None, _) => serde_json::Value::Null,
+        },
+    })
+}
+
+async fn audit_entry(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_permission(&state.pool, &user.id, "audit.view").await?;
+
+    let row = sqlx::query(
+        r#"SELECT a.id, a.user_id, a.action, a.resource_type, a.resource_id,
+                  a.context, a.ip_address, a.user_agent, a.created_at,
+                  u.email as user_email, u.name as user_name
+           FROM audit_logs a
+           LEFT JOIN users u ON a.user_id = u.id
+           WHERE a.id = $1"#,
+    )
+    .bind(&id)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| AppError::not_found("Audit log entry not found"))?;
+
+    Ok(Json(serde_json::json!({
+        "entry": audit_log_row_to_json(&row),
+    })))
 }
 
 async fn audit_entries(
@@ -346,24 +397,7 @@ async fn audit_entries(
 
     let entries: Vec<serde_json::Value> = rows
         .iter()
-        .map(|r| {
-            let created_at: chrono::NaiveDateTime = r.get("created_at");
-            serde_json::json!({
-                "id": r.get::<String, _>("id"),
-                "user_id": r.get::<Option<String>, _>("user_id"),
-                "action": r.get::<String, _>("action"),
-                "resource_type": r.get::<Option<String>, _>("resource_type"),
-                "resource_id": r.get::<Option<String>, _>("resource_id"),
-                "context": r.get::<Option<serde_json::Value>, _>("context"),
-                "ip_address": r.get::<Option<String>, _>("ip_address"),
-                "user_agent": r.get::<Option<String>, _>("user_agent"),
-                "created_at": created_at.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(),
-                "user": match (r.get::<Option<String>, _>("user_email"), r.get::<Option<String>, _>("user_name")) {
-                    (Some(email), name) => serde_json::json!({ "email": email, "name": name }),
-                    (None, _) => serde_json::Value::Null,
-                },
-            })
-        })
+        .map(|r| audit_log_row_to_json(r))
         .collect();
 
     let total_pages = (total + limit as i64 - 1) / limit as i64;
@@ -478,24 +512,7 @@ async fn audit_export(
 
     let entries: Vec<serde_json::Value> = rows
         .iter()
-        .map(|r| {
-            let created_at: chrono::NaiveDateTime = r.get("created_at");
-            serde_json::json!({
-                "id": r.get::<String, _>("id"),
-                "user_id": r.get::<Option<String>, _>("user_id"),
-                "action": r.get::<String, _>("action"),
-                "resource_type": r.get::<Option<String>, _>("resource_type"),
-                "resource_id": r.get::<Option<String>, _>("resource_id"),
-                "context": r.get::<Option<serde_json::Value>, _>("context"),
-                "ip_address": r.get::<Option<String>, _>("ip_address"),
-                "user_agent": r.get::<Option<String>, _>("user_agent"),
-                "created_at": created_at.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(),
-                "user": match (r.get::<Option<String>, _>("user_email"), r.get::<Option<String>, _>("user_name")) {
-                    (Some(email), name) => serde_json::json!({ "email": email, "name": name }),
-                    (None, _) => serde_json::Value::Null,
-                },
-            })
-        })
+        .map(|r| audit_log_row_to_json(r))
         .collect();
 
     Ok(Json(serde_json::json!({

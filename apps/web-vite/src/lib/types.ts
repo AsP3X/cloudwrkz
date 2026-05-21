@@ -272,6 +272,11 @@ export interface AuditEntriesResponse {
   totalPages: number;
 }
 
+/** Single audit log entry from GET /admin/audit/entries/:id */
+export interface AuditEntryResponse {
+  entry: AuditEntry;
+}
+
 export interface AdminUser {
   id: string;
   email: string;
