@@ -159,31 +159,43 @@ export default function SetupPage() {
               </div>
               <Input
                 label="Email"
+                name="email"
                 type="email"
                 autoComplete="email"
+                placeholder="admin@example.com"
+                helperText="Used to sign in and receive system notifications."
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
               />
               <Input
                 label="Display name (optional)"
+                name="displayName"
                 type="text"
                 autoComplete="name"
+                placeholder="Jane Admin"
+                helperText="Shown in the dashboard and activity logs."
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
               <Input
                 label="Password"
+                name="password"
                 type="password"
                 autoComplete="new-password"
+                placeholder="••••••••"
+                helperText="At least 8 characters."
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
               <Input
                 label="Confirm password"
+                name="confirmPassword"
                 type="password"
                 autoComplete="new-password"
+                placeholder="••••••••"
+                helperText="Re-enter the same password."
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
@@ -206,7 +218,10 @@ export default function SetupPage() {
               </div>
               <Input
                 label="Instance name"
+                name="instanceName"
                 type="text"
+                placeholder={APP_CONFIG.name}
+                helperText="Appears in admin settings, health checks, and email footers."
                 value={instanceName}
                 onChange={(e) => setInstanceName(e.target.value)}
                 required
