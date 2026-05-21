@@ -648,6 +648,27 @@ fn req_post_json(uri: &str, token: &str, json_body: &str) -> Request<Body> {
         .unwrap()
 }
 
+fn req_post_json_no_auth(uri: &str, json_body: &str) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri(uri)
+        .header("x-forwarded-for", "203.0.113.42")
+        .header("content-type", "application/json")
+        .body(Body::from(json_body.to_string()))
+        .unwrap()
+}
+
+fn req_patch_json(uri: &str, token: &str, json_body: &str) -> Request<Body> {
+    Request::builder()
+        .method("PATCH")
+        .uri(uri)
+        .header("x-forwarded-for", "203.0.113.42")
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .body(Body::from(json_body.to_string()))
+        .unwrap()
+}
+
 async fn user_id_for_session_token(pool: &PgPool, token: &str) -> String {
     sqlx::query_scalar::<_, String>("SELECT user_id FROM sessions WHERE token = $1")
         .bind(token)
@@ -722,6 +743,100 @@ async fn legacy_db_query_endpoint_removed(pool: PgPool) {
         .await
         .expect("oneshot");
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn admin_activate_pending_user_allows_login(pool: PgPool) {
+    let admin_token = seed_user_with_session(&pool, "admin-activate@example.com", "ADMIN")
+        .await
+        .expect("seed admin");
+    let admin_uid = user_id_for_session_token(&pool, &admin_token).await;
+    grant_permission(&pool, &admin_uid, "admin.users.create")
+        .await
+        .expect("grant create");
+    grant_permission(&pool, &admin_uid, "admin.users.update")
+        .await
+        .expect("grant update");
+
+    let app = build_http_app(test_app_state(pool.clone()));
+
+    let create_body = r#"{"email":"pending-login@example.com","password":"test-password-123","role":"USER","status":"PENDING"}"#;
+    let res = app
+        .clone()
+        .oneshot(req_post_json(
+            "/api/v1/admin/users",
+            &admin_token,
+            create_body,
+        ))
+        .await
+        .expect("create user");
+    assert_eq!(res.status(), StatusCode::OK);
+    let created_bytes = res.into_body().collect().await.unwrap().to_bytes();
+    let created: serde_json::Value = serde_json::from_slice(&created_bytes).expect("create json");
+    let user_id = created["id"].as_str().expect("created user id");
+
+    let verified_before: bool = sqlx::query_scalar("SELECT email_verified FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await
+        .expect("email_verified before");
+    assert!(!verified_before);
+
+    let patch_uri = format!("/api/v1/admin/users/{user_id}");
+    let res = app
+        .clone()
+        .oneshot(req_patch_json(
+            &patch_uri,
+            &admin_token,
+            r#"{"status":"ACTIVE"}"#,
+        ))
+        .await
+        .expect("activate user");
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let verified_after: bool = sqlx::query_scalar("SELECT email_verified FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await
+        .expect("email_verified after");
+    assert!(verified_after);
+
+    let login_body = r#"{"email":"pending-login@example.com","password":"test-password-123"}"#;
+    let res = app
+        .clone()
+        .oneshot(req_post_json_no_auth("/api/v1/auth/login", login_body))
+        .await
+        .expect("login");
+    assert_eq!(res.status(), StatusCode::ACCEPTED);
+    let login_bytes = res.into_body().collect().await.unwrap().to_bytes();
+    let login_queued: serde_json::Value = serde_json::from_slice(&login_bytes).expect("login json");
+    let job_id = login_queued["job_id"].as_str().expect("login job_id");
+
+    let status_uri = format!("/api/v1/auth/login/status/{job_id}");
+    let mut login_completed = false;
+    for _ in 0..50 {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let res = app
+            .clone()
+            .oneshot(req_get(&status_uri))
+            .await
+            .expect("login status");
+        if res.status() != StatusCode::OK {
+            continue;
+        }
+        let status_bytes = res.into_body().collect().await.unwrap().to_bytes();
+        let status: serde_json::Value = serde_json::from_slice(&status_bytes).expect("status json");
+        match status["status"].as_str() {
+            Some("completed") => {
+                login_completed = true;
+                assert!(status["token"].as_str().is_some());
+                break;
+            }
+            Some("failed") => panic!("login failed: {status:?}"),
+            _ => {}
+        }
+    }
+    assert!(login_completed, "login job did not complete in time");
 }
 
 #[sqlx::test(migrations = "./migrations")]

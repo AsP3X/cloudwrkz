@@ -1418,8 +1418,12 @@ async fn unban_user(
     Json(body): Json<UnbanUserRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_permission(&state.pool, &user.id, "admin.users.ban").await?;
+    // Human: Unban restores login eligibility, so we also mark the email verified like admin create/activate paths.
+    // Agent: UPDATE users status ACTIVE + email_verified true; CLEAR ban fields + verification tokens; WRITES admin.users.unban audit.
     sqlx::query(
-        r#"UPDATE users SET status = 'ACTIVE', banned_at = NULL, ban_reason = NULL, updated_at = NOW() WHERE id = $1"#,
+        r#"UPDATE users SET status = 'ACTIVE', email_verified = true,
+           email_verification_token = NULL, email_verification_expires = NULL,
+           banned_at = NULL, ban_reason = NULL, updated_at = NOW() WHERE id = $1"#,
     )
     .bind(&id)
     .execute(&state.pool)
@@ -1536,13 +1540,27 @@ async fn update_user(
         sync_groups_for_role_label(&state.pool, &id, role).await?;
     }
     if let Some(ref status) = body.status {
-        sqlx::query(
-            "UPDATE users SET status = $1::\"UserStatus\", updated_at = NOW() WHERE id = $2",
-        )
-        .bind(status)
-        .bind(&id)
-        .execute(&state.pool)
-        .await?;
+        let status_upper = status.to_uppercase();
+        if status_upper == "ACTIVE" {
+            // Human: Login requires ACTIVE plus verified email; mirror create_user when an admin activates an account.
+            // Agent: UPDATE users status ACTIVE; SET email_verified true; CLEAR verification tokens; MATCHES create_user email_verified rule.
+            sqlx::query(
+                r#"UPDATE users SET status = 'ACTIVE'::"UserStatus", email_verified = true,
+                   email_verification_token = NULL, email_verification_expires = NULL,
+                   updated_at = NOW() WHERE id = $1"#,
+            )
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
+        } else {
+            sqlx::query(
+                "UPDATE users SET status = $1::\"UserStatus\", updated_at = NOW() WHERE id = $2",
+            )
+            .bind(&status_upper)
+            .bind(&id)
+            .execute(&state.pool)
+            .await?;
+        }
     }
     if let Some(ref name) = body.name {
         sqlx::query("UPDATE users SET name = $1, updated_at = NOW() WHERE id = $2")
