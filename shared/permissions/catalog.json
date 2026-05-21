@@ -36,6 +36,10 @@
     "collections.share",
     "collections.update",
     "collections.view",
+    "customers.create",
+    "customers.delete",
+    "customers.update",
+    "customers.view",
     "employees.create",
     "employees.delete",
     "employees.update",
@@ -50,6 +54,7 @@
     "links.update",
     "links.view",
     "links.view_all",
+    "modules.customers.view",
     "modules.employees.view",
     "modules.links.view",
     "modules.tickets.view",
@@ -115,6 +120,9 @@
     "collections.update": ["collections.view"],
     "collections.delete": ["collections.view"],
     "collections.share": ["collections.view"],
+    "customers.create": ["modules.customers.view"],
+    "customers.update": ["customers.view"],
+    "customers.delete": ["customers.view"],
     "time_tracking.create": ["modules.timetracking.view"],
     "time_tracking.update": ["time_tracking.view"],
     "time_tracking.delete": ["time_tracking.view"],
@@ -128,7 +136,7 @@
     "admin.db.query": ["admin.db.view"],
     "admin.db.edit_entries": ["admin.db.view_entries"],
     "admin.db.delete_entries": ["admin.db.view_entries"],
-    "search.use": ["modules.tickets.view", "modules.todos.view", "modules.links.view", "modules.timetracking.view"],
+    "search.use": ["modules.tickets.view", "modules.todos.view", "modules.links.view", "modules.timetracking.view", "modules.customers.view"],
     "archive.view": ["modules.tickets.view", "modules.links.view"]
   },
   "adminAreaKeys": [
@@ -154,7 +162,11 @@
     "employees.view",
     "employees.create",
     "employees.update",
-    "employees.delete"
+    "employees.delete",
+    "customers.view",
+    "customers.create",
+    "customers.update",
+    "customers.delete"
   ],
   "agentCapabilityKeys": [
     "tickets.view_all",

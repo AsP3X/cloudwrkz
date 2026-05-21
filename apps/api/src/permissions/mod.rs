@@ -43,6 +43,10 @@ pub mod key {
     pub const ARCHIVE_VIEW: &str = "archive.view";
     pub const AUDIT_EXPORT: &str = "audit.export";
     pub const AUDIT_VIEW: &str = "audit.view";
+    pub const CUSTOMERS_CREATE: &str = "customers.create";
+    pub const CUSTOMERS_DELETE: &str = "customers.delete";
+    pub const CUSTOMERS_UPDATE: &str = "customers.update";
+    pub const CUSTOMERS_VIEW: &str = "customers.view";
     pub const LINKS_ARCHIVE: &str = "links.archive";
     pub const LINKS_CREATE: &str = "links.create";
     pub const LINKS_DELETE: &str = "links.delete";
@@ -63,6 +67,7 @@ pub mod key {
     pub const EMPLOYEES_UPDATE: &str = "employees.update";
     pub const EMPLOYEES_VIEW: &str = "employees.view";
     pub const EMPLOYEES_VIEW_SELF: &str = "employees.view_self";
+    pub const MODULES_CUSTOMERS_VIEW: &str = "modules.customers.view";
     pub const MODULES_EMPLOYEES_VIEW: &str = "modules.employees.view";
     pub const MODULES_LINKS_VIEW: &str = "modules.links.view";
     pub const MODULES_TICKETS_VIEW: &str = "modules.tickets.view";
