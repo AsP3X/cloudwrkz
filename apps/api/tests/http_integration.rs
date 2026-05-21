@@ -839,6 +839,67 @@ async fn admin_activate_pending_user_allows_login(pool: PgPool) {
     assert!(login_completed, "login job did not complete in time");
 }
 
+const CUSTOMER_CREATE_INDIVIDUAL_JSON: &str = r#"{
+  "customerType": "INDIVIDUAL",
+  "firstName": "Time",
+  "lastName": "Clerk"
+}"#;
+
+#[sqlx::test(migrations = "./migrations")]
+async fn create_customer_with_time_tracking_customers_create_succeeds(pool: PgPool) {
+    let token = seed_user_with_session(&pool, "tt-customer-create@example.com", "USER")
+        .await
+        .expect("seed");
+    let uid = user_id_for_session_token(&pool, &token).await;
+    grant_permission(&pool, &uid, "time_tracking.customers.create")
+        .await
+        .expect("grant create");
+    let app = build_http_app(test_app_state(pool));
+    let res = app
+        .oneshot(req_post_json(
+            "/api/v1/customers",
+            &token,
+            CUSTOMER_CREATE_INDIVIDUAL_JSON,
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn create_customer_without_any_create_permission_returns_403(pool: PgPool) {
+    let token = seed_user_with_session(&pool, "tt-customer-deny@example.com", "USER")
+        .await
+        .expect("seed");
+    let app = build_http_app(test_app_state(pool));
+    let res = app
+        .oneshot(req_post_json(
+            "/api/v1/customers",
+            &token,
+            CUSTOMER_CREATE_INDIVIDUAL_JSON,
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn list_customers_with_time_tracking_customers_view_succeeds(pool: PgPool) {
+    let token = seed_user_with_session(&pool, "tt-customer-list@example.com", "USER")
+        .await
+        .expect("seed");
+    let uid = user_id_for_session_token(&pool, &token).await;
+    grant_permission(&pool, &uid, "time_tracking.customers.view")
+        .await
+        .expect("grant view");
+    let app = build_http_app(test_app_state(pool));
+    let res = app
+        .oneshot(req_get_bearer("/api/v1/customers?limit=1&page=1", &token))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+}
+
 #[sqlx::test(migrations = "./migrations")]
 async fn baseline_security_headers_on_responses(pool: PgPool) {
     let app = build_http_app(test_app_state(pool.clone()));

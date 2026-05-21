@@ -57,6 +57,8 @@ pub mod key {
     pub const TIME_TRACKING_BULK_ARCHIVE: &str = "time_tracking.bulk_archive";
     pub const TIME_TRACKING_BULK_DELETE: &str = "time_tracking.bulk_delete";
     pub const TIME_TRACKING_BULK_UPDATE: &str = "time_tracking.bulk_update";
+    pub const TIME_TRACKING_CUSTOMERS_CREATE: &str = "time_tracking.customers.create";
+    pub const TIME_TRACKING_CUSTOMERS_VIEW: &str = "time_tracking.customers.view";
     pub const TIME_TRACKING_CREATE: &str = "time_tracking.create";
     pub const TIME_TRACKING_DELETE: &str = "time_tracking.delete";
     pub const TIME_TRACKING_UPDATE: &str = "time_tracking.update";
@@ -163,6 +165,8 @@ mod tests {
             key::ADMIN_USERS_VIEW,
             key::TICKETS_VIEW,
             key::EMPLOYEES_VIEW,
+            key::TIME_TRACKING_CUSTOMERS_CREATE,
+            key::TIME_TRACKING_CUSTOMERS_VIEW,
         ];
         for s in samples {
             assert!(known.contains(s), "constant missing from catalog: {s}");

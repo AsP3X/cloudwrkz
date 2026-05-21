@@ -5,7 +5,13 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { getCustomer } from "@/api/customers";
 import { listCustomers } from "@/api/customers";
+import { CreateCustomerDialog } from "@/components/features/customers/CreateCustomerDialog";
+import { useAuth } from "@/components/providers/AuthProvider";
 import type { Customer, CustomerContact } from "@/lib/types";
+import {
+  canCreateCustomersForTimeEntries,
+  canViewCustomersForTimeEntries,
+} from "@/lib/time-entry-customers";
 import { formatCurrencyAmount } from "@/lib/utils/time-tracking";
 
 // Human: Billing picker—search active customers, optional billing contact for companies, manual hourly rate.
@@ -33,6 +39,10 @@ export function TimeEntryBillingDialog({
   onConfirm,
   customersModuleEnabled,
 }: TimeEntryBillingDialogProps) {
+  const { modules, can } = useAuth();
+  const canSearchCustomers = canViewCustomersForTimeEntries(modules, can);
+  const canCreateCustomer = canCreateCustomersForTimeEntries(can);
+  const [createOpen, setCreateOpen] = React.useState(false);
   const [search, setSearch] = React.useState("");
   const [results, setResults] = React.useState<Customer[]>([]);
   const [searching, setSearching] = React.useState(false);
@@ -58,7 +68,7 @@ export function TimeEntryBillingDialog({
   }, [open, value.customerId, value.customerContactId, value.customerDisplayName, value.hourlyRate]);
 
   React.useEffect(() => {
-    if (!open || !customersModuleEnabled) return;
+    if (!open || !canSearchCustomers) return;
     const trimmed = search.trim();
     if (trimmed.length < 2) {
       setResults([]);
@@ -87,7 +97,7 @@ export function TimeEntryBillingDialog({
     }, 300);
 
     return () => window.clearTimeout(timer);
-  }, [open, search, customersModuleEnabled]);
+  }, [open, search, canSearchCustomers]);
 
   const loadContactsForCustomer = async (customerId: string, contactIdToKeep: string | null) => {
     try {
@@ -166,67 +176,86 @@ export function TimeEntryBillingDialog({
       }
     >
       <div className="px-5 sm:px-7 py-5 space-y-5">
-        {customersModuleEnabled && (
+        {(canSearchCustomers || canCreateCustomer) && (
           <div className="space-y-3">
-            <Input
-              label="Search customer"
-              placeholder="Type at least 2 characters…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            {searchError && (
-              <p className="text-sm text-error-600 dark:text-error-400">{searchError}</p>
-            )}
-            {draftCustomerName && (
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-primary-200/70 dark:border-primary-800/50 bg-primary-50/60 dark:bg-primary-950/30 px-3 py-2">
-                <div>
-                  <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{draftCustomerName}</p>
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">Selected customer</p>
-                </div>
-                <Button type="button" variant="ghost" size="sm" onClick={handleClearCustomer}>
-                  Remove
+            {canCreateCustomer && (
+              <div className="flex justify-end">
+                <Button type="button" variant="outline" size="sm" onClick={() => setCreateOpen(true)}>
+                  New customer
                 </Button>
               </div>
             )}
-            {draftCustomerId && contacts.length > 1 && (
-              <Select
-                label="Billing contact"
-                value={draftContactId ?? ""}
-                onChange={(e) => setDraftContactId(e.target.value || null)}
-              >
-                <option value="">Default (primary contact)</option>
-                {contacts.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.firstName} {c.lastName}
-                    {c.isPrimary ? " (primary)" : ""}
-                  </option>
-                ))}
-              </Select>
-            )}
-            {searching && <p className="text-sm text-neutral-500 dark:text-neutral-400">Searching…</p>}
-            {!searching && results.length > 0 && (
-              <ul className="max-h-48 overflow-y-auto rounded-xl border border-neutral-200 dark:border-neutral-700 divide-y divide-neutral-200/80 dark:divide-neutral-700/80">
-                {results.map((customer) => (
-                  <li key={customer.id}>
-                    <button
-                      type="button"
-                      className="w-full text-left px-3 py-2.5 hover:bg-neutral-50 dark:hover:bg-neutral-800/60 transition-colors"
-                      onClick={() => handleSelectCustomer(customer)}
-                    >
-                      <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{customer.displayName}</p>
-                      <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                        {customer.customerNumber}
-                        {customer.defaultHourlyRate != null
-                          ? ` · ${formatCurrencyAmount(customer.defaultHourlyRate)}/h`
-                          : ""}
-                      </p>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+            {canSearchCustomers && (
+              <>
+                <Input
+                  label="Search customer"
+                  placeholder="Type at least 2 characters…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                {searchError && (
+                  <p className="text-sm text-error-600 dark:text-error-400">{searchError}</p>
+                )}
+                {draftCustomerName && (
+                  <div className="flex items-center justify-between gap-3 rounded-xl border border-primary-200/70 dark:border-primary-800/50 bg-primary-50/60 dark:bg-primary-950/30 px-3 py-2">
+                    <div>
+                      <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{draftCustomerName}</p>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400">Selected customer</p>
+                    </div>
+                    <Button type="button" variant="ghost" size="sm" onClick={handleClearCustomer}>
+                      Remove
+                    </Button>
+                  </div>
+                )}
+                {draftCustomerId && contacts.length > 1 && (
+                  <Select
+                    label="Billing contact"
+                    value={draftContactId ?? ""}
+                    onChange={(e) => setDraftContactId(e.target.value || null)}
+                  >
+                    <option value="">Default (primary contact)</option>
+                    {contacts.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.firstName} {c.lastName}
+                        {c.isPrimary ? " (primary)" : ""}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+                {searching && <p className="text-sm text-neutral-500 dark:text-neutral-400">Searching…</p>}
+                {!searching && results.length > 0 && (
+                  <ul className="max-h-48 overflow-y-auto rounded-xl border border-neutral-200 dark:border-neutral-700 divide-y divide-neutral-200/80 dark:divide-neutral-700/80">
+                    {results.map((customer) => (
+                      <li key={customer.id}>
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-2.5 hover:bg-neutral-50 dark:hover:bg-neutral-800/60 transition-colors"
+                          onClick={() => handleSelectCustomer(customer)}
+                        >
+                          <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{customer.displayName}</p>
+                          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                            {customer.customerNumber}
+                            {customer.defaultHourlyRate != null
+                              ? ` · ${formatCurrencyAmount(customer.defaultHourlyRate)}/h`
+                              : ""}
+                          </p>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
             )}
           </div>
         )}
+        <CreateCustomerDialog
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+          onCreated={() => setCreateOpen(false)}
+          onCreatedCustomer={(customer) => {
+            void handleSelectCustomer(customer);
+          }}
+        />
 
         <Input
           label="Hourly rate"

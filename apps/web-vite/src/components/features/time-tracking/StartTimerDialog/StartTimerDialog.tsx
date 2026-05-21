@@ -8,6 +8,7 @@ import { LocationAutocompleteInput } from "@/components/ui/LocationAutocompleteI
 import { TagAutocompleteInput } from "@/components/ui/TagAutocompleteInput";
 import { DateTimeFields } from "@/components/ui/DateTimeFields";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { canUseCustomerBillingOnTimeEntries } from "@/lib/time-entry-customers";
 import {
   TimeEntryBillingField,
   type TimeEntryBillingState,
@@ -33,9 +34,7 @@ interface StartTimerDialogProps {
 
 export function StartTimerDialog({ open, onOpenChange, onCreated }: StartTimerDialogProps) {
   const { modules, can } = useAuth();
-  const customersModuleEnabled =
-    modules.includes("customers") &&
-    (can("customers.view") || can("modules.customers.view"));
+  const customersModuleEnabled = canUseCustomerBillingOnTimeEntries(modules, can);
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [name, setName] = React.useState("");

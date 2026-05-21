@@ -23,7 +23,11 @@ use crate::error::AppError;
 use crate::id::new_cuid;
 use crate::models::user::CurrentUser;
 use crate::routes::AppState;
-use crate::routes::helpers::check_permission;
+use crate::permissions::key::{
+    CUSTOMERS_CREATE, CUSTOMERS_VIEW, TIME_TRACKING_CUSTOMERS_CREATE,
+    TIME_TRACKING_CUSTOMERS_VIEW,
+};
+use crate::routes::helpers::{check_permission, require_any_permission};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -264,19 +268,42 @@ async fn customers_module_enabled(pool: &sqlx::PgPool) -> bool {
         .unwrap_or(false)
 }
 
+// Human: Full register access uses `customers.view`; time-entry billing may use the scoped time-tracking key instead.
+// Agent: require_any_permission customers.view | time_tracking.customers.view; ADMIN bypass.
+
 async fn require_customers_view(state: &AppState, user: &CurrentUser) -> Result<(), AppError> {
-    if !check_permission(&state.pool, &user.id, "customers.view").await && user.role != "ADMIN" {
-        return Err(AppError::forbidden("Insufficient permissions"));
+    if user.role == "ADMIN" {
+        return Ok(());
     }
-    Ok(())
+    require_any_permission(
+        &state.pool,
+        &user.id,
+        &[CUSTOMERS_VIEW, TIME_TRACKING_CUSTOMERS_VIEW],
+    )
+    .await
 }
 
+// Human: Register admins use `customers.create`; time-only users use `time_tracking.customers.create` without the Customers module.
+// Agent: require_any_permission customers.create | time_tracking.customers.create; ADMIN bypass.
+
 async fn require_customers_create(state: &AppState, user: &CurrentUser) -> Result<(), AppError> {
-    if !check_permission(&state.pool, &user.id, "customers.create").await && user.role != "ADMIN"
-    {
-        return Err(AppError::forbidden("Insufficient permissions"));
+    if user.role == "ADMIN" {
+        return Ok(());
     }
-    Ok(())
+    require_any_permission(
+        &state.pool,
+        &user.id,
+        &[CUSTOMERS_CREATE, TIME_TRACKING_CUSTOMERS_CREATE],
+    )
+    .await
+}
+
+async fn customer_create_audit_action(pool: &sqlx::PgPool, user_id: &str) -> &'static str {
+    if check_permission(pool, user_id, CUSTOMERS_CREATE).await {
+        "customers.create"
+    } else {
+        "time_tracking.customers.create"
+    }
 }
 
 async fn require_customers_update(state: &AppState, user: &CurrentUser) -> Result<(), AppError> {
@@ -861,10 +888,11 @@ async fn create_customer(
     }
 
     tx.commit().await?;
+    let audit_action = customer_create_audit_action(&state.pool, &user.id).await;
     write_customer_audit(
         &state.pool,
         &user.id,
-        "customers.create",
+        audit_action,
         &customer_id,
         None,
         &headers,

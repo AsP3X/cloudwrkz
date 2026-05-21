@@ -7,6 +7,7 @@ import { createCustomer } from "@/api/customers";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { CustomerFormFields } from "./CustomerFormFields";
+import type { Customer } from "@/lib/types";
 import {
   EMPTY_FORM,
   buildCreatePayload,
@@ -18,9 +19,16 @@ interface CreateCustomerDialogProps {
   open: boolean;
   onClose: () => void;
   onCreated: () => void;
+  /** When set, receives the created customer (e.g. to select it on a time entry). */
+  onCreatedCustomer?: (customer: Customer) => void;
 }
 
-export function CreateCustomerDialog({ open, onClose, onCreated }: CreateCustomerDialogProps) {
+export function CreateCustomerDialog({
+  open,
+  onClose,
+  onCreated,
+  onCreatedCustomer,
+}: CreateCustomerDialogProps) {
   const [form, setForm] = useState<CustomerFormData>(EMPTY_FORM);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,8 +45,9 @@ export function CreateCustomerDialog({ open, onClose, onCreated }: CreateCustome
     }
     setIsLoading(true);
     try {
-      await createCustomer(buildCreatePayload(form));
+      const customer = await createCustomer(buildCreatePayload(form));
       setForm(EMPTY_FORM);
+      onCreatedCustomer?.(customer);
       onCreated();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not create customer. Try again.");

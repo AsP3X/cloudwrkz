@@ -3,6 +3,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { TimeEntryEditForm, type TimeEntryEditSavePayload } from "../TimeEntryEditForm";
 import { api } from "@/api/client";
 import { useAuth } from "@/components/providers/AuthProvider";
+import { canUseCustomerBillingOnTimeEntries } from "@/lib/time-entry-customers";
 import type { TimeEntry as ViteTimeEntry } from "@/lib/types";
 import { parseApiDate } from "@/lib/utils/date";
 import type { TimeEntryBreakDraftRow } from "../TimeEntryBreaks";
@@ -55,9 +56,7 @@ interface EditTimeEntryDialogProps {
 
 export function EditTimeEntryDialog({ open, onOpenChange, entry, userTimezone = "UTC", onUpdated }: EditTimeEntryDialogProps) {
   const { modules, can } = useAuth();
-  const customersModuleEnabled =
-    modules.includes("customers") &&
-    (can("customers.view") || can("modules.customers.view"));
+  const customersModuleEnabled = canUseCustomerBillingOnTimeEntries(modules, can);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const baselineBreaksRef = React.useRef<TimeEntryBreakDraftRow[]>([]);

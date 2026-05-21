@@ -61,6 +61,8 @@ export const PERM = {
   TODOS_DELETE: "todos.delete",
   TODOS_UPDATE: "todos.update",
   TODOS_VIEW: "todos.view",
+  TIME_TRACKING_CUSTOMERS_CREATE: "time_tracking.customers.create",
+  TIME_TRACKING_CUSTOMERS_VIEW: "time_tracking.customers.view",
 } as const;
 
 export type PermissionKey = (typeof PERM)[keyof typeof PERM];
