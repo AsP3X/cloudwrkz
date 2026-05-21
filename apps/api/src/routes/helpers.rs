@@ -421,3 +421,14 @@ pub fn hash_json_for_idempotency<T: serde::Serialize>(value: &T) -> u64 {
     bytes.hash(&mut h);
     h.finish()
 }
+
+/// Attach audit metadata to a background job payload before enqueue.
+// Human: Mutation routes call this so async workers can write audit rows with the caller's IP and User-Agent.
+// Agent: DELEGATES audit::attach_audit_fields; INPUT job JSON object + HeaderMap; OUTPUT payload with audit_ip/audit_user_agent.
+
+pub fn attach_audit_to_job_payload(
+    payload: serde_json::Value,
+    headers: &HeaderMap,
+) -> serde_json::Value {
+    crate::audit::attach_audit_fields(payload, headers)
+}

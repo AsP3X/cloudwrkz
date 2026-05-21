@@ -20,7 +20,10 @@ use crate::error::AppError;
 use crate::job_queue::entity_creates;
 use crate::models::time_entry::*;
 use crate::routes::AppState;
-use crate::routes::helpers::{hash_json_for_idempotency, idempotency_key_from_headers, require_permission};
+use crate::routes::helpers::{
+    attach_audit_to_job_payload, hash_json_for_idempotency, idempotency_key_from_headers,
+    require_permission,
+};
 
 // Human: Bulk routes are first-class POST endpoints so large batch operations can share one idempotency key and mutation deferral policy.
 // Agent: Router includes /time-tracking/bulk-update bulk-archive bulk-delete plus per-entry break subroutes.
@@ -350,7 +353,7 @@ async fn create_entry(
         &state.pool,
         entity_creates::JOB_TYPE_TIME_ENTRY_CREATE_TIMER,
         &user.id,
-        job_payload,
+        attach_audit_to_job_payload(job_payload, &headers),
     )
     .await
     .map_err(AppError::from)?;
@@ -406,7 +409,7 @@ async fn add_manual_entry(
         &state.pool,
         entity_creates::JOB_TYPE_TIME_ENTRY_CREATE_MANUAL,
         &user.id,
-        job_payload,
+        attach_audit_to_job_payload(job_payload, &headers),
     )
     .await
     .map_err(AppError::from)?;
@@ -465,7 +468,7 @@ async fn update_entry(
         &state.pool,
         entity_creates::JOB_TYPE_TIME_ENTRY_UPDATE,
         &user.id,
-        job_payload,
+        attach_audit_to_job_payload(job_payload, &headers),
     )
     .await
     .map_err(AppError::from)?;
@@ -519,7 +522,7 @@ async fn delete_entry(
         &state.pool,
         entity_creates::JOB_TYPE_TIME_ENTRY_DELETE,
         &user.id,
-        job_payload,
+        attach_audit_to_job_payload(job_payload, &headers),
     )
     .await
     .map_err(AppError::from)?;
@@ -572,7 +575,7 @@ async fn stop_entry(
         &state.pool,
         entity_creates::JOB_TYPE_TIME_ENTRY_STOP,
         &user.id,
-        job_payload,
+        attach_audit_to_job_payload(job_payload, &headers),
     )
     .await
     .map_err(AppError::from)?;
@@ -624,7 +627,7 @@ async fn pause_entry(
         &state.pool,
         entity_creates::JOB_TYPE_TIME_ENTRY_PAUSE,
         &user.id,
-        job_payload,
+        attach_audit_to_job_payload(job_payload, &headers),
     )
     .await
     .map_err(AppError::from)?;
@@ -676,7 +679,7 @@ async fn resume_entry(
         &state.pool,
         entity_creates::JOB_TYPE_TIME_ENTRY_RESUME,
         &user.id,
-        job_payload,
+        attach_audit_to_job_payload(job_payload, &headers),
     )
     .await
     .map_err(AppError::from)?;
@@ -728,7 +731,7 @@ async fn complete_entry(
         &state.pool,
         entity_creates::JOB_TYPE_TIME_ENTRY_COMPLETE,
         &user.id,
-        job_payload,
+        attach_audit_to_job_payload(job_payload, &headers),
     )
     .await
     .map_err(AppError::from)?;
@@ -785,7 +788,7 @@ async fn add_break(
         &state.pool,
         entity_creates::JOB_TYPE_TIME_ENTRY_BREAK_CREATE,
         &user.id,
-        job_payload,
+        attach_audit_to_job_payload(job_payload, &headers),
     )
     .await
     .map_err(AppError::from)?;
@@ -843,7 +846,7 @@ async fn update_break(
         &state.pool,
         entity_creates::JOB_TYPE_TIME_ENTRY_BREAK_UPDATE,
         &user.id,
-        job_payload,
+        attach_audit_to_job_payload(job_payload, &headers),
     )
     .await
     .map_err(AppError::from)?;
@@ -896,7 +899,7 @@ async fn delete_break(
         &state.pool,
         entity_creates::JOB_TYPE_TIME_ENTRY_BREAK_DELETE,
         &user.id,
-        job_payload,
+        attach_audit_to_job_payload(job_payload, &headers),
     )
     .await
     .map_err(AppError::from)?;
@@ -965,7 +968,7 @@ async fn bulk_update_entries(
         &state.pool,
         entity_creates::JOB_TYPE_TIME_ENTRY_BULK_UPDATE,
         &user.id,
-        job_payload,
+        attach_audit_to_job_payload(job_payload, &headers),
     )
     .await
     .map_err(AppError::from)?;
@@ -1019,7 +1022,7 @@ async fn bulk_archive_entries(
         &state.pool,
         entity_creates::JOB_TYPE_TIME_ENTRY_BULK_ARCHIVE,
         &user.id,
-        job_payload,
+        attach_audit_to_job_payload(job_payload, &headers),
     )
     .await
     .map_err(AppError::from)?;
@@ -1073,7 +1076,7 @@ async fn bulk_delete_entries(
         &state.pool,
         entity_creates::JOB_TYPE_TIME_ENTRY_BULK_DELETE,
         &user.id,
-        job_payload,
+        attach_audit_to_job_payload(job_payload, &headers),
     )
     .await
     .map_err(AppError::from)?;

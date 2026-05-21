@@ -22,7 +22,8 @@ use crate::job_queue::entity_creates;
 use crate::models::link::LinkRow;
 use crate::routes::AppState;
 use crate::routes::helpers::{
-    check_permission, hash_json_for_idempotency, idempotency_key_from_headers,
+    attach_audit_to_job_payload, check_permission, hash_json_for_idempotency,
+    idempotency_key_from_headers,
 };
 
 fn is_hex_color(value: &str) -> bool {
@@ -212,20 +213,16 @@ async fn create_collection(
 
     let request_json = serde_json::to_value(&body)
         .map_err(|e| AppError::internal(format!("serialize collection create: {e}")))?;
-    let audit_ip = audit::client_ip_from_headers(&headers);
-    let audit_ua = headers
-        .get(axum::http::header::USER_AGENT)
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string());
-    let job_payload = json!({
+    let job_payload = attach_audit_to_job_payload(
+        json!({
         "user_id": user.id,
         "route": ctx.route,
         "body_hash": ctx.body_hash,
         "idempotency_key": ctx.idempotency_key,
         "request": request_json,
-        "audit_ip": audit_ip,
-        "audit_user_agent": audit_ua,
-    });
+        }),
+        &headers,
+    );
     let job_id = entity_creates::enqueue_entity_create_job(
         &state.pool,
         entity_creates::JOB_TYPE_COLLECTION_CREATE,
@@ -315,21 +312,17 @@ async fn update_collection(
 
     let request_json = serde_json::to_value(&body)
         .map_err(|e| AppError::internal(format!("serialize collection update: {e}")))?;
-    let audit_ip = audit::client_ip_from_headers(&headers);
-    let audit_ua = headers
-        .get(axum::http::header::USER_AGENT)
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string());
-    let job_payload = json!({
-        "user_id": user.id,
-        "collection_id": id,
-        "route": route,
-        "body_hash": ctx.body_hash,
-        "idempotency_key": ctx.idempotency_key,
-        "request": request_json,
-        "audit_ip": audit_ip,
-        "audit_user_agent": audit_ua,
-    });
+    let job_payload = attach_audit_to_job_payload(
+        json!({
+            "user_id": user.id,
+            "collection_id": id,
+            "route": route,
+            "body_hash": ctx.body_hash,
+            "idempotency_key": ctx.idempotency_key,
+            "request": request_json,
+        }),
+        &headers,
+    );
     let job_id = entity_creates::enqueue_entity_create_job(
         &state.pool,
         entity_creates::JOB_TYPE_COLLECTION_UPDATE,
@@ -389,20 +382,16 @@ async fn delete_collection(
         }
     }
 
-    let audit_ip = audit::client_ip_from_headers(&headers);
-    let audit_ua = headers
-        .get(axum::http::header::USER_AGENT)
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string());
-    let job_payload = json!({
-        "user_id": user.id,
-        "collection_id": id,
-        "route": route,
-        "body_hash": ctx.body_hash,
-        "idempotency_key": ctx.idempotency_key,
-        "audit_ip": audit_ip,
-        "audit_user_agent": audit_ua,
-    });
+    let job_payload = attach_audit_to_job_payload(
+        json!({
+            "user_id": user.id,
+            "collection_id": id,
+            "route": route,
+            "body_hash": ctx.body_hash,
+            "idempotency_key": ctx.idempotency_key,
+        }),
+        &headers,
+    );
     let job_id = entity_creates::enqueue_entity_create_job(
         &state.pool,
         entity_creates::JOB_TYPE_COLLECTION_DELETE,
@@ -427,6 +416,7 @@ async fn leave_collection(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let (owner_id, is_owner) = ensure_collection_access(&state.pool, &user.id, &id).await?;
     if is_owner && owner_id == user.id {
@@ -448,6 +438,16 @@ async fn leave_collection(
             "You are not a member of this collection",
         ));
     }
+
+    audit::write_audit_from_headers(
+        &state.pool,
+        Some(user.id.clone()),
+        "collections.leave",
+        Some("collection"),
+        Some(id),
+        None,
+        &headers,
+    );
 
     Ok(Json(json!({ "success": true })))
 }
@@ -611,6 +611,7 @@ async fn add_member(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Json(body): Json<AddMemberBody>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     if !check_permission(&state.pool, &user.id, "collections.share").await {
@@ -667,6 +668,16 @@ async fn add_member(
     .execute(&state.pool)
     .await?;
 
+    audit::write_audit_from_headers(
+        &state.pool,
+        Some(user.id.clone()),
+        "collections.member.add",
+        Some("collection"),
+        Some(id),
+        Some(json!({ "targetUserId": target, "role": role })),
+        &headers,
+    );
+
     Ok(Json(json!({ "success": true })))
 }
 
@@ -679,6 +690,7 @@ async fn update_member_role(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path((id, member_user_id)): Path<(String, String)>,
+    headers: HeaderMap,
     Json(body): Json<UpdateMemberRoleBody>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     if !check_permission(&state.pool, &user.id, "collections.share").await {
@@ -720,6 +732,16 @@ async fn update_member_role(
         return Err(AppError::not_found("Member not found"));
     }
 
+    audit::write_audit_from_headers(
+        &state.pool,
+        Some(user.id.clone()),
+        "collections.member.role_update",
+        Some("collection"),
+        Some(id),
+        Some(json!({ "targetUserId": member_user_id, "role": role })),
+        &headers,
+    );
+
     Ok(Json(json!({ "success": true })))
 }
 
@@ -727,6 +749,7 @@ async fn remove_member(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path((id, member_user_id)): Path<(String, String)>,
+    headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     if !check_permission(&state.pool, &user.id, "collections.share").await {
         return Err(AppError::forbidden(
@@ -756,6 +779,16 @@ async fn remove_member(
     if n == 0 {
         return Err(AppError::not_found("Member not found"));
     }
+
+    audit::write_audit_from_headers(
+        &state.pool,
+        Some(user.id.clone()),
+        "collections.member.remove",
+        Some("collection"),
+        Some(id),
+        Some(json!({ "targetUserId": member_user_id })),
+        &headers,
+    );
 
     Ok(Json(json!({ "success": true })))
 }

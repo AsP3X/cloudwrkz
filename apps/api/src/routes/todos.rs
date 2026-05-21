@@ -23,8 +23,8 @@ use crate::models::todo::{
 };
 use crate::routes::AppState;
 use crate::routes::helpers::{
-    check_permission, fetch_user_summary, hash_json_for_idempotency, idempotency_key_from_headers,
-    require_permission,
+    attach_audit_to_job_payload, check_permission, fetch_user_summary, hash_json_for_idempotency,
+    idempotency_key_from_headers, require_permission,
 };
 
 // Human: The router only exposes collection-level routes; nested subtodos are represented inside `TodoListItem` payloads from list/get.
@@ -455,7 +455,7 @@ async fn create_todo(
         &state.pool,
         entity_creates::JOB_TYPE_TODO_CREATE,
         &user.id,
-        job_payload,
+        attach_audit_to_job_payload(job_payload, &headers),
     )
     .await
     .map_err(AppError::from)?;
@@ -514,7 +514,7 @@ async fn update_todo(
         &state.pool,
         entity_creates::JOB_TYPE_TODO_UPDATE,
         &user.id,
-        job_payload,
+        attach_audit_to_job_payload(job_payload, &headers),
     )
     .await
     .map_err(AppError::from)?;
@@ -568,7 +568,7 @@ async fn delete_todo(
         &state.pool,
         entity_creates::JOB_TYPE_TODO_DELETE,
         &user.id,
-        job_payload,
+        attach_audit_to_job_payload(job_payload, &headers),
     )
     .await
     .map_err(AppError::from)?;

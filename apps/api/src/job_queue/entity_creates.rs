@@ -414,6 +414,7 @@ pub async fn run_entity_create_job(
 
     match outcome {
         JobExecOutcome::Ok(jr) => {
+            write_entity_job_audit(pool, job_type, payload, &jr);
             if let Err(e) = complete_job(pool, job_id, &jr).await {
                 error!(
                     event = "entity_create_job.complete_failed",
@@ -459,6 +460,279 @@ pub(super) fn map_sqlx_ticket(err: sqlx::Error) -> JobExecOutcome {
     } else {
         JobExecOutcome::Fail(AppError::from(err))
     }
+}
+
+fn payload_str(payload: &serde_json::Value, key: &str) -> Option<String> {
+    payload
+        .get(key)
+        .and_then(|v| v.as_str())
+        .map(String::from)
+}
+
+fn result_str(result: &JsonMutationResult, key: &str) -> Option<String> {
+    result
+        .body
+        .get(key)
+        .and_then(|v| v.as_str())
+        .map(String::from)
+}
+
+fn request_ids_context(payload: &serde_json::Value) -> Option<serde_json::Value> {
+    let ids = payload
+        .get("request")
+        .and_then(|r| r.get("ids").or_else(|| r.get("entry_ids")));
+    ids.map(|v| json!({ "ids": v }))
+}
+
+// Human: Successful background mutations emit one audit row mapped from job type so product CRUD appears in the admin audit log.
+// Agent: CALLED on JobExecOutcome::Ok; MAPS job_type→action/resource; READS payload user_id + audit_ip/audit_user_agent; WRITES audit_logs.
+
+fn write_entity_job_audit(
+    pool: &PgPool,
+    job_type: &str,
+    payload: &serde_json::Value,
+    result: &JsonMutationResult,
+) {
+    let user_id = match payload_str(payload, "user_id") {
+        Some(u) => u,
+        None => return,
+    };
+    let ip = audit::ip_from_payload(payload);
+    let ua = audit::user_agent_from_payload(payload);
+
+    let (action, resource_type, resource_id, context): (
+        &str,
+        Option<&str>,
+        Option<String>,
+        Option<serde_json::Value>,
+    ) = match job_type {
+        JOB_TYPE_TICKET_CREATE => (
+            "tickets.create",
+            Some("ticket"),
+            result_str(result, "id"),
+            None,
+        ),
+        JOB_TYPE_TICKET_UPDATE => (
+            "tickets.update",
+            Some("ticket"),
+            payload_str(payload, "ticket_id"),
+            None,
+        ),
+        JOB_TYPE_TICKET_DELETE => (
+            "tickets.delete",
+            Some("ticket"),
+            payload_str(payload, "ticket_id"),
+            None,
+        ),
+        JOB_TYPE_TICKET_COMMENT_CREATE => (
+            "tickets.comment.create",
+            Some("ticket"),
+            payload_str(payload, "ticket_id"),
+            result_str(result, "id").map(|comment_id| json!({ "commentId": comment_id })),
+        ),
+        JOB_TYPE_TODO_CREATE => (
+            "todos.create",
+            Some("todo"),
+            result_str(result, "id"),
+            None,
+        ),
+        JOB_TYPE_TODO_UPDATE => (
+            "todos.update",
+            Some("todo"),
+            payload_str(payload, "todo_id"),
+            None,
+        ),
+        JOB_TYPE_TODO_DELETE => (
+            "todos.delete",
+            Some("todo"),
+            payload_str(payload, "todo_id"),
+            None,
+        ),
+        JOB_TYPE_TIME_ENTRY_CREATE_TIMER | JOB_TYPE_TIME_ENTRY_CREATE_MANUAL => (
+            "time_entries.create",
+            Some("time_entry"),
+            result_str(result, "id"),
+            None,
+        ),
+        JOB_TYPE_TIME_ENTRY_UPDATE => (
+            "time_entries.update",
+            Some("time_entry"),
+            payload_str(payload, "time_entry_id"),
+            None,
+        ),
+        JOB_TYPE_TIME_ENTRY_DELETE => (
+            "time_entries.delete",
+            Some("time_entry"),
+            payload_str(payload, "time_entry_id"),
+            None,
+        ),
+        JOB_TYPE_TIME_ENTRY_STOP => (
+            "time_entries.stop",
+            Some("time_entry"),
+            payload_str(payload, "time_entry_id"),
+            None,
+        ),
+        JOB_TYPE_TIME_ENTRY_PAUSE => (
+            "time_entries.pause",
+            Some("time_entry"),
+            payload_str(payload, "time_entry_id"),
+            None,
+        ),
+        JOB_TYPE_TIME_ENTRY_RESUME => (
+            "time_entries.resume",
+            Some("time_entry"),
+            payload_str(payload, "time_entry_id"),
+            None,
+        ),
+        JOB_TYPE_TIME_ENTRY_COMPLETE => (
+            "time_entries.complete",
+            Some("time_entry"),
+            payload_str(payload, "time_entry_id"),
+            None,
+        ),
+        JOB_TYPE_TIME_ENTRY_BREAK_CREATE => (
+            "time_entries.break.create",
+            Some("time_entry"),
+            payload_str(payload, "time_entry_id"),
+            result_str(result, "id").map(|break_id| json!({ "breakId": break_id })),
+        ),
+        JOB_TYPE_TIME_ENTRY_BREAK_UPDATE => (
+            "time_entries.break.update",
+            Some("time_entry"),
+            payload_str(payload, "time_entry_id"),
+            payload_str(payload, "break_id").map(|break_id| json!({ "breakId": break_id })),
+        ),
+        JOB_TYPE_TIME_ENTRY_BREAK_DELETE => (
+            "time_entries.break.delete",
+            Some("time_entry"),
+            payload_str(payload, "time_entry_id"),
+            payload_str(payload, "break_id").map(|break_id| json!({ "breakId": break_id })),
+        ),
+        JOB_TYPE_TIME_ENTRY_BULK_UPDATE => (
+            "time_entries.bulk_update",
+            Some("time_entry"),
+            None,
+            request_ids_context(payload),
+        ),
+        JOB_TYPE_TIME_ENTRY_BULK_ARCHIVE => (
+            "time_entries.bulk_archive",
+            Some("time_entry"),
+            None,
+            request_ids_context(payload),
+        ),
+        JOB_TYPE_TIME_ENTRY_BULK_DELETE => (
+            "time_entries.bulk_delete",
+            Some("time_entry"),
+            None,
+            request_ids_context(payload),
+        ),
+        JOB_TYPE_LINK_CREATE => (
+            "links.create",
+            Some("link"),
+            result_str(result, "id"),
+            None,
+        ),
+        JOB_TYPE_LINK_UPDATE => (
+            "links.update",
+            Some("link"),
+            payload_str(payload, "link_id"),
+            None,
+        ),
+        JOB_TYPE_LINK_DELETE => (
+            "links.delete",
+            Some("link"),
+            payload_str(payload, "link_id"),
+            None,
+        ),
+        JOB_TYPE_COLLECTION_CREATE => (
+            "collections.create",
+            Some("collection"),
+            result_str(result, "id"),
+            None,
+        ),
+        JOB_TYPE_COLLECTION_UPDATE => (
+            "collections.update",
+            Some("collection"),
+            payload_str(payload, "collection_id"),
+            None,
+        ),
+        JOB_TYPE_COLLECTION_DELETE => (
+            "collections.delete",
+            Some("collection"),
+            payload_str(payload, "collection_id"),
+            None,
+        ),
+        JOB_TYPE_EMPLOYEE_CREATE => (
+            "employees.create",
+            Some("employee"),
+            result_str(result, "id"),
+            None,
+        ),
+        JOB_TYPE_EMPLOYEE_UPDATE => (
+            "employees.update",
+            Some("employee"),
+            payload_str(payload, "employee_id"),
+            None,
+        ),
+        JOB_TYPE_EMPLOYEE_DELETE => (
+            "employees.delete",
+            Some("employee"),
+            payload_str(payload, "employee_id"),
+            None,
+        ),
+        JOB_TYPE_EMPLOYEE_ADD_EMAIL => (
+            "employees.email.add",
+            Some("employee"),
+            payload_str(payload, "employee_id"),
+            payload_str(payload, "email_id").map(|email_id| json!({ "emailId": email_id })),
+        ),
+        JOB_TYPE_EMPLOYEE_REMOVE_EMAIL => (
+            "employees.email.remove",
+            Some("employee"),
+            payload_str(payload, "employee_id"),
+            payload_str(payload, "email_id").map(|email_id| json!({ "emailId": email_id })),
+        ),
+        JOB_TYPE_EMPLOYEE_ADD_MANAGER => (
+            "employees.manager.add",
+            Some("employee"),
+            payload_str(payload, "employee_id"),
+            payload_str(payload, "manager_employee_id")
+                .map(|manager_id| json!({ "managerEmployeeId": manager_id })),
+        ),
+        JOB_TYPE_EMPLOYEE_REMOVE_MANAGER => (
+            "employees.manager.remove",
+            Some("employee"),
+            payload_str(payload, "employee_id"),
+            payload_str(payload, "manager_employee_id")
+                .map(|manager_id| json!({ "managerEmployeeId": manager_id })),
+        ),
+        JOB_TYPE_EMPLOYEE_LINK_USER => (
+            "employees.user.link",
+            Some("employee"),
+            payload_str(payload, "employee_id"),
+            None,
+        ),
+        JOB_TYPE_EMPLOYEE_UNLINK_USER => (
+            "employees.user.unlink",
+            Some("employee"),
+            payload_str(payload, "employee_id"),
+            None,
+        ),
+        _ => return,
+    };
+
+    audit::write_audit_log(
+        pool,
+        WriteAuditParams {
+            user_id: Some(user_id),
+            action: action.to_string(),
+            resource_type: resource_type.map(String::from),
+            resource_id,
+            context,
+            ip_address: ip,
+            user_agent: ua,
+        },
+    );
 }
 
 async fn exec_ticket_create(
@@ -2599,27 +2873,6 @@ async fn exec_collection_create(
         return map_sqlx_ticket(e);
     }
 
-    let ip = payload
-        .get("audit_ip")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    let ua = payload
-        .get("audit_user_agent")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    audit::write_audit_log(
-        pool,
-        WriteAuditParams {
-            user_id: Some(user_id.clone()),
-            action: "collections.create".into(),
-            resource_type: Some("collection".into()),
-            resource_id: Some(id.clone()),
-            context: None,
-            ip_address: ip,
-            user_agent: ua,
-        },
-    );
-
     JobExecOutcome::Ok(JsonMutationResult::created(json!({
         "id": id,
         "success": true
@@ -2820,27 +3073,6 @@ async fn exec_collection_update(
         return map_sqlx_ticket(e);
     }
 
-    let ip = payload
-        .get("audit_ip")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    let ua = payload
-        .get("audit_user_agent")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    audit::write_audit_log(
-        pool,
-        WriteAuditParams {
-            user_id: Some(user_id.clone()),
-            action: "collections.update".into(),
-            resource_type: Some("collection".into()),
-            resource_id: Some(collection_id.clone()),
-            context: None,
-            ip_address: ip,
-            user_agent: ua,
-        },
-    );
-
     JobExecOutcome::Ok(JsonMutationResult::ok(json!({ "success": true })))
 }
 
@@ -2900,27 +3132,6 @@ async fn exec_collection_delete(
     if let Err(e) = tx.commit().await {
         return map_sqlx_ticket(e);
     }
-
-    let ip = payload
-        .get("audit_ip")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    let ua = payload
-        .get("audit_user_agent")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    audit::write_audit_log(
-        pool,
-        WriteAuditParams {
-            user_id: Some(user_id.clone()),
-            action: "collections.delete".into(),
-            resource_type: Some("collection".into()),
-            resource_id: Some(collection_id),
-            context: None,
-            ip_address: ip,
-            user_agent: ua,
-        },
-    );
 
     JobExecOutcome::Ok(JsonMutationResult::ok(json!({ "success": true })))
 }

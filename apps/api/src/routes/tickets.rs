@@ -23,8 +23,9 @@ use crate::models::ticket::{
 };
 use crate::routes::AppState;
 use crate::routes::helpers::{
-    check_permission, fetch_comment_author, fetch_group_summary, fetch_user_summary,
-    get_user_permission_keys, hash_json_for_idempotency,     idempotency_key_from_headers,
+    attach_audit_to_job_payload, check_permission, fetch_comment_author, fetch_group_summary,
+    fetch_user_summary, get_user_permission_keys, hash_json_for_idempotency,
+    idempotency_key_from_headers,
 };
 
 // Human: Comment and activity routes stay nested under `/tickets/{id}` so the SPA can invalidate one cache subtree per ticket.
@@ -309,7 +310,7 @@ async fn create_ticket(
         &state.pool,
         entity_creates::JOB_TYPE_TICKET_CREATE,
         &user.id,
-        job_payload,
+        attach_audit_to_job_payload(job_payload, &headers),
     )
     .await
     .map_err(AppError::from)?;
@@ -367,7 +368,7 @@ async fn update_ticket(
         &state.pool,
         entity_creates::JOB_TYPE_TICKET_UPDATE,
         &user.id,
-        job_payload,
+        attach_audit_to_job_payload(job_payload, &headers),
     )
     .await
     .map_err(AppError::from)?;
@@ -421,7 +422,7 @@ async fn delete_ticket(
         &state.pool,
         entity_creates::JOB_TYPE_TICKET_DELETE,
         &user.id,
-        job_payload,
+        attach_audit_to_job_payload(job_payload, &headers),
     )
     .await
     .map_err(AppError::from)?;
@@ -563,7 +564,7 @@ async fn create_ticket_comment(
         &state.pool,
         entity_creates::JOB_TYPE_TICKET_COMMENT_CREATE,
         &user.id,
-        job_payload,
+        attach_audit_to_job_payload(job_payload, &headers),
     )
     .await
     .map_err(AppError::from)?;

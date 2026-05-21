@@ -1,0 +1,57 @@
+---
+description: >-
+  Require audit log entries for new/changed mutations and security-sensitive
+  actions in apps/api; checklist before marking API work complete
+alwaysApply: true
+---
+
+# Audit log coverage (mandatory review)
+
+Semantic user and admin actions must appear in **`audit_logs`** (Admin → Audit Log). **`http_request_logs`** records raw HTTP traffic only—it is **not** a substitute.
+
+## When you must add or update audit logging
+
+Treat every **new or changed** API behavior as an audit candidate if it:
+
+- **Creates, updates, deletes, or archives** data (including bulk ops)
+- **Changes auth or sessions** (login, logout, register, password, QR login, session extend/revoke)
+- **Changes permissions, groups, modules, or admin settings**
+- **Runs privileged admin tools** (DB query, row edit/delete, purge, job-worker controls)
+- **Submits unauthenticated or public writes** (e.g. contact form) when the action should be traceable
+
+**Usually exempt** (no audit row required unless product asks otherwise):
+
+- Read-only **GET** handlers and list/detail endpoints
+- Stubs that do not persist state
+- Pure **`tracing`** / metrics (keep those; they do not replace audit)
+
+If unsure, **add audit**—missing rows are harder to fix in production than an extra log line.
+
+## How to implement (use existing helpers)
+
+| Path | Pattern |
+|------|---------|
+| **Sync route handler** | `audit::write_audit_from_headers(pool, user_id, action, resource_type, resource_id, context, &headers)` — handler must take `HeaderMap` when possible |
+| **Admin routes** | `write_admin_audit(...)` in `apps/api/src/routes/admin.rs`, or same `write_audit_from_headers` |
+| **Background job enqueue** | `attach_audit_to_job_payload(payload, &headers)` from `routes/helpers.rs` before `enqueue_entity_create_job` |
+| **Job worker success** | New job types in `entity_creates.rs` must map in **`write_entity_job_audit`** (called on `JobExecOutcome::Ok`) |
+
+### Action naming
+
+Use dotted names: `{domain}.{verb}` or `{domain}.{subresource}.{verb}` (e.g. `tickets.create`, `admin.users.update`, `customers.contact.remove`). Keep **`resource_type`** and **`resource_id`** aligned with the primary entity when possible; put secondary ids in **`context`**.
+
+### Metadata
+
+- Pass **`HeaderMap`** so IP and User-Agent are captured (`audit_ip` / `audit_user_agent` on job payloads).
+- Do **not** put secrets, passwords, tokens, or full PII in **`context`** or **`message`**.
+
+## Agent checklist (before “done”)
+
+When your diff touches **`apps/api/src/routes/**`**, **`apps/api/src/auth/**`**, or **`apps/api/src/job_queue/**`**:
+
+1. List every **new or modified mutation** (route, job type, admin tool, auth path).
+2. For each, confirm **audit added or intentionally exempt** (state why if exempt).
+3. If adding a **new `JOB_TYPE_*`**, extend **`write_entity_job_audit`** and enqueue with **`attach_audit_to_job_payload`**.
+4. Mention audit coverage in the completion summary (actions added or “read-only, no audit”).
+
+Skipping this review is a defect—the Audit Log is the compliance trail for who did what.

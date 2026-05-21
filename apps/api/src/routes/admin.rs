@@ -152,6 +152,32 @@ pub fn router() -> Router<AppState> {
 const MAX_AUDIT_PAGE_LIMIT: i64 = 200;
 const AUDIT_EXPORT_LIMIT: i64 = 10_000;
 
+// Human: Admin mutations share one audit helper so IP and user-agent are captured consistently when handlers receive HeaderMap.
+// Agent: WRAPS write_audit_log; READS client_ip + user_agent from headers; CALLS on successful admin mutations.
+
+fn write_admin_audit(
+    pool: &sqlx::PgPool,
+    actor_id: &str,
+    action: &str,
+    resource_type: &str,
+    resource_id: &str,
+    context: Option<serde_json::Value>,
+    headers: &HeaderMap,
+) {
+    audit::write_audit_log(
+        pool,
+        WriteAuditParams {
+            user_id: Some(actor_id.to_string()),
+            action: action.to_string(),
+            resource_type: Some(resource_type.to_string()),
+            resource_id: Some(resource_id.to_string()),
+            context,
+            ip_address: audit::client_ip_from_headers(headers),
+            user_agent: audit::user_agent_from_headers(headers),
+        },
+    );
+}
+
 #[derive(Deserialize)]
 struct AuditEntriesQuery {
     page: Option<u32>,
@@ -529,6 +555,7 @@ struct DbQueryRequest {
 async fn db_query(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
+    headers: HeaderMap,
     Json(body): Json<DbQueryRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_permission(&state.pool, &user.id, "admin.db.query").await?;
@@ -545,6 +572,16 @@ async fn db_query(
     ))
     .fetch_all(&state.pool)
     .await?;
+
+    write_admin_audit(
+        &state.pool,
+        &user.id,
+        "admin.db.query",
+        "system_settings",
+        "db_query",
+        Some(serde_json::json!({ "queryPrefix": query.chars().take(80).collect::<String>() })),
+        &headers,
+    );
 
     Ok(Json(serde_json::json!({ "rows": rows })))
 }
@@ -610,6 +647,7 @@ struct DbRowUpdateRequest {
 async fn db_row_update(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
+    headers: HeaderMap,
     Json(body): Json<DbRowUpdateRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_permission(&state.pool, &user.id, "admin.db.edit_entries").await?;
@@ -648,6 +686,20 @@ async fn db_row_update(
     let result = sqlx::query(&query).execute(&state.pool).await?;
     let updated_count = result.rows_affected();
 
+    write_admin_audit(
+        &state.pool,
+        &user.id,
+        "admin.db.row_update",
+        "database_table",
+        &table,
+        Some(serde_json::json!({
+            "idColumn": id_column,
+            "idValue": body.id_value,
+            "updatedCount": updated_count,
+        })),
+        &headers,
+    );
+
     Ok(Json(serde_json::json!({
         "success": true,
         "updatedCount": updated_count
@@ -665,6 +717,7 @@ struct DbRowDeleteRequest {
 async fn db_row_delete(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
+    headers: HeaderMap,
     Json(body): Json<DbRowDeleteRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_permission(&state.pool, &user.id, "admin.db.delete_entries").await?;
@@ -678,6 +731,20 @@ async fn db_row_delete(
     let result = sqlx::query(&query).execute(&state.pool).await?;
     let deleted_count = result.rows_affected();
 
+    write_admin_audit(
+        &state.pool,
+        &user.id,
+        "admin.db.row_delete",
+        "database_table",
+        &table,
+        Some(serde_json::json!({
+            "idColumn": id_column,
+            "idValue": body.id_value,
+            "deletedCount": deleted_count,
+        })),
+        &headers,
+    );
+
     Ok(Json(serde_json::json!({
         "success": true,
         "deletedCount": deleted_count
@@ -687,6 +754,7 @@ async fn db_row_delete(
 async fn purge_deleted(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
+    headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_admin_settings(&state.pool, &user.id).await?;
 
@@ -711,6 +779,15 @@ async fn purge_deleted(
     }
 
     let purged = deleted_count;
+    write_admin_audit(
+        &state.pool,
+        &user.id,
+        "admin.users.purge_deleted",
+        "user",
+        "batch",
+        Some(serde_json::json!({ "purgedCount": purged })),
+        &headers,
+    );
     Ok(Json(serde_json::json!({
         "purged": purged,
         "deletedCount": purged,
@@ -1087,6 +1164,7 @@ struct LinksPageSizeBody {
 async fn update_links_page_size(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
+    headers: HeaderMap,
     Json(body): Json<LinksPageSizeBody>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_admin_settings(&state.pool, &user.id).await?;
@@ -1101,6 +1179,15 @@ async fn update_links_page_size(
     .bind(config_value.to_string())
     .execute(&state.pool)
     .await?;
+    write_admin_audit(
+        &state.pool,
+        &user.id,
+        "admin.settings.links_page_size",
+        "system_settings",
+        "links_default_page_size",
+        Some(serde_json::json!({ "value": body.value })),
+        &headers,
+    );
     Ok(Json(serde_json::json!({ "success": true })))
 }
 
@@ -1112,6 +1199,7 @@ struct QrRateLimitBody {
 async fn update_qr_login_rate_limit(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
+    headers: HeaderMap,
     Json(body): Json<QrRateLimitBody>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_admin_settings(&state.pool, &user.id).await?;
@@ -1124,6 +1212,15 @@ async fn update_qr_login_rate_limit(
     .bind(&value_json)
     .execute(&state.pool)
     .await?;
+    write_admin_audit(
+        &state.pool,
+        &user.id,
+        "admin.settings.qr_login_rate_limit",
+        "system_settings",
+        "qr_login_requests_per_minute",
+        Some(serde_json::json!({ "value": v })),
+        &headers,
+    );
     Ok(Json(serde_json::json!({ "success": true })))
 }
 
@@ -1601,6 +1698,7 @@ async fn update_user(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Json(body): Json<UpdateUserRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_permission(&state.pool, &user.id, "admin.users.update").await?;
@@ -1668,6 +1766,16 @@ async fn update_user(
         }
     }
 
+    write_admin_audit(
+        &state.pool,
+        &user.id,
+        "admin.users.update",
+        "user",
+        &id,
+        None,
+        &headers,
+    );
+
     Ok(Json(serde_json::json!({ "success": true })))
 }
 
@@ -1675,6 +1783,7 @@ async fn delete_user(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_permission(&state.pool, &user.id, "admin.users.delete").await?;
     if id == user.id {
@@ -1685,6 +1794,16 @@ async fn delete_user(
         .bind(&id)
         .execute(&state.pool)
         .await?;
+
+    write_admin_audit(
+        &state.pool,
+        &user.id,
+        "admin.users.delete",
+        "user",
+        &id,
+        None,
+        &headers,
+    );
 
     Ok(Json(serde_json::json!({ "success": true })))
 }
@@ -2209,6 +2328,7 @@ struct CreateGroupRequest {
 async fn create_group(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
+    headers: HeaderMap,
     Json(body): Json<CreateGroupRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
     require_permission(&state.pool, &user.id, "admin.groups.manage").await?;
@@ -2220,6 +2340,16 @@ async fn create_group(
         .bind(&body.description)
         .execute(&state.pool)
         .await?;
+
+    write_admin_audit(
+        &state.pool,
+        &user.id,
+        "admin.groups.create",
+        "group",
+        &id,
+        Some(serde_json::json!({ "name": body.name })),
+        &headers,
+    );
 
     Ok((StatusCode::CREATED, Json(serde_json::json!({ "id": id }))))
 }
@@ -2409,6 +2539,7 @@ async fn update_group(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Json(body): Json<UpdateGroupRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_permission(&state.pool, &user.id, "admin.groups.manage").await?;
@@ -2428,6 +2559,16 @@ async fn update_group(
             .await?;
     }
 
+    write_admin_audit(
+        &state.pool,
+        &user.id,
+        "admin.groups.update",
+        "group",
+        &id,
+        None,
+        &headers,
+    );
+
     Ok(Json(serde_json::json!({ "success": true })))
 }
 
@@ -2435,6 +2576,7 @@ async fn delete_group(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_permission(&state.pool, &user.id, "admin.groups.manage").await?;
 
@@ -2450,6 +2592,16 @@ async fn delete_group(
         .bind(&id)
         .execute(&state.pool)
         .await?;
+
+    write_admin_audit(
+        &state.pool,
+        &user.id,
+        "admin.groups.delete",
+        "group",
+        &id,
+        None,
+        &headers,
+    );
 
     Ok(Json(serde_json::json!({ "success": true })))
 }
@@ -2492,6 +2644,7 @@ async fn toggle_module(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Json(body): Json<ToggleModuleRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_permission(&state.pool, &user.id, "admin.modules.manage").await?;
@@ -2501,6 +2654,16 @@ async fn toggle_module(
         .bind(&id)
         .execute(&state.pool)
         .await?;
+
+    write_admin_audit(
+        &state.pool,
+        &user.id,
+        "admin.modules.toggle",
+        "module",
+        &id,
+        Some(serde_json::json!({ "enabled": body.enabled })),
+        &headers,
+    );
 
     Ok(Json(serde_json::json!({ "success": true })))
 }
@@ -3129,12 +3292,23 @@ async fn mark_notification_read(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     sqlx::query("UPDATE notifications SET read = true WHERE id = $1 AND user_id = $2")
         .bind(&id)
         .bind(&user.id)
         .execute(&state.pool)
         .await?;
+
+    audit::write_audit_from_headers(
+        &state.pool,
+        Some(user.id.clone()),
+        "notifications.read",
+        Some("notification"),
+        Some(id),
+        None,
+        &headers,
+    );
 
     Ok(Json(serde_json::json!({ "success": true })))
 }

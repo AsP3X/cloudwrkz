@@ -1,13 +1,14 @@
 use axum::{
     Json, Router,
     extract::{Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     routing::get,
 };
 use serde::Deserialize;
 use sqlx::Row;
 use uuid::Uuid;
 
+use crate::audit;
 use crate::auth::extractors::AuthUser;
 use crate::error::AppError;
 use crate::routes::AppState;
@@ -59,6 +60,7 @@ async fn list_locations(
 async fn save_location(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
+    headers: HeaderMap,
     Json(body): Json<SaveLocationRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
     let address = body.address.trim();
@@ -84,6 +86,16 @@ async fn save_location(
     .bind(address)
     .execute(&state.pool)
     .await?;
+
+    audit::write_audit_from_headers(
+        &state.pool,
+        Some(user.id.clone()),
+        "location_history.save",
+        Some("location_history"),
+        None,
+        Some(serde_json::json!({ "address": address })),
+        &headers,
+    );
 
     Ok((
         StatusCode::CREATED,

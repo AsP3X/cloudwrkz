@@ -20,7 +20,7 @@ use crate::command_queue::{MutationQueuedResponse, MutationRunContext};
 use crate::error::AppError;
 use crate::job_queue::entity_creates;
 use crate::routes::AppState;
-use crate::routes::helpers::{check_permission, hash_json_for_idempotency, idempotency_key_from_headers};
+use crate::routes::helpers::{attach_audit_to_job_payload, check_permission, hash_json_for_idempotency, idempotency_key_from_headers};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -156,6 +156,7 @@ async fn enqueue_employee_job(
     job_type: &str,
     mut payload: serde_json::Value,
     message: &str,
+    headers: &HeaderMap,
 ) -> Result<Response, AppError> {
     if let Some(ref ik) = idempotency_key {
         if !ik.trim().is_empty() {
@@ -173,6 +174,7 @@ async fn enqueue_employee_job(
     payload["route"] = json!(route);
     payload["body_hash"] = json!(body_hash);
     payload["idempotency_key"] = json!(idempotency_key);
+    payload = attach_audit_to_job_payload(payload, headers);
 
     let job_id = entity_creates::enqueue_entity_create_job(&state.pool, job_type, user_id, payload)
         .await
@@ -528,6 +530,7 @@ async fn create_employee(
         entity_creates::JOB_TYPE_EMPLOYEE_CREATE,
         json!({ "request": request_json }),
         "Employee creation is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed.",
+        &headers,
     )
     .await
 }
@@ -564,6 +567,7 @@ async fn update_employee(
         entity_creates::JOB_TYPE_EMPLOYEE_UPDATE,
         json!({ "employee_id": id, "request": request_json }),
         "Employee update is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed.",
+        &headers,
     )
     .await
 }
@@ -591,6 +595,7 @@ async fn delete_employee(
         entity_creates::JOB_TYPE_EMPLOYEE_DELETE,
         json!({ "employee_id": id }),
         "Employee deletion is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed.",
+        &headers,
     )
     .await
 }
@@ -627,6 +632,7 @@ async fn add_employee_email(
         entity_creates::JOB_TYPE_EMPLOYEE_ADD_EMAIL,
         json!({ "employee_id": id, "request": request_json }),
         "Employee email add is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed.",
+        &headers,
     )
     .await
 }
@@ -654,6 +660,7 @@ async fn remove_employee_email(
         entity_creates::JOB_TYPE_EMPLOYEE_REMOVE_EMAIL,
         json!({ "employee_id": id, "email_id": email_id }),
         "Employee email removal is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed.",
+        &headers,
     )
     .await
 }
@@ -691,6 +698,7 @@ async fn add_employee_manager(
         entity_creates::JOB_TYPE_EMPLOYEE_ADD_MANAGER,
         json!({ "employee_id": id, "request": request_json }),
         "Employee manager add is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed.",
+        &headers,
     )
     .await
 }
@@ -718,6 +726,7 @@ async fn remove_employee_manager(
         entity_creates::JOB_TYPE_EMPLOYEE_REMOVE_MANAGER,
         json!({ "employee_id": id, "manager_employee_id": manager_id }),
         "Employee manager removal is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed.",
+        &headers,
     )
     .await
 }
@@ -749,6 +758,7 @@ async fn link_user(
         entity_creates::JOB_TYPE_EMPLOYEE_LINK_USER,
         json!({ "employee_id": id, "request": request_json }),
         "Employee user-link is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed.",
+        &headers,
     )
     .await
 }
@@ -776,6 +786,7 @@ async fn unlink_user(
         entity_creates::JOB_TYPE_EMPLOYEE_UNLINK_USER,
         json!({ "employee_id": id }),
         "Employee user-unlink is processing in the background. Poll GET /api/v1/mutation-jobs/{job_id} until status is completed.",
+        &headers,
     )
     .await
 }

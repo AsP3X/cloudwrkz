@@ -1,4 +1,4 @@
-//! Audit log: fire-and-forget writes to audit_logs for auth and admin actions.
+//! Audit log: fire-and-forget writes to `audit_logs` for auth, admin, and product mutations.
 //! Failures are logged but do not affect the request.
 
 use axum::http::HeaderMap;
@@ -49,6 +49,91 @@ pub fn client_ip_from_headers(headers: &HeaderMap) -> Option<String> {
         }
     }
     None
+}
+
+/// Extract User-Agent from request headers when present.
+// Human: Browser and API clients identify themselves via the standard User-Agent header for audit attribution.
+// Agent: READS user-agent header; RETURNS None when absent or non-UTF8.
+
+pub fn user_agent_from_headers(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(axum::http::header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .map(String::from)
+}
+
+/// Merge `audit_ip` and `audit_user_agent` into a JSON job payload object for background workers.
+// Human: HTTP handlers clone network metadata into enqueue payloads so job workers can write audit rows after async success.
+// Agent: MUTATES payload object; INSERTS audit_ip + audit_user_agent keys from headers; NO-OP when payload is not an object.
+
+pub fn attach_audit_fields(
+    mut payload: serde_json::Value,
+    headers: &HeaderMap,
+) -> serde_json::Value {
+    if let Some(obj) = payload.as_object_mut() {
+        obj.insert(
+            "audit_ip".to_string(),
+            client_ip_from_headers(headers)
+                .map(serde_json::Value::String)
+                .unwrap_or(serde_json::Value::Null),
+        );
+        obj.insert(
+            "audit_user_agent".to_string(),
+            user_agent_from_headers(headers)
+                .map(serde_json::Value::String)
+                .unwrap_or(serde_json::Value::Null),
+        );
+    }
+    payload
+}
+
+/// Convenience wrapper for synchronous route handlers that already have `HeaderMap`.
+// Human: Route handlers call this instead of assembling `WriteAuditParams` field-by-field on every mutation.
+// Agent: CALLS write_audit_log; READS ip/ua from headers; ACCEPTS optional resource + context.
+
+pub fn write_audit_from_headers(
+    pool: &PgPool,
+    user_id: Option<String>,
+    action: &str,
+    resource_type: Option<&str>,
+    resource_id: Option<String>,
+    context: Option<serde_json::Value>,
+    headers: &HeaderMap,
+) {
+    write_audit_log(
+        pool,
+        WriteAuditParams {
+            user_id,
+            action: action.to_string(),
+            resource_type: resource_type.map(String::from),
+            resource_id,
+            context,
+            ip_address: client_ip_from_headers(headers),
+            user_agent: user_agent_from_headers(headers),
+        },
+    );
+}
+
+/// Read optional audit IP stored on a background job payload.
+// Agent: READS payload.audit_ip string; RETURNS None when missing or not a string.
+
+pub fn ip_from_payload(payload: &serde_json::Value) -> Option<String> {
+    payload
+        .get("audit_ip")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+}
+
+/// Read optional audit User-Agent stored on a background job payload.
+// Agent: READS payload.audit_user_agent string; RETURNS None when missing or not a string.
+
+pub fn user_agent_from_payload(payload: &serde_json::Value) -> Option<String> {
+    payload
+        .get("audit_user_agent")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(String::from)
 }
 
 /// Write an audit log entry. Fire-and-forget: spawns a task; errors are logged only.

@@ -3,9 +3,10 @@
 // Human: Profile updates are small single-row writes on `users`—they stay synchronous simple SQL without the mutation broker.
 // Agent: router PATCH /profile and /profile/preferences; VALIDATES string lengths; UPDATE users columns.
 
-use axum::{Json, Router, extract::State, routing::patch};
+use axum::{Json, Router, extract::State, http::HeaderMap, routing::patch};
 use serde::Deserialize;
 
+use crate::audit;
 use crate::auth::extractors::AuthUser;
 use crate::error::AppError;
 use crate::routes::AppState;
@@ -28,6 +29,7 @@ struct ProfileUpdate {
 async fn update_profile(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
+    headers: HeaderMap,
     Json(body): Json<ProfileUpdate>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     if let Some(ref name) = body.name {
@@ -60,6 +62,15 @@ async fn update_profile(
             .execute(&state.pool)
             .await?;
     }
+    audit::write_audit_from_headers(
+        &state.pool,
+        Some(user.id.clone()),
+        "profile.update",
+        Some("user"),
+        Some(user.id.clone()),
+        None,
+        &headers,
+    );
     Ok(Json(serde_json::json!({ "success": true })))
 }
 
@@ -73,6 +84,7 @@ struct PreferencesUpdate {
 async fn update_preferences(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
+    headers: HeaderMap,
     Json(body): Json<PreferencesUpdate>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     if let Some(ref locale) = body.locale {
@@ -97,5 +109,14 @@ async fn update_preferences(
             .await?;
     }
 
+    audit::write_audit_from_headers(
+        &state.pool,
+        Some(user.id.clone()),
+        "profile.preferences.update",
+        Some("user"),
+        Some(user.id.clone()),
+        None,
+        &headers,
+    );
     Ok(Json(serde_json::json!({ "success": true })))
 }

@@ -3,12 +3,13 @@
 // Human: Contact is intentionally unauthenticated marketing/support traffic, so we validate inputs and cap submissions per process hour before logging only.
 // Agent: router POST /contact; RATE_LIMIT Mutex global counter reset hourly max 20; tracing::info contact.submit; RETURNS JSON success message.
 
-use axum::{Json, Router, routing::post};
+use axum::{Json, Router, extract::State, http::HeaderMap, routing::post};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Instant;
 
+use crate::audit;
 use crate::error::AppError;
 use crate::routes::AppState;
 
@@ -34,6 +35,8 @@ static RATE_LIMIT: std::sync::LazyLock<Mutex<HashMap<String, (u32, Instant)>>> =
 // Agent: LOCK RATE_LIMIT; INCREMENT count per hour window max 20 -> 429 too_many_requests; ELSE info log fields RETURN success JSON.
 
 async fn contact_form(
+    State(state): State<AppState>,
+    headers: HeaderMap,
     Json(body): Json<ContactRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     if body.name.len() < 2 {
@@ -74,6 +77,19 @@ async fn contact_form(
         email = body.email,
         subject = body.subject,
         "Contact form submission"
+    );
+
+    audit::write_audit_from_headers(
+        &state.pool,
+        None,
+        "contact.submit",
+        None,
+        None,
+        Some(serde_json::json!({
+            "email": body.email,
+            "subject": body.subject,
+        })),
+        &headers,
     );
 
     Ok(Json(serde_json::json!({

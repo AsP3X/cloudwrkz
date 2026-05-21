@@ -28,7 +28,8 @@ use crate::link_preview;
 use crate::models::link::*;
 use crate::routes::AppState;
 use crate::routes::helpers::{
-    hash_json_for_idempotency, idempotency_key_from_headers, require_links_read, require_permission,
+    attach_audit_to_job_payload, hash_json_for_idempotency, idempotency_key_from_headers,
+    require_links_read, require_permission,
 };
 
 // Human: Routes stay backward compatible by keeping both `/links/metadata` and the older `/links/extract-metadata` alias used by the Vite client.
@@ -391,7 +392,7 @@ async fn create_link(
         &state.pool,
         entity_creates::JOB_TYPE_LINK_CREATE,
         &user.id,
-        job_payload,
+        attach_audit_to_job_payload(job_payload, &headers),
     )
     .await
     .map_err(AppError::from)?;
@@ -450,7 +451,7 @@ async fn update_link(
         &state.pool,
         entity_creates::JOB_TYPE_LINK_UPDATE,
         &user.id,
-        job_payload,
+        attach_audit_to_job_payload(job_payload, &headers),
     )
     .await
     .map_err(AppError::from)?;
@@ -504,7 +505,7 @@ async fn delete_link(
         &state.pool,
         entity_creates::JOB_TYPE_LINK_DELETE,
         &user.id,
-        job_payload,
+        attach_audit_to_job_payload(job_payload, &headers),
     )
     .await
     .map_err(AppError::from)?;

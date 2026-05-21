@@ -426,7 +426,7 @@ async fn extend_session(
         .ok_or_else(|| AppError::unauthorized("Missing token"))?;
 
     let row = sqlx::query(
-        r#"SELECT s.id, s.expires_at, u.status::text as status
+        r#"SELECT s.id, s.expires_at, s.user_id, u.status::text as status
            FROM sessions s JOIN users u ON s.user_id = u.id
            WHERE s.token = $1"#,
     )
@@ -437,6 +437,7 @@ async fn extend_session(
 
     let expires_at: chrono::NaiveDateTime = row.get("expires_at");
     let session_id: String = row.get("id");
+    let user_id: String = row.get("user_id");
     let status: String = row.get("status");
 
     if expires_at < Utc::now().naive_utc() {
@@ -458,6 +459,16 @@ async fn extend_session(
         .bind(&session_id)
         .execute(&state.pool)
         .await?;
+
+    audit::write_audit_from_headers(
+        &state.pool,
+        Some(user_id),
+        "auth.session.extend",
+        Some("session"),
+        Some(session_id),
+        Some(serde_json::json!({ "extended": true })),
+        &headers,
+    );
 
     Ok(Json(serde_json::json!({ "extended": true })))
 }

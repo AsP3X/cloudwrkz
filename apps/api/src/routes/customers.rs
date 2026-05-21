@@ -8,6 +8,7 @@
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
+    http::HeaderMap,
     routing::{delete, get, post, put},
 };
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,7 @@ use sqlx::Row;
 use std::collections::HashMap;
 
 use crate::auth::extractors::AuthUser;
+use crate::audit;
 use crate::db::numbering::next_customer_number;
 use crate::error::AppError;
 use crate::id::new_cuid;
@@ -47,6 +49,28 @@ pub fn router() -> Router<AppState> {
             "/customers/{id}/contacts/{contact_id}/employee-rates/{employee_id}",
             delete(remove_contact_employee_rate),
         )
+}
+
+// Human: Customer mutations write audit rows with actor, resource id, and request metadata for compliance review.
+// Agent: WRAPS audit::write_audit_from_headers; CALLED after successful customer/contact/rate mutations.
+
+fn write_customer_audit(
+    pool: &sqlx::PgPool,
+    user_id: &str,
+    action: &str,
+    customer_id: &str,
+    context: Option<serde_json::Value>,
+    headers: &HeaderMap,
+) {
+    audit::write_audit_from_headers(
+        pool,
+        Some(user_id.to_string()),
+        action,
+        Some("customer"),
+        Some(customer_id.to_string()),
+        context,
+        headers,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -737,6 +761,7 @@ async fn list_customer_time_entries(
 async fn create_customer(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
+    headers: HeaderMap,
     Json(body): Json<CreateCustomerRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_customers_create(&state, &user).await?;
@@ -836,6 +861,14 @@ async fn create_customer(
     }
 
     tx.commit().await?;
+    write_customer_audit(
+        &state.pool,
+        &user.id,
+        "customers.create",
+        &customer_id,
+        None,
+        &headers,
+    );
     let data = customer_full_json(&state.pool, &customer_id).await?;
     Ok(Json(json!({ "customer": data })))
 }
@@ -844,6 +877,7 @@ async fn update_customer(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Json(body): Json<UpdateCustomerRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_customers_update(&state, &user).await?;
@@ -973,6 +1007,14 @@ async fn update_customer(
         }
     }
 
+    write_customer_audit(
+        &state.pool,
+        &user.id,
+        "customers.update",
+        &id,
+        None,
+        &headers,
+    );
     let data = customer_full_json(&state.pool, &id).await?;
     Ok(Json(json!({ "customer": data })))
 }
@@ -981,6 +1023,7 @@ async fn delete_customer(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Query(q): Query<DeleteCustomerQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_customers_delete(&state, &user).await?;
@@ -1011,6 +1054,15 @@ async fn delete_customer(
         return Err(AppError::not_found("Customer not found"));
     }
 
+    write_customer_audit(
+        &state.pool,
+        &user.id,
+        "customers.delete",
+        &id,
+        Some(json!({ "force": q.force.unwrap_or(false) })),
+        &headers,
+    );
+
     Ok(Json(json!({ "success": true })))
 }
 
@@ -1027,6 +1079,7 @@ async fn add_contact(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Json(body): Json<ContactInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_customers_update(&state, &user).await?;
@@ -1039,6 +1092,14 @@ async fn add_contact(
     insert_contact(&mut tx, &id, &body).await?;
     tx.commit().await?;
 
+    write_customer_audit(
+        &state.pool,
+        &user.id,
+        "customers.contact.add",
+        &id,
+        None,
+        &headers,
+    );
     let data = customer_full_json(&state.pool, &id).await?;
     Ok(Json(json!({ "customer": data })))
 }
@@ -1047,6 +1108,7 @@ async fn update_contact(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path((id, contact_id)): Path<(String, String)>,
+    headers: HeaderMap,
     Json(body): Json<ContactInput>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_customers_update(&state, &user).await?;
@@ -1094,6 +1156,14 @@ async fn update_contact(
     .await?;
 
     tx.commit().await?;
+    write_customer_audit(
+        &state.pool,
+        &user.id,
+        "customers.contact.update",
+        &id,
+        Some(json!({ "contactId": contact_id })),
+        &headers,
+    );
     let data = customer_full_json(&state.pool, &id).await?;
     Ok(Json(json!({ "customer": data })))
 }
@@ -1102,6 +1172,7 @@ async fn remove_contact(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path((id, contact_id)): Path<(String, String)>,
+    headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_customers_update(&state, &user).await?;
     if !customers_module_enabled(&state.pool).await {
@@ -1122,6 +1193,14 @@ async fn remove_contact(
         return Err(AppError::not_found("Contact not found"));
     }
 
+    write_customer_audit(
+        &state.pool,
+        &user.id,
+        "customers.contact.remove",
+        &id,
+        Some(json!({ "contactId": contact_id })),
+        &headers,
+    );
     let data = customer_full_json(&state.pool, &id).await?;
     Ok(Json(json!({ "customer": data })))
 }
@@ -1130,6 +1209,7 @@ async fn set_contact_employee_rate(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path((id, contact_id)): Path<(String, String)>,
+    headers: HeaderMap,
     Json(body): Json<SetEmployeeRateRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_customers_update(&state, &user).await?;
@@ -1166,6 +1246,14 @@ async fn set_contact_employee_rate(
     .execute(&state.pool)
     .await?;
 
+    write_customer_audit(
+        &state.pool,
+        &user.id,
+        "customers.contact.rate.set",
+        &id,
+        Some(json!({ "contactId": contact_id, "employeeId": body.employee_id })),
+        &headers,
+    );
     let data = customer_full_json(&state.pool, &id).await?;
     Ok(Json(json!({ "customer": data })))
 }
@@ -1174,6 +1262,7 @@ async fn remove_contact_employee_rate(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path((id, contact_id, employee_id)): Path<(String, String, String)>,
+    headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_customers_update(&state, &user).await?;
     if !customers_module_enabled(&state.pool).await {
@@ -1196,6 +1285,14 @@ async fn remove_contact_employee_rate(
         return Err(AppError::not_found("Employee rate not found"));
     }
 
+    write_customer_audit(
+        &state.pool,
+        &user.id,
+        "customers.contact.rate.remove",
+        &id,
+        Some(json!({ "contactId": contact_id, "employeeId": employee_id })),
+        &headers,
+    );
     let data = customer_full_json(&state.pool, &id).await?;
     Ok(Json(json!({ "customer": data })))
 }
