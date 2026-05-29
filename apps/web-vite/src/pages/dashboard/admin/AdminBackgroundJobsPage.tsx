@@ -654,6 +654,25 @@ function JobLiveLogPanel({
     return () => stopLiveTail();
   }, [jobId, status, loadFullLog, startLiveTail, stopLiveTail]);
 
+  // Human: While processing with an empty panel, poll the log API — claim lines can land after the first GET or on another API instance.
+  // Agent: INTERVAL 3s when status=processing AND logLines empty; GET /log; MERGE lines into state.
+  useEffect(() => {
+    if (status !== "processing" || logLines.length > 0) return;
+    const id = window.setInterval(() => {
+      void api
+        .get<{ jobId: string; lines: string[] }>(`/admin/background-jobs/${jobId}/log`)
+        .then((res) => {
+          if ((res.lines?.length ?? 0) > 0) {
+            setLogLines(res.lines ?? []);
+          }
+        })
+        .catch(() => {
+          /* keep polling */
+        });
+    }, 3000);
+    return () => window.clearInterval(id);
+  }, [jobId, status, logLines.length]);
+
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [logLines]);
@@ -695,7 +714,11 @@ function JobLiveLogPanel({
             )}
             aria-live={isLive ? "polite" : undefined}
           >
-            {logLines.length === 0 ? "(no log lines yet)" : logLines.join("\n")}
+            {logLines.length === 0
+              ? isLive
+                ? "(no log lines yet — worker starting, or orphaned row will fail/requeue within ~2 min)"
+                : "(no log lines yet)"
+              : logLines.join("\n")}
           </pre>
         )}
         <div ref={logEndRef} aria-hidden />

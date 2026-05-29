@@ -37,6 +37,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use budget::{BudgetReleaseOnDrop, TypeBudgets};
+use job_log::persist_job_log_line;
 use reqwest::Client;
 use serde_json::json;
 use sqlx::{PgPool, Row};
@@ -74,7 +75,7 @@ const STALE_WEBSITE_METADATA_REQUEUE_MINUTES: i32 = 12;
 const STALE_SCREENSHOT_REQUEUE_MINUTES: i32 = 6;
 const STALE_GITHUB_METADATA_REQUEUE_MINUTES: i32 = 45;
 /// Fail screenshot rows still `processing` with no persisted log after this many minutes (orphan rows).
-const STALE_SCREENSHOT_FAIL_EMPTY_LOG_MINUTES: i32 = 5;
+const STALE_SCREENSHOT_FAIL_EMPTY_LOG_MINUTES: i32 = 2;
 
 /// Policies applied before a job of this type is marked `processing` (concurrency + optional pacing).
 #[derive(Clone, Debug)]
@@ -722,7 +723,9 @@ async fn run_one_job(
         }
         JOB_TYPE_LINK_WEBSITE_SCREENSHOT => {
             if let Some(link_id) = payload_link_id(&payload) {
-                logger.log(&format!("Website screenshot capture for link_id={link_id}"));
+                logger
+                    .log_critical(&format!("Website screenshot capture for link_id={link_id}"))
+                    .await;
                 crate::link_screenshot_job::execute_link_screenshot_job(
                     pool,
                     client,
@@ -965,14 +968,21 @@ async fn run_one_job_supervised(
 async fn try_claim_next(
     pool: &PgPool,
     budgets: &TypeBudgets,
+    worker_id: u64,
+    job_logs: &JobLogRegistry,
 ) -> Option<(String, String, serde_json::Value, Option<String>)> {
     const MAX_TRIES: u32 = 48;
     for _ in 0..MAX_TRIES {
+        let claim_line = format!(
+            "{} Row claimed from queue (status=processing)",
+            chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ")
+        );
         let row = match sqlx::query(
             r#"UPDATE background_jobs AS b
                SET status = 'processing',
                    started_at = clock_timestamp(),
-                   updated_at = clock_timestamp()
+                   updated_at = clock_timestamp(),
+                   processing_log = COALESCE(b.processing_log, '[]'::jsonb) || jsonb_build_array($1::text)
                FROM (
                  SELECT bi.id
                  FROM background_jobs bi
@@ -987,6 +997,7 @@ async fn try_claim_next(
                  AND (b.run_after IS NULL OR b.run_after <= clock_timestamp())
                RETURNING b.id, b.job_type, b.payload, b.created_by_user_id"#,
         )
+        .bind(&claim_line)
         .fetch_optional(pool)
         .await
         {
@@ -1013,6 +1024,8 @@ async fn try_claim_next(
             .ok()
             .flatten();
 
+        job_logs.append_memory(&id, &claim_line);
+
         if !budgets.try_acquire(&job_type) {
             debug!(
                 target: "jobs",
@@ -1021,19 +1034,43 @@ async fn try_claim_next(
                 job_type = %job_type,
                 "per-type concurrency or start interval; row deferred (75ms)"
             );
+            let defer_line = format!(
+                "{} Deferred to pending: per-type concurrency limit (type={job_type})",
+                chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            );
+            job_logs.append_memory(&id, &defer_line);
+            let pool_defer = pool.clone();
+            let id_defer = id.clone();
+            let defer_line_persist = defer_line.clone();
+            tokio::spawn(async move {
+                persist_job_log_line(&pool_defer, &id_defer, &defer_line_persist).await;
+            });
             let _ = sqlx::query(
                 r#"UPDATE background_jobs
                    SET status = 'pending',
                        started_at = NULL,
                        run_after = clock_timestamp() + interval '75 milliseconds',
-                       updated_at = clock_timestamp()
+                       updated_at = clock_timestamp(),
+                       processing_log = COALESCE(processing_log, '[]'::jsonb) || jsonb_build_array($2::text)
                    WHERE id = $1 AND status = 'processing'"#,
             )
             .bind(&id)
+            .bind(&defer_line)
             .execute(pool)
             .await;
             continue;
         }
+
+        let dispatch_line = format!(
+            "{} Dispatcher worker_id={worker_id} spawning handler (type={job_type})",
+            chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ")
+        );
+        job_logs.append_memory(&id, &dispatch_line);
+        let pool_log = pool.clone();
+        let id_log = id.clone();
+        tokio::spawn(async move {
+            persist_job_log_line(&pool_log, &id_log, &dispatch_line).await;
+        });
 
         return Some((id, job_type, payload, created_by));
     }
@@ -1078,8 +1115,8 @@ pub(super) async fn run_job_queue_dispatcher_loop(
     const IDLE_SLEEP_MIN_MS: u64 = 400;
     /// Upper bound for idle exponential backoff.
     const IDLE_SLEEP_MAX_MS: u64 = 1_600;
-    /// Sweep stale `processing` rows roughly every minute.
-    const STALE_RECLAIM_INTERVAL: Duration = Duration::from_secs(60);
+    /// Sweep stale `processing` rows roughly every 30 seconds.
+    const STALE_RECLAIM_INTERVAL: Duration = Duration::from_secs(30);
     let mut sleep_ms = IDLE_SLEEP_MIN_MS;
     let mut last_stale_reclaim = Instant::now();
 
@@ -1093,7 +1130,7 @@ pub(super) async fn run_job_queue_dispatcher_loop(
         let mut claimed_this_wake = 0u32;
         while claimed_this_wake < MAX_CLAIMS_PER_WAKE {
             let Some((job_id, job_type, payload, created_by_user_id)) =
-                try_claim_next(&pool, &budgets).await
+                try_claim_next(&pool, &budgets, worker_id, &job_logs).await
             else {
                 break;
             };
@@ -1107,13 +1144,6 @@ pub(super) async fn run_job_queue_dispatcher_loop(
             let job_runs_spawn = job_runs.clone();
             let job_id_for_log = job_id.clone();
             let job_type_for_log = job_type.clone();
-            append_system_job_log_line_with_registry(
-                &pool,
-                &job_logs_spawn,
-                &job_id,
-                &format!("Claimed by dispatcher worker_id={worker_id} (type={job_type_for_log})"),
-            )
-            .await;
             tokio::spawn(async move {
                 let started = Instant::now();
                 debug!(

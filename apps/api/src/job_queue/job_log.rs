@@ -125,7 +125,7 @@ impl JobLogger {
 pub async fn persist_job_log_line(pool: &PgPool, job_id: &str, line: &str) {
     if let Err(e) = sqlx::query(
         r#"UPDATE background_jobs
-           SET processing_log = processing_log || jsonb_build_array($2::text),
+           SET processing_log = COALESCE(processing_log, '[]'::jsonb) || jsonb_build_array($2::text),
                updated_at = clock_timestamp()
            WHERE id = $1"#,
     )

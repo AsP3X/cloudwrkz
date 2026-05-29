@@ -11,7 +11,7 @@ use axum::{
     routing::{delete, get, patch, post},
 };
 use futures_util::future::ready;
-use futures_util::stream::StreamExt;
+use futures_util::stream::{self, StreamExt};
 use rand::Rng;
 use serde::Deserialize;
 use sqlx::Row;
@@ -848,26 +848,39 @@ async fn get_background_job_log(
     })))
 }
 
-// Human: SSE streams new log lines for one background job while it runs (and briefly after reconnect).
-// Agent: require_admin_jobs_view; VERIFY job exists; BroadcastStream filter job_id; Event data line.
+// Human: SSE replays persisted/in-memory history first, then live lines so clients never miss claim logs between GET and subscribe.
+// Agent: fetch_job_log_lines THEN chain BroadcastStream filter job_id; Event data per line.
 
 async fn background_job_log_sse(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(job_id): Path<String>,
-) -> Result<Sse<impl futures_util::stream::Stream<Item = Result<Event, Infallible>>>, AppError> {
+) -> Result<Sse<impl stream::Stream<Item = Result<Event, Infallible>>>, AppError> {
     require_admin_jobs_view(&state.pool, &user.id).await?;
     background_job_exists(&state.pool, &job_id).await?;
+    let lines = crate::job_queue::fetch_job_log_lines(
+        &state.pool,
+        &state.job_worker_supervisor.job_logs(),
+        &job_id,
+    )
+    .await
+    .map_err(|e| AppError::internal(format!("job log: {e}")))?;
     let job_id_filter = job_id.clone();
     let rx = state.job_worker_supervisor.job_logs().subscribe();
-    let stream = BroadcastStream::new(rx).filter_map(move |res| {
+    let history = stream::iter(
+        lines
+            .into_iter()
+            .map(|line| Ok(Event::default().data(line))),
+    );
+    let live = BroadcastStream::new(rx).filter_map(move |res| {
         let job_id_filter = job_id_filter.clone();
         ready(match res {
             Ok((id, line)) if id == job_id_filter => Some(Ok(Event::default().data(line))),
             _ => None,
         })
     });
-    Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
+    let combined = history.chain(live);
+    Ok(Sse::new(combined).keep_alive(KeepAlive::default()))
 }
 
 async fn background_job_exists(pool: &sqlx::PgPool, job_id: &str) -> Result<(), AppError> {
