@@ -1,6 +1,7 @@
 import React from "react";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/utils/cn";
+import { resolveLinkPreviewAssetUrl } from "@/lib/utils/linkMetadata";
 
 // Human: React UI for `LinkMetadataDisplay` in saved links and collections: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
 // Agent: SCOPE links; COLLECTIONS metadata GitHub YouTube; EXPORTS LinkMetadataDisplay; REACT component; READS props hooks; MAY CALL api client.
@@ -194,21 +195,24 @@ export function LinkMetadataDisplay({ metadata }: LinkMetadataDisplayProps) {
     }
 
     if (key === "screenshotUrl") {
-      const strVal = String(value);
+      const resolved = resolveLinkPreviewAssetUrl(String(value));
+      if (!resolved) {
+        return <span className="text-neutral-400 dark:text-neutral-500 italic text-sm">Not available</span>;
+      }
       return (
         <div className="flex flex-col gap-3 w-full min-w-0">
           <a
-            href={strVal}
+            href={resolved}
             target="_blank"
             rel="noopener noreferrer"
             className="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 text-sm break-all underline decoration-dotted underline-offset-2"
           >
-            {strVal}
+            Open screenshot
           </a>
-          {/* Human: Metadata dialog should show the same full capture as the link preview card, not a favicon-sized crop. */}
-          {/* Agent: img w-full h-auto; READS screenshotUrl; MATCHES WebsiteLinkPreview aspect ratio behavior. */}
+          {/* Human: API stores /screenshots/... paths; resolve against API base so the image loads in this dialog. */}
+          {/* Agent: CALLS resolveLinkPreviewAssetUrl; img src absolute API URL; w-full h-auto full capture. */}
           <img
-            src={strVal}
+            src={resolved}
             alt="Page screenshot"
             className="w-full h-auto max-w-full rounded-lg border-2 border-neutral-200 dark:border-neutral-700 shadow-sm"
             onError={(e) => {
@@ -280,8 +284,16 @@ export function LinkMetadataDisplay({ metadata }: LinkMetadataDisplayProps) {
     return <span className="text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed">{String(value)}</span>;
   };
 
+  const rawScreenshot =
+    typeof metadata.screenshotUrl === "string" ? metadata.screenshotUrl.trim() : "";
+  const resolvedScreenshotUrl = resolveLinkPreviewAssetUrl(rawScreenshot || null);
+
   const entries = Object.entries(metadata)
-    .filter(([, v]) => v !== undefined && v !== null)
+    .filter(([key, v]) => {
+      if (v === undefined || v === null) return false;
+      if (resolvedScreenshotUrl && key === "screenshotUrl") return false;
+      return true;
+    })
     .sort(([keyA], [keyB]) => {
       const categoryOrder: Record<string, number> = {
         Basic: 0,
@@ -317,6 +329,38 @@ export function LinkMetadataDisplay({ metadata }: LinkMetadataDisplayProps) {
 
   return (
     <div className="space-y-4">
+      {resolvedScreenshotUrl && (
+        <div className="bg-white dark:bg-neutral-900 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden">
+          <div className="bg-gradient-to-r from-neutral-50 to-neutral-100 dark:from-neutral-800 dark:to-neutral-800/50 px-4 py-3 border-b border-neutral-200 dark:border-neutral-700">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Page Screenshot</h3>
+              <a
+                href={resolvedScreenshotUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline"
+              >
+                Open full size
+              </a>
+            </div>
+          </div>
+          <div className="p-4">
+            {/* Human: View Metadata should surface the prerender PNG at the top, not only as a buried table row with a broken relative path. */}
+            {/* Agent: READS metadata.screenshotUrl; RESOLVES via resolveLinkPreviewAssetUrl; RENDERS before groupedEntries; EXCLUDED from Media table when shown here. */}
+            <a href={resolvedScreenshotUrl} target="_blank" rel="noopener noreferrer" className="block">
+              <img
+                src={resolvedScreenshotUrl}
+                alt="Screenshot of the linked website"
+                className="w-full h-auto max-w-full rounded-lg border border-neutral-200 dark:border-neutral-700 shadow-sm"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = "none";
+                }}
+              />
+            </a>
+          </div>
+        </div>
+      )}
+
       {Object.entries(groupedEntries).map(([category, categoryEntries]) => (
         <div
           key={category}
