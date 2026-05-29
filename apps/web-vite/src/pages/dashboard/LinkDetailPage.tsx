@@ -310,6 +310,15 @@ export default function LinkDetailPage() {
             <RobotsTxtWarning message={robotsStatus.message} />
           )}
 
+          {link.description && (
+            <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
+              <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">Description</h2>
+              <div className="w-full break-words">
+                <RichTextDisplay content={link.description} />
+              </div>
+            </div>
+          )}
+
           {showWebsitePreviewSection && websitePreview && (
             <WebsiteLinkPreview preview={websitePreview} pageUrl={link.url} />
           )}
@@ -317,15 +326,6 @@ export default function LinkDetailPage() {
             <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 text-sm text-neutral-600 dark:text-neutral-400">
               Website preview is loading or could not be captured. Use &quot;Refresh website preview&quot; in the
               sidebar to try again.
-            </div>
-          )}
-
-          {link.description && (
-            <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
-              <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">Description</h2>
-              <div className="w-full break-words">
-                <RichTextDisplay content={link.description} />
-              </div>
             </div>
           )}
 
