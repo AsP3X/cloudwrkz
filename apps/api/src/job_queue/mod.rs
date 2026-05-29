@@ -22,7 +22,10 @@ pub mod job_log;
 pub mod supervisor;
 mod time_entry_mutations;
 
-pub use job_log::{JobLogRegistry, JobLogger, payload_keys_summary};
+pub use job_log::{
+    JobLogRegistry, JobLogger, append_system_job_log_line, fetch_job_log_lines,
+    payload_keys_summary,
+};
 pub use supervisor::{resolve_initial_worker_count, spawn_job_queue_supervisor};
 
 use std::collections::HashMap;
@@ -58,8 +61,13 @@ pub const JOB_TYPE_AUTH_REGISTER: &str = "auth_register";
 const RUN_ONE_JOB_WALL_TIMEOUT: Duration = Duration::from_secs(600);
 
 /// If a row stays `processing` longer than this, assume a crashed worker or lost task and mark failed.
-/// `github_link_metadata`, `website_link_metadata`, and `link_website_screenshot` are excluded (slow hosts / Chromium).
+/// Slow preview / GitHub jobs use separate requeue thresholds in [`reclaim_stale_processing_jobs`].
 const STALE_PROCESSING_AFTER_MINUTES: i32 = 3;
+
+/// Requeue preview / GitHub jobs stuck in `processing` (worker crash, deploy restart, hung Chromium).
+const STALE_WEBSITE_METADATA_REQUEUE_MINUTES: i32 = 12;
+const STALE_SCREENSHOT_REQUEUE_MINUTES: i32 = 15;
+const STALE_GITHUB_METADATA_REQUEUE_MINUTES: i32 = 45;
 
 /// Policies applied before a job of this type is marked `processing` (concurrency + optional pacing).
 #[derive(Clone, Debug)]
@@ -181,11 +189,136 @@ async fn mark_job_failed(pool: &PgPool, job_id: &str, msg: &str, logger: Option<
 }
 
 /// Fails jobs stuck in `processing` (e.g. process crash or task panic before `mark_job_failed`).
-/// Excludes long-running GitHub metadata and auth login/register rows (updated by auth retry loops).
+/// Slow link-preview and GitHub jobs are requeued instead of failed (see [`requeue_stale_preview_jobs`]).
 // Human: Crashed workers can leave rows in `processing` forever; this periodic sweep marks old ones failed except long GitHub/auth jobs.
-// Agent: UPDATE background_jobs WHERE processing AND started_at older than STALE_PROCESSING_AFTER_MINUTES; EXCLUDES github_link_metadata, auth_login, auth_register.
+// Agent: UPDATE background_jobs WHERE processing AND started_at older than STALE_PROCESSING_AFTER_MINUTES; EXCLUDES preview/github/auth types handled separately.
+
+pub(super) async fn requeue_interrupted_processing_jobs(pool: &PgPool) {
+    let rows = match sqlx::query(
+        r#"UPDATE background_jobs
+           SET status = 'pending',
+               started_at = NULL,
+               run_after = clock_timestamp(),
+               updated_at = clock_timestamp()
+           WHERE status = 'processing'
+             AND job_type NOT IN ('auth_login', 'auth_register')
+           RETURNING id, job_type"#,
+    )
+    .fetch_all(pool)
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            warn!(
+                target: "jobs",
+                event = "jobs.startup_requeue_failed",
+                error = %e,
+                "could not requeue interrupted processing jobs on startup"
+            );
+            return;
+        }
+    };
+
+    if rows.is_empty() {
+        return;
+    }
+
+    info!(
+        target: "jobs",
+        event = "jobs.startup_requeue",
+        count = rows.len(),
+        "requeued processing jobs after worker startup"
+    );
+
+    for row in rows {
+        let id: String = row.get("id");
+        let job_type: String = row.get("job_type");
+        append_system_job_log_line(
+            pool,
+            &id,
+            &format!("Requeued after API worker restart (was processing, type={job_type})"),
+        )
+        .await;
+    }
+}
+
+async fn requeue_stale_preview_jobs(pool: &PgPool, job_type: &str, after_minutes: i32) {
+    let rows = match sqlx::query(
+        r#"UPDATE background_jobs
+           SET status = 'pending',
+               started_at = NULL,
+               run_after = clock_timestamp() + interval '200 milliseconds',
+               updated_at = clock_timestamp()
+           WHERE status = 'processing'
+             AND job_type = $1
+             AND started_at IS NOT NULL
+             AND started_at < clock_timestamp() - ($2::integer * interval '1 minute')
+           RETURNING id"#,
+    )
+    .bind(job_type)
+    .bind(after_minutes)
+    .fetch_all(pool)
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            warn!(
+                target: "jobs",
+                event = "jobs.stale_requeue_failed",
+                job_type = %job_type,
+                error = %e,
+                "could not requeue stale preview job"
+            );
+            return;
+        }
+    };
+
+    if rows.is_empty() {
+        return;
+    }
+
+    warn!(
+        target: "jobs",
+        event = "jobs.stale_requeue",
+        job_type = %job_type,
+        count = rows.len(),
+        after_minutes,
+        "requeued stale processing preview jobs"
+    );
+
+    for row in rows {
+        let id: String = row.get("id");
+        append_system_job_log_line(
+            pool,
+            &id,
+            &format!(
+                "Requeued after {after_minutes}m in processing without completion (type={job_type})"
+            ),
+        )
+        .await;
+    }
+}
 
 pub(super) async fn reclaim_stale_processing_jobs(pool: &PgPool) {
+    requeue_stale_preview_jobs(
+        pool,
+        JOB_TYPE_WEBSITE_LINK_METADATA,
+        STALE_WEBSITE_METADATA_REQUEUE_MINUTES,
+    )
+    .await;
+    requeue_stale_preview_jobs(
+        pool,
+        JOB_TYPE_LINK_WEBSITE_SCREENSHOT,
+        STALE_SCREENSHOT_REQUEUE_MINUTES,
+    )
+    .await;
+    requeue_stale_preview_jobs(
+        pool,
+        JOB_TYPE_GITHUB_LINK_METADATA,
+        STALE_GITHUB_METADATA_REQUEUE_MINUTES,
+    )
+    .await;
+
     let res = sqlx::query(
         r#"UPDATE background_jobs
            SET status = 'failed',
@@ -195,7 +328,13 @@ pub(super) async fn reclaim_stale_processing_jobs(pool: &PgPool) {
            WHERE status = 'processing'
              AND started_at IS NOT NULL
              AND started_at < clock_timestamp() - ($1::integer * interval '1 minute')
-             AND job_type NOT IN ('github_link_metadata', 'website_link_metadata', 'link_website_screenshot', 'auth_login', 'auth_register')"#,
+             AND job_type NOT IN (
+               'github_link_metadata',
+               'website_link_metadata',
+               'link_website_screenshot',
+               'auth_login',
+               'auth_register'
+             )"#,
     )
     .bind(STALE_PROCESSING_AFTER_MINUTES)
     .execute(pool)
@@ -572,7 +711,7 @@ async fn run_one_job_supervised(
     let job_id_for_log = job_id.clone();
     let job_type_for_log = job_type.clone();
     let pool_fail = pool.clone();
-    let logger = JobLogger::new(job_logs, &job_id_for_log);
+    let logger = JobLogger::new(job_logs, pool.clone(), &job_id_for_log);
     logger.log(&format!("Job processing started (type={job_type_for_log})"));
 
     let logger_inner = logger.clone();
@@ -785,6 +924,9 @@ pub(super) async fn run_job_queue_dispatcher_loop(
             let job_logs_spawn = job_logs.clone();
             let job_id_for_log = job_id.clone();
             let job_type_for_log = job_type.clone();
+            JobLogger::new(job_logs_spawn.clone(), pool.clone(), &job_id).log(&format!(
+                "Claimed by dispatcher worker_id={worker_id} (type={job_type_for_log})"
+            ));
             tokio::spawn(async move {
                 let started = Instant::now();
                 debug!(

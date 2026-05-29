@@ -823,7 +823,13 @@ async fn get_background_job_log(
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_admin_jobs_view(&state.pool, &user.id).await?;
     background_job_exists(&state.pool, &job_id).await?;
-    let lines = state.job_worker_supervisor.job_logs().lines_for(&job_id);
+    let lines = crate::job_queue::fetch_job_log_lines(
+        &state.pool,
+        &state.job_worker_supervisor.job_logs(),
+        &job_id,
+    )
+    .await
+    .map_err(|e| AppError::internal(format!("job log: {e}")))?;
     Ok(Json(serde_json::json!({
         "jobId": job_id,
         "lines": lines,

@@ -11,7 +11,8 @@ use tracing::info;
 use crate::github_metadata;
 use crate::job_queue::JobLogger;
 use crate::link_preview::{
-    capture_link_screenshot, merge_screenshot_into_metadata, robots::check_robots_allowed,
+    capture_link_screenshot, chromium_executable, merge_screenshot_into_metadata,
+    robots::check_robots_allowed,
 };
 
 async fn mark_background_job_failed(
@@ -44,6 +45,9 @@ pub async fn execute_link_screenshot_job(
 ) {
     if let Some(log) = logger {
         log.log(&format!("Loading link row link_id={link_id}"));
+        if chromium_executable().is_none() {
+            log.log("Chromium not available on this host — screenshot capture skipped");
+        }
     }
     let link_row = match sqlx::query("SELECT url, metadata FROM links WHERE id = $1")
         .bind(link_id)

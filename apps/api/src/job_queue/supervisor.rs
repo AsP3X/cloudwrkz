@@ -271,6 +271,7 @@ async fn supervisor_loop(
     let budgets = std::sync::Arc::new(super::budget::TypeBudgets::new(policies));
     let github_rate = crate::github_rate_limit::GithubRestRateLimit::from_config(&config);
 
+    super::requeue_interrupted_processing_jobs(&pool).await;
     super::reclaim_stale_processing_jobs(&pool).await;
 
     let mut running: Vec<RunningEntry> = Vec::new();

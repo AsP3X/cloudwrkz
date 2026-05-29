@@ -1,12 +1,17 @@
 //! In-memory ring-buffer logs keyed by `background_jobs.id` for admin live tail and post-mortem inspection.
+//!
+//! Lines are also appended to `background_jobs.processing_log` so logs survive API restarts and are
+//! readable from any API instance.
 
 // Human: Each background job gets a timestamped line buffer so operators can debug runs from the Jobs detail dialog without SSH or log aggregation.
-// Agent: JobLogRegistry Mutex HashMap job_id→VecDeque; broadcast (job_id,line); JobLogger cheap Clone wrapper for handlers; MAX_LINES per job + prune stale entries.
+// Agent: JobLogRegistry Mutex HashMap job_id→VecDeque; broadcast (job_id,line); JobLogger WRITES memory + async DB append; fetch_job_log_lines READS DB merged with memory.
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
+use sqlx::PgPool;
 use tokio::sync::broadcast;
+use tracing::warn;
 
 const JOB_LOG_MAX_LINES: usize = 500;
 const JOB_LOG_MAX_JOBS: usize = 2_000;
@@ -33,20 +38,18 @@ impl JobLogRegistry {
         }
     }
 
-    pub fn append(&self, job_id: &str, message: &str) {
-        let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ");
-        let line = format!("{ts} {message}");
+    pub fn append_memory(&self, job_id: &str, line: &str) {
         if let Ok(mut map) = self.inner.lock() {
             let deque = map.entry(job_id.to_string()).or_insert_with(VecDeque::new);
             while deque.len() >= self.max_lines {
                 deque.pop_front();
             }
-            deque.push_back(line.clone());
+            deque.push_back(line.to_string());
             if map.len() > self.max_jobs {
                 Self::prune_oldest_job(&mut map);
             }
         }
-        let _ = self.live.send((job_id.to_string(), line));
+        let _ = self.live.send((job_id.to_string(), line.to_string()));
     }
 
     fn prune_oldest_job(map: &mut HashMap<String, VecDeque<String>>) {
@@ -73,24 +76,94 @@ impl JobLogRegistry {
 #[derive(Clone)]
 pub struct JobLogger {
     registry: Arc<JobLogRegistry>,
+    pool: PgPool,
     job_id: String,
 }
 
 impl JobLogger {
-    pub fn new(registry: Arc<JobLogRegistry>, job_id: &str) -> Self {
+    pub fn new(registry: Arc<JobLogRegistry>, pool: PgPool, job_id: &str) -> Self {
         Self {
             registry,
+            pool,
             job_id: job_id.to_string(),
         }
     }
 
     pub fn log(&self, message: &str) {
-        self.registry.append(&self.job_id, message);
+        let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ");
+        let line = format!("{ts} {message}");
+        self.registry.append_memory(&self.job_id, &line);
+        let pool = self.pool.clone();
+        let job_id = self.job_id.clone();
+        tokio::spawn(async move {
+            persist_job_log_line(&pool, &job_id, &line).await;
+        });
     }
 
     pub fn job_id(&self) -> &str {
         &self.job_id
     }
+}
+
+// Human: DB persistence is best-effort so logging never blocks job handlers or panics the worker.
+// Agent: UPDATE background_jobs SET processing_log = processing_log || jsonb_build_array($line) WHERE id; LOGS warn on sqlx Err.
+
+pub async fn persist_job_log_line(pool: &PgPool, job_id: &str, line: &str) {
+    if let Err(e) = sqlx::query(
+        r#"UPDATE background_jobs
+           SET processing_log = processing_log || jsonb_build_array($2::text),
+               updated_at = clock_timestamp()
+           WHERE id = $1"#,
+    )
+    .bind(job_id)
+    .bind(line)
+    .execute(pool)
+    .await
+    {
+        warn!(
+            event = "jobs.log_persist_failed",
+            job_id = %job_id,
+            error = %e,
+            "could not append background_jobs.processing_log line"
+        );
+    }
+}
+
+// Human: Admin log API merges DB history with any in-memory lines not yet visible in a read replica lag scenario.
+// Agent: SELECT processing_log jsonb array; MERGE with memory lines deduped by exact string; RETURNS Vec<String>.
+
+pub async fn fetch_job_log_lines(
+    pool: &PgPool,
+    registry: &JobLogRegistry,
+    job_id: &str,
+) -> Result<Vec<String>, sqlx::Error> {
+    let stored: Option<serde_json::Value> =
+        sqlx::query_scalar("SELECT processing_log FROM background_jobs WHERE id = $1")
+            .bind(job_id)
+            .fetch_optional(pool)
+            .await?;
+
+    let db_lines: Vec<String> = stored
+        .and_then(|v| v.as_array().cloned())
+        .map(|arr| {
+            arr.into_iter()
+                .filter_map(|x| x.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let memory_lines = registry.lines_for(job_id);
+    if memory_lines.is_empty() {
+        return Ok(db_lines);
+    }
+
+    let mut merged = db_lines;
+    for line in memory_lines {
+        if !merged.contains(&line) {
+            merged.push(line);
+        }
+    }
+    Ok(merged)
 }
 
 /// Safe one-line summary of payload keys for job logs (never includes secret field values).
@@ -128,5 +201,34 @@ pub fn payload_keys_summary(payload: &serde_json::Value) -> String {
         "(empty object)".into()
     } else {
         redacted.join(", ")
+    }
+}
+
+/// Append a system line directly (startup requeue / stale reclaim) without broadcast fan-out.
+// Human: Recovery paths need an audit trail in the same column the UI reads, even when no worker task is attached.
+// Agent: CALLS persist_job_log_line only; NO memory registry write unless caller also logs via JobLogger.
+
+pub async fn append_system_job_log_line(pool: &PgPool, job_id: &str, message: &str) {
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ");
+    let line = format!("{ts} {message}");
+    persist_job_log_line(pool, job_id, &line).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn payload_keys_summary_redacts_secrets() {
+        let payload = json!({
+            "link_id": "abc",
+            "password": "secret",
+            "user_id": "u1"
+        });
+        let s = payload_keys_summary(&payload);
+        assert!(s.contains("link_id=abc"));
+        assert!(s.contains("password:<redacted>"));
+        assert!(!s.contains("secret"));
     }
 }

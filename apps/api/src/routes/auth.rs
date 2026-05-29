@@ -121,7 +121,7 @@ async fn login(
             client_hints: client_hints_from_headers(&headers),
             session_policy: SessionPolicy::from_config(&state.config),
         },
-        JobLogger::new(state.job_worker_supervisor.job_logs(), &job_id),
+        JobLogger::new(state.job_worker_supervisor.job_logs(), state.pool.clone(), &job_id),
     );
     info!(
         event = "auth.login.queued",
@@ -222,7 +222,7 @@ async fn register(
             ip,
             user_agent,
         },
-        JobLogger::new(state.job_worker_supervisor.job_logs(), &job_id),
+        JobLogger::new(state.job_worker_supervisor.job_logs(), state.pool.clone(), &job_id),
     );
     info!(
         event = "auth.register.queued",
