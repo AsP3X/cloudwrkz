@@ -230,6 +230,8 @@ function statusBadgeClass(status: string) {
       return "bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 border border-amber-200/80 dark:border-amber-800/60";
     case "processing":
       return "bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200 border border-sky-200/80 dark:border-sky-800/60";
+    case "stalling":
+      return "bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-200 border border-orange-200/80 dark:border-orange-800/60";
     case "completed":
       return "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 border border-emerald-200/80 dark:border-emerald-800/60";
     case "failed":
@@ -332,11 +334,12 @@ function IconSliders({ className }: { className?: string }) {
   );
 }
 
-type MetricAccent = "amber" | "sky" | "emerald" | "red";
+type MetricAccent = "amber" | "sky" | "orange" | "emerald" | "red";
 
 const METRIC_DOT: Record<MetricAccent, string> = {
   amber: "bg-amber-500 dark:bg-amber-400",
   sky: "bg-sky-500 dark:bg-sky-400",
+  orange: "bg-orange-500 dark:bg-orange-400",
   emerald: "bg-emerald-500 dark:bg-emerald-400",
   red: "bg-red-500 dark:bg-red-400",
 };
@@ -344,11 +347,13 @@ const METRIC_DOT: Record<MetricAccent, string> = {
 function JobMetricsCompactRail({
   pending,
   processing,
+  stalling,
   succeeded,
   failed,
 }: {
   pending: number;
   processing: number;
+  stalling: number;
   succeeded: number;
   failed: number;
 }) {
@@ -360,6 +365,7 @@ function JobMetricsCompactRail({
   }[] = [
     { label: "Pending", value: pending, hint: "Waiting for a worker slot", accent: "amber" },
     { label: "Running", value: processing, hint: "Currently executing", accent: "sky" },
+    { label: "Stalling", value: stalling, hint: "Claimed but handler never started — awaiting reclaim", accent: "orange" },
     { label: "Succeeded", value: succeeded, hint: "In the loaded history window", accent: "emerald" },
     { label: "Failed", value: failed, hint: "In the loaded history window", accent: "red" },
   ];
@@ -648,6 +654,9 @@ function JobLiveLogPanel({
       stopLiveTail();
       setLogLines(["Waiting for a worker slot — logs appear when status becomes processing."]);
       setLogLoading(false);
+    } else if (status === "stalling") {
+      stopLiveTail();
+      void loadFullLog(jobId);
     } else {
       void loadFullLog(jobId);
     }
@@ -763,7 +772,7 @@ function AdminBackgroundJobsPageContent() {
   const queuedElapsed = useLiveDuration(liveQueuedSince);
 
   const queueJobs = useMemo(
-    () => activeJobs.filter((j) => j.status === "pending" || j.status === "processing"),
+    () => activeJobs.filter((j) => j.status === "pending" || j.status === "processing" || j.status === "stalling"),
     [activeJobs],
   );
 
@@ -798,9 +807,10 @@ function AdminBackgroundJobsPageContent() {
   const metrics = useMemo(() => {
     const pending = queueJobs.filter((j) => j.status === "pending").length;
     const processing = queueJobs.filter((j) => j.status === "processing").length;
+    const stalling = queueJobs.filter((j) => j.status === "stalling").length;
     const ok = completedJobs.filter((j) => j.status === "completed").length;
     const bad = completedJobs.filter((j) => j.status === "failed").length;
-    return { pending, processing, ok, bad };
+    return { pending, processing, stalling, ok, bad };
   }, [queueJobs, completedJobs]);
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
@@ -943,6 +953,7 @@ function AdminBackgroundJobsPageContent() {
 
   const showJobControls =
     detail?.status === "pending" ||
+    detail?.status === "stalling" ||
     detail?.status === "processing" ||
     detail?.status === "failed" ||
     detail?.status === "cancelled";
@@ -987,6 +998,7 @@ function AdminBackgroundJobsPageContent() {
       <JobMetricsCompactRail
         pending={metrics.pending}
         processing={metrics.processing}
+        stalling={metrics.stalling}
         succeeded={metrics.ok}
         failed={metrics.bad}
       />
@@ -1004,7 +1016,7 @@ function AdminBackgroundJobsPageContent() {
         <SectionShell
           icon={IconQueue}
           title="Active queue"
-          subtitle="Pending and processing jobs across all registered types. Select a row for full detail."
+          subtitle="Pending, stalling, and processing jobs across all registered types. Stalling jobs are reclaimed automatically before new pending work."
           flush
         >
           {loading ? (
@@ -1096,6 +1108,9 @@ function AdminBackgroundJobsPageContent() {
                   )}
                   {detail.status === "failed" && <span className="text-red-700 dark:text-red-300 font-medium">Failed</span>}
                   {detail.status === "pending" && <span className="text-amber-700 dark:text-amber-300">Pending</span>}
+                  {detail.status === "stalling" && (
+                    <span className="text-orange-700 dark:text-orange-300 font-medium">Stalling — awaiting reclaim</span>
+                  )}
                   {detail.status === "processing" && <span className="text-sky-700 dark:text-sky-300">Running</span>}
                   {detail.status === "cancelled" && <span>Cancelled</span>}
                 </Def>
@@ -1166,7 +1181,7 @@ function AdminBackgroundJobsPageContent() {
                       </p>
                     )}
                     <div className="flex flex-wrap gap-2">
-                      {detail.status === "pending" && (
+                      {(detail.status === "pending" || detail.status === "stalling") && (
                         <Button
                           type="button"
                           variant="outline"
@@ -1190,6 +1205,7 @@ function AdminBackgroundJobsPageContent() {
                         </Button>
                       )}
                       {(detail.status === "processing" ||
+                        detail.status === "stalling" ||
                         detail.status === "failed" ||
                         detail.status === "cancelled") && (
                         <Button

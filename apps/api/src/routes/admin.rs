@@ -2829,9 +2829,13 @@ async fn list_background_jobs(
                       u.email AS created_by_email, u.name AS created_by_name
                FROM background_jobs b
                LEFT JOIN users u ON u.id = b.created_by_user_id
-               WHERE b.status IN ('pending', 'processing')
+               WHERE b.status IN ('pending', 'processing', 'stalling')
                ORDER BY
-                 CASE b.status WHEN 'processing' THEN 0 ELSE 1 END,
+                 CASE b.status
+                   WHEN 'processing' THEN 0
+                   WHEN 'stalling' THEN 1
+                   ELSE 2
+                 END,
                  b.priority DESC,
                  b.created_at ASC
                LIMIT $1"#,
@@ -3109,6 +3113,11 @@ async fn admin_dashboard_stats(
             .fetch_one(&state.pool)
             .await
             .unwrap_or(0);
+    let bg_stalling: i64 =
+        sqlx::query_scalar("SELECT COUNT(*)::bigint FROM background_jobs WHERE status = 'stalling'")
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0);
     let bg_processing: i64 = sqlx::query_scalar(
         "SELECT COUNT(*)::bigint FROM background_jobs WHERE status = 'processing'",
     )
@@ -3129,7 +3138,7 @@ async fn admin_dashboard_stats(
         "totalGroups": total_groups,
         "recentRegistrations": recent_registrations,
         "recentTickets": recent_tickets,
-        "backgroundJobs": { "pending": bg_pending, "processing": bg_processing },
+        "backgroundJobs": { "pending": bg_pending, "processing": bg_processing, "stalling": bg_stalling },
     })))
 }
 

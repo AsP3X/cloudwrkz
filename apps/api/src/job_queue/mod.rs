@@ -76,6 +76,10 @@ const STALE_SCREENSHOT_REQUEUE_MINUTES: i32 = 6;
 const STALE_GITHUB_METADATA_REQUEUE_MINUTES: i32 = 45;
 /// Fail screenshot rows still `processing` with no persisted log after this many minutes (orphan rows).
 const STALE_SCREENSHOT_FAIL_EMPTY_LOG_MINUTES: i32 = 2;
+/// Handler never logged progress after claim; row moves to `stalling` (see [`mark_stale_processing_as_stalling`]).
+const STALL_WITHOUT_HANDLER_AFTER_SECONDS: i32 = 90;
+
+pub const JOB_STATUS_STALLING: &str = "stalling";
 
 /// Policies applied before a job of this type is marked `processing` (concurrency + optional pacing).
 #[derive(Clone, Debug)]
@@ -380,6 +384,12 @@ async fn fail_stale_screenshot_jobs_without_logs(pool: &PgPool, after_minutes: i
                processing_log IS NULL
                OR jsonb_typeof(processing_log) <> 'array'
                OR jsonb_array_length(processing_log) = 0
+               OR NOT EXISTS (
+                 SELECT 1
+                 FROM jsonb_array_elements_text(processing_log) AS elem(line)
+                 WHERE line LIKE '%Job processing started%'
+                    OR line LIKE '%Handler task started%'
+               )
              )
            RETURNING id"#,
     )
@@ -425,8 +435,79 @@ async fn fail_stale_screenshot_jobs_without_logs(pool: &PgPool, after_minutes: i
     }
 }
 
-pub(super) async fn reclaim_stale_processing_jobs(pool: &PgPool) {
+/// Mark rows stuck after SQL claim when the handler task never logged progress (releases budget slots).
+// Human: Claim writes one line immediately; if nothing follows within ~90s the worker task never ran — mark `stalling` so operators see it and dispatchers reclaim it.
+// Agent: UPDATE processing→stalling WHERE no handler log markers; CALLS budgets.release per job_type; APPENDS system log; RECLAIMED by try_claim_next (stalling before pending).
+
+async fn mark_stale_processing_as_stalling(
+    pool: &PgPool,
+    budgets: &TypeBudgets,
+    after_seconds: i32,
+) {
+    let rows = match sqlx::query(
+        r#"UPDATE background_jobs
+           SET status = 'stalling',
+               started_at = NULL,
+               run_after = NULL,
+               updated_at = clock_timestamp()
+           WHERE status = 'processing'
+             AND started_at IS NOT NULL
+             AND started_at < clock_timestamp() - ($1::integer * interval '1 second')
+             AND job_type NOT IN ('auth_login', 'auth_register')
+             AND NOT EXISTS (
+               SELECT 1
+               FROM jsonb_array_elements_text(COALESCE(processing_log, '[]'::jsonb)) AS elem(line)
+               WHERE line LIKE '%Job processing started%'
+                  OR line LIKE '%Handler task started%'
+             )
+           RETURNING id, job_type"#,
+    )
+    .bind(after_seconds)
+    .fetch_all(pool)
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            warn!(
+                target: "jobs",
+                event = "jobs.mark_stalling_failed",
+                error = %e,
+                "could not mark processing jobs as stalling"
+            );
+            return;
+        }
+    };
+
+    if rows.is_empty() {
+        return;
+    }
+
+    warn!(
+        target: "jobs",
+        event = "jobs.mark_stalling",
+        count = rows.len(),
+        after_seconds,
+        "marked processing jobs as stalling (handler never started)"
+    );
+
+    for row in rows {
+        let id: String = row.get("id");
+        let job_type: String = row.get("job_type");
+        budgets.release(&job_type);
+        append_system_job_log_line(
+            pool,
+            &id,
+            &format!(
+                "Marked stalling after {after_seconds}s: handler task never started (released budget slot; worker will reclaim)"
+            ),
+        )
+        .await;
+    }
+}
+
+pub(super) async fn reclaim_stale_processing_jobs(pool: &PgPool, budgets: &TypeBudgets) {
     requeue_processing_without_started_at(pool).await;
+    mark_stale_processing_as_stalling(pool, budgets, STALL_WITHOUT_HANDLER_AFTER_SECONDS).await;
     fail_stale_screenshot_jobs_without_logs(pool, STALE_SCREENSHOT_FAIL_EMPTY_LOG_MINUTES).await;
     requeue_stale_preview_jobs(
         pool,
@@ -492,7 +573,7 @@ pub async fn enqueue_github_link_metadata_job(
     let dedupe_key = format!("{JOB_TYPE_GITHUB_LINK_METADATA}:{link_id}");
     let pending: Option<String> = sqlx::query_scalar(
         r#"SELECT id FROM background_jobs
-           WHERE job_type = $1 AND dedupe_key = $2 AND status IN ('pending', 'processing')
+           WHERE job_type = $1 AND dedupe_key = $2 AND status IN ('pending', 'processing', 'stalling')
            ORDER BY created_at ASC LIMIT 1"#,
     )
     .bind(JOB_TYPE_GITHUB_LINK_METADATA)
@@ -531,7 +612,7 @@ pub async fn enqueue_website_link_metadata_job(
     let dedupe_key = format!("{JOB_TYPE_WEBSITE_LINK_METADATA}:{link_id}");
     let pending: Option<String> = sqlx::query_scalar(
         r#"SELECT id FROM background_jobs
-           WHERE job_type = $1 AND dedupe_key = $2 AND status IN ('pending', 'processing')
+           WHERE job_type = $1 AND dedupe_key = $2 AND status IN ('pending', 'processing', 'stalling')
            ORDER BY created_at ASC LIMIT 1"#,
     )
     .bind(JOB_TYPE_WEBSITE_LINK_METADATA)
@@ -571,7 +652,7 @@ pub async fn enqueue_link_website_screenshot_job(
     let dedupe_key = format!("{JOB_TYPE_LINK_WEBSITE_SCREENSHOT}:{link_id}");
     let pending: Option<String> = sqlx::query_scalar(
         r#"SELECT id FROM background_jobs
-           WHERE job_type = $1 AND dedupe_key = $2 AND status IN ('pending', 'processing')
+           WHERE job_type = $1 AND dedupe_key = $2 AND status IN ('pending', 'processing', 'stalling')
            ORDER BY created_at ASC LIMIT 1"#,
     )
     .bind(JOB_TYPE_LINK_WEBSITE_SCREENSHOT)
@@ -837,18 +918,13 @@ async fn run_one_job_supervised(
     job_type: String,
     payload: serde_json::Value,
     created_by_user_id: Option<String>,
-    budgets: Arc<TypeBudgets>,
-    job_logs: Arc<JobLogRegistry>,
     job_runs: Arc<JobRunRegistry>,
     worker_id: u64,
+    logger: JobLogger,
 ) {
     let job_id_for_log = job_id.clone();
     let job_type_for_log = job_type.clone();
     let pool_fail = pool.clone();
-    let logger = JobLogger::new(job_logs.clone(), pool.clone(), &job_id_for_log);
-    // Human: Budget slot is taken at claim time; release when this supervised wrapper exits on every path.
-    // Agent: BudgetReleaseOnDrop scoped to supervised fn; NOT duplicated inside inner run_one_job task.
-    let _budget_release = BudgetReleaseOnDrop::new(budgets.clone(), job_type.clone());
 
     logger
         .log_critical(&format!(
@@ -960,10 +1036,10 @@ async fn run_one_job_supervised(
 
 /// Atomically claims the next eligible row using `FOR UPDATE SKIP LOCKED` so concurrent workers
 /// never block waiting on another transaction's lock; if the per-type budget rejects the job,
-/// the row is returned to `pending` with a short `run_after` deferral so the same worker does not
-/// spin on an ineligible head-of-queue row.
-// Human: Workers compete fairly for the next runnable job; if a type’s budget rejects a freshly claimed row we put it back on pending with a short deferral.
-// Agent: LOOP up to MAX_TRIES; UPDATE ... FOR UPDATE SKIP LOCKED; CALLS budgets.try_acquire OR rolls row back to pending + run_after +75ms.
+/// the row is returned to `pending` or `stalling` with a short `run_after` deferral so the same worker does not
+/// spin on an ineligible head-of-queue row. **`stalling` rows are preferred over `pending`** so stuck jobs recover first.
+// Human: Workers compete fairly for the next runnable job; stalling jobs (handler never started) are reclaimed before fresh pending work.
+// Agent: LOOP up to MAX_TRIES; UPDATE pending|stalling→processing FOR UPDATE SKIP LOCKED; CALLS budgets.try_acquire OR rolls row back with defer.
 
 async fn try_claim_next(
     pool: &PgPool,
@@ -973,31 +1049,36 @@ async fn try_claim_next(
 ) -> Option<(String, String, serde_json::Value, Option<String>)> {
     const MAX_TRIES: u32 = 48;
     for _ in 0..MAX_TRIES {
-        let claim_line = format!(
-            "{} Row claimed from queue (status=processing)",
-            chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ")
-        );
         let row = match sqlx::query(
             r#"UPDATE background_jobs AS b
                SET status = 'processing',
                    started_at = clock_timestamp(),
                    updated_at = clock_timestamp(),
-                   processing_log = COALESCE(b.processing_log, '[]'::jsonb) || jsonb_build_array($1::text)
+                   processing_log = COALESCE(b.processing_log, '[]'::jsonb) || jsonb_build_array(
+                     to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
+                     || ' '
+                     || CASE
+                          WHEN picked.from_stalling THEN 'Row reclaimed from stalling (status=processing)'
+                          ELSE 'Row claimed from queue (status=processing)'
+                        END
+                   )
                FROM (
-                 SELECT bi.id
+                 SELECT bi.id, (bi.status = 'stalling') AS from_stalling
                  FROM background_jobs bi
-                 WHERE bi.status = 'pending'
+                 WHERE bi.status IN ('pending', 'stalling')
                    AND (bi.run_after IS NULL OR bi.run_after <= clock_timestamp())
-                 ORDER BY bi.priority DESC, bi.created_at ASC
+                 ORDER BY
+                   CASE bi.status WHEN 'stalling' THEN 0 ELSE 1 END,
+                   bi.priority DESC,
+                   bi.created_at ASC
                  FOR UPDATE SKIP LOCKED
                  LIMIT 1
                ) AS picked
                WHERE b.id = picked.id
-                 AND b.status = 'pending'
+                 AND b.status IN ('pending', 'stalling')
                  AND (b.run_after IS NULL OR b.run_after <= clock_timestamp())
-               RETURNING b.id, b.job_type, b.payload, b.created_by_user_id"#,
+               RETURNING b.id, b.job_type, b.payload, b.created_by_user_id, picked.from_stalling"#,
         )
-        .bind(&claim_line)
         .fetch_optional(pool)
         .await
         {
@@ -1023,6 +1104,16 @@ async fn try_claim_next(
             .try_get::<Option<String>, _>("created_by_user_id")
             .ok()
             .flatten();
+        let from_stalling: bool = row.get("from_stalling");
+        let claim_line = format!(
+            "{} {}",
+            chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ"),
+            if from_stalling {
+                "Row reclaimed from stalling (status=processing)"
+            } else {
+                "Row claimed from queue (status=processing)"
+            }
+        );
 
         job_logs.append_memory(&id, &claim_line);
 
@@ -1034,20 +1125,20 @@ async fn try_claim_next(
                 job_type = %job_type,
                 "per-type concurrency or start interval; row deferred (75ms)"
             );
+            let defer_status = if from_stalling {
+                JOB_STATUS_STALLING
+            } else {
+                "pending"
+            };
             let defer_line = format!(
-                "{} Deferred to pending: per-type concurrency limit (type={job_type})",
+                "{} Deferred to {defer_status}: per-type concurrency limit (type={job_type})",
                 chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ")
             );
             job_logs.append_memory(&id, &defer_line);
-            let pool_defer = pool.clone();
-            let id_defer = id.clone();
-            let defer_line_persist = defer_line.clone();
-            tokio::spawn(async move {
-                persist_job_log_line(&pool_defer, &id_defer, &defer_line_persist).await;
-            });
+            persist_job_log_line(pool, &id, &defer_line).await;
             let _ = sqlx::query(
                 r#"UPDATE background_jobs
-                   SET status = 'pending',
+                   SET status = $3,
                        started_at = NULL,
                        run_after = clock_timestamp() + interval '75 milliseconds',
                        updated_at = clock_timestamp(),
@@ -1056,6 +1147,7 @@ async fn try_claim_next(
             )
             .bind(&id)
             .bind(&defer_line)
+            .bind(defer_status)
             .execute(pool)
             .await;
             continue;
@@ -1066,11 +1158,7 @@ async fn try_claim_next(
             chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ")
         );
         job_logs.append_memory(&id, &dispatch_line);
-        let pool_log = pool.clone();
-        let id_log = id.clone();
-        tokio::spawn(async move {
-            persist_job_log_line(&pool_log, &id_log, &dispatch_line).await;
-        });
+        persist_job_log_line(pool, &id, &dispatch_line).await;
 
         return Some((id, job_type, payload, created_by));
     }
@@ -1123,7 +1211,7 @@ pub(super) async fn run_job_queue_dispatcher_loop(
     loop {
         tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
         if last_stale_reclaim.elapsed() >= STALE_RECLAIM_INTERVAL {
-            reclaim_stale_processing_jobs(&pool).await;
+            reclaim_stale_processing_jobs(&pool, &budgets).await;
             last_stale_reclaim = Instant::now();
         }
 
@@ -1144,7 +1232,17 @@ pub(super) async fn run_job_queue_dispatcher_loop(
             let job_runs_spawn = job_runs.clone();
             let job_id_for_log = job_id.clone();
             let job_type_for_log = job_type.clone();
+            let job_type_for_spawn = job_type.clone();
             tokio::spawn(async move {
+                let _budget_release =
+                    BudgetReleaseOnDrop::new(budgets.clone(), job_type_for_spawn.clone());
+                let logger =
+                    JobLogger::new(job_logs_spawn.clone(), pool.clone(), &job_id_for_log);
+                logger
+                    .log_critical(&format!(
+                        "Handler task started (worker_id={worker_id}, type={job_type_for_log})"
+                    ))
+                    .await;
                 let started = Instant::now();
                 debug!(
                     target: "jobs",
@@ -1163,10 +1261,9 @@ pub(super) async fn run_job_queue_dispatcher_loop(
                     job_type,
                     payload,
                     created_by_user_id,
-                    budgets,
-                    job_logs_spawn,
                     job_runs_spawn,
                     worker_id,
+                    logger,
                 )
                 .await;
                 debug!(

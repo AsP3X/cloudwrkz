@@ -53,9 +53,9 @@ async fn load_job_status(pool: &PgPool, job_id: &str) -> Result<Option<(String, 
     Ok(row.map(|r| (r.get("status"), r.get("job_type"))))
 }
 
-/// Remove a pending job from the queue without running it.
-// Human: Pending rows become terminal `cancelled` so workers never claim them.
-// Agent: UPDATE status cancelled WHERE pending; APPENDS processing_log line; ERR InvalidStatus if not pending.
+/// Remove a pending or stalling job from the queue without running it.
+// Human: Queued rows become terminal `cancelled` so workers never claim them.
+// Agent: UPDATE status cancelled WHERE pending|stalling; APPENDS processing_log line; ERR InvalidStatus if neither.
 
 pub async fn cancel_pending_job(pool: &PgPool, job_id: &str) -> Result<(), JobControlError> {
     let Some((status, job_type)) = load_job_status(pool, job_id).await? else {
@@ -64,7 +64,7 @@ pub async fn cancel_pending_job(pool: &PgPool, job_id: &str) -> Result<(), JobCo
     if is_auth_job_type(&job_type) {
         return Err(JobControlError::AuthJobNotControllable);
     }
-    if status != "pending" {
+    if status != "pending" && status != super::JOB_STATUS_STALLING {
         return Err(JobControlError::InvalidStatus {
             current: status,
             action: "cancel",
@@ -77,7 +77,7 @@ pub async fn cancel_pending_job(pool: &PgPool, job_id: &str) -> Result<(), JobCo
                error_message = NULL,
                updated_at = clock_timestamp(),
                completed_at = clock_timestamp()
-           WHERE id = $1 AND status = 'pending'"#,
+           WHERE id = $1 AND status IN ('pending', 'stalling')"#,
     )
     .bind(job_id)
     .execute(pool)
@@ -90,7 +90,12 @@ pub async fn cancel_pending_job(pool: &PgPool, job_id: &str) -> Result<(), JobCo
         });
     }
 
-    append_system_job_log_line(pool, job_id, "Cancelled by administrator (was pending)").await;
+    append_system_job_log_line(
+        pool,
+        job_id,
+        &format!("Cancelled by administrator (was {status})"),
+    )
+    .await;
     Ok(())
 }
 
@@ -149,9 +154,9 @@ pub async fn stop_processing_job(
     Ok(aborted)
 }
 
-/// Requeue a failed, cancelled, or stuck processing job so the worker runs it again.
+/// Requeue a failed, cancelled, stalling, or stuck processing job so the worker runs it again.
 // Human: Restart clears terminal/error state and returns the row to `pending`; processing jobs are stopped first when possible.
-// Agent: MAY CALL stop_processing_job; UPDATE failed|cancelled|processing→pending clears started/completed/error; APPENDS log.
+// Agent: MAY CALL stop_processing_job; UPDATE failed|cancelled|processing|stalling→pending clears started/completed/error; APPENDS log.
 
 pub async fn restart_job(
     pool: &PgPool,
@@ -185,7 +190,7 @@ pub async fn restart_job(
                run_after = clock_timestamp(),
                updated_at = clock_timestamp()
            WHERE id = $1
-             AND status IN ('failed', 'cancelled', 'processing', 'pending')"#,
+             AND status IN ('failed', 'cancelled', 'processing', 'pending', 'stalling')"#,
     )
     .bind(job_id)
     .execute(pool)
