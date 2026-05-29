@@ -121,9 +121,21 @@ export function parseTimerNumber(timerName: string): { prefix: string; sequence:
   return { prefix: "TMR", sequence: parseInt(match[1], 10) };
 }
 
+// Human: Billing amounts in list/detail views only when the entry is billable and has a positive hourly rate (€0.00 is hidden).
+// Agent: READS billable hourly_rate; RETURNS false when billable===false or rate null/<=0; USED BY calculateEarnedAmount and list/detail UI.
+export function shouldShowTimeEntryBillingAmount(entry: {
+  billable?: boolean;
+  hourly_rate: number | null;
+}): boolean {
+  if (entry.billable === false) return false;
+  if (entry.hourly_rate == null || entry.hourly_rate <= 0) return false;
+  return true;
+}
+
 // Human: Earned amount uses worked seconds (excluding breaks) times the snapshot hourly rate stored on the entry.
-// Agent: READS hourly_rate; CALLS calculateElapsedTime; RETURNS null when rate missing; PURE currency math.
+// Agent: READS hourly_rate billable; CALLS shouldShowTimeEntryBillingAmount calculateElapsedTime; RETURNS null when hidden or amount<=0.
 export function calculateEarnedAmount(entry: {
+  billable?: boolean;
   status: string;
   total_duration: number;
   last_resumed_at: string | null;
@@ -131,9 +143,11 @@ export function calculateEarnedAmount(entry: {
   hourly_rate: number | null;
   breaks?: Array<{ started_at: string; ended_at: string | null; duration: number }>;
 }): number | null {
-  if (entry.hourly_rate == null) return null;
+  if (!shouldShowTimeEntryBillingAmount(entry)) return null;
   const workedSeconds = calculateElapsedTime(entry);
-  return (workedSeconds / 3600) * entry.hourly_rate;
+  const amount = (workedSeconds / 3600) * entry.hourly_rate!;
+  if (amount <= 0) return null;
+  return amount;
 }
 
 // Human: Create/start payloads must send explicit 0; `rate ?? undefined` would drop zero and skip server-side resolution.

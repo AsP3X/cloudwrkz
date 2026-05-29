@@ -3,7 +3,7 @@ import type { TimeEntry } from "@/lib/types";
 import { calculateEarnedAmount, formatCurrencyAmount } from "@/lib/utils/time-tracking";
 
 // Human: Live-updating earned amount from worked seconds times the entry's snapshot hourly rate.
-// Agent: READS TimeEntry hourly_rate; CALLS calculateEarnedAmount; TICK 1s when RUNNING/PAUSED; RETURNS null when no rate.
+// Agent: READS TimeEntry billable hourly_rate; CALLS calculateEarnedAmount; TICK 1s when RUNNING/PAUSED; RETURNS null when billing hidden or amount zero.
 
 interface EarnedAmountDisplayProps {
   entry: TimeEntry;

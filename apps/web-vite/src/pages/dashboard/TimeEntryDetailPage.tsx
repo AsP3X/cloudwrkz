@@ -17,6 +17,7 @@ import {
   formatDuration,
   calculateTotalBreakDuration,
   formatCurrencyAmount,
+  shouldShowTimeEntryBillingAmount,
 } from "@/lib/utils/time-tracking";
 import { EarnedAmountDisplay } from "@/components/features/time-tracking/EarnedAmountDisplay";
 import { formatDateTimeInTimezone } from "@/lib/utils/date";
@@ -300,11 +301,11 @@ export default function TimeEntryDetailPage() {
                   </dd>
                 </div>
               )}
-              {entry.hourly_rate != null && (
+              {shouldShowTimeEntryBillingAmount(entry) && (
                 <div>
                   <dt className="text-neutral-500 dark:text-neutral-400">Hourly rate</dt>
                   <dd className="font-medium font-mono text-neutral-900 dark:text-neutral-100">
-                    {formatCurrencyAmount(entry.hourly_rate)}/h
+                    {formatCurrencyAmount(entry.hourly_rate!)}/h
                   </dd>
                 </div>
               )}
@@ -353,7 +354,7 @@ export default function TimeEntryDetailPage() {
                 Net (excluding breaks): {formatDuration(Math.max(0, entry.total_duration - breakTotal))}
               </p>
             )}
-            {entry.hourly_rate != null && (
+            {shouldShowTimeEntryBillingAmount(entry) && (
               <div className="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-800">
                 <p className="text-sm text-neutral-500 dark:text-neutral-400">Earned amount</p>
                 <div className="text-xl font-bold text-emerald-700 dark:text-emerald-400 mt-1">

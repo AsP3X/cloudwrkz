@@ -15,6 +15,7 @@ import {
   formatDuration,
 } from "@/lib/utils/time-tracking";
 import { EarnedAmountDisplay } from "../EarnedAmountDisplay";
+import { shouldShowTimeEntryBillingAmount } from "@/lib/utils/time-tracking";
 import { formatDateTimeInTimezone } from "@/lib/utils/date";
 import { cn } from "@/lib/utils/cn";
 import type { TimeEntry, TimeEntryStatus } from "@/lib/types";
@@ -457,14 +458,17 @@ export function TimeEntryList({ entries, userTimezone = "UTC", onRefresh }: Time
                       className="text-sm font-medium text-emerald-700 dark:text-emerald-400"
                     />
                   </div>
-                  {(entry.customer?.display_name || entry.hourly_rate != null) && (
+                  {(entry.customer?.display_name ||
+                    shouldShowTimeEntryBillingAmount(entry)) && (
                     <div className="text-xs text-neutral-600 dark:text-neutral-400 mb-2">
                       {entry.customer?.display_name && (
                         <span>{entry.customer.display_name}</span>
                       )}
-                      {entry.customer?.display_name && entry.hourly_rate != null && " · "}
-                      {entry.hourly_rate != null && (
-                        <span className="font-mono">{entry.hourly_rate.toFixed(2)}/h</span>
+                      {entry.customer?.display_name &&
+                        shouldShowTimeEntryBillingAmount(entry) &&
+                        " · "}
+                      {shouldShowTimeEntryBillingAmount(entry) && (
+                        <span className="font-mono">{entry.hourly_rate!.toFixed(2)}/h</span>
                       )}
                     </div>
                   )}

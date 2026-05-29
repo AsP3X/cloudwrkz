@@ -1,7 +1,7 @@
 import React from "react";
 import { Button } from "@/components/ui/Button";
 import { TimeEntryBillingDialog, type TimeEntryBillingState } from "./TimeEntryBillingDialog";
-import { formatCurrencyAmount } from "@/lib/utils/time-tracking";
+import { formatCurrencyAmount, shouldShowTimeEntryBillingAmount } from "@/lib/utils/time-tracking";
 
 // Human: Inline trigger + summary for billing on timer create/edit forms; opens the company/rate dialog on click.
 // Agent: PROPS billing+onChange+customersModuleEnabled; LOCAL dialog open state; RENDERS summary chip + TimeEntryBillingDialog.
@@ -19,16 +19,19 @@ export function TimeEntryBillingField({
 }: TimeEntryBillingFieldProps) {
   const [dialogOpen, setDialogOpen] = React.useState(false);
 
-  const hasBilling = billing.customerId != null || billing.hourlyRate != null;
+  const showRate =
+    billing.hourlyRate != null &&
+    shouldShowTimeEntryBillingAmount({ billable: true, hourly_rate: billing.hourlyRate });
+  const hasBilling = billing.customerId != null || showRate;
   const summary = (() => {
-    if (billing.customerDisplayName && billing.hourlyRate != null) {
-      return `${billing.customerDisplayName} · ${formatCurrencyAmount(billing.hourlyRate)}/h`;
+    if (billing.customerDisplayName && showRate) {
+      return `${billing.customerDisplayName} · ${formatCurrencyAmount(billing.hourlyRate!)}/h`;
     }
     if (billing.customerDisplayName) {
       return billing.customerDisplayName;
     }
-    if (billing.hourlyRate != null) {
-      return `Manual rate · ${formatCurrencyAmount(billing.hourlyRate)}/h`;
+    if (showRate) {
+      return `Manual rate · ${formatCurrencyAmount(billing.hourlyRate!)}/h`;
     }
     return null;
   })();
