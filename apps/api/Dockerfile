@@ -26,10 +26,24 @@ RUN touch apps/api/src/main.rs apps/cli/src/main.rs \
 
 FROM debian:bookworm-slim
 
-# curl: healthcheck; chromium: headless link screenshot prerender (see link_preview/screenshot.rs).
-RUN apt-get update && apt-get install -y ca-certificates curl chromium && rm -rf /var/lib/apt/lists/*
+# curl: healthcheck; chromium + fonts: link screenshot prerender (see link_preview/screenshot.rs).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        chromium \
+        fontconfig \
+        fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+RUN mkdir -p /app/public/uploads/favicons /app/public/uploads/link-screenshots
+
+ENV CLOUDWRKZ_UPLOAD_ROOT=/app/public/uploads \
+    LINK_SCREENSHOT_ENABLED=true \
+    LINK_SCREENSHOT_CHROMIUM_PATH=/usr/bin/chromium
+
 COPY --from=builder /build/target/release/cloudwrkz-api .
 COPY --from=builder /build/target/release/cloudwrkz-cli /usr/local/bin/cloudwrkz-cli
 COPY --from=builder /build/apps/api/migrations migrations/

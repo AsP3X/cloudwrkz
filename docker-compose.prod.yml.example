@@ -1,7 +1,7 @@
 # PRODUCTION-STYLE Compose — API (+ optional Vite dev front) against EXTERNAL PostgreSQL only.
 #
-# There is NO bundled Postgres service and NO named data volumes in this file.
-# `docker compose down -v` cannot wipe a database that is not defined here.
+# There is NO bundled Postgres service. The `api_uploads` volume persists link screenshots and favicons on disk.
+# `docker compose down -v` will remove `api_uploads` if you pass `-v` — only do that when you intend to clear uploads.
 #
 # Prerequisites:
 #   - Managed PostgreSQL (RDS, Cloud SQL, Azure Database, etc.) or a DBA-operated instance
@@ -33,8 +33,14 @@ services:
       RUST_LOG: ${RUST_LOG:-info}
       API_REGION: ${API_REGION:-}
       API_NODES_AVAILABLE: ${API_NODES_AVAILABLE:-1}
+      CLOUDWRKZ_UPLOAD_ROOT: /app/public/uploads
+      LINK_SCREENSHOT_ENABLED: ${LINK_SCREENSHOT_ENABLED:-true}
+      LINK_SCREENSHOT_CHROMIUM_PATH: /usr/bin/chromium
     ports:
       - "${API_HOST_PORT:-8080}:8080"
+    shm_size: "256mb"
+    volumes:
+      - api_uploads:/app/public/uploads
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
       interval: 10s
@@ -62,3 +68,7 @@ services:
     depends_on:
       api:
         condition: service_healthy
+
+volumes:
+  api_uploads:
+    name: cloudwrkz_api_uploads

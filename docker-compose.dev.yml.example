@@ -43,8 +43,14 @@ services:
       COOKIE_DOMAIN: ""
       COOKIE_SECURE: "false"
       RUST_LOG: "info,cloudwrkz_api=debug"
+      CLOUDWRKZ_UPLOAD_ROOT: /app/public/uploads
+      LINK_SCREENSHOT_ENABLED: "true"
+      LINK_SCREENSHOT_CHROMIUM_PATH: /usr/bin/chromium
     ports:
       - "8080:8080"
+    shm_size: "256mb"
+    volumes:
+      - api_uploads:/app/public/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -110,6 +116,10 @@ volumes:
     labels:
       cloudwrkz.dev-only: "true"
       cloudwrkz.warning: "LOCAL DEV DATA — not for production"
+  api_uploads:
+    name: cloudwrkz_api_uploads
+    labels:
+      cloudwrkz.purpose: "link-favicons-and-screenshots"
 
 networks:
   cloudwrkz-network:

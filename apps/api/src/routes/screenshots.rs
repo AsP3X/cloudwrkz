@@ -7,6 +7,7 @@ use axum::{
 };
 
 use crate::error::AppError;
+use crate::link_preview::screenshots_dir;
 use crate::routes::AppState;
 
 // Human: Serves prerendered link screenshot PNGs written by the website metadata scraper.
@@ -21,7 +22,7 @@ async fn serve_screenshot(Path(filename): Path<String>) -> impl IntoResponse {
     if !safe_name.starts_with("screenshot-") || !safe_name.ends_with(".png") {
         return AppError::not_found("Screenshot not found").into_response();
     }
-    let path = std::path::Path::new("public/uploads/link-screenshots").join(&safe_name);
+    let path = screenshots_dir().join(&safe_name);
 
     match tokio::fs::read(&path).await {
         Ok(bytes) => (

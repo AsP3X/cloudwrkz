@@ -7,6 +7,7 @@ use axum::{
 };
 
 use crate::error::AppError;
+use crate::link_preview::favicons_dir;
 use crate::routes::AppState;
 
 // Human: Serves uploaded favicon bytes saved on disk for link previews; failures return the same JSON error envelope as other `/api/v1` routes.
@@ -20,7 +21,7 @@ async fn serve_favicon(Path(filename): Path<String>) -> impl IntoResponse {
     // Human: Path segments are sanitized so a crafted filename cannot escape the favicon upload directory.
     // Agent: REPLACES ".." and "/" in filename; BUILDS path under public/uploads/favicons; READS file async.
     let safe_name = filename.replace("..", "").replace('/', "");
-    let path = std::path::Path::new("public/uploads/favicons").join(&safe_name);
+    let path = favicons_dir().join(&safe_name);
 
     match tokio::fs::read(&path).await {
         Ok(bytes) => {

@@ -3,9 +3,12 @@
 mod robots;
 mod scrape;
 mod screenshot;
+mod uploads;
 mod url_safety;
 
 pub use scrape::{merge_scrape_metadata, scrape_link_page};
+pub use screenshot::log_screenshot_capability;
+pub use uploads::{ensure_upload_directories, favicons_dir, screenshots_dir};
 
 use reqwest::Client;
 

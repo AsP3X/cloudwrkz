@@ -451,6 +451,9 @@ pub async fn run() {
 
     init_logging();
 
+    link_preview::ensure_upload_directories().await;
+    link_preview::log_screenshot_capability();
+
     let mut config = AppConfig::from_env();
     config.apply_deployment_cli(parse_deployment_cli_from_args());
     tracing::info!(

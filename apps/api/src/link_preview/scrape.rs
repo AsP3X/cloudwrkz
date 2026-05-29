@@ -10,7 +10,7 @@ use serde_json::{Map, Value, json};
 use url::Url;
 
 use super::robots::{SCRAPE_USER_AGENT, check_robots_allowed};
-use super::screenshot::capture_link_screenshot;
+use super::screenshot::attach_screenshot_if_allowed;
 use super::url_safety::url_safe_for_outbound_fetch;
 
 /// Rich scrape payload stored on `links.metadata` and returned from preview endpoints.
@@ -110,33 +110,41 @@ pub async fn scrape_link_page(
         };
     }
 
-    match fetch_and_parse_html(client, url_str).await {
-        Ok(mut meta) => {
-            meta.robots_txt_allowed = Some(true);
-            meta.robots_txt_message = None;
-            if let Some(id) = link_id {
-                if let Some(screenshot_url) = capture_link_screenshot(url_str, id).await {
-                    meta.screenshot_url = Some(screenshot_url);
-                }
-            }
-            LinkScrapeResult {
-                robots_allowed: true,
-                robots_message: None,
-                metadata: Some(meta),
-            }
+    let html_result = fetch_and_parse_html(client, url_str).await;
+    let html_parse_failed = html_result.is_err();
+    let mut meta = match html_result {
+        Ok(mut parsed) => {
+            parsed.robots_txt_allowed = Some(true);
+            parsed.robots_txt_message = None;
+            parsed
         }
-        Err(_) => LinkScrapeResult {
-            robots_allowed: true,
-            robots_message: Some(
-                "Could not download or parse this page. Only robots.txt status was recorded."
-                    .into(),
-            ),
-            metadata: Some(LinkScrapedMetadata {
-                robots_txt_allowed: Some(true),
-                robots_txt_message: None,
-                ..Default::default()
-            }),
+        Err(_) => LinkScrapedMetadata {
+            robots_txt_allowed: Some(true),
+            robots_txt_message: None,
+            ..Default::default()
         },
+    };
+
+    attach_screenshot_if_allowed(url_str, link_id, &mut meta).await;
+
+    let robots_message = if html_parse_failed
+        && meta.screenshot_url.is_none()
+        && meta.title.is_none()
+        && meta.description.is_none()
+        && meta.og_title.is_none()
+    {
+        Some(
+            "Could not download or parse this page. Only robots.txt status was recorded."
+                .into(),
+        )
+    } else {
+        None
+    };
+
+    LinkScrapeResult {
+        robots_allowed: true,
+        robots_message,
+        metadata: Some(meta),
     }
 }
 
