@@ -258,8 +258,8 @@ pub(super) async fn exec_time_entry_update(
         }
     }
 
-    // Human: Billing updates store the client-selected customer link and hourly rate snapshot (no re-resolve on PATCH).
-    // Agent: PARSE customer_id JSON null|string; PARSE hourly_rate JSON null|number; VALIDATE via time_entry_billing helpers; UPDATE columns.
+    // Human: Billing updates store the client-selected customer link and hourly rate snapshot; explicit null rate with a customer re-resolves the assigned rate.
+    // Agent: PARSE customer_id JSON null|string; PARSE hourly_rate JSON null|number; ON null+customer CALL resolve_time_entry_billing; UPDATE columns.
     if body.customer_id.is_some()
         || body.customer_contact_id.is_some()
         || body.hourly_rate.is_some()
@@ -297,6 +297,33 @@ pub(super) async fn exec_time_entry_update(
             Some(value) => value
                 .as_f64()
                 .or_else(|| value.as_str().and_then(|s| s.parse().ok())),
+        };
+
+        // Human: Clients that send hourly_rate:null while keeping a customer should restore the customer's rate, not wipe billing.
+        // Agent: IF body.hourly_rate IS JSON null AND customer_id IS Some THEN resolve_time_entry_billing FOR existing.user_id.
+        let hourly_rate = if hourly_rate.is_none()
+            && body.hourly_rate.as_ref().is_some_and(|v| v.is_null())
+            && customer_id.is_some()
+        {
+            match crate::time_entry_billing::resolve_time_entry_billing(
+                pool,
+                &existing.user_id,
+                crate::time_entry_billing::TimeEntryBillingInput {
+                    customer_id: customer_id.clone(),
+                    customer_contact_id: customer_contact_id.clone(),
+                    hourly_rate: None,
+                },
+            )
+            .await
+            {
+                Ok(resolved) => resolved.hourly_rate,
+                Err(ae) => {
+                    let _ = tx.rollback().await;
+                    return JobExecOutcome::Fail(ae);
+                }
+            }
+        } else {
+            hourly_rate
         };
 
         if let Some(ref cid) = customer_id {

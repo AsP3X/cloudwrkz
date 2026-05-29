@@ -20,6 +20,7 @@ import {
   TimeEntryBillingField,
   type TimeEntryBillingState,
 } from "../TimeEntryBillingDialog";
+import { hourlyRateForCreatePayload } from "@/lib/utils/time-tracking";
 
 // Human: React UI for `AddTimeEntryDialog` in time entries and live timers: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
 // Agent: SCOPE time-tracking; ENTRIES breaks floating-timer; EXPORTS AddTimeEntryDialog; REACT component; READS props hooks; MAY CALL api client.
@@ -236,7 +237,7 @@ export function AddTimeEntryDialog({ open, onOpenChange, onCreated }: AddTimeEnt
         stopped_at: stop.toISOString(),
         customer_id: billing.customerId ?? undefined,
         customer_contact_id: billing.customerContactId ?? undefined,
-        hourly_rate: billing.hourlyRate ?? undefined,
+        hourly_rate: hourlyRateForCreatePayload(billing.hourlyRate),
       });
       clearAddTimeEntryDraft();
       onOpenChange(false);

@@ -13,6 +13,7 @@ import {
   TimeEntryBillingField,
   type TimeEntryBillingState,
 } from "../TimeEntryBillingDialog";
+import { hourlyRateForCreatePayload } from "@/lib/utils/time-tracking";
 
 // Human: React UI for `StartTimerDialog` in time entries and live timers: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
 // Agent: SCOPE time-tracking; ENTRIES breaks floating-timer; EXPORTS StartTimerDialog; REACT component; READS props hooks; MAY CALL api client.
@@ -95,7 +96,7 @@ export function StartTimerDialog({ open, onOpenChange, onCreated }: StartTimerDi
         started_at: startedAt?.toISOString(),
         customer_id: billing.customerId ?? undefined,
         customer_contact_id: billing.customerContactId ?? undefined,
-        hourly_rate: billing.hourlyRate ?? undefined,
+        hourly_rate: hourlyRateForCreatePayload(billing.hourlyRate),
       });
       onOpenChange(false);
       onCreated?.();

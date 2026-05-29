@@ -136,6 +136,12 @@ export function calculateEarnedAmount(entry: {
   return (workedSeconds / 3600) * entry.hourly_rate;
 }
 
+// Human: Create/start payloads must send explicit 0; `rate ?? undefined` would drop zero and skip server-side resolution.
+// Agent: RETURNS number when typeof rate is number else undefined; USED BY time entry POST bodies.
+export function hourlyRateForCreatePayload(rate: number | null): number | undefined {
+  return typeof rate === "number" ? rate : undefined;
+}
+
 export function formatCurrencyAmount(amount: number, currency = "EUR"): string {
   return new Intl.NumberFormat(undefined, {
     style: "currency",

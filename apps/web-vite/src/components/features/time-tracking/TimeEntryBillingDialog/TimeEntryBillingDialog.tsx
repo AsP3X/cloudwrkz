@@ -117,8 +117,22 @@ export function TimeEntryBillingDialog({
     }
   };
 
-  const parsedRate = rateInput.trim() === "" ? null : Number.parseFloat(rateInput);
-  const rateInvalid = rateInput.trim() !== "" && (Number.isNaN(parsedRate!) || parsedRate! < 0);
+  // Human: An empty rate field means "keep the current snapshot" so clearing the input does not wipe billing on save.
+  // Agent: CONFIRM empty→value.hourlyRate; CONFIRM numeric parse including 0; INVALID only when non-empty and NaN or negative.
+  const resolveHourlyRateOnConfirm = (): number | null => {
+    const trimmed = rateInput.trim();
+    if (trimmed === "") return value.hourlyRate;
+    const parsed = Number.parseFloat(trimmed);
+    if (Number.isNaN(parsed)) return value.hourlyRate;
+    return parsed;
+  };
+
+  const rateInvalid = (() => {
+    const trimmed = rateInput.trim();
+    if (trimmed === "") return false;
+    const parsed = Number.parseFloat(trimmed);
+    return Number.isNaN(parsed) || parsed < 0;
+  })();
 
   const handleSelectCustomer = async (customer: Customer) => {
     setDraftCustomerId(customer.id);
@@ -142,7 +156,7 @@ export function TimeEntryBillingDialog({
       customerId: draftCustomerId,
       customerContactId: draftCustomerId ? draftContactId : null,
       customerDisplayName: draftCustomerName,
-      hourlyRate: parsedRate,
+      hourlyRate: resolveHourlyRateOnConfirm(),
     });
     onOpenChange(false);
   };
