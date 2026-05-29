@@ -110,6 +110,45 @@ export function canStop(status: string): boolean {
   return status === "RUNNING" || status === "PAUSED";
 }
 
+type TimeEntrySortable = {
+  status: string;
+  started_at: string;
+  last_resumed_at: string | null;
+  updated_at: string;
+  created_at: string;
+};
+
+// Human: Overview lists pin live timers above completed rows so active work is always visible first.
+// Agent: RUNNING rank 0; PAUSED rank 1; else 2; PURE number comparator for Array.sort.
+function timeEntryStatusSortRank(status: string): number {
+  if (status === "RUNNING") return 0;
+  if (status === "PAUSED") return 1;
+  return 2;
+}
+
+// Human: Recency uses the latest meaningful activity timestamp so resumed timers sort above older stopped rows.
+// Agent: READS last_resumed_at|updated_at|started_at|created_at; CALLS parseAsUTC; RETURNS epoch ms DESC tie-break.
+function timeEntryRecencyMs(entry: TimeEntrySortable): number {
+  const iso =
+    entry.last_resumed_at ??
+    entry.updated_at ??
+    entry.started_at ??
+    entry.created_at;
+  return parseAsUTC(iso);
+}
+
+// Human: Stable overview ordering—active timers on top, newest activity first within each status band.
+// Agent: COPIES entries; SORTS status rank ASC then recency DESC; USED BY TimeTrackingPage before TimeEntryList.
+export function sortTimeEntriesForOverview<T extends TimeEntrySortable>(
+  entries: T[],
+): T[] {
+  return [...entries].sort((a, b) => {
+    const rankDiff = timeEntryStatusSortRank(a.status) - timeEntryStatusSortRank(b.status);
+    if (rankDiff !== 0) return rankDiff;
+    return timeEntryRecencyMs(b) - timeEntryRecencyMs(a);
+  });
+}
+
 export function generateTimerNumber(sequenceNumber: number): string {
   const paddedNumber = sequenceNumber.toString().padStart(6, "0");
   return `#TMR-${paddedNumber}`;

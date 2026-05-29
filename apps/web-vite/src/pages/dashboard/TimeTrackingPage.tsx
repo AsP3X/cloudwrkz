@@ -15,7 +15,7 @@ import { ROUTES } from "@/lib/constants/routes";
 import { Link } from "react-router-dom";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { AccessIssueTicketDialog } from "@/components/features/tickets/AccessIssueTicketDialog";
-import { calculateElapsedTime } from "@/lib/utils/time-tracking";
+import { calculateElapsedTime, sortTimeEntriesForOverview } from "@/lib/utils/time-tracking";
 
 // Human: Time tracking hub listing entries, filters, manual add/start flows, and floating widgets for running timers.
 // Agent: TimeEntryViewProvider; FETCH time entries; FILTER via searchParams; GATED modules.timetracking.view.
@@ -107,7 +107,7 @@ function TimeTrackingPageContent() {
           });
         }
       }
-      setEntries(result);
+      setEntries(sortTimeEntriesForOverview(result));
     } catch {
       setEntries([]);
     } finally {
