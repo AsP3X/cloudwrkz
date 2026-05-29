@@ -1951,7 +1951,7 @@ async fn exec_time_entry_manual_create(
         r#"INSERT INTO time_entries (id, name, description, status, started_at, stopped_at,
                              total_duration, user_id, customer_id, customer_contact_id, hourly_rate,
                              tags, billable, location, created_at, updated_at)
-           VALUES ($1, $2, $3, 'STOPPED', $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())"#,
+           VALUES ($1, $2, $3, 'STOPPED', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())"#,
     )
     .bind(&id)
     .bind(&body.name)
