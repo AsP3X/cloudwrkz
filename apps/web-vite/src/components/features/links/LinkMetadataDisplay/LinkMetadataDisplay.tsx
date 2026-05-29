@@ -193,7 +193,33 @@ export function LinkMetadataDisplay({ metadata }: LinkMetadataDisplayProps) {
       return <span className="text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed">{formatted}</span>;
     }
 
-    if (key.includes("Image") || key.includes("favicon") || key === "screenshotUrl" || key === "ogUrl") {
+    if (key === "screenshotUrl") {
+      const strVal = String(value);
+      return (
+        <div className="flex flex-col gap-3 w-full min-w-0">
+          <a
+            href={strVal}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 text-sm break-all underline decoration-dotted underline-offset-2"
+          >
+            {strVal}
+          </a>
+          {/* Human: Metadata dialog should show the same full capture as the link preview card, not a favicon-sized crop. */}
+          {/* Agent: img w-full h-auto; READS screenshotUrl; MATCHES WebsiteLinkPreview aspect ratio behavior. */}
+          <img
+            src={strVal}
+            alt="Page screenshot"
+            className="w-full h-auto max-w-full rounded-lg border-2 border-neutral-200 dark:border-neutral-700 shadow-sm"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = "none";
+            }}
+          />
+        </div>
+      );
+    }
+
+    if (key.includes("Image") || key.includes("favicon") || key === "ogUrl") {
       const strVal = String(value);
       return (
         <div className="flex items-start gap-3 flex-wrap">
@@ -205,7 +231,7 @@ export function LinkMetadataDisplay({ metadata }: LinkMetadataDisplayProps) {
           >
             {strVal}
           </a>
-          {(key.includes("Image") || key.includes("favicon") || key === "screenshotUrl") && (
+          {(key.includes("Image") || key.includes("favicon")) && (
             <div className="flex-shrink-0">
               <img
                 src={strVal}

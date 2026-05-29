@@ -52,10 +52,12 @@ export function WebsiteLinkPreview({ preview, pageUrl, className }: WebsiteLinkP
               Page preview
             </p>
             <a href={pageUrl} target="_blank" rel="noopener noreferrer" className="block">
+              {/* Human: Show the full capture at its aspect ratio; object-cover + max-height cropped most of the PNG. */}
+              {/* Agent: w-full h-auto; NO object-cover; SCALES to card width; SHOWS entire screenshot file. */}
               <img
                 src={preview.screenshotUrl}
                 alt="Screenshot of the linked website"
-                className="w-full rounded-lg border border-neutral-200 dark:border-neutral-700 shadow-md object-cover object-top max-h-[480px]"
+                className="w-full h-auto max-w-full rounded-lg border border-neutral-200 dark:border-neutral-700 shadow-md"
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.display = "none";
                 }}
