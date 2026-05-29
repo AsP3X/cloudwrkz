@@ -2,8 +2,15 @@
 # Build from repository root: `docker build -f apps/web-vite/Dockerfile .`
 #
 # For Vite dev server + bundled CLI in Docker, use `apps/web-vite/Dockerfile.dev` instead.
+#
+# If build fails with `auth.docker.io/token ... 404`, Docker cannot reach Docker Hub (VPN, proxy,
+# outage, or rate limit). Retry, restart Docker, or override bases:
+#   docker build --build-arg NODE_IMAGE=node:25.9.0-bookworm --build-arg NGINX_IMAGE=nginx:1.27-alpine ...
 
-FROM node:25-bookworm AS builder
+ARG NODE_IMAGE=node:25.9.0-bookworm
+ARG NGINX_IMAGE=nginx:1.27-alpine
+
+FROM ${NODE_IMAGE} AS builder
 
 RUN npm install -g pnpm@9
 
@@ -28,7 +35,7 @@ ENV VITE_LOG_LEVEL=$VITE_LOG_LEVEL
 
 RUN pnpm --filter web-vite build
 
-FROM nginx:1.27-alpine
+FROM ${NGINX_IMAGE}
 
 COPY apps/web-vite/nginx.conf /etc/nginx/nginx.conf
 COPY --from=builder /workspace/apps/web-vite/dist /usr/share/nginx/html

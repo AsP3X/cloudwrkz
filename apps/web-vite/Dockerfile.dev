@@ -18,7 +18,9 @@ COPY apps/api apps/api
 
 RUN cargo build -p cloudwrkz-cli --release
 
-FROM node:25-bookworm
+# See apps/web-vite/Dockerfile for Docker Hub auth troubleshooting and NODE_IMAGE override.
+ARG NODE_IMAGE=node:25.9.0-bookworm
+FROM ${NODE_IMAGE}
 
 RUN apt-get update && apt-get install -y ca-certificates wget \
     && rm -rf /var/lib/apt/lists/* \
