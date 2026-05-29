@@ -222,6 +222,9 @@ pub async fn capture_link_screenshot(page_url: &str, link_id: &str) -> Screensho
     let timeout = screenshot_timeout();
     let virtual_time_budget = screenshot_virtual_time_budget_ms();
 
+    let screenshot_flag = format!("--screenshot={}", disk_path.display());
+    let virtual_time_flag = format!("--virtual-time-budget={virtual_time_budget}");
+
     let mut cmd = Command::new(&chromium);
     // Human: When our outer timeout fires, drop must kill Chromium so a hung capture cannot hold a worker slot for minutes.
     // Agent: kill_on_drop true; timeout on cmd.output; ORPHAN subprocess prevented on Duration expiry.
@@ -229,6 +232,8 @@ pub async fn capture_link_screenshot(page_url: &str, link_id: &str) -> Screensho
     // Human: Headless containers often lack D-Bus; pointing at /dev/null avoids noisy failures on startup.
     // Agent: ENV DBUS_SESSION_BUS_ADDRESS=/dev/null; REDUCES dbus connection errors in Docker.
     cmd.env("DBUS_SESSION_BUS_ADDRESS", "/dev/null");
+    // Human: `--screenshot` and path must be one flag (`--screenshot=/path`); separate args make Chromium treat the path as a second URL target.
+    // Agent: SINGLE --screenshot=path arg; ONE page_url positional; AVOIDS "Multiple targets are not supported in headless mode".
     cmd.arg("--headless=new")
         .arg("--disable-gpu")
         .arg("--no-sandbox")
@@ -239,9 +244,8 @@ pub async fn capture_link_screenshot(page_url: &str, link_id: &str) -> Screensho
         .arg("--window-size")
         .arg(&window_size)
         .arg("--run-all-compositor-stages-before-draw")
-        .arg("--screenshot")
-        .arg(&disk_path)
-        .arg(format!("--virtual-time-budget={virtual_time_budget}"))
+        .arg(&virtual_time_flag)
+        .arg(&screenshot_flag)
         .arg(page_url);
 
     debug!(
