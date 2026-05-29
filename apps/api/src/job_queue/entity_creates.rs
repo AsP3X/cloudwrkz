@@ -226,7 +226,7 @@ async fn mark_job_failed(pool: &PgPool, job_id: &str, msg: &str, logger: Option<
         log.log(&format!("Job failed: {msg}"));
     }
     let _ = sqlx::query(
-        r#"UPDATE background_jobs SET status = 'failed', error_message = $2, updated_at = clock_timestamp(), completed_at = clock_timestamp() WHERE id = $1"#,
+        r#"UPDATE background_jobs SET status = 'failed', error_message = $2, updated_at = clock_timestamp(), completed_at = clock_timestamp() WHERE id = $1 AND status = 'processing'"#,
     )
     .bind(job_id)
     .bind(msg)
@@ -264,7 +264,7 @@ async fn complete_job(
                payload = jsonb_set(payload, '{result}', $2::jsonb, true),
                updated_at = clock_timestamp(),
                completed_at = clock_timestamp()
-           WHERE id = $1"#,
+           WHERE id = $1 AND status = 'processing'"#,
     )
     .bind(job_id)
     .bind(sqlx::types::Json(result))

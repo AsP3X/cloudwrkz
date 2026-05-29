@@ -112,6 +112,18 @@ pub fn router() -> Router<AppState> {
             get(background_job_log_sse),
         )
         .route("/admin/background-jobs/{id}/log", get(get_background_job_log))
+        .route(
+            "/admin/background-jobs/{id}/cancel",
+            post(post_cancel_background_job),
+        )
+        .route(
+            "/admin/background-jobs/{id}/stop",
+            post(post_stop_background_job),
+        )
+        .route(
+            "/admin/background-jobs/{id}/restart",
+            post(post_restart_background_job),
+        )
         .route("/admin/settings", get(admin_settings))
         .route(
             "/admin/settings/links-page-size",
@@ -869,6 +881,87 @@ async fn background_job_exists(pool: &sqlx::PgPool, job_id: &str) -> Result<(), 
     } else {
         Err(AppError::not_found("Job not found"))
     }
+}
+
+// Human: Cancel/stop/restart mutate queue rows and may abort in-process tasks; all require admin.jobs.view and write audit rows.
+// Agent: POST cancel|stop|restart; CALLS job_queue control helpers; write_admin_audit admin.background_jobs.*; RETURNS { success, jobId, ... }.
+
+async fn post_cancel_background_job(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(job_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_admin_jobs_view(&state.pool, &user.id).await?;
+    crate::job_queue::cancel_pending_job(&state.pool, &job_id)
+        .await
+        .map_err(|e| e.into_app_error())?;
+    write_admin_audit(
+        &state.pool,
+        &user.id,
+        "admin.background_jobs.cancel",
+        "background_job",
+        &job_id,
+        None,
+        &headers,
+    );
+    Ok(Json(serde_json::json!({ "success": true, "jobId": job_id })))
+}
+
+async fn post_stop_background_job(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(job_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_admin_jobs_view(&state.pool, &user.id).await?;
+    let aborted = crate::job_queue::stop_processing_job(
+        &state.pool,
+        &state.job_worker_supervisor.job_runs(),
+        &job_id,
+    )
+    .await
+    .map_err(|e| e.into_app_error())?;
+    write_admin_audit(
+        &state.pool,
+        &user.id,
+        "admin.background_jobs.stop",
+        "background_job",
+        &job_id,
+        Some(serde_json::json!({ "abortedInProcess": aborted })),
+        &headers,
+    );
+    Ok(Json(
+        serde_json::json!({ "success": true, "jobId": job_id, "abortedInProcess": aborted }),
+    ))
+}
+
+async fn post_restart_background_job(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(job_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_admin_jobs_view(&state.pool, &user.id).await?;
+    let aborted = crate::job_queue::restart_job(
+        &state.pool,
+        &state.job_worker_supervisor.job_runs(),
+        &job_id,
+    )
+    .await
+    .map_err(|e| e.into_app_error())?;
+    write_admin_audit(
+        &state.pool,
+        &user.id,
+        "admin.background_jobs.restart",
+        "background_job",
+        &job_id,
+        Some(serde_json::json!({ "abortedInProcess": aborted })),
+        &headers,
+    );
+    Ok(Json(
+        serde_json::json!({ "success": true, "jobId": job_id, "abortedInProcess": aborted }),
+    ))
 }
 
 async fn admin_settings(

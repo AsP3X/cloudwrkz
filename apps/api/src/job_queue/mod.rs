@@ -17,15 +17,19 @@
 // Agent: OWNS policies_from_config, try_claim_next FOR UPDATE SKIP LOCKED, run_one_job match on job_type, supervised wall-timeout wrapper, dispatcher loop + stale reclaim.
 
 mod budget;
+pub mod control;
 pub mod entity_creates;
 pub mod job_log;
+pub mod run_registry;
 pub mod supervisor;
 mod time_entry_mutations;
 
+pub use control::{JobControlError, cancel_pending_job, restart_job, stop_processing_job};
 pub use job_log::{
     JobLogRegistry, JobLogger, append_system_job_log_line, fetch_job_log_lines,
     payload_keys_summary,
 };
+pub use run_registry::JobRunRegistry;
 pub use supervisor::{resolve_initial_worker_count, spawn_job_queue_supervisor};
 
 use std::collections::HashMap;
@@ -180,7 +184,7 @@ async fn mark_job_failed(pool: &PgPool, job_id: &str, msg: &str, logger: Option<
         log.log(&format!("Job failed: {msg}"));
     }
     let _ = sqlx::query(
-        r#"UPDATE background_jobs SET status = 'failed', error_message = $2, updated_at = clock_timestamp(), completed_at = clock_timestamp() WHERE id = $1"#,
+        r#"UPDATE background_jobs SET status = 'failed', error_message = $2, updated_at = clock_timestamp(), completed_at = clock_timestamp() WHERE id = $1 AND status = 'processing'"#,
     )
     .bind(job_id)
     .bind(msg)
@@ -707,6 +711,7 @@ async fn run_one_job_supervised(
     created_by_user_id: Option<String>,
     budgets: Arc<TypeBudgets>,
     job_logs: Arc<JobLogRegistry>,
+    job_runs: Arc<JobRunRegistry>,
 ) {
     let job_id_for_log = job_id.clone();
     let job_type_for_log = job_type.clone();
@@ -731,47 +736,54 @@ async fn run_one_job_supervised(
         .await;
     });
 
+    job_runs.register(&job_id_for_log, inner.abort_handle());
     let abort = inner.abort_handle();
-    match tokio::time::timeout(RUN_ONE_JOB_WALL_TIMEOUT, inner).await {
-        Ok(Ok(())) => {
-            logger.log("Job processing finished");
-        }
-        Ok(Err(e)) => {
-            if e.is_panic() {
+    let finish = async {
+        match tokio::time::timeout(RUN_ONE_JOB_WALL_TIMEOUT, inner).await {
+            Ok(Ok(())) => {
+                logger.log("Job processing finished");
+            }
+            Ok(Err(e)) => {
+                if e.is_cancelled() {
+                    logger.log("Job task aborted (admin stop or worker shutdown)");
+                } else if e.is_panic() {
+                    error!(
+                        target: "jobs",
+                        event = "jobs.job_panic",
+                        job_id = %job_id_for_log,
+                        job_type = %job_type_for_log,
+                        "background job task panicked"
+                    );
+                    mark_job_failed(
+                        &pool_fail,
+                        &job_id_for_log,
+                        "Internal error: background job panicked",
+                        Some(&logger),
+                    )
+                    .await;
+                }
+            }
+            Err(_elapsed) => {
+                abort.abort();
                 error!(
                     target: "jobs",
-                    event = "jobs.job_panic",
+                    event = "jobs.job_wall_timeout",
                     job_id = %job_id_for_log,
                     job_type = %job_type_for_log,
-                    "background job task panicked"
+                    "background job exceeded wall-clock limit"
                 );
                 mark_job_failed(
                     &pool_fail,
                     &job_id_for_log,
-                    "Internal error: background job panicked",
+                    "Background job exceeded maximum processing time",
                     Some(&logger),
                 )
                 .await;
             }
         }
-        Err(_elapsed) => {
-            abort.abort();
-            error!(
-                target: "jobs",
-                event = "jobs.job_wall_timeout",
-                job_id = %job_id_for_log,
-                job_type = %job_type_for_log,
-                "background job exceeded wall-clock limit"
-            );
-            mark_job_failed(
-                &pool_fail,
-                &job_id_for_log,
-                "Background job exceeded maximum processing time",
-                Some(&logger),
-            )
-            .await;
-        }
-    }
+    };
+    finish.await;
+    job_runs.unregister(&job_id_for_log);
 }
 
 /// Atomically claims the next eligible row using `FOR UPDATE SKIP LOCKED` so concurrent workers
@@ -872,6 +884,7 @@ pub(super) async fn run_job_queue_dispatcher_loop(
     worker_id: u64,
     logs: Arc<supervisor::WorkerLogRegistry>,
     job_logs: Arc<JobLogRegistry>,
+    job_runs: Arc<JobRunRegistry>,
 ) {
     info!(
         event = "job_queue.worker_start",
@@ -922,6 +935,7 @@ pub(super) async fn run_job_queue_dispatcher_loop(
             let gh_rate = github_rate.clone();
             let mutation_broker = mutation_broker.clone();
             let job_logs_spawn = job_logs.clone();
+            let job_runs_spawn = job_runs.clone();
             let job_id_for_log = job_id.clone();
             let job_type_for_log = job_type.clone();
             JobLogger::new(job_logs_spawn.clone(), pool.clone(), &job_id).log(&format!(
@@ -948,6 +962,7 @@ pub(super) async fn run_job_queue_dispatcher_loop(
                     created_by_user_id,
                     budgets,
                     job_logs_spawn,
+                    job_runs_spawn,
                 )
                 .await;
                 debug!(

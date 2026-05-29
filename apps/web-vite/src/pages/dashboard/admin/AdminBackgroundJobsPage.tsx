@@ -707,6 +707,8 @@ function AdminBackgroundJobsPageContent() {
   const [detail, setDetail] = useState<JobDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [jobActionBusy, setJobActionBusy] = useState<"cancel" | "stop" | "restart" | null>(null);
+  const [jobActionError, setJobActionError] = useState<string | null>(null);
 
   const [rawOpen, setRawOpen] = useState(false);
   const [rawTitle, setRawTitle] = useState("");
@@ -839,8 +841,12 @@ function AdminBackgroundJobsPageContent() {
     if (!detailId) {
       setDetail(null);
       setDetailError(null);
+      setJobActionError(null);
+      setJobActionBusy(null);
       return;
     }
+    setJobActionError(null);
+    setJobActionBusy(null);
     fetchDetail(detailId);
   }, [detailId, fetchDetail]);
 
@@ -861,8 +867,44 @@ function AdminBackgroundJobsPageContent() {
   const closeDetail = () => {
     setDetailId(null);
     setRawOpen(false);
+    setJobActionError(null);
+    setJobActionBusy(null);
     void load({ silent: true });
   };
+
+  const runJobAction = useCallback(
+    async (action: "cancel" | "stop" | "restart") => {
+      if (!detailId || !detail) return;
+
+      const confirmMessage =
+        action === "cancel"
+          ? "Remove this pending job from the queue? It will not run."
+          : action === "stop"
+            ? "Stop this running job? The worker task will be aborted when possible."
+            : "Requeue this job so the worker runs it again?";
+
+      if (!window.confirm(confirmMessage)) return;
+
+      setJobActionBusy(action);
+      setJobActionError(null);
+      try {
+        await api.post(`/admin/background-jobs/${detailId}/${action}`);
+        fetchDetail(detailId, { silent: true });
+        void load({ silent: true });
+      } catch (e) {
+        setJobActionError(e instanceof Error ? e.message : "Job action failed.");
+      } finally {
+        setJobActionBusy(null);
+      }
+    },
+    [detail, detailId, fetchDetail, load],
+  );
+
+  const showJobControls =
+    detail?.status === "pending" ||
+    detail?.status === "processing" ||
+    detail?.status === "failed" ||
+    detail?.status === "cancelled";
 
   const handleQueuePageSizeChange = useCallback((size: JobPageSize) => {
     setQueuePageSize(size);
@@ -1054,6 +1096,62 @@ function AdminBackgroundJobsPageContent() {
 
               {detailId && (
                 <JobLiveLogPanel jobId={detailId} status={detail.status} />
+              )}
+
+              {showJobControls && (
+                <div className="rounded-xl border border-neutral-200 dark:border-neutral-700 overflow-hidden">
+                  <div className="border-b border-neutral-200 dark:border-neutral-700 bg-neutral-50/80 dark:bg-neutral-800/50 px-3 py-2">
+                    <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Job controls</h3>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                      Cancel pending work, stop a running task, or requeue for another attempt.
+                    </p>
+                  </div>
+                  <div className="px-3 py-3 space-y-3">
+                    {jobActionError && (
+                      <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+                        {jobActionError}
+                      </p>
+                    )}
+                    <div className="flex flex-wrap gap-2">
+                      {detail.status === "pending" && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={jobActionBusy !== null}
+                          onClick={() => void runJobAction("cancel")}
+                        >
+                          {jobActionBusy === "cancel" ? "Cancelling…" : "Cancel"}
+                        </Button>
+                      )}
+                      {detail.status === "processing" && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="border-red-300 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/40"
+                          disabled={jobActionBusy !== null}
+                          onClick={() => void runJobAction("stop")}
+                        >
+                          {jobActionBusy === "stop" ? "Stopping…" : "Stop"}
+                        </Button>
+                      )}
+                      {(detail.status === "processing" ||
+                        detail.status === "failed" ||
+                        detail.status === "cancelled") && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={jobActionBusy !== null}
+                          onClick={() => void runJobAction("restart")}
+                        >
+                          {jobActionBusy === "restart" ? "Restarting…" : "Restart"}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
               )}
 
               <div className="flex flex-wrap gap-2 pt-2">
