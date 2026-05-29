@@ -52,6 +52,11 @@ export function LinkMetadataDisplay({ metadata }: LinkMetadataDisplayProps) {
       githubCommitsCount: "Commit Count",
       githubReleasesCount: "Release Count",
       githubLastPushedAt: "Last Push",
+      canonicalUrl: "Canonical URL",
+      themeColor: "Theme Color",
+      language: "Language",
+      robotsTxtAllowed: "robots.txt Allowed",
+      robotsTxtMessage: "robots.txt Message",
     };
     return labels[key] || key;
   };
@@ -62,6 +67,8 @@ export function LinkMetadataDisplay({ metadata }: LinkMetadataDisplayProps) {
     if (key.startsWith("og")) return "Open Graph";
     if (key.startsWith("twitter")) return "Twitter";
     if (key === "image" || key === "favicon") return "Media";
+    if (key.startsWith("robotsTxt")) return "robots.txt";
+    if (key === "canonicalUrl" || key === "themeColor" || key === "language") return "Page";
     return "Other";
   };
 
@@ -255,7 +262,9 @@ export function LinkMetadataDisplay({ metadata }: LinkMetadataDisplayProps) {
         "Open Graph": 2,
         Twitter: 3,
         Media: 4,
-        Other: 5,
+        Page: 5,
+        "robots.txt": 6,
+        Other: 7,
       };
       const catA = getCategory(keyA);
       const catB = getCategory(keyB);

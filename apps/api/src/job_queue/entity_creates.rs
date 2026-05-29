@@ -20,7 +20,7 @@ use crate::db::numbering::{next_ticket_number, next_todo_number};
 use crate::error::AppError;
 use crate::github_metadata;
 use crate::id::new_cuid;
-use crate::link_preview::{extract_metadata_from_url, normalize_url};
+use crate::link_preview::{merge_scrape_metadata, normalize_url, scrape_link_page};
 use crate::models::link::{CreateLinkRequest, UpdateLinkRequest};
 use crate::models::ticket::{TicketCommentCreateRequest, TicketCreateRequest, TicketUpdateRequest};
 use crate::models::time_entry::{AddTimeEntryRequest, CreateTimeEntryRequest};
@@ -31,7 +31,7 @@ use crate::routes::helpers::{
     check_permission_mut_tx, ensure_group_membership_tx,
 };
 
-use super::enqueue_github_link_metadata_job;
+use super::{enqueue_github_link_metadata_job, enqueue_website_link_metadata_job};
 
 pub const JOB_TYPE_TICKET_CREATE: &str = "ticket_create";
 pub const JOB_TYPE_TICKET_UPDATE: &str = "ticket_update";
@@ -2105,24 +2105,19 @@ async fn exec_link_create(
     let mut metadata_extracted_at: Option<chrono::NaiveDateTime> = None;
 
     if should_extract {
-        if let Ok(extracted) = extract_metadata_from_url(http, &body.url).await {
-            let extracted_title = extracted.title.clone();
-            let extracted_description = extracted.description.clone();
-            let extracted_favicon = extracted.favicon.clone();
-
+        let scrape = scrape_link_page(http, &body.url).await;
+        if let Some(ref meta) = scrape.metadata {
             if title.is_none() {
-                title = extracted_title.clone();
+                title = meta.title.clone();
             }
             if description.is_none() {
-                description = extracted_description.clone();
+                description = meta.description.clone();
             }
-            favicon = extracted_favicon.clone();
+            if favicon.is_none() {
+                favicon = meta.favicon.clone();
+            }
             metadata_extracted_at = Some(chrono::Utc::now().naive_utc());
-            metadata = Some(json!({
-                "title": extracted_title,
-                "description": extracted_description,
-                "favicon": extracted_favicon,
-            }));
+            metadata = Some(merge_scrape_metadata(None, &scrape));
         }
     }
 
@@ -2246,6 +2241,15 @@ async fn exec_link_create(
                 link_id = %id,
                 error = %e,
                 "could not enqueue GitHub metadata job after link create"
+            );
+        }
+    } else if github_metadata::parse_github_owner_repo(&body.url).is_none() {
+        if let Err(e) = enqueue_website_link_metadata_job(&pool, &id, &user_id).await {
+            warn!(
+                event = "link.create.website_metadata_enqueue_failed",
+                link_id = %id,
+                error = %e,
+                "could not enqueue website metadata job after link create"
             );
         }
     }
@@ -3138,7 +3142,7 @@ async fn exec_collection_delete(
 
 async fn exec_link_update(
     pool: &PgPool,
-    _http: &Client,
+    http: &Client,
     lock_ms: u64,
     stmt_ms: u64,
     payload: &serde_json::Value,
@@ -3218,6 +3222,8 @@ async fn exec_link_update(
             return map_sqlx_ticket(e);
         }
     }
+    let url_changed = body.url.is_some();
+    let updated_url = body.url.clone();
     if let Some(ref url) = body.url {
         let normalized = normalize_url(url);
         if let Err(e) = sqlx::query(
@@ -3354,6 +3360,27 @@ async fn exec_link_update(
 
     if let Err(e) = tx.commit().await {
         return map_sqlx_ticket(e);
+    }
+
+    if url_changed {
+        if let Some(ref url) = updated_url {
+            if github_metadata::parse_github_owner_repo(url).is_some() {
+                let _ = enqueue_github_link_metadata_job(pool, id, &user_id).await;
+            } else {
+                let scrape = scrape_link_page(http, url).await;
+                if scrape.robots_allowed {
+                    let merged = merge_scrape_metadata(None, &scrape);
+                    let _ = sqlx::query(
+                        "UPDATE links SET metadata = $1, metadata_extracted_at = NOW(), updated_at = NOW() WHERE id = $2",
+                    )
+                    .bind(sqlx::types::Json(merged))
+                    .bind(id)
+                    .execute(pool)
+                    .await;
+                }
+                let _ = enqueue_website_link_metadata_job(pool, id, &user_id).await;
+            }
+        }
     }
 
     JobExecOutcome::Ok(JsonMutationResult::ok(json!({

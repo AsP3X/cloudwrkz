@@ -50,6 +50,10 @@ pub fn router() -> Router<AppState> {
             "/links/{id}/github-metadata/refresh",
             post(enqueue_github_metadata_refresh),
         )
+        .route(
+            "/links/{id}/website-metadata/refresh",
+            post(enqueue_website_metadata_refresh),
+        )
 }
 
 async fn list_links(
@@ -341,6 +345,35 @@ async fn enqueue_github_metadata_refresh(
 
     let (job_id, already_queued) =
         job_queue::enqueue_github_link_metadata_job(&state.pool, &id, &user.id).await?;
+
+    Ok(Json(serde_json::json!({
+        "jobId": job_id,
+        "alreadyQueued": already_queued,
+    })))
+}
+
+// Human: Owners can re-queue a background HTML scrape (robots.txt + Open Graph) for non-GitHub bookmarks.
+// Agent: REQUIRES links.update + ownership; CALLS enqueue_website_link_metadata_job; RETURNS jobId alreadyQueued.
+
+async fn enqueue_website_metadata_refresh(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_permission(&state.pool, &user.id, "links.update").await?;
+    let owns: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM links WHERE id = $1 AND user_id = $2)")
+            .bind(&id)
+            .bind(&user.id)
+            .fetch_one(&state.pool)
+            .await?;
+
+    if !owns {
+        return Err(AppError::not_found("Link not found"));
+    }
+
+    let (job_id, already_queued) =
+        job_queue::enqueue_website_link_metadata_job(&state.pool, &id, &user.id).await?;
 
     Ok(Json(serde_json::json!({
         "jobId": job_id,

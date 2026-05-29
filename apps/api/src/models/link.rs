@@ -98,4 +98,10 @@ pub struct ExtractMetadataResponse {
     pub title: Option<String>,
     pub description: Option<String>,
     pub favicon: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub robots_allowed: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub robots_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
 }

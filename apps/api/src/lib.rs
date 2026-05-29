@@ -16,6 +16,7 @@ mod github_rate_limit;
 pub mod id;
 pub mod job_queue;
 mod link_preview;
+mod website_link_metadata;
 mod models;
 pub mod permissions;
 mod request_tracking;

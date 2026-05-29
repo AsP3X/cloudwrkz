@@ -50,6 +50,9 @@ interface LinkInformationSidebarProps {
   onQueueGithubMetadataRefresh?: () => void;
   githubMetadataRefreshBusy?: boolean;
   githubMetadataRefreshMessage?: string | null;
+  onQueueWebsiteMetadataRefresh?: () => void;
+  websiteMetadataRefreshBusy?: boolean;
+  websiteMetadataRefreshMessage?: string | null;
 }
 
 export function LinkInformationSidebar({
@@ -59,9 +62,13 @@ export function LinkInformationSidebar({
   onQueueGithubMetadataRefresh,
   githubMetadataRefreshBusy,
   githubMetadataRefreshMessage,
+  onQueueWebsiteMetadataRefresh,
+  websiteMetadataRefreshBusy,
+  websiteMetadataRefreshMessage,
 }: LinkInformationSidebarProps) {
   const domain = extractDomain(link.url);
   const showGithubRefresh = isGitHubUrl(link.url) && onQueueGithubMetadataRefresh;
+  const showWebsiteRefresh = !isGitHubUrl(link.url) && onQueueWebsiteMetadataRefresh;
   const collections = link.collections ?? [];
   const tags = link.tags ?? [];
   const hasMetadata =
@@ -120,6 +127,34 @@ export function LinkInformationSidebar({
               </Button>
               {githubMetadataRefreshMessage && (
                 <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-snug">{githubMetadataRefreshMessage}</p>
+              )}
+            </>
+          )}
+          {showWebsiteRefresh && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                type="button"
+                disabled={websiteMetadataRefreshBusy}
+                onClick={onQueueWebsiteMetadataRefresh}
+                className="w-full justify-start"
+                title="Re-fetch Open Graph and page metadata from the website (respects robots.txt)."
+              >
+                <svg className="w-4 h-4 mr-2 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+                {websiteMetadataRefreshBusy ? "Queuing…" : "Refresh website preview"}
+              </Button>
+              {websiteMetadataRefreshMessage && (
+                <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-snug">
+                  {websiteMetadataRefreshMessage}
+                </p>
               )}
             </>
           )}

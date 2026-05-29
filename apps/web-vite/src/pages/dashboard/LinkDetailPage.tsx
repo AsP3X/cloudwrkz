@@ -9,7 +9,14 @@ import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { AccessIssueTicketDialog } from "@/components/features/tickets/AccessIssueTicketDialog";
 import { YouTubeEmbed } from "@/components/features/links/YouTubeEmbed";
 import { GitHubLinkInfo } from "@/components/features/links/GitHubLinkInfo";
-import { getLinkDetailHeadlineTitle, isGitHubUrl } from "@/lib/utils/links";
+import { getLinkDetailHeadlineTitle, isGitHubUrl, isYouTubeUrl } from "@/lib/utils/links";
+import {
+  getRobotsTxtStatus,
+  getWebsitePreviewFields,
+  shouldOfferWebsiteMetadataRefresh,
+} from "@/lib/utils/linkMetadata";
+import { RobotsTxtWarning } from "@/components/features/links/RobotsTxtWarning";
+import { WebsiteLinkPreview } from "@/components/features/links/WebsiteLinkPreview";
 import {
   LinkDetailLayout,
   LinkDetailSidebarProvider,
@@ -34,6 +41,10 @@ export default function LinkDetailPage() {
   const [githubRefreshBusy, setGithubRefreshBusy] = useState(false);
   const [githubRefreshMessage, setGithubRefreshMessage] = useState<string | null>(null);
   const githubPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [websiteRefreshBusy, setWebsiteRefreshBusy] = useState(false);
+  const [websiteRefreshMessage, setWebsiteRefreshMessage] = useState<string | null>(null);
+  const websitePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const websiteAutoQueuedRef = useRef(false);
   const [editLinkDialogOpen, setEditLinkDialogOpen] = useState(false);
 
   const canViewLinks = can("modules.links.view");
@@ -71,15 +82,22 @@ export default function LinkDetailPage() {
 
   useEffect(() => {
     setGithubRefreshMessage(null);
+    setWebsiteRefreshMessage(null);
+    websiteAutoQueuedRef.current = false;
     if (githubPollRef.current) {
       clearInterval(githubPollRef.current);
       githubPollRef.current = null;
+    }
+    if (websitePollRef.current) {
+      clearInterval(websitePollRef.current);
+      websitePollRef.current = null;
     }
   }, [id]);
 
   useEffect(() => {
     return () => {
       if (githubPollRef.current) clearInterval(githubPollRef.current);
+      if (websitePollRef.current) clearInterval(websitePollRef.current);
     };
   }, []);
 
@@ -107,6 +125,40 @@ export default function LinkDetailPage() {
       setGithubRefreshBusy(false);
     }
   }, [link, loadLink]);
+
+  const queueWebsiteMetadataRefresh = useCallback(async () => {
+    if (!link || isGitHubUrl(link.url)) return;
+    setWebsiteRefreshBusy(true);
+    setWebsiteRefreshMessage(null);
+    try {
+      const r = await api.post<{ jobId: string; alreadyQueued: boolean }>(
+        `/links/${link.id}/website-metadata/refresh`,
+        {},
+      );
+      setWebsiteRefreshMessage(
+        r.alreadyQueued
+          ? "A website preview refresh is already queued. This page will update when it finishes."
+          : "Queued website preview refresh. This page will update when scraping completes.",
+      );
+      if (websitePollRef.current) clearInterval(websitePollRef.current);
+      websitePollRef.current = setInterval(() => {
+        void loadLink();
+      }, 20_000);
+    } catch {
+      setWebsiteRefreshMessage("Could not queue a website preview refresh. Try again later.");
+    } finally {
+      setWebsiteRefreshBusy(false);
+    }
+  }, [link, loadLink]);
+
+  useEffect(() => {
+    if (!link || !canEditBase || isGitHubUrl(link.url) || isYouTubeUrl(link.url)) return;
+    if (!shouldOfferWebsiteMetadataRefresh(link)) return;
+    if (websiteAutoQueuedRef.current) return;
+    if (link.metadata_extracted_at) return;
+    websiteAutoQueuedRef.current = true;
+    void queueWebsiteMetadataRefresh();
+  }, [link, canEditBase, queueWebsiteMetadataRefresh]);
 
   if (!canViewLinks) {
     return (
@@ -167,6 +219,12 @@ export default function LinkDetailPage() {
     metadata: link.metadata,
   });
 
+  const robotsStatus = getRobotsTxtStatus(link.metadata);
+  const websitePreview =
+    !isGitHubUrl(link.url) && !isYouTubeUrl(link.url)
+      ? getWebsitePreviewFields(link.metadata)
+      : null;
+
   return (
     <LinkDetailSidebarProvider defaultOpen={true}>
       <LinkDetailPageHeader
@@ -211,10 +269,19 @@ export default function LinkDetailPage() {
             onQueueGithubMetadataRefresh={queueGithubMetadataRefresh}
             githubMetadataRefreshBusy={githubRefreshBusy}
             githubMetadataRefreshMessage={githubRefreshMessage}
+            onQueueWebsiteMetadataRefresh={canEdit ? queueWebsiteMetadataRefresh : undefined}
+            websiteMetadataRefreshBusy={websiteRefreshBusy}
+            websiteMetadataRefreshMessage={websiteRefreshMessage}
           />
         }
       >
         <div className="space-y-6">
+          {!robotsStatus.allowed && robotsStatus.message && (
+            <RobotsTxtWarning message={robotsStatus.message} />
+          )}
+
+          {websitePreview && <WebsiteLinkPreview preview={websitePreview} pageUrl={link.url} />}
+
           {link.description && (
             <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">
               <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">Description</h2>
