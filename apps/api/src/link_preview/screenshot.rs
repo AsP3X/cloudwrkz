@@ -218,10 +218,12 @@ pub async fn capture_link_screenshot(page_url: &str, link_id: &str) -> Screensho
     }
 
     let (width, height) = screenshot_dimensions();
-    let window_size = format!("{width},{height}");
     let timeout = screenshot_timeout();
     let virtual_time_budget = screenshot_virtual_time_budget_ms();
 
+    // Human: Chromium headless counts comma-containing values as extra URL targets when the flag and value are separate argv entries.
+    // Agent: --window-size=W,H and --screenshot=path as single args; ONE page_url positional; AVOIDS chrome_main multiple-targets exit 13.
+    let window_size_flag = format!("--window-size={width},{height}");
     let screenshot_flag = format!("--screenshot={}", disk_path.display());
     let virtual_time_flag = format!("--virtual-time-budget={virtual_time_budget}");
 
@@ -232,8 +234,6 @@ pub async fn capture_link_screenshot(page_url: &str, link_id: &str) -> Screensho
     // Human: Headless containers often lack D-Bus; pointing at /dev/null avoids noisy failures on startup.
     // Agent: ENV DBUS_SESSION_BUS_ADDRESS=/dev/null; REDUCES dbus connection errors in Docker.
     cmd.env("DBUS_SESSION_BUS_ADDRESS", "/dev/null");
-    // Human: `--screenshot` and path must be one flag (`--screenshot=/path`); separate args make Chromium treat the path as a second URL target.
-    // Agent: SINGLE --screenshot=path arg; ONE page_url positional; AVOIDS "Multiple targets are not supported in headless mode".
     cmd.arg("--headless=new")
         .arg("--disable-gpu")
         .arg("--no-sandbox")
@@ -241,8 +241,7 @@ pub async fn capture_link_screenshot(page_url: &str, link_id: &str) -> Screensho
         .arg("--disable-dev-shm-usage")
         .arg("--no-zygote")
         .arg("--hide-scrollbars")
-        .arg("--window-size")
-        .arg(&window_size)
+        .arg(&window_size_flag)
         .arg("--run-all-compositor-stages-before-draw")
         .arg(&virtual_time_flag)
         .arg(&screenshot_flag)
@@ -336,5 +335,12 @@ mod tests {
         assert!(safe_link_id("clxyz123").is_some());
         assert!(safe_link_id("../etc").is_none());
         assert!(safe_link_id("").is_none());
+    }
+
+    #[test]
+    fn chromium_window_size_flag_is_single_argv_token() {
+        let flag = format!("--window-size={width},{height}", width = 1280, height = 720);
+        assert_eq!(flag, "--window-size=1280,720");
+        assert!(!flag.contains(' '));
     }
 }
