@@ -1,7 +1,7 @@
-//! Background enrichment: scrape bookmark URLs for Open Graph / Twitter metadata (respecting robots.txt).
+//! Background job: headless Chromium screenshot for link detail previews (`link_website_screenshot`).
 
-// Human: Website links get a background job that fetches HTML metadata and merges it into `links.metadata` without overwriting GitHub fields.
-// Agent: READS links.url metadata; CALLS link_preview::scrape_link_page; WRITES links.metadata metadata_extracted_at; UPDATES background_jobs status.
+// Human: Screenshots run in their own job so HTML metadata scraping and slow Chromium captures do not block each other.
+// Agent: READS links.url metadata; CHECKS robots.txt; CALLS capture_link_screenshot; MERGES screenshotUrl into links.metadata.
 
 use reqwest::Client;
 use serde_json::Value;
@@ -9,7 +9,9 @@ use sqlx::{PgPool, Row};
 use tracing::info;
 
 use crate::github_metadata;
-use crate::link_preview::{merge_scrape_metadata, scrape_link_page};
+use crate::link_preview::{
+    capture_link_screenshot, merge_screenshot_into_metadata, robots::check_robots_allowed,
+};
 
 async fn mark_background_job_failed(pool: &PgPool, job_id: &str, msg: &str) {
     let _ = sqlx::query(
@@ -21,10 +23,10 @@ async fn mark_background_job_failed(pool: &PgPool, job_id: &str, msg: &str) {
     .await;
 }
 
-// Human: One job loads the link row, scrapes when not a GitHub repo URL, and persists merged JSON back on success.
-// Agent: SELECT url metadata; SKIP github URLs; scrape_link_page; UPDATE links; mark job completed or failed.
+// Human: One job captures a PNG when robots.txt allows and patches `screenshotUrl` without re-scraping Open Graph fields.
+// Agent: SELECT url metadata; SKIP github; robots check; capture_link_screenshot; UPDATE links.metadata; complete background_jobs.
 
-pub async fn execute_website_link_metadata_job(
+pub async fn execute_link_screenshot_job(
     pool: &PgPool,
     client: &Client,
     job_id: &str,
@@ -48,13 +50,27 @@ pub async fn execute_website_link_metadata_job(
 
     let url: String = link_row.get("url");
     if github_metadata::parse_github_owner_repo(&url).is_some() {
-        mark_background_job_failed(pool, job_id, "GitHub URLs use github_link_metadata jobs").await;
+        mark_background_job_failed(pool, job_id, "GitHub URLs do not use website screenshots").await;
         return;
     }
 
     let existing_meta: Option<Value> = link_row.get("metadata");
-    let scrape = scrape_link_page(client, &url).await;
-    let merged = merge_scrape_metadata(existing_meta, &scrape);
+
+    let robots = check_robots_allowed(client, &url).await;
+    let captured = if robots.allowed {
+        capture_link_screenshot(&url, link_id).await
+    } else {
+        info!(
+            event = "link_screenshot.skipped_robots",
+            job_id = %job_id,
+            link_id = %link_id,
+            "robots.txt disallows screenshot capture"
+        );
+        None
+    };
+    let captured_ok = captured.is_some();
+
+    let merged = merge_screenshot_into_metadata(existing_meta, captured, &robots);
 
     let mut tx = match pool.begin().await {
         Ok(t) => t,
@@ -66,7 +82,7 @@ pub async fn execute_website_link_metadata_job(
     };
 
     if let Err(e) = sqlx::query(
-        r#"UPDATE links SET metadata = $1, metadata_extracted_at = NOW(), updated_at = NOW() WHERE id = $2"#,
+        r#"UPDATE links SET metadata = $1, updated_at = NOW() WHERE id = $2"#,
     )
     .bind(sqlx::types::Json(merged))
     .bind(link_id)
@@ -74,7 +90,8 @@ pub async fn execute_website_link_metadata_job(
     .await
     {
         let _ = tx.rollback().await;
-        mark_background_job_failed(pool, job_id, &format!("Failed to save metadata: {e}")).await;
+        mark_background_job_failed(pool, job_id, &format!("Failed to save screenshot metadata: {e}"))
+            .await;
         return;
     }
 
@@ -91,15 +108,17 @@ pub async fn execute_website_link_metadata_job(
     }
 
     if let Err(e) = tx.commit().await {
-        mark_background_job_failed(pool, job_id, &format!("Failed to commit metadata update: {e}")).await;
+        mark_background_job_failed(pool, job_id, &format!("Failed to commit screenshot update: {e}"))
+            .await;
         return;
     }
 
     info!(
-        event = "website_metadata.job_ok",
+        event = "link_screenshot.job_ok",
         job_id = %job_id,
         link_id = %link_id,
-        robots_allowed = scrape.robots_allowed,
-        "Website link metadata saved"
+        robots_allowed = robots.allowed,
+        captured = captured_ok,
+        "Link screenshot job finished"
     );
 }

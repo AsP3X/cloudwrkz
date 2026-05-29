@@ -1,13 +1,13 @@
 //! Shared HTML metadata extraction for links (used by HTTP routes and background jobs).
 
-mod robots;
+pub mod robots;
 mod scrape;
 mod screenshot;
 mod uploads;
 mod url_safety;
 
-pub use scrape::{merge_scrape_metadata, scrape_link_page};
-pub use screenshot::log_screenshot_capability;
+pub use scrape::{merge_scrape_metadata, merge_screenshot_into_metadata, scrape_link_page};
+pub use screenshot::{capture_link_screenshot, log_screenshot_capability};
 pub use uploads::{ensure_upload_directories, favicons_dir, screenshots_dir};
 
 use reqwest::Client;
@@ -22,7 +22,7 @@ pub async fn extract_metadata_from_url(
     client: &Client,
     url_str: &str,
 ) -> Result<ExtractMetadataResponse, AppError> {
-    let result = scrape_link_page(client, url_str, None).await;
+    let result = scrape_link_page(client, url_str).await;
     if !result.robots_allowed {
         return Err(AppError::bad_request(
             result

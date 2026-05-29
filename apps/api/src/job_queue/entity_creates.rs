@@ -31,7 +31,9 @@ use crate::routes::helpers::{
     check_permission_mut_tx, ensure_group_membership_tx,
 };
 
-use super::{enqueue_github_link_metadata_job, enqueue_website_link_metadata_job};
+use super::{
+    enqueue_github_link_metadata_job, enqueue_website_link_preview_jobs,
+};
 
 pub const JOB_TYPE_TICKET_CREATE: &str = "ticket_create";
 pub const JOB_TYPE_TICKET_UPDATE: &str = "ticket_update";
@@ -2105,7 +2107,7 @@ async fn exec_link_create(
     let mut metadata_extracted_at: Option<chrono::NaiveDateTime> = None;
 
     if should_extract {
-        let scrape = scrape_link_page(http, &body.url, None).await;
+        let scrape = scrape_link_page(http, &body.url).await;
         if let Some(ref meta) = scrape.metadata {
             if title.is_none() {
                 title = meta.title.clone();
@@ -2244,12 +2246,12 @@ async fn exec_link_create(
             );
         }
     } else if github_metadata::parse_github_owner_repo(&body.url).is_none() {
-        if let Err(e) = enqueue_website_link_metadata_job(&pool, &id, &user_id).await {
+        if let Err(e) = enqueue_website_link_preview_jobs(&pool, &id, &user_id).await {
             warn!(
-                event = "link.create.website_metadata_enqueue_failed",
+                event = "link.create.website_preview_enqueue_failed",
                 link_id = %id,
                 error = %e,
-                "could not enqueue website metadata job after link create"
+                "could not enqueue website preview jobs after link create"
             );
         }
     }
@@ -3142,7 +3144,7 @@ async fn exec_collection_delete(
 
 async fn exec_link_update(
     pool: &PgPool,
-    http: &Client,
+    _http: &Client,
     lock_ms: u64,
     stmt_ms: u64,
     payload: &serde_json::Value,
@@ -3367,18 +3369,7 @@ async fn exec_link_update(
             if github_metadata::parse_github_owner_repo(url).is_some() {
                 let _ = enqueue_github_link_metadata_job(pool, id, &user_id).await;
             } else {
-                let scrape = scrape_link_page(http, url, Some(id)).await;
-                if scrape.robots_allowed {
-                    let merged = merge_scrape_metadata(None, &scrape);
-                    let _ = sqlx::query(
-                        "UPDATE links SET metadata = $1, metadata_extracted_at = NOW(), updated_at = NOW() WHERE id = $2",
-                    )
-                    .bind(sqlx::types::Json(merged))
-                    .bind(id)
-                    .execute(pool)
-                    .await;
-                }
-                let _ = enqueue_website_link_metadata_job(pool, id, &user_id).await;
+                let _ = enqueue_website_link_preview_jobs(pool, id, &user_id).await;
             }
         }
     }

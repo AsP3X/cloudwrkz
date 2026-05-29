@@ -41,6 +41,7 @@ use crate::id::new_cuid;
 
 pub const JOB_TYPE_GITHUB_LINK_METADATA: &str = "github_link_metadata";
 pub const JOB_TYPE_WEBSITE_LINK_METADATA: &str = "website_link_metadata";
+pub const JOB_TYPE_LINK_WEBSITE_SCREENSHOT: &str = "link_website_screenshot";
 pub const JOB_TYPE_QR_LOGIN_APPROVE: &str = "qr_login_approve";
 pub const JOB_TYPE_QR_LOGIN_FINALIZE: &str = "qr_login_finalize";
 /// Email/password sign-in queued from `POST /auth/login` (processed by [`crate::auth::login_queue`], not the global dequeue loop).
@@ -52,7 +53,7 @@ pub const JOB_TYPE_AUTH_REGISTER: &str = "auth_register";
 const RUN_ONE_JOB_WALL_TIMEOUT: Duration = Duration::from_secs(600);
 
 /// If a row stays `processing` longer than this, assume a crashed worker or lost task and mark failed.
-/// `github_link_metadata` and `website_link_metadata` are excluded (can wait on rate limits or slow hosts).
+/// `github_link_metadata`, `website_link_metadata`, and `link_website_screenshot` are excluded (slow hosts / Chromium).
 const STALE_PROCESSING_AFTER_MINUTES: i32 = 3;
 
 /// Policies applied before a job of this type is marked `processing` (concurrency + optional pacing).
@@ -88,6 +89,13 @@ pub(super) fn policies_from_config(config: &AppConfig) -> HashMap<String, JobTyp
         JOB_TYPE_WEBSITE_LINK_METADATA.to_string(),
         JobTypePolicy {
             max_concurrent: 3,
+            min_interval_between_starts: None,
+        },
+    );
+    m.insert(
+        JOB_TYPE_LINK_WEBSITE_SCREENSHOT.to_string(),
+        JobTypePolicy {
+            max_concurrent: 2,
             min_interval_between_starts: None,
         },
     );
@@ -179,7 +187,7 @@ pub(super) async fn reclaim_stale_processing_jobs(pool: &PgPool) {
            WHERE status = 'processing'
              AND started_at IS NOT NULL
              AND started_at < clock_timestamp() - ($1::integer * interval '1 minute')
-             AND job_type NOT IN ('github_link_metadata', 'website_link_metadata', 'auth_login', 'auth_register')"#,
+             AND job_type NOT IN ('github_link_metadata', 'website_link_metadata', 'link_website_screenshot', 'auth_login', 'auth_register')"#,
     )
     .bind(STALE_PROCESSING_AFTER_MINUTES)
     .execute(pool)
@@ -275,6 +283,74 @@ pub async fn enqueue_website_link_metadata_job(
     Ok((id, false))
 }
 
+/// Enqueue headless screenshot capture if none pending/processing for this link.
+// Human: Screenshots run separately from HTML metadata so Chromium work does not block Open Graph scraping.
+// Agent: dedupe_key link_website_screenshot:{link_id}; INSERT background_jobs pending; RETURNS (id, reused).
+
+pub async fn enqueue_link_website_screenshot_job(
+    pool: &PgPool,
+    link_id: &str,
+    user_id: &str,
+) -> Result<(String, bool), sqlx::Error> {
+    let dedupe_key = format!("{JOB_TYPE_LINK_WEBSITE_SCREENSHOT}:{link_id}");
+    let pending: Option<String> = sqlx::query_scalar(
+        r#"SELECT id FROM background_jobs
+           WHERE job_type = $1 AND dedupe_key = $2 AND status IN ('pending', 'processing')
+           ORDER BY created_at ASC LIMIT 1"#,
+    )
+    .bind(JOB_TYPE_LINK_WEBSITE_SCREENSHOT)
+    .bind(&dedupe_key)
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some(existing_id) = pending {
+        return Ok((existing_id, true));
+    }
+
+    let id = new_cuid();
+    sqlx::query(
+        r#"INSERT INTO background_jobs (id, job_type, payload, status, dedupe_key, created_by_user_id, created_at, updated_at, run_after)
+           VALUES ($1, $2, $3, 'pending', $4, $5, NOW(), NOW(), NULL)"#,
+    )
+    .bind(&id)
+    .bind(JOB_TYPE_LINK_WEBSITE_SCREENSHOT)
+    .bind(sqlx::types::Json(json!({ "link_id": link_id })))
+    .bind(&dedupe_key)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+    Ok((id, false))
+}
+
+/// Enqueue both website HTML metadata and screenshot jobs for a non-GitHub link.
+// Human: Create, URL change, and manual refresh should schedule metadata scrape and screenshot capture together.
+// Agent: CALLS enqueue_website_link_metadata_job + enqueue_link_website_screenshot_job; RETURNS both job ids and reuse flags.
+
+pub async fn enqueue_website_link_preview_jobs(
+    pool: &PgPool,
+    link_id: &str,
+    user_id: &str,
+) -> Result<WebsiteLinkPreviewJobs, sqlx::Error> {
+    let (metadata_job_id, metadata_already_queued) =
+        enqueue_website_link_metadata_job(pool, link_id, user_id).await?;
+    let (screenshot_job_id, screenshot_already_queued) =
+        enqueue_link_website_screenshot_job(pool, link_id, user_id).await?;
+    Ok(WebsiteLinkPreviewJobs {
+        metadata_job_id,
+        metadata_already_queued,
+        screenshot_job_id,
+        screenshot_already_queued,
+    })
+}
+
+#[derive(Debug, Clone)]
+pub struct WebsiteLinkPreviewJobs {
+    pub metadata_job_id: String,
+    pub metadata_already_queued: bool,
+    pub screenshot_job_id: String,
+    pub screenshot_already_queued: bool,
+}
+
 // Human: GitHub metadata jobs only need the link id string from their JSON payload.
 // Agent: READS payload["link_id"] as str; RETURNS Some owned String or None.
 
@@ -313,6 +389,19 @@ async fn run_one_job(
         JOB_TYPE_WEBSITE_LINK_METADATA => {
             if let Some(link_id) = payload_link_id(&payload) {
                 crate::website_link_metadata::execute_website_link_metadata_job(
+                    pool,
+                    client,
+                    &job_id,
+                    &link_id,
+                )
+                .await;
+            } else {
+                mark_job_failed(&pool, &job_id, "Missing payload.link_id").await;
+            }
+        }
+        JOB_TYPE_LINK_WEBSITE_SCREENSHOT => {
+            if let Some(link_id) = payload_link_id(&payload) {
+                crate::link_screenshot_job::execute_link_screenshot_job(
                     pool,
                     client,
                     &job_id,

@@ -353,7 +353,7 @@ async fn enqueue_github_metadata_refresh(
 }
 
 // Human: Owners can re-queue a background HTML scrape (robots.txt + Open Graph) for non-GitHub bookmarks.
-// Agent: REQUIRES links.update + ownership; CALLS enqueue_website_link_metadata_job; RETURNS jobId alreadyQueued.
+// Agent: REQUIRES links.update + ownership; CALLS enqueue_website_link_preview_jobs; RETURNS metadata + screenshot job ids.
 
 async fn enqueue_website_metadata_refresh(
     State(state): State<AppState>,
@@ -372,12 +372,13 @@ async fn enqueue_website_metadata_refresh(
         return Err(AppError::not_found("Link not found"));
     }
 
-    let (job_id, already_queued) =
-        job_queue::enqueue_website_link_metadata_job(&state.pool, &id, &user.id).await?;
+    let jobs = job_queue::enqueue_website_link_preview_jobs(&state.pool, &id, &user.id).await?;
 
     Ok(Json(serde_json::json!({
-        "jobId": job_id,
-        "alreadyQueued": already_queued,
+        "jobId": jobs.metadata_job_id,
+        "alreadyQueued": jobs.metadata_already_queued,
+        "screenshotJobId": jobs.screenshot_job_id,
+        "screenshotAlreadyQueued": jobs.screenshot_already_queued,
     })))
 }
 

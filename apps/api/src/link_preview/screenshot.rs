@@ -122,22 +122,6 @@ fn safe_link_id(link_id: &str) -> Option<String> {
     Some(trimmed.to_string())
 }
 
-// Human: Attaches a screenshot URL to metadata when Chromium succeeds, even if HTML parsing failed.
-// Agent: MUTATES LinkScrapedMetadata; CALLS capture_link_screenshot when link_id Some.
-
-pub async fn attach_screenshot_if_allowed(
-    page_url: &str,
-    link_id: Option<&str>,
-    meta: &mut super::scrape::LinkScrapedMetadata,
-) {
-    let Some(id) = link_id else {
-        return;
-    };
-    if let Some(screenshot_url) = capture_link_screenshot(page_url, id).await {
-        meta.screenshot_url = Some(screenshot_url);
-    }
-}
-
 // Human: Produces a stable API path for the link's prerender PNG, overwriting any previous capture for the same id.
 // Agent: REQUIRES url_safe_for_outbound_fetch; SPAWNS chromium; WRITES screenshots_dir; RETURNS /screenshots/... or None.
 

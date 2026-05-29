@@ -9,8 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use url::Url;
 
-use super::robots::{SCRAPE_USER_AGENT, check_robots_allowed};
-use super::screenshot::attach_screenshot_if_allowed;
+use super::robots::{SCRAPE_USER_AGENT, RobotsCheckResult, check_robots_allowed};
 use super::url_safety::url_safe_for_outbound_fetch;
 
 /// Rich scrape payload stored on `links.metadata` and returned from preview endpoints.
@@ -80,11 +79,7 @@ impl LinkScrapeResult {
 // Human: Entry point for jobs and link create — checks robots, then optionally fetches and parses the page.
 // Agent: AWAITS check_robots_allowed; IF allowed THEN GET html AND parse_document; ELSE metadata None with robots flags only.
 
-pub async fn scrape_link_page(
-    client: &Client,
-    url_str: &str,
-    link_id: Option<&str>,
-) -> LinkScrapeResult {
+pub async fn scrape_link_page(client: &Client, url_str: &str) -> LinkScrapeResult {
     if !url_safe_for_outbound_fetch(url_str) {
         return LinkScrapeResult {
             robots_allowed: false,
@@ -112,7 +107,7 @@ pub async fn scrape_link_page(
 
     let html_result = fetch_and_parse_html(client, url_str).await;
     let html_parse_failed = html_result.is_err();
-    let mut meta = match html_result {
+    let meta = match html_result {
         Ok(mut parsed) => {
             parsed.robots_txt_allowed = Some(true);
             parsed.robots_txt_message = None;
@@ -125,10 +120,7 @@ pub async fn scrape_link_page(
         },
     };
 
-    attach_screenshot_if_allowed(url_str, link_id, &mut meta).await;
-
     let robots_message = if html_parse_failed
-        && meta.screenshot_url.is_none()
         && meta.title.is_none()
         && meta.description.is_none()
         && meta.og_title.is_none()
@@ -166,6 +158,30 @@ pub fn merge_scrape_metadata(existing: Option<Value>, scrape: &LinkScrapeResult)
                 base.insert(k, v);
             }
         }
+    }
+    Value::Object(base)
+}
+
+// Human: Screenshot jobs patch only `screenshotUrl` and robots fields so HTML metadata from another job stays intact.
+// Agent: READS existing metadata Object; INSERTS screenshotUrl robotsTxt*; NEVER overwrites github* keys.
+
+pub fn merge_screenshot_into_metadata(
+    existing: Option<Value>,
+    screenshot_url: Option<String>,
+    robots: &RobotsCheckResult,
+) -> Value {
+    let mut base = match existing {
+        Some(Value::Object(map)) => map,
+        _ => Map::new(),
+    };
+    base.insert("robotsTxtAllowed".into(), json!(robots.allowed));
+    if let Some(ref msg) = robots.message {
+        base.insert("robotsTxtMessage".into(), json!(msg));
+    } else if robots.allowed {
+        base.remove("robotsTxtMessage");
+    }
+    if let Some(url) = screenshot_url {
+        base.insert("screenshotUrl".into(), json!(url));
     }
     Value::Object(base)
 }
