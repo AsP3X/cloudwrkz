@@ -10,6 +10,7 @@ import { updateTimeEntrySchema, type UpdateTimeEntryInput } from "@/lib/validati
 import { TimeEntryBreaks, type TimeEntryBreakDraftRow } from "../TimeEntryBreaks";
 import { COMMON_TIMEZONES } from "@/lib/constants/timezones";
 import { LocationAutocompleteInput } from "@/components/ui/LocationAutocompleteInput";
+import { TagAutocompleteInput } from "@/components/ui/TagAutocompleteInput";
 import {
   TimeEntryBillingField,
   type TimeEntryBillingState,
@@ -331,18 +332,13 @@ export function TimeEntryEditForm({
               Tags
             </label>
             <div className="flex gap-2 mb-2">
-              <Input
+              <TagAutocompleteInput
                 id="time-entry-edit-tags"
                 value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    handleAddTag();
-                  }
-                }}
+                selectedTags={tags}
+                onChange={setTagInput}
+                onSubmitTag={handleAddTag}
                 placeholder="Type a tag and press Enter"
-                className="flex-1"
               />
               <Button type="button" variant="outline" onClick={handleAddTag} className="flex-shrink-0">
                 Add
