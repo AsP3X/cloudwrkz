@@ -12,6 +12,7 @@ use crate::auth::device_identity::{
 };
 use crate::db::is_transient_sqlx;
 use crate::error::AppError;
+use crate::job_queue::JobLogger;
 use crate::models::user::{LoginResponse, LoginUserInfo};
 
 // Human: Missing JSON fields fail the job immediately; success stores token+user inside the job row for the client poller to read.
@@ -21,13 +22,14 @@ pub async fn execute_qr_login_finalize_job(
     pool: &PgPool,
     job_id: &str,
     payload: &serde_json::Value,
+    logger: Option<&JobLogger>,
 ) {
     let Some(request_id) = payload
         .get("request_id")
         .and_then(|v| v.as_str())
         .map(String::from)
     else {
-        mark_job_failed(pool, job_id, "Missing payload.request_id").await;
+        mark_job_failed(pool, job_id, "Missing payload.request_id", logger).await;
         return;
     };
     let Some(browser_token) = payload
@@ -35,7 +37,7 @@ pub async fn execute_qr_login_finalize_job(
         .and_then(|v| v.as_str())
         .map(String::from)
     else {
-        mark_job_failed(pool, job_id, "Missing payload.browser_token").await;
+        mark_job_failed(pool, job_id, "Missing payload.browser_token", logger).await;
         return;
     };
     let ip = payload.get("ip").and_then(|v| v.as_str()).map(String::from);
@@ -54,6 +56,9 @@ pub async fn execute_qr_login_finalize_job(
     .await
     {
         Ok(response) => {
+            if let Some(log) = logger {
+                log.log("QR finalize succeeded; session attached");
+            }
             let result = serde_json::json!({
                 "status": "completed",
                 "token": response.token,
@@ -75,6 +80,9 @@ pub async fn execute_qr_login_finalize_job(
             info!(event = "auth.qr_login.finalize_job_ok", job_id = %job_id, request_id = %request_id, "QR finalize job completed");
         }
         Err(QrFinalizeAttemptError::RetrySoon) => {
+            if let Some(log) = logger {
+                log.log("QR row locked — job requeued for retry");
+            }
             let _ = sqlx::query(
                 r#"UPDATE background_jobs
                    SET status = 'pending',
@@ -88,6 +96,9 @@ pub async fn execute_qr_login_finalize_job(
             .await;
         }
         Err(QrFinalizeAttemptError::Transient) => {
+            if let Some(log) = logger {
+                log.log("Transient DB error — job requeued for retry");
+            }
             let _ = sqlx::query(
                 r#"UPDATE background_jobs
                    SET status = 'pending',
@@ -113,7 +124,7 @@ pub async fn execute_qr_login_finalize_job(
                     user_agent,
                 },
             );
-            mark_job_failed(pool, job_id, &e.message).await;
+            mark_job_failed(pool, job_id, &e.message, logger).await;
             warn!(event = "auth.qr_login.finalize_job_fail", job_id = %job_id, request_id = %request_id, error = %e.message, "QR finalize job failed");
         }
     }
@@ -122,7 +133,15 @@ pub async fn execute_qr_login_finalize_job(
 // Human: Terminal failure updates are fire-and-forget because the worker already chose the outcome and further errors would only recurse.
 // Agent: UPDATE background_jobs SET failed error_message; IGNORES sqlx execute Err.
 
-async fn mark_job_failed(pool: &PgPool, job_id: &str, msg: &str) {
+async fn mark_job_failed(
+    pool: &PgPool,
+    job_id: &str,
+    msg: &str,
+    logger: Option<&JobLogger>,
+) {
+    if let Some(log) = logger {
+        log.log(&format!("Job failed: {msg}"));
+    }
     let _ = sqlx::query(
         r#"UPDATE background_jobs SET status = 'failed', error_message = $2, updated_at = clock_timestamp(), completed_at = clock_timestamp() WHERE id = $1"#,
     )

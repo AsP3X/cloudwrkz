@@ -16,6 +16,7 @@ use tokio::task::{AbortHandle, JoinHandle};
 use crate::command_queue::MutationBroker;
 use crate::config::AppConfig;
 
+use super::job_log::JobLogRegistry;
 use super::run_job_queue_dispatcher_loop;
 
 pub const SYSTEM_SETTING_JOB_QUEUE_WORKER_COUNT: &str = "job_queue_worker_count";
@@ -77,6 +78,7 @@ pub struct JobWorkerSupervisor {
     desired: Arc<AtomicU32>,
     env_default: u32,
     logs: Arc<WorkerLogRegistry>,
+    job_logs: Arc<JobLogRegistry>,
     abort_by_id: Arc<Mutex<HashMap<u64, AbortHandle>>>,
     started_at_ms: Arc<Mutex<HashMap<u64, i64>>>,
 }
@@ -99,6 +101,10 @@ impl JobWorkerSupervisor {
 
     pub fn logs(&self) -> Arc<WorkerLogRegistry> {
         self.logs.clone()
+    }
+
+    pub fn job_logs(&self) -> Arc<JobLogRegistry> {
+        self.job_logs.clone()
     }
 
     pub fn list_workers(&self) -> Vec<WorkerListEntry> {
@@ -210,6 +216,7 @@ pub fn spawn_job_queue_supervisor(
         initial_desired.clamp(JOB_QUEUE_WORKER_MIN, JOB_QUEUE_WORKER_MAX),
     ));
     let logs = Arc::new(WorkerLogRegistry::new(WORKER_LOG_MAX_LINES));
+    let job_logs = Arc::new(JobLogRegistry::new());
     let abort_by_id: Arc<Mutex<HashMap<u64, AbortHandle>>> = Arc::new(Mutex::new(HashMap::new()));
     let started_at_ms: Arc<Mutex<HashMap<u64, i64>>> = Arc::new(Mutex::new(HashMap::new()));
     let next_id = Arc::new(AtomicU64::new(1));
@@ -218,6 +225,7 @@ pub fn spawn_job_queue_supervisor(
         desired: desired.clone(),
         env_default,
         logs: logs.clone(),
+        job_logs: job_logs.clone(),
         abort_by_id: abort_by_id.clone(),
         started_at_ms: started_at_ms.clone(),
     });
@@ -228,6 +236,7 @@ pub fn spawn_job_queue_supervisor(
         mutation_broker,
         desired,
         logs,
+        job_logs,
         abort_by_id,
         started_at_ms,
         next_id,
@@ -242,6 +251,7 @@ async fn supervisor_loop(
     mutation_broker: MutationBroker,
     desired: Arc<AtomicU32>,
     logs: Arc<WorkerLogRegistry>,
+    job_logs: Arc<JobLogRegistry>,
     abort_by_id: Arc<Mutex<HashMap<u64, AbortHandle>>>,
     started_at_ms: Arc<Mutex<HashMap<u64, i64>>>,
     next_id: Arc<AtomicU64>,
@@ -293,6 +303,7 @@ async fn supervisor_loop(
             let mutation_broker = mutation_broker.clone();
             let budgets = budgets.clone();
             let logs_task = logs.clone();
+            let job_logs_task = job_logs.clone();
             let abort_by_id = abort_by_id.clone();
             let started_map = started_at_ms.clone();
 
@@ -310,6 +321,7 @@ async fn supervisor_loop(
                     budgets,
                     id,
                     logs_task,
+                    job_logs_task,
                 )
                 .await;
             });

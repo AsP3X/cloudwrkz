@@ -10,9 +10,18 @@ use tracing::{info, warn};
 
 use crate::github_metadata;
 use crate::job_queue;
+use crate::job_queue::JobLogger;
 use crate::link_preview::{merge_scrape_metadata, scrape_link_page};
 
-async fn mark_background_job_failed(pool: &PgPool, job_id: &str, msg: &str) {
+async fn mark_background_job_failed(
+    pool: &PgPool,
+    job_id: &str,
+    msg: &str,
+    logger: Option<&JobLogger>,
+) {
+    if let Some(log) = logger {
+        log.log(&format!("Job failed: {msg}"));
+    }
     let _ = sqlx::query(
         r#"UPDATE background_jobs SET status = 'failed', error_message = $2, updated_at = clock_timestamp(), completed_at = clock_timestamp() WHERE id = $1"#,
     )
@@ -63,7 +72,11 @@ pub async fn execute_website_link_metadata_job(
     job_id: &str,
     link_id: &str,
     created_by_user_id: Option<&str>,
+    logger: Option<&JobLogger>,
 ) {
+    if let Some(log) = logger {
+        log.log(&format!("Loading link row link_id={link_id}"));
+    }
     let link_row = match sqlx::query("SELECT url, metadata FROM links WHERE id = $1")
         .bind(link_id)
         .fetch_optional(pool)
@@ -71,30 +84,55 @@ pub async fn execute_website_link_metadata_job(
     {
         Ok(Some(r)) => r,
         Ok(None) => {
-            mark_background_job_failed(pool, job_id, "Link not found").await;
+            mark_background_job_failed(pool, job_id, "Link not found", logger).await;
             return;
         }
         Err(e) => {
-            mark_background_job_failed(pool, job_id, &format!("Database error: {e}")).await;
+            mark_background_job_failed(pool, job_id, &format!("Database error: {e}"), logger).await;
             return;
         }
     };
 
     let url: String = link_row.get("url");
     if github_metadata::parse_github_owner_repo(&url).is_some() {
-        mark_background_job_failed(pool, job_id, "GitHub URLs use github_link_metadata jobs").await;
+        mark_background_job_failed(
+            pool,
+            job_id,
+            "GitHub URLs use github_link_metadata jobs",
+            logger,
+        )
+        .await;
         return;
     }
 
+    if let Some(log) = logger {
+        log.log(&format!("Scraping page metadata for {url}"));
+    }
     let existing_meta: Option<Value> = link_row.get("metadata");
     let scrape = scrape_link_page(client, &url).await;
+    if let Some(log) = logger {
+        log.log(&format!(
+            "Scrape finished (robots_allowed={}, title={})",
+            scrape.robots_allowed,
+            scrape
+                .metadata
+                .as_ref()
+                .and_then(|m| m.title.as_deref())
+                .unwrap_or("—")
+        ));
+    }
     let merged = merge_scrape_metadata(existing_meta, &scrape);
 
     let mut tx = match pool.begin().await {
         Ok(t) => t,
         Err(e) => {
-            mark_background_job_failed(pool, job_id, &format!("Failed to start transaction: {e}"))
-                .await;
+            mark_background_job_failed(
+                pool,
+                job_id,
+                &format!("Failed to start transaction: {e}"),
+                logger,
+            )
+            .await;
             return;
         }
     };
@@ -108,7 +146,8 @@ pub async fn execute_website_link_metadata_job(
     .await
     {
         let _ = tx.rollback().await;
-        mark_background_job_failed(pool, job_id, &format!("Failed to save metadata: {e}")).await;
+        mark_background_job_failed(pool, job_id, &format!("Failed to save metadata: {e}"), logger)
+            .await;
         return;
     }
 
@@ -120,16 +159,32 @@ pub async fn execute_website_link_metadata_job(
     .await
     {
         let _ = tx.rollback().await;
-        mark_background_job_failed(pool, job_id, &format!("Failed to mark job completed: {e}")).await;
+        mark_background_job_failed(
+            pool,
+            job_id,
+            &format!("Failed to mark job completed: {e}"),
+            logger,
+        )
+        .await;
         return;
     }
 
     if let Err(e) = tx.commit().await {
-        mark_background_job_failed(pool, job_id, &format!("Failed to commit metadata update: {e}")).await;
+        mark_background_job_failed(
+            pool,
+            job_id,
+            &format!("Failed to commit metadata update: {e}"),
+            logger,
+        )
+        .await;
         return;
     }
 
     enqueue_screenshot_after_metadata(pool, link_id, created_by_user_id, scrape.robots_allowed).await;
+
+    if let Some(log) = logger {
+        log.log("Website metadata saved; job completed");
+    }
 
     info!(
         event = "website_metadata.job_ok",

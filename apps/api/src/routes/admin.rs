@@ -107,6 +107,11 @@ pub fn router() -> Router<AppState> {
         .route("/admin/dashboard-stats", get(admin_dashboard_stats))
         .route("/admin/background-jobs", get(list_background_jobs))
         .route("/admin/background-jobs/{id}", get(get_background_job))
+        .route(
+            "/admin/background-jobs/{id}/log/stream",
+            get(background_job_log_sse),
+        )
+        .route("/admin/background-jobs/{id}/log", get(get_background_job_log))
         .route("/admin/settings", get(admin_settings))
         .route(
             "/admin/settings/links-page-size",
@@ -806,6 +811,58 @@ async fn job_worker_log_sse(
         })
     });
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
+}
+
+// Human: Snapshot of in-memory per-job log lines for the Jobs detail dialog (polling fallback).
+// Agent: require_admin_jobs_view; VERIFY job row exists; CALLS JobLogRegistry.lines_for(job_id); JSON jobId + lines.
+
+async fn get_background_job_log(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(job_id): Path<String>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_admin_jobs_view(&state.pool, &user.id).await?;
+    background_job_exists(&state.pool, &job_id).await?;
+    let lines = state.job_worker_supervisor.job_logs().lines_for(&job_id);
+    Ok(Json(serde_json::json!({
+        "jobId": job_id,
+        "lines": lines,
+    })))
+}
+
+// Human: SSE streams new log lines for one background job while it runs (and briefly after reconnect).
+// Agent: require_admin_jobs_view; VERIFY job exists; BroadcastStream filter job_id; Event data line.
+
+async fn background_job_log_sse(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(job_id): Path<String>,
+) -> Result<Sse<impl futures_util::stream::Stream<Item = Result<Event, Infallible>>>, AppError> {
+    require_admin_jobs_view(&state.pool, &user.id).await?;
+    background_job_exists(&state.pool, &job_id).await?;
+    let job_id_filter = job_id.clone();
+    let rx = state.job_worker_supervisor.job_logs().subscribe();
+    let stream = BroadcastStream::new(rx).filter_map(move |res| {
+        let job_id_filter = job_id_filter.clone();
+        ready(match res {
+            Ok((id, line)) if id == job_id_filter => Some(Ok(Event::default().data(line))),
+            _ => None,
+        })
+    });
+    Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
+}
+
+async fn background_job_exists(pool: &sqlx::PgPool, job_id: &str) -> Result<(), AppError> {
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM background_jobs WHERE id = $1)")
+        .bind(job_id)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| AppError::internal(format!("background job lookup: {e}")))?;
+    if exists {
+        Ok(())
+    } else {
+        Err(AppError::not_found("Job not found"))
+    }
 }
 
 async fn admin_settings(

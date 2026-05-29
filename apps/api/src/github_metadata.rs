@@ -11,6 +11,7 @@ use tracing::info;
 use url::Url;
 
 use crate::github_rate_limit::GithubRestRateLimit;
+use crate::job_queue::JobLogger;
 
 // Human: Parses GitHub URLs and calls the REST API to enrich link rows with stars, license, branch counts, etc., respecting the shared anonymous rate limiter.
 // Agent: READS links.url metadata; CALLS github_get / github_get_parallel_pair with GithubRestRateLimit; WRITES links.metadata + background_jobs status in execute_github_link_metadata_job.
@@ -332,7 +333,15 @@ async fn fetch_github_enrichment(
 // Human: Failed jobs still need a terminal status so the dispatcher does not retry forever; errors are best-effort logged only.
 // Agent: UPDATE background_jobs SET status failed error_message completed_at; IGNORES sqlx Err.
 
-async fn mark_background_job_failed(pool: &PgPool, job_id: &str, msg: &str) {
+async fn mark_background_job_failed(
+    pool: &PgPool,
+    job_id: &str,
+    msg: &str,
+    logger: Option<&JobLogger>,
+) {
+    if let Some(log) = logger {
+        log.log(&format!("Job failed: {msg}"));
+    }
     let _ = sqlx::query(
         r#"UPDATE background_jobs SET status = 'failed', error_message = $2, updated_at = clock_timestamp(), completed_at = clock_timestamp() WHERE id = $1"#,
     )
@@ -352,7 +361,11 @@ pub async fn execute_github_link_metadata_job(
     rate: &Arc<GithubRestRateLimit>,
     job_id: &str,
     link_id: &str,
+    logger: Option<&JobLogger>,
 ) -> Result<(), String> {
+    if let Some(log) = logger {
+        log.log(&format!("Loading link row link_id={link_id}"));
+    }
     let link_row = sqlx::query("SELECT url, metadata FROM links WHERE id = $1")
         .bind(link_id)
         .fetch_optional(pool)
@@ -360,7 +373,8 @@ pub async fn execute_github_link_metadata_job(
         .map_err(|e| e.to_string())?;
 
     let Some(link_row) = link_row else {
-        mark_background_job_failed(pool, job_id, "Link was deleted before the job ran.").await;
+        mark_background_job_failed(pool, job_id, "Link was deleted before the job ran.", logger)
+            .await;
         return Err("link missing".into());
     };
 
@@ -368,15 +382,18 @@ pub async fn execute_github_link_metadata_job(
     let existing_meta: Option<Value> = link_row.get("metadata");
 
     if parse_github_owner_repo(&url).is_none() {
-        mark_background_job_failed(pool, job_id, "URL is not a GitHub repository.").await;
+        mark_background_job_failed(pool, job_id, "URL is not a GitHub repository.", logger).await;
         return Err("not github".into());
     }
 
     let (owner, repo) = parse_github_owner_repo(&url).unwrap();
+    if let Some(log) = logger {
+        log.log(&format!("Fetching GitHub enrichment for {owner}/{repo}"));
+    }
     let enrichment = match fetch_github_enrichment(client, &owner, &repo, rate).await {
         Ok(v) => v,
         Err(e) => {
-            mark_background_job_failed(pool, job_id, &e).await;
+            mark_background_job_failed(pool, job_id, &e, logger).await;
             info!(event = "github_metadata.job_failed", job_id = %job_id, error = %e, "enrichment failed");
             return Err(e);
         }
@@ -395,7 +412,8 @@ pub async fn execute_github_link_metadata_job(
 
     if let Err(e) = update {
         let _ = tx.rollback().await;
-        mark_background_job_failed(pool, job_id, &format!("Failed to save metadata: {e}")).await;
+        mark_background_job_failed(pool, job_id, &format!("Failed to save metadata: {e}"), logger)
+            .await;
         return Err(e.to_string());
     }
 
@@ -411,9 +429,14 @@ pub async fn execute_github_link_metadata_job(
             pool,
             job_id,
             &format!("Failed to commit metadata update: {e}"),
+            logger,
         )
         .await;
         return Err(e.to_string());
+    }
+
+    if let Some(log) = logger {
+        log.log("GitHub metadata saved; job completed");
     }
 
     info!(

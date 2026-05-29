@@ -14,6 +14,7 @@ use crate::auth::device_identity::{
 };
 use crate::auth::session::generate_token;
 use crate::id::new_cuid;
+use crate::job_queue::JobLogger;
 
 // Human: Payload must include the QR request id and the job must carry `created_by_user_id` so we never approve on behalf of an anonymous caller.
 // Agent: VALIDATES qr_request_id + created_by_user_id; MATCH approve_in_db Ok/retry_soon/err; UPDATE background_jobs status; audit auth.qr_login.approve.attempt on fatal.
@@ -23,18 +24,25 @@ pub async fn execute_qr_login_approve_job(
     job_id: &str,
     payload: &serde_json::Value,
     created_by_user_id: Option<&str>,
+    logger: Option<&JobLogger>,
 ) {
     let Some(qr_request_id) = payload
         .get("qr_request_id")
         .and_then(|v| v.as_str())
         .map(String::from)
     else {
-        mark_job_failed(pool, job_id, "Missing payload.qr_request_id").await;
+        mark_job_failed(pool, job_id, "Missing payload.qr_request_id", logger).await;
         return;
     };
 
     let Some(approver_id) = created_by_user_id.map(String::from) else {
-        mark_job_failed(pool, job_id, "Missing job owner (created_by_user_id).").await;
+        mark_job_failed(
+            pool,
+            job_id,
+            "Missing job owner (created_by_user_id).",
+            logger,
+        )
+        .await;
         return;
     };
     let ip = payload.get("ip").and_then(|v| v.as_str()).map(String::from);
@@ -46,6 +54,9 @@ pub async fn execute_qr_login_approve_job(
     let res = approve_in_db(pool, &qr_request_id, &approver_id).await;
     match res {
         Ok(()) => {
+            if let Some(log) = logger {
+                log.log("QR approve succeeded; job completed");
+            }
             let _ = sqlx::query(
                 r#"UPDATE background_jobs SET status = 'completed', error_message = NULL, updated_at = clock_timestamp(), completed_at = clock_timestamp() WHERE id = $1"#,
             )
@@ -55,6 +66,9 @@ pub async fn execute_qr_login_approve_job(
             info!(event = "auth.qr_login.approve_job_ok", job_id = %job_id, "QR approve job completed");
         }
         Err(e) if e.retry_soon => {
+            if let Some(log) = logger {
+                log.log("QR row locked — job requeued for retry");
+            }
             let _ = sqlx::query(
                 r#"UPDATE background_jobs
                    SET status = 'pending',
@@ -69,6 +83,9 @@ pub async fn execute_qr_login_approve_job(
         }
         Err(e) => {
             let msg = e.message.clone();
+            if let Some(log) = logger {
+                log.log(&format!("QR approve failed: {msg}"));
+            }
             warn!(event = "auth.qr_login.approve_job_fail", job_id = %job_id, error = %msg, "QR approve job failed");
             audit::write_audit_log(
                 pool,
@@ -96,7 +113,15 @@ pub async fn execute_qr_login_approve_job(
 // Human: Same pattern as finalize: best-effort SQL so a secondary failure does not panic the worker after the main logic ran.
 // Agent: UPDATE background_jobs failed; IGNORES Err.
 
-async fn mark_job_failed(pool: &sqlx::PgPool, job_id: &str, msg: &str) {
+async fn mark_job_failed(
+    pool: &sqlx::PgPool,
+    job_id: &str,
+    msg: &str,
+    logger: Option<&JobLogger>,
+) {
+    if let Some(log) = logger {
+        log.log(&format!("Job failed: {msg}"));
+    }
     let _ = sqlx::query(
         r#"UPDATE background_jobs SET status = 'failed', error_message = $2, updated_at = clock_timestamp(), completed_at = clock_timestamp() WHERE id = $1"#,
     )

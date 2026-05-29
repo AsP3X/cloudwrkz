@@ -32,7 +32,7 @@ use crate::routes::helpers::{
 };
 
 use super::{
-    enqueue_github_link_metadata_job, enqueue_website_link_preview_jobs,
+    enqueue_github_link_metadata_job, enqueue_website_link_preview_jobs, JobLogger,
 };
 
 pub const JOB_TYPE_TICKET_CREATE: &str = "ticket_create";
@@ -221,7 +221,10 @@ pub(super) enum JobExecOutcome {
     TransientDb,
 }
 
-async fn mark_job_failed(pool: &PgPool, job_id: &str, msg: &str) {
+async fn mark_job_failed(pool: &PgPool, job_id: &str, msg: &str, logger: Option<&JobLogger>) {
+    if let Some(log) = logger {
+        log.log(&format!("Job failed: {msg}"));
+    }
     let _ = sqlx::query(
         r#"UPDATE background_jobs SET status = 'failed', error_message = $2, updated_at = clock_timestamp(), completed_at = clock_timestamp() WHERE id = $1"#,
     )
@@ -303,7 +306,9 @@ pub async fn run_entity_create_job(
     job_id: &str,
     job_type: &str,
     payload: &serde_json::Value,
+    logger: &JobLogger,
 ) {
+    logger.log(&format!("Running entity mutation ({job_type})"));
     let lock_ms = broker.lock_timeout_ms;
     let stmt_ms = broker.statement_timeout_ms;
 
@@ -428,10 +433,15 @@ pub async fn run_entity_create_job(
                     pool,
                     job_id,
                     "Could not finalize job status; please contact support.",
+                    Some(logger),
                 )
                 .await;
                 return;
             }
+            logger.log(&format!(
+                "Entity mutation completed (HTTP {})",
+                jr.status.as_u16()
+            ));
             info!(
                 event = "jobs.entity_create.completed",
                 job_id = %job_id,
@@ -448,9 +458,10 @@ pub async fn run_entity_create_job(
                 message = %e.message,
                 "entity create job failed"
             );
-            mark_job_failed(pool, job_id, &e.message).await;
+            mark_job_failed(pool, job_id, &e.message, Some(logger)).await;
         }
         JobExecOutcome::TransientDb => {
+            logger.log("Transient database error — job deferred for retry");
             defer_job_transient(pool, job_id).await;
         }
     }

@@ -31,6 +31,7 @@ pub use job_queue::supervisor::{
     persist_worker_count, resolve_initial_worker_count, spawn_job_queue_supervisor,
     worker_hostname,
 };
+pub use job_queue::{JobLogRegistry, JobLogger};
 pub use routes::AppState;
 pub use routes::mutation_broker_for_config;
 

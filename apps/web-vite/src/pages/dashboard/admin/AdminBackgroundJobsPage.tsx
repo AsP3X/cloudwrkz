@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/api/client";
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Dialog } from "@/components/ui/Dialog";
 import { ROUTES } from "@/lib/constants/routes";
+import { getApiBaseUrl, credentialsForApiFetch } from "@/lib/apiBaseUrl";
 import { AccessDeniedWarning } from "@/components/ui/AccessDeniedWarning";
 import { cn } from "@/lib/utils/cn";
 
@@ -535,6 +536,162 @@ function useAgoLabel(updatedAt: number | null) {
   return `${h}h ago`;
 }
 
+function JobLiveLogPanel({
+  jobId,
+  status,
+}: {
+  jobId: string;
+  status: string;
+}) {
+  const [logLines, setLogLines] = useState<string[]>([]);
+  const [logLoading, setLogLoading] = useState(false);
+  const liveTailRef = useRef<AbortController | null>(null);
+  const logEndRef = useRef<HTMLDivElement | null>(null);
+
+  const stopLiveTail = useCallback(() => {
+    liveTailRef.current?.abort();
+    liveTailRef.current = null;
+  }, []);
+
+  const loadFullLog = useCallback(async (id: string) => {
+    stopLiveTail();
+    setLogLoading(true);
+    setLogLines([]);
+    try {
+      const res = await api.get<{ jobId: string; lines: string[] }>(
+        `/admin/background-jobs/${id}/log`,
+      );
+      setLogLines(res.lines ?? []);
+    } catch {
+      setLogLines(["(could not load job log)"]);
+    } finally {
+      setLogLoading(false);
+    }
+  }, [stopLiveTail]);
+
+  const startLiveTail = useCallback(
+    (id: string) => {
+      stopLiveTail();
+      setLogLoading(false);
+      const ac = new AbortController();
+      liveTailRef.current = ac;
+      const base = getApiBaseUrl();
+      const token = localStorage.getItem("auth_token");
+      const url = `${base}/admin/background-jobs/${id}/log/stream`;
+      void (async () => {
+        try {
+          const res = await fetch(url, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            signal: ac.signal,
+            credentials: credentialsForApiFetch(url),
+          });
+          if (!res.ok || !res.body) {
+            setLogLines([`HTTP ${res.status}`]);
+            return;
+          }
+          const reader = res.body.getReader();
+          const dec = new TextDecoder();
+          let buf = "";
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += dec.decode(value, { stream: true });
+            const chunks = buf.split("\n\n");
+            buf = chunks.pop() ?? "";
+            for (const block of chunks) {
+              for (const line of block.split("\n")) {
+                if (line.startsWith("data:")) {
+                  const payload = line.slice(5).trimStart();
+                  setLogLines((prev) => [...prev.slice(-800), payload]);
+                }
+              }
+            }
+          }
+        } catch {
+          /* aborted or network */
+        }
+      })();
+    },
+    [stopLiveTail],
+  );
+
+  useEffect(() => {
+    if (status === "processing") {
+      void (async () => {
+        stopLiveTail();
+        setLogLoading(true);
+        try {
+          const res = await api.get<{ jobId: string; lines: string[] }>(
+            `/admin/background-jobs/${jobId}/log`,
+          );
+          setLogLines(res.lines ?? []);
+        } catch {
+          setLogLines(["(could not load job log)"]);
+        } finally {
+          setLogLoading(false);
+        }
+        startLiveTail(jobId);
+      })();
+    } else if (status === "pending") {
+      stopLiveTail();
+      setLogLines(["Waiting for a worker slot — logs appear when status becomes processing."]);
+      setLogLoading(false);
+    } else {
+      void loadFullLog(jobId);
+    }
+    return () => stopLiveTail();
+  }, [jobId, status, loadFullLog, startLiveTail, stopLiveTail]);
+
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [logLines]);
+
+  const isLive = status === "processing";
+
+  return (
+    <div className="rounded-xl border border-neutral-200 dark:border-neutral-700 overflow-hidden">
+      <div className="flex items-center justify-between gap-2 border-b border-neutral-200 dark:border-neutral-700 bg-neutral-50/80 dark:bg-neutral-800/50 px-3 py-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Live log</h3>
+          {isLive ? (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-sky-700 dark:text-sky-300">
+              <IconPulse />
+              Streaming
+            </span>
+          ) : null}
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 text-xs shrink-0"
+          onClick={() => void loadFullLog(jobId)}
+        >
+          Refresh
+        </Button>
+      </div>
+      <div className="relative">
+        {logLoading ? (
+          <div className="flex justify-center py-6">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary-200 border-t-primary-600" />
+          </div>
+        ) : (
+          <pre
+            className={cn(
+              "text-[11px] leading-relaxed font-mono bg-neutral-950 text-neutral-200 p-3 max-h-56 overflow-auto whitespace-pre-wrap break-all",
+              logLines.length === 0 && "text-neutral-500 italic",
+            )}
+            aria-live={isLive ? "polite" : undefined}
+          >
+            {logLines.length === 0 ? "(no log lines yet)" : logLines.join("\n")}
+          </pre>
+        )}
+        <div ref={logEndRef} aria-hidden />
+      </div>
+    </div>
+  );
+}
+
 // Human: Core jobs UI that loads active/completed rows, handles pagination windows, and surfaces job diagnostics.
 // Agent: STATE activeJobs,completedJobs,detail*; useEffect polling; FETCH admin job endpoints; MODALS rawOpen/detailId.
 
@@ -830,7 +987,7 @@ function AdminBackgroundJobsPageContent() {
         </SectionShell>
       </div>
 
-      <Dialog open={detailId !== null} onOpenChange={(o) => !o && closeDetail()} title="Job details" className="sm:max-w-xl">
+      <Dialog open={detailId !== null} onOpenChange={(o) => !o && closeDetail()} title="Job details" className="sm:max-w-3xl">
         <div className="px-5 sm:px-7 pb-6 space-y-4">
           {detailLoading && (
             <div className="flex justify-center py-8">
@@ -894,6 +1051,10 @@ function AdminBackgroundJobsPageContent() {
                   </Def>
                 )}
               </dl>
+
+              {detailId && (
+                <JobLiveLogPanel jobId={detailId} status={detail.status} />
+              )}
 
               <div className="flex flex-wrap gap-2 pt-2">
                 <Button type="button" variant="outline" size="sm" onClick={() => openRaw("Raw payload", detail.payload)}>

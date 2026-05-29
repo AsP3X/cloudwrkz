@@ -24,6 +24,7 @@ use crate::auth::session_activity::{
 };
 use crate::auth::extractors::{AuthUser, extract_token_from_headers};
 use crate::auth::login_queue::{LoginJobStatusResponse, PendingLoginPayload, spawn_login_retry};
+use crate::job_queue::JobLogger;
 use crate::auth::password::{hash_password, verify_password};
 use crate::auth::register_queue::{
     PendingRegisterPayload, RegisterJobStatusResponse, new_job_id, spawn_register_retry,
@@ -120,6 +121,7 @@ async fn login(
             client_hints: client_hints_from_headers(&headers),
             session_policy: SessionPolicy::from_config(&state.config),
         },
+        JobLogger::new(state.job_worker_supervisor.job_logs(), &job_id),
     );
     info!(
         event = "auth.login.queued",
@@ -220,6 +222,7 @@ async fn register(
             ip,
             user_agent,
         },
+        JobLogger::new(state.job_worker_supervisor.job_logs(), &job_id),
     );
     info!(
         event = "auth.register.queued",

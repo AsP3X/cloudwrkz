@@ -20,6 +20,7 @@ use crate::audit::{self, WriteAuditParams};
 use crate::routes::helpers::ensure_default_group_membership;
 use crate::auth::bg_job_record::finish_auth_register_job;
 use crate::db::is_transient_sqlx;
+use crate::job_queue::JobLogger;
 
 /// Wall-clock time the API will keep retrying a queued registration.
 pub const REGISTER_RETRY_MAX: Duration = Duration::from_secs(30);
@@ -231,10 +232,11 @@ pub fn spawn_register_retry(
     jobs: RegisterJobs,
     job_id: String,
     payload: PendingRegisterPayload,
+    logger: JobLogger,
 ) {
     let jid = job_id.clone();
     tokio::spawn(async move {
-        register_retry_loop(pool, jobs, jid, payload).await;
+        register_retry_loop(pool, jobs, jid, payload, logger).await;
     });
 }
 
@@ -246,7 +248,9 @@ async fn register_retry_loop(
     jobs: RegisterJobs,
     job_id: String,
     payload: PendingRegisterPayload,
+    logger: JobLogger,
 ) {
+    logger.log("Auth register job started (async retry loop)");
     let deadline = tokio::time::Instant::now() + REGISTER_RETRY_MAX;
     let email = payload.email.clone();
 
@@ -260,6 +264,7 @@ async fn register_retry_loop(
             );
             let msg =
                 "The database did not become available in time. Please try registering again.";
+            logger.log(&format!("Registration timed out: {msg}"));
             jobs.set_outcome(
                 &job_id,
                 RegisterJobStatusKind::Failed,
@@ -289,6 +294,7 @@ async fn register_retry_loop(
                     email = %em,
                     "queued registration completed"
                 );
+                logger.log(&format!("Registration succeeded for {em}"));
                 jobs.set_outcome(
                     &job_id,
                     RegisterJobStatusKind::Completed,
@@ -300,9 +306,11 @@ async fn register_retry_loop(
                 break;
             }
             Err(RegisterAttemptError::Transient) => {
+                logger.log("Transient error during registration — retrying");
                 tokio::time::sleep(Duration::from_millis(400)).await;
             }
             Err(RegisterAttemptError::Conflict(msg)) => {
+                logger.log(&format!("Registration conflict: {msg}"));
                 jobs.set_outcome(
                     &job_id,
                     RegisterJobStatusKind::Failed,
@@ -322,6 +330,7 @@ async fn register_retry_loop(
                     msg
                 );
                 let user_msg = "Registration failed. Please try again later.";
+                logger.log(&format!("Registration fatal error: {msg}"));
                 jobs.set_outcome(
                     &job_id,
                     RegisterJobStatusKind::Failed,

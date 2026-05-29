@@ -20,6 +20,7 @@ use tracing::{info, warn};
 
 use crate::audit::{self, WriteAuditParams};
 use crate::auth::bg_job_record::finish_auth_login_job;
+use crate::job_queue::JobLogger;
 use crate::auth::device_identity::{
     ClientDeviceReport, ClientHintHeaders, is_native_app_session, resolve_device_identity,
 };
@@ -448,9 +449,10 @@ pub fn spawn_login_retry(
     jobs: LoginJobs,
     job_id: String,
     payload: PendingLoginPayload,
+    logger: JobLogger,
 ) {
     tokio::spawn(async move {
-        login_retry_loop(pool, jobs, job_id, payload).await;
+        login_retry_loop(pool, jobs, job_id, payload, logger).await;
     });
 }
 
@@ -462,7 +464,9 @@ async fn login_retry_loop(
     jobs: LoginJobs,
     job_id: String,
     payload: PendingLoginPayload,
+    logger: JobLogger,
 ) {
+    logger.log("Auth login job started (async retry loop)");
     let deadline = tokio::time::Instant::now() + LOGIN_RETRY_MAX;
     let email = payload.email_normalized.clone();
 
@@ -475,6 +479,7 @@ async fn login_retry_loop(
                 "login job timed out waiting for database"
             );
             let msg = "The database did not become available in time. Please try signing in again.";
+            logger.log(&format!("Login timed out: {msg}"));
             jobs.set_failed(&job_id, msg.into(), None);
             finish_auth_login_job(&pool, &job_id, false, Some(msg)).await;
             break;
@@ -498,16 +503,22 @@ async fn login_retry_loop(
                     email = %response.user.email,
                     "queued login completed"
                 );
+                logger.log(&format!(
+                    "Login succeeded for user {}",
+                    response.user.email
+                ));
                 jobs.set_completed(&job_id, response);
                 finish_auth_login_job(&pool, &job_id, true, None).await;
                 break;
             }
             Err(LoginAttemptError::Transient) => {
+                logger.log("Transient error during login attempt — retrying");
                 tokio::time::sleep(Duration::from_millis(400)).await;
             }
             Err(LoginAttemptError::Final(e)) => {
                 let hint = failure_hint(&e);
                 let msg = e.message.clone();
+                logger.log(&format!("Login failed: {msg}"));
                 jobs.set_failed(&job_id, msg.clone(), hint);
                 finish_auth_login_job(&pool, &job_id, false, Some(msg.as_str())).await;
                 break;
