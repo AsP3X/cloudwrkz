@@ -355,24 +355,75 @@ async fn enqueue_github_metadata_refresh(
 // Human: Owners can re-queue a background HTML scrape (robots.txt + Open Graph) for non-GitHub bookmarks.
 // Agent: REQUIRES links.update + ownership; CALLS enqueue_website_link_preview_jobs; RETURNS metadata + screenshot job ids.
 
+// Human: Optional body lets the detail page queue screenshot-only when HTML metadata already exists.
+// Agent: includeMetadata/includeScreenshot default true; CALLS enqueue_website_link_preview_jobs_selective.
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct WebsitePreviewRefreshRequest {
+    include_metadata: bool,
+    include_screenshot: bool,
+}
+
+impl Default for WebsitePreviewRefreshRequest {
+    fn default() -> Self {
+        Self {
+            include_metadata: true,
+            include_screenshot: true,
+        }
+    }
+}
+
+fn link_metadata_has_screenshot(metadata: &serde_json::Value) -> bool {
+    metadata
+        .get("screenshotUrl")
+        .and_then(|v| v.as_str())
+        .is_some_and(|s| !s.trim().is_empty())
+}
+
 async fn enqueue_website_metadata_refresh(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
+    body: Option<Json<WebsitePreviewRefreshRequest>>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_permission(&state.pool, &user.id, "links.update").await?;
-    let owns: bool =
-        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM links WHERE id = $1 AND user_id = $2)")
-            .bind(&id)
-            .bind(&user.id)
-            .fetch_one(&state.pool)
-            .await?;
+    let link_row = sqlx::query("SELECT user_id, metadata FROM links WHERE id = $1")
+        .bind(&id)
+        .fetch_optional(&state.pool)
+        .await?;
 
-    if !owns {
+    let Some(link_row) = link_row else {
+        return Err(AppError::not_found("Link not found"));
+    };
+
+    let owner_id: String = link_row.get("user_id");
+    if owner_id != user.id {
         return Err(AppError::not_found("Link not found"));
     }
 
-    let jobs = job_queue::enqueue_website_link_preview_jobs(&state.pool, &id, &user.id).await?;
+    let metadata: serde_json::Value = link_row
+        .try_get("metadata")
+        .unwrap_or(serde_json::json!({}));
+    let refresh = body.map(|Json(b)| b).unwrap_or_default();
+    let mut include_metadata = refresh.include_metadata;
+    let mut include_screenshot = refresh.include_screenshot;
+    if !include_metadata && !include_screenshot {
+        include_metadata = true;
+        include_screenshot = true;
+    }
+    if !include_screenshot && !link_metadata_has_screenshot(&metadata) {
+        include_screenshot = true;
+    }
+
+    let jobs = job_queue::enqueue_website_link_preview_jobs_selective(
+        &state.pool,
+        &id,
+        &user.id,
+        include_metadata,
+        include_screenshot,
+    )
+    .await?;
 
     Ok(Json(serde_json::json!({
         "jobId": jobs.metadata_job_id,

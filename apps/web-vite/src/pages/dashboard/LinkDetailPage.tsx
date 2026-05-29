@@ -13,6 +13,7 @@ import { getLinkDetailHeadlineTitle, isGitHubUrl, isYouTubeUrl } from "@/lib/uti
 import {
   getRobotsTxtStatus,
   getWebsitePreviewFields,
+  needsWebsitePreviewBackgroundJobs,
   shouldOfferWebsiteMetadataRefresh,
 } from "@/lib/utils/linkMetadata";
 import { RobotsTxtWarning } from "@/components/features/links/RobotsTxtWarning";
@@ -126,19 +127,43 @@ export default function LinkDetailPage() {
     }
   }, [link, loadLink]);
 
-  const queueWebsiteMetadataRefresh = useCallback(async () => {
+  const queueWebsiteMetadataRefresh = useCallback(
+    async (opts?: { includeMetadata?: boolean; includeScreenshot?: boolean }) => {
     if (!link || isGitHubUrl(link.url)) return;
     setWebsiteRefreshBusy(true);
     setWebsiteRefreshMessage(null);
     try {
-      const r = await api.post<{ jobId: string; alreadyQueued: boolean }>(
+      const r = await api.post<{
+        jobId?: string | null;
+        alreadyQueued?: boolean;
+        screenshotJobId?: string | null;
+        screenshotAlreadyQueued?: boolean;
+      }>(
         `/links/${link.id}/website-metadata/refresh`,
-        {},
+        {
+          includeMetadata: opts?.includeMetadata ?? true,
+          includeScreenshot: opts?.includeScreenshot ?? true,
+        },
       );
+      const parts: string[] = [];
+      if (r.jobId) {
+        parts.push(
+          r.alreadyQueued
+            ? "Website metadata refresh already queued."
+            : "Queued website metadata refresh.",
+        );
+      }
+      if (r.screenshotJobId) {
+        parts.push(
+          r.screenshotAlreadyQueued
+            ? "Screenshot capture already queued."
+            : "Queued screenshot capture.",
+        );
+      }
       setWebsiteRefreshMessage(
-        r.alreadyQueued
-          ? "A website preview refresh is already queued. This page will update when it finishes."
-          : "Queued website preview refresh. This page will update when scraping completes.",
+        parts.length > 0
+          ? `${parts.join(" ")} This page will update when jobs finish.`
+          : "Preview refresh queued. This page will update when jobs finish.",
       );
       if (websitePollRef.current) clearInterval(websitePollRef.current);
       websitePollRef.current = setInterval(() => {
@@ -149,15 +174,18 @@ export default function LinkDetailPage() {
     } finally {
       setWebsiteRefreshBusy(false);
     }
-  }, [link, loadLink]);
+  },
+    [link, loadLink],
+  );
 
   useEffect(() => {
     if (!link || !canEditBase || isGitHubUrl(link.url) || isYouTubeUrl(link.url)) return;
     if (!shouldOfferWebsiteMetadataRefresh(link)) return;
     if (websiteAutoQueuedRef.current) return;
-    if (link.metadata_extracted_at) return;
+    const previewJobs = needsWebsitePreviewBackgroundJobs(link);
+    if (!previewJobs) return;
     websiteAutoQueuedRef.current = true;
-    void queueWebsiteMetadataRefresh();
+    void queueWebsiteMetadataRefresh(previewJobs);
   }, [link, canEditBase, queueWebsiteMetadataRefresh]);
 
   if (!canViewLinks) {

@@ -39,6 +39,9 @@ use crate::github_metadata;
 use crate::github_rate_limit::GithubRestRateLimit;
 use crate::id::new_cuid;
 
+/// Higher than default entity-create jobs so link preview work is not starved by mutation backlog.
+const LINK_PREVIEW_JOB_PRIORITY: i16 = 8;
+
 pub const JOB_TYPE_GITHUB_LINK_METADATA: &str = "github_link_metadata";
 pub const JOB_TYPE_WEBSITE_LINK_METADATA: &str = "website_link_metadata";
 pub const JOB_TYPE_LINK_WEBSITE_SCREENSHOT: &str = "link_website_screenshot";
@@ -270,14 +273,15 @@ pub async fn enqueue_website_link_metadata_job(
 
     let id = new_cuid();
     sqlx::query(
-        r#"INSERT INTO background_jobs (id, job_type, payload, status, dedupe_key, created_by_user_id, created_at, updated_at, run_after)
-           VALUES ($1, $2, $3, 'pending', $4, $5, NOW(), NOW(), NULL)"#,
+        r#"INSERT INTO background_jobs (id, job_type, payload, status, dedupe_key, created_by_user_id, priority, created_at, updated_at, run_after)
+           VALUES ($1, $2, $3, 'pending', $4, $5, $6, NOW(), NOW(), NULL)"#,
     )
     .bind(&id)
     .bind(JOB_TYPE_WEBSITE_LINK_METADATA)
     .bind(sqlx::types::Json(json!({ "link_id": link_id })))
     .bind(&dedupe_key)
     .bind(user_id)
+    .bind(LINK_PREVIEW_JOB_PRIORITY)
     .execute(pool)
     .await?;
     Ok((id, false))
@@ -309,14 +313,15 @@ pub async fn enqueue_link_website_screenshot_job(
 
     let id = new_cuid();
     sqlx::query(
-        r#"INSERT INTO background_jobs (id, job_type, payload, status, dedupe_key, created_by_user_id, created_at, updated_at, run_after)
-           VALUES ($1, $2, $3, 'pending', $4, $5, NOW(), NOW(), NULL)"#,
+        r#"INSERT INTO background_jobs (id, job_type, payload, status, dedupe_key, created_by_user_id, priority, created_at, updated_at, run_after)
+           VALUES ($1, $2, $3, 'pending', $4, $5, $6, NOW(), NOW(), NULL)"#,
     )
     .bind(&id)
     .bind(JOB_TYPE_LINK_WEBSITE_SCREENSHOT)
     .bind(sqlx::types::Json(json!({ "link_id": link_id })))
     .bind(&dedupe_key)
     .bind(user_id)
+    .bind(LINK_PREVIEW_JOB_PRIORITY)
     .execute(pool)
     .await?;
     Ok((id, false))
@@ -324,17 +329,38 @@ pub async fn enqueue_link_website_screenshot_job(
 
 /// Enqueue both website HTML metadata and screenshot jobs for a non-GitHub link.
 // Human: Create, URL change, and manual refresh should schedule metadata scrape and screenshot capture together.
-// Agent: CALLS enqueue_website_link_metadata_job + enqueue_link_website_screenshot_job; RETURNS both job ids and reuse flags.
+// Agent: CALLS enqueue_website_link_preview_jobs_selective with both flags true.
 
-pub async fn enqueue_website_link_preview_jobs(
+#[derive(Debug, Clone)]
+pub struct WebsiteLinkPreviewJobs {
+    pub metadata_job_id: Option<String>,
+    pub metadata_already_queued: bool,
+    pub screenshot_job_id: Option<String>,
+    pub screenshot_already_queued: bool,
+}
+
+// Human: Callers choose metadata and/or screenshot so existing links can queue capture without re-scraping HTML.
+// Agent: OPTIONAL enqueue_website_link_metadata_job + enqueue_link_website_screenshot_job; RETURNS per-branch ids.
+
+pub async fn enqueue_website_link_preview_jobs_selective(
     pool: &PgPool,
     link_id: &str,
     user_id: &str,
+    include_metadata: bool,
+    include_screenshot: bool,
 ) -> Result<WebsiteLinkPreviewJobs, sqlx::Error> {
-    let (metadata_job_id, metadata_already_queued) =
-        enqueue_website_link_metadata_job(pool, link_id, user_id).await?;
-    let (screenshot_job_id, screenshot_already_queued) =
-        enqueue_link_website_screenshot_job(pool, link_id, user_id).await?;
+    let (metadata_job_id, metadata_already_queued) = if include_metadata {
+        let (id, reused) = enqueue_website_link_metadata_job(pool, link_id, user_id).await?;
+        (Some(id), reused)
+    } else {
+        (None, false)
+    };
+    let (screenshot_job_id, screenshot_already_queued) = if include_screenshot {
+        let (id, reused) = enqueue_link_website_screenshot_job(pool, link_id, user_id).await?;
+        (Some(id), reused)
+    } else {
+        (None, false)
+    };
     Ok(WebsiteLinkPreviewJobs {
         metadata_job_id,
         metadata_already_queued,
@@ -343,12 +369,12 @@ pub async fn enqueue_website_link_preview_jobs(
     })
 }
 
-#[derive(Debug, Clone)]
-pub struct WebsiteLinkPreviewJobs {
-    pub metadata_job_id: String,
-    pub metadata_already_queued: bool,
-    pub screenshot_job_id: String,
-    pub screenshot_already_queued: bool,
+pub async fn enqueue_website_link_preview_jobs(
+    pool: &PgPool,
+    link_id: &str,
+    user_id: &str,
+) -> Result<WebsiteLinkPreviewJobs, sqlx::Error> {
+    enqueue_website_link_preview_jobs_selective(pool, link_id, user_id, true, true).await
 }
 
 // Human: GitHub metadata jobs only need the link id string from their JSON payload.
@@ -393,6 +419,7 @@ async fn run_one_job(
                     client,
                     &job_id,
                     &link_id,
+                    created_by_user_id.as_deref(),
                 )
                 .await;
             } else {

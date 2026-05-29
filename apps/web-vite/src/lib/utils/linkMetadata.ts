@@ -127,3 +127,26 @@ export function shouldOfferWebsiteMetadataRefresh(
   if (/github\.com/i.test(link.url)) return false;
   return true;
 }
+
+// Human: Auto-refresh should still queue screenshot capture when HTML metadata exists but no PNG was saved yet.
+// Agent: RETURNS true when non-GitHub and metadata_extracted_at missing OR screenshotUrl absent.
+
+export function needsWebsitePreviewBackgroundJobs(
+  link: {
+    url: string;
+    metadata_extracted_at: string | null;
+    metadata: Record<string, unknown> | null | undefined;
+  },
+): { includeMetadata: boolean; includeScreenshot: boolean } | null {
+  if (/github\.com/i.test(link.url) || /youtu(\.be|be\.com)/i.test(link.url)) {
+    return null;
+  }
+  const includeMetadata = !link.metadata_extracted_at;
+  const screenshot = link.metadata?.screenshotUrl;
+  const includeScreenshot =
+    typeof screenshot !== "string" || !screenshot.trim();
+  if (!includeMetadata && !includeScreenshot) {
+    return null;
+  }
+  return { includeMetadata, includeScreenshot };
+}
