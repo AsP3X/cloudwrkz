@@ -17,6 +17,11 @@ export interface DialogProps extends React.HTMLAttributes<HTMLDivElement> {
    * is open so the parent dialog does not dismiss before the child handles Escape.
    */
   closeOnEscape?: boolean;
+  /**
+   * When false, backdrop and outside-panel clicks do not dismiss. Use for forms where
+   * accidental outside clicks should not lose in-progress work.
+   */
+  closeOnOutsideClick?: boolean;
 }
 
 const FOCUSABLE_SELECTOR =
@@ -37,6 +42,7 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
       className,
       nested = false,
       closeOnEscape = true,
+      closeOnOutsideClick = true,
       ...props
     },
     ref
@@ -131,7 +137,11 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
             "fixed inset-0 bg-black/40 animate-dialog-backdrop",
             nested ? "z-[100] backdrop-blur-md" : "z-[40] backdrop-blur-sm",
           )}
-          onClick={() => onOpenChange?.(false)}
+          onClick={() => {
+            if (closeOnOutsideClick) {
+              onOpenChange?.(false);
+            }
+          }}
         />
 
         {/* Dialog */}
@@ -142,7 +152,7 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
             nested ? "z-[110]" : "z-50"
           )}
           onClick={(e) => {
-            if (e.target === e.currentTarget) {
+            if (closeOnOutsideClick && e.target === e.currentTarget) {
               onOpenChange?.(false);
             }
           }}

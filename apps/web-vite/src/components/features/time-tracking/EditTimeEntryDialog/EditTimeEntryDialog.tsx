@@ -1,15 +1,22 @@
 import React from "react";
 import { Dialog } from "@/components/ui/Dialog";
-import { TimeEntryEditForm, type TimeEntryEditSavePayload } from "../TimeEntryEditForm";
+import { TimeEntryEditForm, type TimeEntryEditDraftSnapshot, type TimeEntryEditSavePayload } from "../TimeEntryEditForm";
 import { api } from "@/api/client";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { canUseCustomerBillingOnTimeEntries } from "@/lib/time-entry-customers";
 import type { TimeEntry as ViteTimeEntry } from "@/lib/types";
 import { parseApiDate } from "@/lib/utils/date";
 import type { TimeEntryBreakDraftRow } from "../TimeEntryBreaks";
+import {
+  clearEditTimeEntryDraft,
+  loadEditTimeEntryDraft,
+  saveEditTimeEntryDraft,
+} from "@/lib/time-entry-form-draft";
 
 // Human: React UI for `EditTimeEntryDialog` in time entries and live timers: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
 // Agent: SCOPE time-tracking; ENTRIES breaks floating-timer; EXPORTS EditTimeEntryDialog; REACT component; READS props hooks; MAY CALL api client.
+
+const DRAFT_SAVE_DELAY_MS = 400;
 
 async function syncTimeEntryBreakDraft(
   entryId: string,
@@ -46,6 +53,21 @@ async function syncTimeEntryBreakDraft(
     }
   }
 }
+
+function deserializeBreakDraft(
+  breaks: TimeEntryEditDraftSnapshot["breaks"],
+): TimeEntryBreakDraftRow[] {
+  return breaks.map((b) => ({
+    id: b.id,
+    startedAt: new Date(b.startedAt),
+    endedAt: b.endedAt ? new Date(b.endedAt) : null,
+    duration: b.duration ?? 0,
+    description: b.description,
+    createdAt: new Date(b.createdAt),
+    updatedAt: new Date(b.updatedAt),
+  }));
+}
+
 interface EditTimeEntryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -61,29 +83,56 @@ export function EditTimeEntryDialog({ open, onOpenChange, entry, userTimezone = 
   const [error, setError] = React.useState<string | null>(null);
   const baselineBreaksRef = React.useRef<TimeEntryBreakDraftRow[]>([]);
   const lastSnapshottedEntryIdRef = React.useRef<string | null>(null);
+  const draftSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDraftRef = React.useRef<TimeEntryEditDraftSnapshot | null>(null);
 
-  const formEntry = React.useMemo(() => ({
-    id: entry.id,
-    name: entry.name,
-    description: entry.description,
-    status: entry.status,
-    tags: entry.tags,
-    billable: entry.billable,
-    location: entry.location,
-    timezone: entry.timezone,
-    startedAt: parseApiDate(entry.started_at),
-    stoppedAt: entry.stopped_at ? parseApiDate(entry.stopped_at) : null,
-    ticket: entry.ticket_id ? { id: entry.ticket_id, ticketNumber: "", title: "" } : null,
-    billing: {
-      customerId: entry.customer_id,
-      customerContactId: entry.customer_contact_id ?? null,
-      customerDisplayName: entry.customer?.display_name ?? null,
-      hourlyRate: entry.hourly_rate,
-    },
-  }), [entry]);
+  const storedDraft = React.useMemo(
+    () => (open ? loadEditTimeEntryDraft(entry.id) : null),
+    [open, entry.id],
+  );
 
-  const formBreaks = React.useMemo(() =>
-    (entry.breaks ?? []).map((b) => ({
+  const formEntry = React.useMemo(() => {
+    const base = {
+      id: entry.id,
+      name: entry.name,
+      description: entry.description,
+      status: entry.status,
+      tags: entry.tags,
+      billable: entry.billable,
+      location: entry.location,
+      timezone: entry.timezone,
+      startedAt: parseApiDate(entry.started_at),
+      stoppedAt: entry.stopped_at ? parseApiDate(entry.stopped_at) : null,
+      ticket: entry.ticket_id ? { id: entry.ticket_id, ticketNumber: "", title: "" } : null,
+      billing: {
+        customerId: entry.customer_id,
+        customerContactId: entry.customer_contact_id ?? null,
+        customerDisplayName: entry.customer?.display_name ?? null,
+        hourlyRate: entry.hourly_rate,
+      },
+    };
+
+    if (!storedDraft) return base;
+
+    return {
+      ...base,
+      name: storedDraft.name,
+      description: storedDraft.description,
+      tags: storedDraft.tags,
+      billable: storedDraft.billable,
+      location: storedDraft.location || null,
+      timezone: storedDraft.timezone,
+      startedAt: new Date(storedDraft.startedAt),
+      stoppedAt: storedDraft.stoppedAt ? new Date(storedDraft.stoppedAt) : null,
+      billing: storedDraft.billing,
+    };
+  }, [entry, storedDraft]);
+
+  const formBreaks = React.useMemo(() => {
+    if (storedDraft?.breaks.length) {
+      return deserializeBreakDraft(storedDraft.breaks);
+    }
+    return (entry.breaks ?? []).map((b) => ({
       id: b.id,
       startedAt: parseApiDate(b.started_at),
       endedAt: b.ended_at ? parseApiDate(b.ended_at) : null,
@@ -91,9 +140,8 @@ export function EditTimeEntryDialog({ open, onOpenChange, entry, userTimezone = 
       description: b.description,
       createdAt: new Date(b.created_at),
       updatedAt: new Date(b.updated_at),
-    })),
-    [entry.breaks]
-  );
+    }));
+  }, [entry.breaks, storedDraft]);
 
   React.useLayoutEffect(() => {
     if (!open) {
@@ -105,6 +153,26 @@ export function EditTimeEntryDialog({ open, onOpenChange, entry, userTimezone = 
       lastSnapshottedEntryIdRef.current = entry.id;
     }
   }, [open, entry.id, formBreaks]);
+
+  const handleDraftSnapshotChange = React.useCallback((snapshot: TimeEntryEditDraftSnapshot) => {
+    pendingDraftRef.current = snapshot;
+    if (draftSaveTimerRef.current) {
+      clearTimeout(draftSaveTimerRef.current);
+    }
+    draftSaveTimerRef.current = setTimeout(() => {
+      if (pendingDraftRef.current) {
+        saveEditTimeEntryDraft(pendingDraftRef.current);
+      }
+    }, DRAFT_SAVE_DELAY_MS);
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      if (draftSaveTimerRef.current) {
+        clearTimeout(draftSaveTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleSave = async (data: TimeEntryEditSavePayload) => {
     setIsSubmitting(true);
@@ -124,6 +192,7 @@ export function EditTimeEntryDialog({ open, onOpenChange, entry, userTimezone = 
         hourly_rate: data.billing.hourlyRate,
       });
       await syncTimeEntryBreakDraft(entry.id, baselineBreaksRef.current, data.breaks);
+      clearEditTimeEntryDraft(entry.id);
       onOpenChange(false);
       onUpdated?.();
     } catch (err: any) {
@@ -137,6 +206,7 @@ export function EditTimeEntryDialog({ open, onOpenChange, entry, userTimezone = 
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
+      closeOnOutsideClick={false}
       title="Edit Time Entry"
       description="Update the details, schedule, and breaks for this entry"
     >
@@ -150,6 +220,7 @@ export function EditTimeEntryDialog({ open, onOpenChange, entry, userTimezone = 
           </div>
         )}
         <TimeEntryEditForm
+          key={`${entry.id}-${storedDraft?.savedAt ?? "server"}`}
           entry={formEntry}
           onSave={handleSave}
           onCancel={() => onOpenChange(false)}
@@ -158,6 +229,7 @@ export function EditTimeEntryDialog({ open, onOpenChange, entry, userTimezone = 
           entryTimezone={entry.timezone}
           breaks={formBreaks}
           customersModuleEnabled={customersModuleEnabled}
+          onDraftSnapshotChange={handleDraftSnapshotChange}
         />
       </div>
     </Dialog>

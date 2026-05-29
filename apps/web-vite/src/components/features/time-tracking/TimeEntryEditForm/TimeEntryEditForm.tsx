@@ -14,6 +14,7 @@ import {
   TimeEntryBillingField,
   type TimeEntryBillingState,
 } from "../TimeEntryBillingDialog";
+import type { EditTimeEntryFormDraft } from "@/lib/time-entry-form-draft";
 
 // Human: React UI for `TimeEntryEditForm` in time entries and live timers: composes shared UI primitives, wires local state, and coordinates user actions for this screen section.
 // Agent: SCOPE time-tracking; ENTRIES breaks floating-timer; EXPORTS TimeEntryEditForm; REACT component; READS props hooks; MAY CALL api client.
@@ -42,6 +43,8 @@ export type TimeEntryEditSavePayload = UpdateTimeEntryInput & {
   billing: TimeEntryBillingState;
 };
 
+export type TimeEntryEditDraftSnapshot = Omit<EditTimeEntryFormDraft, "savedAt">;
+
 interface TimeEntryEditFormProps {
   entry: TimeEntry;
   onSave: (data: TimeEntryEditSavePayload) => Promise<void>;
@@ -51,6 +54,8 @@ interface TimeEntryEditFormProps {
   entryTimezone?: string | null;
   breaks?: TimeEntryBreakDraftRow[];
   customersModuleEnabled: boolean;
+  /** Human: Called when form fields change so the parent can persist a local draft. */
+  onDraftSnapshotChange?: (snapshot: TimeEntryEditDraftSnapshot) => void;
 }
 
 const EMPTY_BREAKS: TimeEntryBreakDraftRow[] = [];
@@ -65,7 +70,17 @@ function SectionHeader({ icon, label }: { icon: React.ReactNode; label: string }
   );
 }
 
-export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting, userTimezone, entryTimezone, breaks = EMPTY_BREAKS, customersModuleEnabled }: TimeEntryEditFormProps) {
+export function TimeEntryEditForm({
+  entry,
+  onSave,
+  onCancel,
+  isSubmitting,
+  userTimezone,
+  entryTimezone,
+  breaks = EMPTY_BREAKS,
+  customersModuleEnabled,
+  onDraftSnapshotChange,
+}: TimeEntryEditFormProps) {
   const [tags, setTags] = React.useState<string[]>(entry.tags);
   const [tagInput, setTagInput] = React.useState("");
   const [draftBreaks, setDraftBreaks] = React.useState<TimeEntryBreakDraftRow[]>(breaks);
@@ -93,6 +108,7 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting, userT
     handleSubmit,
     control,
     reset,
+    watch,
     formState: { errors },
   } = useForm<UpdateTimeEntryInput>({
     resolver: zodResolver(updateTimeEntrySchema),
@@ -138,6 +154,44 @@ export function TimeEntryEditForm({ entry, onSave, onCancel, isSubmitting, userT
   const onSubmit = async (data: UpdateTimeEntryInput) => {
     await onSave({ ...data, tags, breaks: draftBreaks, billing });
   };
+
+  const watchedValues = watch();
+
+  // Human: Emit a serializable snapshot whenever the user edits so the parent can debounce-save to localStorage.
+  // Agent: READS watch tags billing draftBreaks; CALLS onDraftSnapshotChange with entryId ISO dates breaks.
+  React.useEffect(() => {
+    if (!onDraftSnapshotChange) return;
+
+    const started = watchedValues.startedAt;
+    if (!started) return;
+
+    onDraftSnapshotChange({
+      entryId: entry.id,
+      name: watchedValues.name ?? entry.name,
+      description: watchedValues.description ?? "",
+      tags,
+      billable: watchedValues.billable ?? entry.billable,
+      location: watchedValues.location ?? "",
+      timezone: watchedValues.timezone ?? null,
+      startedAt: (started instanceof Date ? started : new Date(started)).toISOString(),
+      stoppedAt: watchedValues.stoppedAt
+        ? (watchedValues.stoppedAt instanceof Date
+            ? watchedValues.stoppedAt
+            : new Date(watchedValues.stoppedAt)
+          ).toISOString()
+        : null,
+      billing,
+      breaks: draftBreaks.map((b) => ({
+        id: b.id,
+        startedAt: b.startedAt.toISOString(),
+        endedAt: b.endedAt ? b.endedAt.toISOString() : null,
+        duration: b.duration ?? 0,
+        description: b.description,
+        createdAt: (b.createdAt ?? new Date()).toISOString(),
+        updatedAt: (b.updatedAt ?? new Date()).toISOString(),
+      })),
+    });
+  }, [onDraftSnapshotChange, entry.id, entry.name, entry.billable, watchedValues, tags, billing, draftBreaks]);
 
   return (
     <>
