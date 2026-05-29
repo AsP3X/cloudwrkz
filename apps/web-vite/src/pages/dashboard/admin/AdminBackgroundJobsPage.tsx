@@ -517,6 +517,18 @@ function SectionShell({
   );
 }
 
+function useLiveDuration(sinceIso: string | null | undefined) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!sinceIso) return;
+    const id = window.setInterval(() => setTick((x) => x + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [sinceIso]);
+  if (!sinceIso) return null;
+  const ms = Date.now() - new Date(sinceIso).getTime();
+  return formatDurationMs(ms);
+}
+
 function useAgoLabel(updatedAt: number | null) {
   const [, setT] = useState(0);
   useEffect(() => {
@@ -720,6 +732,12 @@ function AdminBackgroundJobsPageContent() {
   const [historyPage, setHistoryPage] = useState(1);
 
   const agoLabel = useAgoLabel(lastUpdatedAt);
+
+  const liveProcessingSince =
+    detail?.status === "processing" ? (detail.startedAt ?? detail.createdAt) : null;
+  const liveQueuedSince = detail?.status === "pending" ? detail.createdAt : null;
+  const processingElapsed = useLiveDuration(liveProcessingSince);
+  const queuedElapsed = useLiveDuration(liveQueuedSince);
 
   const queueJobs = useMemo(
     () => activeJobs.filter((j) => j.status === "pending" || j.status === "processing"),
@@ -1085,6 +1103,12 @@ function AdminBackgroundJobsPageContent() {
                 <Def label="Created">{formatDateTime(detail.createdAt)}</Def>
                 <Def label="Updated">{formatDateTime(detail.updatedAt)}</Def>
                 <Def label="Started">{detail.startedAt ? formatDateTime(detail.startedAt) : "—"}</Def>
+                {detail.status === "processing" && processingElapsed ? (
+                  <Def label="Running for">{processingElapsed}</Def>
+                ) : null}
+                {detail.status === "pending" && queuedElapsed ? (
+                  <Def label="Queued for">{queuedElapsed}</Def>
+                ) : null}
                 <Def label="Completed">{detail.completedAt ? formatDateTime(detail.completedAt) : "—"}</Def>
                 <Def label="Dedupe key">{detail.dedupeKey ?? "—"}</Def>
                 {detail.errorMessage && (
@@ -1104,6 +1128,12 @@ function AdminBackgroundJobsPageContent() {
                     <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Job controls</h3>
                     <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
                       Cancel pending work, stop a running task, or requeue for another attempt.
+                      {detail.jobType === "link_website_screenshot" ? (
+                        <>
+                          {" "}
+                          Screenshot jobs may wait in queue (metadata runs first) and Chromium capture can take up to a few minutes per site.
+                        </>
+                      ) : null}
                     </p>
                   </div>
                   <div className="px-3 py-3 space-y-3">

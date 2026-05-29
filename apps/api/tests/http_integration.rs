@@ -51,6 +51,7 @@ fn test_config(database_url: String) -> AppConfig {
         github_anonymous_max_requests_per_hour: 60,
         job_queue_worker_count: 2,
         job_queue_github_max_concurrent: 1,
+        job_queue_screenshot_max_concurrent: 2,
         job_queue_github_min_start_interval_secs: None,
         public_web_app_url: None,
         http_request_log_enabled: false,

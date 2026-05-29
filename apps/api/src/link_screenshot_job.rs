@@ -25,7 +25,7 @@ async fn mark_background_job_failed(
         log.log(&format!("Job failed: {msg}"));
     }
     let _ = sqlx::query(
-        r#"UPDATE background_jobs SET status = 'failed', error_message = $2, updated_at = clock_timestamp(), completed_at = clock_timestamp() WHERE id = $1"#,
+        r#"UPDATE background_jobs SET status = 'failed', error_message = $2, updated_at = clock_timestamp(), completed_at = clock_timestamp() WHERE id = $1 AND status = 'processing'"#,
     )
     .bind(job_id)
     .bind(msg)
@@ -87,7 +87,16 @@ pub async fn execute_link_screenshot_job(
         if let Some(log) = logger {
             log.log("Capturing screenshot (Chromium)");
         }
-        capture_link_screenshot(&url, link_id).await
+        let capture_started = std::time::Instant::now();
+        let shot = capture_link_screenshot(&url, link_id).await;
+        if let Some(log) = logger {
+            let secs = capture_started.elapsed().as_secs();
+            log.log(&format!(
+                "Chromium capture finished in {secs}s (success={})",
+                shot.is_some()
+            ));
+        }
+        shot
     } else {
         if let Some(log) = logger {
             log.log("robots.txt disallows screenshot capture — skipping capture");
@@ -138,7 +147,7 @@ pub async fn execute_link_screenshot_job(
     }
 
     if let Err(e) = sqlx::query(
-        r#"UPDATE background_jobs SET status = 'completed', completed_at = NOW(), updated_at = NOW(), error_message = NULL WHERE id = $1"#,
+        r#"UPDATE background_jobs SET status = 'completed', completed_at = NOW(), updated_at = NOW(), error_message = NULL WHERE id = $1 AND status = 'processing'"#,
     )
     .bind(job_id)
     .execute(&mut *tx)

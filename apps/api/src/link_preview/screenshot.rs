@@ -15,7 +15,7 @@ use super::url_safety::url_safe_for_outbound_fetch;
 
 const DEFAULT_WIDTH: u32 = 1280;
 const DEFAULT_HEIGHT: u32 = 720;
-const DEFAULT_TIMEOUT_SECS: u64 = 45;
+const DEFAULT_TIMEOUT_SECS: u64 = 60;
 
 // Human: Screenshot capture is optional when disabled by env; Docker images ship Chromium and enable it by default.
 // Agent: READS LINK_SCREENSHOT_ENABLED LINK_SCREENSHOT_CHROMIUM_PATH; CACHED OnceLock Option<PathBuf>.
@@ -104,7 +104,7 @@ fn screenshot_timeout() -> Duration {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(DEFAULT_TIMEOUT_SECS)
-        .clamp(10, 120);
+        .clamp(10, 300);
     Duration::from_secs(secs)
 }
 
@@ -148,6 +148,9 @@ pub async fn capture_link_screenshot(page_url: &str, link_id: &str) -> Option<St
     let timeout = screenshot_timeout();
 
     let mut cmd = Command::new(&chromium);
+    // Human: When our outer timeout fires, drop must kill Chromium so a hung capture cannot hold a worker slot for minutes.
+    // Agent: kill_on_drop true; timeout on cmd.output; ORPHAN subprocess prevented on Duration expiry.
+    cmd.kill_on_drop(true);
     cmd.arg("--headless=new")
         .arg("--disable-gpu")
         .arg("--no-sandbox")

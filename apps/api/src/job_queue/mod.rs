@@ -112,7 +112,7 @@ pub(super) fn policies_from_config(config: &AppConfig) -> HashMap<String, JobTyp
     m.insert(
         JOB_TYPE_LINK_WEBSITE_SCREENSHOT.to_string(),
         JobTypePolicy {
-            max_concurrent: 2,
+            max_concurrent: config.job_queue_screenshot_max_concurrent.max(1),
             min_interval_between_starts: None,
         },
     );

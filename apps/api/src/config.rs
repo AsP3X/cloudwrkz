@@ -63,6 +63,8 @@ pub struct AppConfig {
     pub job_queue_worker_count: u32,
     /// Max concurrent `github_link_metadata` jobs the global worker will run (each job still rate-limits HTTP internally).
     pub job_queue_github_max_concurrent: u32,
+    /// Max concurrent `link_website_screenshot` jobs (each may spawn headless Chromium for up to `LINK_SCREENSHOT_TIMEOUT_SECS`).
+    pub job_queue_screenshot_max_concurrent: u32,
     /// Optional minimum seconds between *starting* two `github_link_metadata` jobs (pacing on top of concurrency).
     pub job_queue_github_min_start_interval_secs: Option<u64>,
     /// Public web app origin for QR payloads (e.g. `https://app.example.com`). If unset, `Host` / `X-Forwarded-*` from the API request is used (may point at the API host).
@@ -168,6 +170,13 @@ impl AppConfig {
                 .and_then(|s| s.parse::<u32>().ok())
                 .unwrap_or(1)
                 .clamp(1, 32),
+            job_queue_screenshot_max_concurrent: std::env::var(
+                "JOB_QUEUE_SCREENSHOT_MAX_CONCURRENT",
+            )
+            .ok()
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(4)
+            .clamp(1, 16),
             job_queue_github_min_start_interval_secs: std::env::var(
                 "JOB_QUEUE_GITHUB_MIN_START_INTERVAL_SECS",
             )
