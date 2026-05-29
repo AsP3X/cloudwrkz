@@ -108,6 +108,14 @@ fn screenshot_timeout() -> Duration {
     Duration::from_secs(secs)
 }
 
+/// Wall-clock cap for the screenshot background job wrapper (Chromium timeout plus cleanup slack).
+// Human: Screenshot jobs should fail before the generic 10-minute job wall timeout so stuck rows recover faster.
+// Agent: RETURNS screenshot_timeout + 90s; READ by run_one_job_supervised for link_website_screenshot.
+
+pub fn screenshot_job_wall_timeout() -> Duration {
+    screenshot_timeout() + Duration::from_secs(90)
+}
+
 fn screenshot_virtual_time_budget_ms() -> u64 {
     std::env::var("LINK_SCREENSHOT_VIRTUAL_TIME_BUDGET_MS")
         .ok()

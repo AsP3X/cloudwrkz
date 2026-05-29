@@ -90,14 +90,28 @@ impl JobLogger {
     }
 
     pub fn log(&self, message: &str) {
-        let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ");
-        let line = format!("{ts} {message}");
+        let line = Self::format_line(message);
         self.registry.append_memory(&self.job_id, &line);
         let pool = self.pool.clone();
         let job_id = self.job_id.clone();
         tokio::spawn(async move {
             persist_job_log_line(&pool, &job_id, &line).await;
         });
+    }
+
+    /// Write a line to memory and await DB persistence (claim/start/finish/heartbeat).
+    // Human: Lifecycle lines must appear in the admin log immediately even when the handler later hangs or the API restarts.
+    // Agent: WRITES memory; AWAITS persist_job_log_line; USE for claim/start/heartbeat/finish paths.
+
+    pub async fn log_critical(&self, message: &str) {
+        let line = Self::format_line(message);
+        self.registry.append_memory(&self.job_id, &line);
+        persist_job_log_line(&self.pool, &self.job_id, &line).await;
+    }
+
+    fn format_line(message: &str) -> String {
+        let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ");
+        format!("{ts} {message}")
     }
 
     pub fn job_id(&self) -> &str {
@@ -211,6 +225,22 @@ pub fn payload_keys_summary(payload: &serde_json::Value) -> String {
 pub async fn append_system_job_log_line(pool: &PgPool, job_id: &str, message: &str) {
     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ");
     let line = format!("{ts} {message}");
+    persist_job_log_line(pool, job_id, &line).await;
+}
+
+/// Same as [`append_system_job_log_line`] but also mirrors into the in-memory registry for live SSE.
+// Human: Stale-reclaim and claim paths should show up in the live tail without waiting for a handler-owned JobLogger.
+// Agent: CALLS registry.append_memory + persist_job_log_line.
+
+pub async fn append_system_job_log_line_with_registry(
+    pool: &PgPool,
+    registry: &JobLogRegistry,
+    job_id: &str,
+    message: &str,
+) {
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ");
+    let line = format!("{ts} {message}");
+    registry.append_memory(job_id, &line);
     persist_job_log_line(pool, job_id, &line).await;
 }
 

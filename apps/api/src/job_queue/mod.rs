@@ -26,8 +26,8 @@ mod time_entry_mutations;
 
 pub use control::{JobControlError, cancel_pending_job, restart_job, stop_processing_job};
 pub use job_log::{
-    JobLogRegistry, JobLogger, append_system_job_log_line, fetch_job_log_lines,
-    payload_keys_summary,
+    JobLogRegistry, JobLogger, append_system_job_log_line, append_system_job_log_line_with_registry,
+    fetch_job_log_lines, payload_keys_summary,
 };
 pub use run_registry::JobRunRegistry;
 pub use supervisor::{resolve_initial_worker_count, spawn_job_queue_supervisor};
@@ -70,8 +70,11 @@ const STALE_PROCESSING_AFTER_MINUTES: i32 = 3;
 
 /// Requeue preview / GitHub jobs stuck in `processing` (worker crash, deploy restart, hung Chromium).
 const STALE_WEBSITE_METADATA_REQUEUE_MINUTES: i32 = 12;
-const STALE_SCREENSHOT_REQUEUE_MINUTES: i32 = 15;
+/// Screenshot jobs without log activity are requeued after this many minutes (Chromium cap is ~60–150s).
+const STALE_SCREENSHOT_REQUEUE_MINUTES: i32 = 6;
 const STALE_GITHUB_METADATA_REQUEUE_MINUTES: i32 = 45;
+/// Fail screenshot rows still `processing` with no persisted log after this many minutes (orphan rows).
+const STALE_SCREENSHOT_FAIL_EMPTY_LOG_MINUTES: i32 = 5;
 
 /// Policies applied before a job of this type is marked `processing` (concurrency + optional pacing).
 #[derive(Clone, Debug)]
@@ -181,7 +184,7 @@ pub(super) fn policies_from_config(config: &AppConfig) -> HashMap<String, JobTyp
 
 async fn mark_job_failed(pool: &PgPool, job_id: &str, msg: &str, logger: Option<&JobLogger>) {
     if let Some(log) = logger {
-        log.log(&format!("Job failed: {msg}"));
+        log.log_critical(&format!("Job failed: {msg}")).await;
     }
     let _ = sqlx::query(
         r#"UPDATE background_jobs SET status = 'failed', error_message = $2, updated_at = clock_timestamp(), completed_at = clock_timestamp() WHERE id = $1 AND status = 'processing'"#,
@@ -303,7 +306,127 @@ async fn requeue_stale_preview_jobs(pool: &PgPool, job_type: &str, after_minutes
     }
 }
 
+/// Requeue `processing` rows that never received `started_at` (invalid orphan state).
+// Human: A row cannot legitimately be processing without a claim timestamp; reset to pending so a worker can pick it up.
+// Agent: UPDATE processing→pending WHERE started_at IS NULL; EXCLUDES auth job types; APPENDS system log per id.
+
+async fn requeue_processing_without_started_at(pool: &PgPool) {
+    let rows = match sqlx::query(
+        r#"UPDATE background_jobs
+           SET status = 'pending',
+               started_at = NULL,
+               run_after = clock_timestamp() + interval '200 milliseconds',
+               updated_at = clock_timestamp()
+           WHERE status = 'processing'
+             AND started_at IS NULL
+             AND job_type NOT IN ('auth_login', 'auth_register')
+           RETURNING id, job_type"#,
+    )
+    .fetch_all(pool)
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            warn!(
+                target: "jobs",
+                event = "jobs.requeue_no_started_at_failed",
+                error = %e,
+                "could not requeue processing jobs missing started_at"
+            );
+            return;
+        }
+    };
+
+    if rows.is_empty() {
+        return;
+    }
+
+    warn!(
+        target: "jobs",
+        event = "jobs.requeue_no_started_at",
+        count = rows.len(),
+        "requeued processing jobs that had no started_at"
+    );
+
+    for row in rows {
+        let id: String = row.get("id");
+        let job_type: String = row.get("job_type");
+        append_system_job_log_line(
+            pool,
+            &id,
+            &format!("Requeued: row was processing without started_at (type={job_type})"),
+        )
+        .await;
+    }
+}
+
+/// Mark stale screenshot jobs failed when no worker ever wrote a processing log line.
+// Human: If a row sits processing for minutes with an empty log, no handler actually ran — fail instead of looping forever.
+// Agent: UPDATE processing→failed WHERE link_website_screenshot AND empty processing_log AND started_at older than threshold.
+
+async fn fail_stale_screenshot_jobs_without_logs(pool: &PgPool, after_minutes: i32) {
+    let rows = match sqlx::query(
+        r#"UPDATE background_jobs
+           SET status = 'failed',
+               error_message = 'Screenshot job stalled with no worker log activity',
+               updated_at = clock_timestamp(),
+               completed_at = clock_timestamp()
+           WHERE status = 'processing'
+             AND job_type = $1
+             AND started_at IS NOT NULL
+             AND started_at < clock_timestamp() - ($2::integer * interval '1 minute')
+             AND (
+               processing_log IS NULL
+               OR jsonb_typeof(processing_log) <> 'array'
+               OR jsonb_array_length(processing_log) = 0
+             )
+           RETURNING id"#,
+    )
+    .bind(JOB_TYPE_LINK_WEBSITE_SCREENSHOT)
+    .bind(after_minutes)
+    .fetch_all(pool)
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            warn!(
+                target: "jobs",
+                event = "jobs.stale_fail_empty_log_failed",
+                error = %e,
+                "could not fail stale screenshot jobs with empty logs"
+            );
+            return;
+        }
+    };
+
+    if rows.is_empty() {
+        return;
+    }
+
+    warn!(
+        target: "jobs",
+        event = "jobs.stale_fail_empty_log",
+        count = rows.len(),
+        after_minutes,
+        "failed stale screenshot jobs with no processing_log activity"
+    );
+
+    for row in rows {
+        let id: String = row.get("id");
+        append_system_job_log_line(
+            pool,
+            &id,
+            &format!(
+                "Marked failed after {after_minutes}m in processing with no worker log lines"
+            ),
+        )
+        .await;
+    }
+}
+
 pub(super) async fn reclaim_stale_processing_jobs(pool: &PgPool) {
+    requeue_processing_without_started_at(pool).await;
+    fail_stale_screenshot_jobs_without_logs(pool, STALE_SCREENSHOT_FAIL_EMPTY_LOG_MINUTES).await;
     requeue_stale_preview_jobs(
         pool,
         JOB_TYPE_WEBSITE_LINK_METADATA,
@@ -546,10 +669,12 @@ async fn run_one_job(
     created_by_user_id: Option<String>,
     logger: JobLogger,
 ) {
-    logger.log(&format!(
-        "Dispatching handler for job_type={job_type} ({})",
-        payload_keys_summary(&payload)
-    ));
+    logger
+        .log_critical(&format!(
+            "Dispatching handler for job_type={job_type} ({})",
+            payload_keys_summary(&payload)
+        ))
+        .await;
     match job_type.as_str() {
         JOB_TYPE_GITHUB_LINK_METADATA => {
             if let Some(link_id) = payload_link_id(&payload) {
@@ -712,16 +837,45 @@ async fn run_one_job_supervised(
     budgets: Arc<TypeBudgets>,
     job_logs: Arc<JobLogRegistry>,
     job_runs: Arc<JobRunRegistry>,
+    worker_id: u64,
 ) {
     let job_id_for_log = job_id.clone();
     let job_type_for_log = job_type.clone();
     let pool_fail = pool.clone();
-    let logger = JobLogger::new(job_logs, pool.clone(), &job_id_for_log);
-    logger.log(&format!("Job processing started (type={job_type_for_log})"));
+    let logger = JobLogger::new(job_logs.clone(), pool.clone(), &job_id_for_log);
+    // Human: Budget slot is taken at claim time; release when this supervised wrapper exits on every path.
+    // Agent: BudgetReleaseOnDrop scoped to supervised fn; NOT duplicated inside inner run_one_job task.
+    let _budget_release = BudgetReleaseOnDrop::new(budgets.clone(), job_type.clone());
+
+    logger
+        .log_critical(&format!(
+            "Job processing started (type={job_type_for_log}, worker_id={worker_id})"
+        ))
+        .await;
+
+    let wall_timeout = if job_type_for_log == JOB_TYPE_LINK_WEBSITE_SCREENSHOT {
+        crate::link_preview::screenshot_job_wall_timeout()
+    } else {
+        RUN_ONE_JOB_WALL_TIMEOUT
+    };
+
+    let logger_hb = logger.clone();
+    let hb_job_type = job_type_for_log.clone();
+    let heartbeat = tokio::spawn(async move {
+        let mut tick = tokio::time::interval(std::time::Duration::from_secs(45));
+        tick.tick().await;
+        loop {
+            tick.tick().await;
+            logger_hb
+                .log_critical(&format!(
+                    "Worker heartbeat: still processing (type={hb_job_type})"
+                ))
+                .await;
+        }
+    });
 
     let logger_inner = logger.clone();
     let inner = tokio::spawn(async move {
-        let _slot = BudgetReleaseOnDrop::new(budgets, job_type.clone());
         run_one_job(
             &pool,
             &client,
@@ -739,13 +893,17 @@ async fn run_one_job_supervised(
     job_runs.register(&job_id_for_log, inner.abort_handle());
     let abort = inner.abort_handle();
     let finish = async {
-        match tokio::time::timeout(RUN_ONE_JOB_WALL_TIMEOUT, inner).await {
+        match tokio::time::timeout(wall_timeout, inner).await {
             Ok(Ok(())) => {
-                logger.log("Job processing finished");
+                logger
+                    .log_critical("Job processing finished")
+                    .await;
             }
             Ok(Err(e)) => {
                 if e.is_cancelled() {
-                    logger.log("Job task aborted (admin stop or worker shutdown)");
+                    logger
+                        .log_critical("Job task aborted (admin stop or worker shutdown)")
+                        .await;
                 } else if e.is_panic() {
                     error!(
                         target: "jobs",
@@ -754,6 +912,9 @@ async fn run_one_job_supervised(
                         job_type = %job_type_for_log,
                         "background job task panicked"
                     );
+                    logger
+                        .log_critical("Job panicked — marking failed")
+                        .await;
                     mark_job_failed(
                         &pool_fail,
                         &job_id_for_log,
@@ -770,8 +931,15 @@ async fn run_one_job_supervised(
                     event = "jobs.job_wall_timeout",
                     job_id = %job_id_for_log,
                     job_type = %job_type_for_log,
+                    wall_secs = wall_timeout.as_secs(),
                     "background job exceeded wall-clock limit"
                 );
+                logger
+                    .log_critical(&format!(
+                        "Job exceeded wall-clock limit ({}s) — marking failed",
+                        wall_timeout.as_secs()
+                    ))
+                    .await;
                 mark_job_failed(
                     &pool_fail,
                     &job_id_for_log,
@@ -783,6 +951,7 @@ async fn run_one_job_supervised(
         }
     };
     finish.await;
+    heartbeat.abort();
     job_runs.unregister(&job_id_for_log);
 }
 
@@ -938,9 +1107,13 @@ pub(super) async fn run_job_queue_dispatcher_loop(
             let job_runs_spawn = job_runs.clone();
             let job_id_for_log = job_id.clone();
             let job_type_for_log = job_type.clone();
-            JobLogger::new(job_logs_spawn.clone(), pool.clone(), &job_id).log(&format!(
-                "Claimed by dispatcher worker_id={worker_id} (type={job_type_for_log})"
-            ));
+            append_system_job_log_line_with_registry(
+                &pool,
+                &job_logs_spawn,
+                &job_id,
+                &format!("Claimed by dispatcher worker_id={worker_id} (type={job_type_for_log})"),
+            )
+            .await;
             tokio::spawn(async move {
                 let started = Instant::now();
                 debug!(
@@ -963,6 +1136,7 @@ pub(super) async fn run_job_queue_dispatcher_loop(
                     budgets,
                     job_logs_spawn,
                     job_runs_spawn,
+                    worker_id,
                 )
                 .await;
                 debug!(

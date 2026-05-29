@@ -9,7 +9,7 @@ mod url_safety;
 pub use scrape::{merge_scrape_metadata, merge_screenshot_into_metadata, scrape_link_page};
 pub use screenshot::{
     capture_link_screenshot, chromium_executable, log_screenshot_capability,
-    ScreenshotCaptureOutcome,
+    screenshot_job_wall_timeout, ScreenshotCaptureOutcome,
 };
 pub use uploads::{ensure_upload_directories, favicons_dir, screenshots_dir};
 

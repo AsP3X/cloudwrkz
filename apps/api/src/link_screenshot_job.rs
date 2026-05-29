@@ -22,7 +22,7 @@ async fn mark_background_job_failed(
     logger: Option<&JobLogger>,
 ) {
     if let Some(log) = logger {
-        log.log(&format!("Job failed: {msg}"));
+        log.log_critical(&format!("Job failed: {msg}")).await;
     }
     let _ = sqlx::query(
         r#"UPDATE background_jobs SET status = 'failed', error_message = $2, updated_at = clock_timestamp(), completed_at = clock_timestamp() WHERE id = $1 AND status = 'processing'"#,
@@ -44,9 +44,13 @@ pub async fn execute_link_screenshot_job(
     logger: Option<&JobLogger>,
 ) {
     if let Some(log) = logger {
-        log.log(&format!("Loading link row link_id={link_id}"));
+        log.log_critical(&format!("Loading link row link_id={link_id}"))
+            .await;
         if chromium_executable().is_none() {
-            log.log("Chromium not available on this host — screenshot capture skipped");
+            log.log_critical(
+                "Chromium not available on this host — screenshot capture skipped",
+            )
+            .await;
         }
     }
     let link_row = match sqlx::query("SELECT url, metadata FROM links WHERE id = $1")
@@ -80,23 +84,41 @@ pub async fn execute_link_screenshot_job(
     let existing_meta: Option<Value> = link_row.get("metadata");
 
     if let Some(log) = logger {
-        log.log(&format!("Checking robots.txt for {url}"));
+        log.log_critical(&format!("Checking robots.txt for {url}"))
+            .await;
     }
     let robots = check_robots_allowed(client, &url).await;
     let capture_outcome = if robots.allowed {
         if let Some(log) = logger {
-            log.log("Capturing screenshot (Chromium)");
+            log.log_critical("Capturing screenshot (Chromium)").await;
         }
         let capture_started = std::time::Instant::now();
+        let heartbeat = logger.map(|log| {
+            let log = log.clone();
+            tokio::spawn(async move {
+                let mut tick =
+                    tokio::time::interval(std::time::Duration::from_secs(30));
+                tick.tick().await;
+                loop {
+                    tick.tick().await;
+                    log.log_critical("Chromium capture still running…").await;
+                }
+            })
+        });
         let outcome = capture_link_screenshot(&url, link_id).await;
+        if let Some(handle) = heartbeat {
+            handle.abort();
+        }
         if let Some(log) = logger {
             let ms = capture_started.elapsed().as_millis();
-            log.log(&format!(
+            log.log_critical(&format!(
                 "Chromium capture finished in {ms}ms (success={})",
                 outcome.screenshot_url.is_some()
-            ));
+            ))
+            .await;
             if let Some(ref reason) = outcome.failure {
-                log.log(&format!("Screenshot capture failed: {reason}"));
+                log.log_critical(&format!("Screenshot capture failed: {reason}"))
+                    .await;
             }
         }
         outcome
@@ -191,10 +213,11 @@ pub async fn execute_link_screenshot_job(
     }
 
     if let Some(log) = logger {
-        log.log(&format!(
+        log.log_critical(&format!(
             "Screenshot job finished (captured={captured_ok}, robots_allowed={})",
             robots.allowed
-        ));
+        ))
+        .await;
     }
 
     info!(
