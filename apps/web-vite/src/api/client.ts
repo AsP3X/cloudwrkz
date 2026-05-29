@@ -11,11 +11,10 @@ import { wrapFetchFailure } from "@/api/networkTransportError";
 
 const API_BASE_URL = getApiBaseUrl();
 
-// Search endpoints currently live on the legacy Next.js app under `/api`.
-// This separate base URL allows us to reuse the full fuzzy search implementation there.
-// In dev, we proxy `/next-api` to the Next.js app (see `vite.config.ts`).
+// Human: Search endpoints are served by the Rust API (`/api/v1/search`, `/search/enhanced`, etc.).
+// Agent: DEFAULT SEARCH_API_BASE_URL=getApiBaseUrl(); READS VITE_SEARCH_API_URL override.
 const SEARCH_API_BASE_URL =
-  import.meta.env.VITE_SEARCH_API_URL || "/next-api";
+  import.meta.env.VITE_SEARCH_API_URL?.trim() || getApiBaseUrl();
 
 /** API error body: { error: { code, message, fields? } } */
 function getErrorMessage(data: unknown, statusText: string): string {

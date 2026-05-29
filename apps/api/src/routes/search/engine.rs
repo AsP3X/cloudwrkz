@@ -77,25 +77,61 @@ pub async fn fetch_recent_access_counts(
     Ok(counts)
 }
 
+fn score_hit(h: &ScoredHit, counts: &HashMap<(String, String), i64>) -> f64 {
+    final_score(
+        h.match_score,
+        *counts
+            .get(&(h.entity_type.clone(), h.entity_id.clone()))
+            .unwrap_or(&0),
+    )
+}
+
+/// Rank globally, reserving a small quota per entity type so one module cannot hide all others.
 pub fn rank_and_truncate(
     mut hits: Vec<ScoredHit>,
     counts: &HashMap<(String, String), i64>,
     limit: usize,
 ) -> Vec<serde_json::Value> {
+    if hits.is_empty() || limit == 0 {
+        return vec![];
+    }
+
     hits.sort_by(|a, b| {
-        let sa = final_score(
-            a.match_score,
-            *counts
-                .get(&(a.entity_type.clone(), a.entity_id.clone()))
-                .unwrap_or(&0),
-        );
-        let sb = final_score(
-            b.match_score,
-            *counts
-                .get(&(b.entity_type.clone(), b.entity_id.clone()))
-                .unwrap_or(&0),
-        );
-        sb.partial_cmp(&sa).unwrap_or(std::cmp::Ordering::Equal)
+        score_hit(b, counts)
+            .partial_cmp(&score_hit(a, counts))
+            .unwrap_or(std::cmp::Ordering::Equal)
     });
-    hits.into_iter().take(limit).map(|h| h.result).collect()
+
+    let min_per_type = if limit >= 12 { 2 } else { 1 };
+    let mut picked: Vec<ScoredHit> = Vec::with_capacity(limit);
+    let mut picked_keys: std::collections::HashSet<(String, String)> =
+        std::collections::HashSet::new();
+    let mut type_counts: HashMap<String, usize> = HashMap::new();
+
+    for h in &hits {
+        let c = type_counts.entry(h.entity_type.clone()).or_insert(0);
+        if *c >= min_per_type {
+            continue;
+        }
+        let key = (h.entity_type.clone(), h.entity_id.clone());
+        if picked_keys.insert(key) {
+            picked.push(h.clone());
+            *c += 1;
+        }
+        if picked.len() >= limit {
+            return picked.into_iter().map(|h| h.result).collect();
+        }
+    }
+
+    for h in hits {
+        let key = (h.entity_type.clone(), h.entity_id.clone());
+        if picked_keys.insert(key) {
+            picked.push(h);
+        }
+        if picked.len() >= limit {
+            break;
+        }
+    }
+
+    picked.into_iter().map(|h| h.result).collect()
 }

@@ -147,6 +147,17 @@ fn req_post_time_tracking_json(token: &str, json_body: &str) -> Request<Body> {
         .unwrap()
 }
 
+fn req_post_time_tracking_add_json(token: &str, json_body: &str) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri("/api/v1/time-tracking/add")
+        .header("x-forwarded-for", "203.0.113.42")
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .body(Body::from(json_body.to_string()))
+        .unwrap()
+}
+
 fn req_patch_time_entry_json(token: &str, entry_id: &str, json_body: &str) -> Request<Body> {
     Request::builder()
         .method("PATCH")
@@ -830,6 +841,79 @@ async fn patch_time_entry_enqueues_time_entry_update_background_job(pool: PgPool
         .await
         .expect("background_jobs row");
     assert_eq!(jt, "time_entry_update");
+}
+
+// Human: Regression guard for manual add — the background INSERT must bind every column (including location).
+// Agent: POST /time-tracking/add → poll mutation-jobs → assert time_entries row STOPPED + location.
+#[sqlx::test(migrations = "./migrations")]
+async fn post_time_tracking_add_manual_entry_completes_mutation_job(pool: PgPool) {
+    let token = seed_user_with_session(&pool, "time-add-manual@example.com", "USER")
+        .await
+        .expect("seed");
+    let uid = user_id_for_token(&pool, &token).await.expect("user id");
+    grant_permission(&pool, &uid, "time_tracking.create")
+        .await
+        .expect("grant");
+
+    let app = build_http_app(test_app_state(pool.clone()));
+
+    let res = app
+        .clone()
+        .oneshot(req_post_time_tracking_add_json(
+            &token,
+            r#"{
+              "name": "Manual entry integration",
+              "description": "CI guard for manual create INSERT",
+              "hours": 1,
+              "minutes": 30,
+              "seconds": 0,
+              "location": "Integration test desk",
+              "billable": true
+            }"#,
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::ACCEPTED);
+    let b = res.into_body().collect().await.unwrap().to_bytes();
+    let q: serde_json::Value = serde_json::from_slice(&b).expect("json");
+    assert_eq!(q["job_type"], "time_entry_create_manual");
+    let create_job = q["job_id"].as_str().expect("job_id").to_string();
+    let uri = format!("/api/v1/mutation-jobs/{create_job}");
+    let mut entry_id: Option<String> = None;
+    for _ in 0..100 {
+        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+        let res = app
+            .clone()
+            .oneshot(req_get_bearer(&uri, &token))
+            .await
+            .expect("poll");
+        if res.status() != StatusCode::OK {
+            continue;
+        }
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        let v: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        match v["status"].as_str() {
+            Some("completed") => {
+                entry_id = v["body"]["id"].as_str().map(String::from);
+                break;
+            }
+            Some("failed") => panic!("mutation job failed: {v:?}"),
+            _ => {}
+        }
+    }
+    let entry_id = entry_id.expect("manual create job did not complete in time");
+
+    let row: (String, Option<String>, String) = sqlx::query_as(
+        "SELECT name, location, status::text FROM time_entries WHERE id = $1 AND user_id = $2",
+    )
+    .bind(&entry_id)
+    .bind(&uid)
+    .fetch_one(&pool)
+    .await
+    .expect("time_entries row");
+    assert_eq!(row.0, "Manual entry integration");
+    assert_eq!(row.1.as_deref(), Some("Integration test desk"));
+    assert_eq!(row.2, "STOPPED");
 }
 
 fn req_post_json(uri: &str, token: &str, json_body: &str) -> Request<Body> {

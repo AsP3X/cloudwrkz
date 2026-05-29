@@ -24,7 +24,14 @@ SELECT id, ticket_number, title, description, status::text AS status, priority::
   ) AS match_score
 FROM tickets
 WHERE archived_at IS NULL
-  AND ($4::bool OR created_by_id = $1 OR assigned_to_id = $1)
+  AND (
+    $4::bool
+    OR created_by_id = $1
+    OR assigned_to_id = $1
+    OR assigned_to_group_id IN (
+      SELECT gm.group_id FROM group_memberships gm WHERE gm.user_id = $1
+    )
+  )
   AND (
     COALESCE(similarity(title, $2), 0) > 0.1
     OR COALESCE(similarity(COALESCE(description_plain, ''), $2), 0) > 0.1
@@ -276,5 +283,42 @@ WHERE l.archived_at IS NULL
     OR EXISTS (SELECT 1 FROM unnest(l.tags) AS t(tag) WHERE tag ILIKE '%' || $2 || '%')
   )
 ORDER BY match_score DESC NULLS LAST, l.updated_at DESC
+LIMIT $3
+"#;
+
+/// Bind: `$1` user id, `$2` query, `$3` limit, `$4` can_view_all_tickets, `$5` hide_agent_only_comments.
+pub const COMMENT_SEARCH_SQL: &str = r#"
+SELECT c.id,
+       COALESCE(c.content_plain, c.content, '') AS content,
+       c.ticket_id,
+       c.is_agent_only,
+       c.created_at,
+       t.ticket_number,
+       t.title AS ticket_title,
+  GREATEST(
+    COALESCE(similarity(COALESCE(c.content_plain, ''), $2), 0),
+    COALESCE(similarity(COALESCE(c.content, ''), $2), 0),
+    CASE WHEN COALESCE(c.content_plain, '') ILIKE '%' || $2 || '%' THEN 0.72 ELSE 0 END,
+    CASE WHEN COALESCE(c.content, '') ILIKE '%' || $2 || '%' THEN 0.68 ELSE 0 END
+  ) AS match_score
+FROM ticket_comments c
+INNER JOIN tickets t ON t.id = c.ticket_id
+WHERE t.archived_at IS NULL
+  AND (
+    $4::bool
+    OR t.created_by_id = $1
+    OR t.assigned_to_id = $1
+    OR t.assigned_to_group_id IN (
+      SELECT gm.group_id FROM group_memberships gm WHERE gm.user_id = $1
+    )
+  )
+  AND ($5::bool = false OR c.is_agent_only = false)
+  AND (
+    COALESCE(similarity(COALESCE(c.content_plain, ''), $2), 0) > 0.1
+    OR COALESCE(similarity(COALESCE(c.content, ''), $2), 0) > 0.1
+    OR COALESCE(c.content_plain, '') ILIKE '%' || $2 || '%'
+    OR COALESCE(c.content, '') ILIKE '%' || $2 || '%'
+  )
+ORDER BY match_score DESC NULLS LAST, c.created_at DESC
 LIMIT $3
 "#;
