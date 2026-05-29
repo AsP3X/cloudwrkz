@@ -2105,7 +2105,7 @@ async fn exec_link_create(
     let mut metadata_extracted_at: Option<chrono::NaiveDateTime> = None;
 
     if should_extract {
-        let scrape = scrape_link_page(http, &body.url).await;
+        let scrape = scrape_link_page(http, &body.url, None).await;
         if let Some(ref meta) = scrape.metadata {
             if title.is_none() {
                 title = meta.title.clone();
@@ -3367,7 +3367,7 @@ async fn exec_link_update(
             if github_metadata::parse_github_owner_repo(url).is_some() {
                 let _ = enqueue_github_link_metadata_job(pool, id, &user_id).await;
             } else {
-                let scrape = scrape_link_page(http, url).await;
+                let scrape = scrape_link_page(http, url, Some(id)).await;
                 if scrape.robots_allowed {
                     let merged = merge_scrape_metadata(None, &scrape);
                     let _ = sqlx::query(

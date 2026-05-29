@@ -224,6 +224,8 @@ export default function LinkDetailPage() {
     !isGitHubUrl(link.url) && !isYouTubeUrl(link.url)
       ? getWebsitePreviewFields(link.metadata)
       : null;
+  const showWebsitePreviewSection =
+    websitePreview != null || (!robotsStatus.allowed && !isGitHubUrl(link.url) && !isYouTubeUrl(link.url));
 
   return (
     <LinkDetailSidebarProvider defaultOpen={true}>
@@ -280,7 +282,15 @@ export default function LinkDetailPage() {
             <RobotsTxtWarning message={robotsStatus.message} />
           )}
 
-          {websitePreview && <WebsiteLinkPreview preview={websitePreview} pageUrl={link.url} />}
+          {showWebsitePreviewSection && websitePreview && (
+            <WebsiteLinkPreview preview={websitePreview} pageUrl={link.url} />
+          )}
+          {showWebsitePreviewSection && !websitePreview && robotsStatus.allowed && (
+            <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 text-sm text-neutral-600 dark:text-neutral-400">
+              Website preview is loading or could not be captured. Use &quot;Refresh website preview&quot; in the
+              sidebar to try again.
+            </div>
+          )}
 
           {link.description && (
             <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-soft-lg border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8">

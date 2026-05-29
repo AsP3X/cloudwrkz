@@ -11,6 +11,7 @@ pub mod collections;
 pub mod contact;
 pub mod customers;
 pub mod favicons;
+pub mod screenshots;
 pub mod filter_preferences;
 pub mod health;
 pub mod helpers;
@@ -111,6 +112,7 @@ pub fn v1_router(config: &AppConfig) -> Router<AppState> {
         .merge(archive::router())
         .merge(filter_preferences::router())
         .merge(favicons::router())
+        .merge(screenshots::router())
         .merge(location_history::router())
 }
 

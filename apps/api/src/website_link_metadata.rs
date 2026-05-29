@@ -53,7 +53,7 @@ pub async fn execute_website_link_metadata_job(
     }
 
     let existing_meta: Option<Value> = link_row.get("metadata");
-    let scrape = scrape_link_page(client, &url).await;
+    let scrape = scrape_link_page(client, &url, Some(link_id)).await;
     let merged = merge_scrape_metadata(existing_meta, &scrape);
 
     let mut tx = match pool.begin().await {

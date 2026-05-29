@@ -26,8 +26,8 @@ RUN touch apps/api/src/main.rs apps/cli/src/main.rs \
 
 FROM debian:bookworm-slim
 
-# curl: used by docker-compose healthcheck (GET /api/health).
-RUN apt-get update && apt-get install -y ca-certificates curl && rm -rf /var/lib/apt/lists/*
+# curl: healthcheck; chromium: headless link screenshot prerender (see link_preview/screenshot.rs).
+RUN apt-get update && apt-get install -y ca-certificates curl chromium && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY --from=builder /build/target/release/cloudwrkz-api .

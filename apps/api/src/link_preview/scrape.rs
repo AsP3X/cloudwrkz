@@ -10,6 +10,8 @@ use serde_json::{Map, Value, json};
 use url::Url;
 
 use super::robots::{SCRAPE_USER_AGENT, check_robots_allowed};
+use super::screenshot::capture_link_screenshot;
+use super::url_safety::url_safe_for_outbound_fetch;
 
 /// Rich scrape payload stored on `links.metadata` and returned from preview endpoints.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -36,6 +38,7 @@ pub struct LinkScrapedMetadata {
     pub language: Option<String>,
     pub robots_txt_allowed: Option<bool>,
     pub robots_txt_message: Option<String>,
+    pub screenshot_url: Option<String>,
 }
 
 /// Full scrape attempt including robots.txt gate.
@@ -77,7 +80,23 @@ impl LinkScrapeResult {
 // Human: Entry point for jobs and link create — checks robots, then optionally fetches and parses the page.
 // Agent: AWAITS check_robots_allowed; IF allowed THEN GET html AND parse_document; ELSE metadata None with robots flags only.
 
-pub async fn scrape_link_page(client: &Client, url_str: &str) -> LinkScrapeResult {
+pub async fn scrape_link_page(
+    client: &Client,
+    url_str: &str,
+    link_id: Option<&str>,
+) -> LinkScrapeResult {
+    if !url_safe_for_outbound_fetch(url_str) {
+        return LinkScrapeResult {
+            robots_allowed: false,
+            robots_message: Some("URL is not allowed for automated fetching".into()),
+            metadata: Some(LinkScrapedMetadata {
+                robots_txt_allowed: Some(false),
+                robots_txt_message: Some("URL is not allowed for automated fetching".into()),
+                ..Default::default()
+            }),
+        };
+    }
+
     let robots = check_robots_allowed(client, url_str).await;
     if !robots.allowed {
         return LinkScrapeResult {
@@ -95,6 +114,11 @@ pub async fn scrape_link_page(client: &Client, url_str: &str) -> LinkScrapeResul
         Ok(mut meta) => {
             meta.robots_txt_allowed = Some(true);
             meta.robots_txt_message = None;
+            if let Some(id) = link_id {
+                if let Some(screenshot_url) = capture_link_screenshot(url_str, id).await {
+                    meta.screenshot_url = Some(screenshot_url);
+                }
+            }
             LinkScrapeResult {
                 robots_allowed: true,
                 robots_message: None,
@@ -139,6 +163,9 @@ pub fn merge_scrape_metadata(existing: Option<Value>, scrape: &LinkScrapeResult)
 }
 
 async fn fetch_and_parse_html(client: &Client, url_str: &str) -> Result<LinkScrapedMetadata, ()> {
+    if !url_safe_for_outbound_fetch(url_str) {
+        return Err(());
+    }
     let resp = client
         .get(url_str)
         .header("User-Agent", SCRAPE_USER_AGENT)
@@ -208,6 +235,7 @@ fn parse_html_metadata(html: &str, base_url: &str) -> LinkScrapedMetadata {
         language,
         robots_txt_allowed: None,
         robots_txt_message: None,
+        screenshot_url: None,
     }
 }
 
@@ -316,6 +344,7 @@ mod tests {
             robots_message: None,
             metadata: Some(LinkScrapedMetadata {
                 title: Some("new".into()),
+                screenshot_url: Some("/screenshots/screenshot-x.png".into()),
                 ..Default::default()
             }),
         };

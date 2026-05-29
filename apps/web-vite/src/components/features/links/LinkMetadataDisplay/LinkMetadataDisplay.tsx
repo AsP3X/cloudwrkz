@@ -57,6 +57,7 @@ export function LinkMetadataDisplay({ metadata }: LinkMetadataDisplayProps) {
       language: "Language",
       robotsTxtAllowed: "robots.txt Allowed",
       robotsTxtMessage: "robots.txt Message",
+      screenshotUrl: "Page Screenshot",
     };
     return labels[key] || key;
   };
@@ -66,7 +67,7 @@ export function LinkMetadataDisplay({ metadata }: LinkMetadataDisplayProps) {
     if (key === "title" || key === "description" || key === "author" || key === "keywords") return "Basic";
     if (key.startsWith("og")) return "Open Graph";
     if (key.startsWith("twitter")) return "Twitter";
-    if (key === "image" || key === "favicon") return "Media";
+    if (key === "image" || key === "favicon" || key === "screenshotUrl") return "Media";
     if (key.startsWith("robotsTxt")) return "robots.txt";
     if (key === "canonicalUrl" || key === "themeColor" || key === "language") return "Page";
     return "Other";
@@ -192,7 +193,7 @@ export function LinkMetadataDisplay({ metadata }: LinkMetadataDisplayProps) {
       return <span className="text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed">{formatted}</span>;
     }
 
-    if (key.includes("Image") || key.includes("favicon") || key === "ogUrl") {
+    if (key.includes("Image") || key.includes("favicon") || key === "screenshotUrl" || key === "ogUrl") {
       const strVal = String(value);
       return (
         <div className="flex items-start gap-3 flex-wrap">
@@ -204,7 +205,7 @@ export function LinkMetadataDisplay({ metadata }: LinkMetadataDisplayProps) {
           >
             {strVal}
           </a>
-          {(key.includes("Image") || key.includes("favicon")) && (
+          {(key.includes("Image") || key.includes("favicon") || key === "screenshotUrl") && (
             <div className="flex-shrink-0">
               <img
                 src={strVal}

@@ -46,8 +46,26 @@ export function WebsiteLinkPreview({ preview, pageUrl, className }: WebsiteLinkP
       </div>
 
       <div className="p-6 sm:p-8">
+        {preview.screenshotUrl && (
+          <div className="mb-6">
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-2">
+              Page preview
+            </p>
+            <a href={pageUrl} target="_blank" rel="noopener noreferrer" className="block">
+              <img
+                src={preview.screenshotUrl}
+                alt="Screenshot of the linked website"
+                className="w-full rounded-lg border border-neutral-200 dark:border-neutral-700 shadow-md object-cover object-top max-h-[480px]"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = "none";
+                }}
+              />
+            </a>
+          </div>
+        )}
+
         <div className="flex flex-col lg:flex-row gap-6">
-          {preview.imageUrl && (
+          {preview.imageUrl && !preview.screenshotUrl && (
             <a
               href={preview.imageUrl}
               target="_blank"
@@ -58,6 +76,23 @@ export function WebsiteLinkPreview({ preview, pageUrl, className }: WebsiteLinkP
                 src={preview.imageUrl}
                 alt=""
                 className="w-full max-h-56 lg:max-h-72 object-cover rounded-lg border border-neutral-200 dark:border-neutral-700 shadow-sm"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = "none";
+                }}
+              />
+            </a>
+          )}
+          {preview.imageUrl && preview.screenshotUrl && (
+            <a
+              href={preview.imageUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 block lg:w-40"
+            >
+              <img
+                src={preview.imageUrl}
+                alt="Social preview image"
+                className="w-full max-h-32 object-cover rounded-lg border border-neutral-200 dark:border-neutral-700 shadow-sm"
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.display = "none";
                 }}

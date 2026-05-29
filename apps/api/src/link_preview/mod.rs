@@ -2,6 +2,8 @@
 
 mod robots;
 mod scrape;
+mod screenshot;
+mod url_safety;
 
 pub use scrape::{merge_scrape_metadata, scrape_link_page};
 
@@ -17,7 +19,7 @@ pub async fn extract_metadata_from_url(
     client: &Client,
     url_str: &str,
 ) -> Result<ExtractMetadataResponse, AppError> {
-    let result = scrape_link_page(client, url_str).await;
+    let result = scrape_link_page(client, url_str, None).await;
     if !result.robots_allowed {
         return Err(AppError::bad_request(
             result
