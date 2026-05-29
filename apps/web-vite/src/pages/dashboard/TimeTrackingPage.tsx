@@ -39,6 +39,18 @@ function parseLocalDateStart(value: string): number | null {
   return new Date(year, month - 1, day, 0, 0, 0, 0).getTime();
 }
 
+// Human: Turns filter `yyyy-mm-dd` values into a readable label using the browser locale and local calendar day.
+// Agent: READS parseLocalDateStart; RETURNS toLocaleDateString short month or raw fallback; PURE display helper.
+function formatLocalInputDateLabel(value: string): string {
+  const ms = parseLocalDateStart(value);
+  if (ms === null) return value;
+  return new Date(ms).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 /** Total time (hours) from entries, updating every second when there are running timers */
 // Human: Live-updating summary chip that recomputes logged hours whenever entries include running timers.
 // Agent: READS TimeEntry[]; useEffect interval 1s when running; USES calculateElapsedTime; DISPLAYS hours total.
@@ -83,6 +95,7 @@ function TimeTrackingPageContent() {
   const [loading, setLoading] = useState(true);
   const [startTimerOpen, setStartTimerOpen] = useState(false);
   const [addEntryOpen, setAddEntryOpen] = useState(false);
+  const [filterDialogOpen, setFilterDialogOpen] = useState(false);
 
   const fetchEntries = useCallback(async () => {
     try {
@@ -147,6 +160,11 @@ function TimeTrackingPageContent() {
     else if (dateFromParam === monthStartStr && dateToParam === todayStr) activeRange = "thisMonth";
     else if (dateFromParam === yearStartStr && dateToParam === todayStr) activeRange = "thisYear";
   }
+
+  const hasCustomDateRange = Boolean(dateFromParam && dateToParam && activeRange === null);
+  const customDateRangeLabel = hasCustomDateRange
+    ? `${formatLocalInputDateLabel(dateFromParam)} – ${formatLocalInputDateLabel(dateToParam)}`
+    : null;
 
   const handleQuickRange = useCallback(
     (range: QuickRange) => {
@@ -224,7 +242,10 @@ function TimeTrackingPageContent() {
             currentView={viewMode}
             onViewChange={setViewMode}
           />
-          <TimeTrackingFilterButton />
+          <TimeTrackingFilterButton
+            open={filterDialogOpen}
+            onOpenChange={setFilterDialogOpen}
+          />
           <Link to={`${ROUTES.ARCHIVE}?type=time`}>
             <Button variant="outline">Archive</Button>
           </Link>
@@ -306,6 +327,22 @@ function TimeTrackingPageContent() {
         >
           This year
         </Button>
+        <Button
+          variant={hasCustomDateRange ? "primary" : "ghost"}
+          size="sm"
+          onClick={() => setFilterDialogOpen(true)}
+          aria-pressed={hasCustomDateRange}
+        >
+          Custom
+        </Button>
+        {customDateRangeLabel && (
+          <span
+            className="text-sm font-medium text-primary-700 dark:text-primary-300"
+            aria-live="polite"
+          >
+            {customDateRangeLabel}
+          </span>
+        )}
       </div>
 
       {entries.length === 0 ? (

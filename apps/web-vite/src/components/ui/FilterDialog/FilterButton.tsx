@@ -10,6 +10,9 @@ interface FilterButtonProps {
   activeFilterKeys?: string[]; // Optional: specify which keys indicate active filters
   defaultSort?: string; // Optional: override default sort for active check
   size?: "sm" | "md" | "lg";
+  /** When set with `onOpenChange`, controls the filter dialog open state from the parent. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export const FilterButton = (props: FilterButtonProps) => {
@@ -24,9 +27,17 @@ const FilterButtonInner = ({
   config,
   activeFilterKeys,
   defaultSort,
-  size = "md"
+  size = "md",
+  open: openProp,
+  onOpenChange: onOpenChangeProp,
 }: FilterButtonProps) => {
-  const [isOpen, setIsOpen] = React.useState(false);
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const isControlled = openProp !== undefined;
+  const isOpen = isControlled ? openProp : internalOpen;
+  const setIsOpen = (next: boolean) => {
+    if (!isControlled) setInternalOpen(next);
+    onOpenChangeProp?.(next);
+  };
   const [searchParams] = useSearchParams();
   const sortToCheck = defaultSort || config.defaultSort;
 
