@@ -12,7 +12,7 @@ use crate::github_metadata;
 use crate::job_queue::JobLogger;
 use crate::link_preview::{
     capture_link_screenshot, chromium_executable, merge_screenshot_into_metadata,
-    robots::check_robots_allowed,
+    robots::check_robots_allowed, ScreenshotCaptureOutcome,
 };
 
 async fn mark_background_job_failed(
@@ -83,20 +83,23 @@ pub async fn execute_link_screenshot_job(
         log.log(&format!("Checking robots.txt for {url}"));
     }
     let robots = check_robots_allowed(client, &url).await;
-    let captured = if robots.allowed {
+    let capture_outcome = if robots.allowed {
         if let Some(log) = logger {
             log.log("Capturing screenshot (Chromium)");
         }
         let capture_started = std::time::Instant::now();
-        let shot = capture_link_screenshot(&url, link_id).await;
+        let outcome = capture_link_screenshot(&url, link_id).await;
         if let Some(log) = logger {
-            let secs = capture_started.elapsed().as_secs();
+            let ms = capture_started.elapsed().as_millis();
             log.log(&format!(
-                "Chromium capture finished in {secs}s (success={})",
-                shot.is_some()
+                "Chromium capture finished in {ms}ms (success={})",
+                outcome.screenshot_url.is_some()
             ));
+            if let Some(ref reason) = outcome.failure {
+                log.log(&format!("Screenshot capture failed: {reason}"));
+            }
         }
-        shot
+        outcome
     } else {
         if let Some(log) = logger {
             log.log("robots.txt disallows screenshot capture — skipping capture");
@@ -107,9 +110,21 @@ pub async fn execute_link_screenshot_job(
             link_id = %link_id,
             "robots.txt disallows screenshot capture"
         );
-        None
+        ScreenshotCaptureOutcome {
+            screenshot_url: None,
+            failure: None,
+        }
     };
+    let captured = capture_outcome.screenshot_url.clone();
     let captured_ok = captured.is_some();
+
+    if robots.allowed && !captured_ok {
+        let msg = capture_outcome
+            .failure
+            .unwrap_or_else(|| "Screenshot capture failed".into());
+        mark_background_job_failed(pool, job_id, &msg, logger).await;
+        return;
+    }
 
     let merged = merge_screenshot_into_metadata(existing_meta, captured, &robots);
 

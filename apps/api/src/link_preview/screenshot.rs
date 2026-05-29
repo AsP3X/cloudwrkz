@@ -108,6 +108,66 @@ fn screenshot_timeout() -> Duration {
     Duration::from_secs(secs)
 }
 
+fn screenshot_virtual_time_budget_ms() -> u64 {
+    std::env::var("LINK_SCREENSHOT_VIRTUAL_TIME_BUDGET_MS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(15_000)
+        .clamp(1_000, 120_000)
+}
+
+/// Result of one headless Chromium capture attempt (path plus a short admin-safe failure reason).
+// Human: Callers and job logs need to know why capture returned no PNG, not only that it failed.
+// Agent: screenshot_url Some on success; failure Some when None path; stderr truncated for job log display.
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScreenshotCaptureOutcome {
+    pub screenshot_url: Option<String>,
+    pub failure: Option<String>,
+}
+
+impl ScreenshotCaptureOutcome {
+    fn ok(path: String) -> Self {
+        Self {
+            screenshot_url: Some(path),
+            failure: None,
+        }
+    }
+
+    fn fail(reason: impl Into<String>) -> Self {
+        Self {
+            screenshot_url: None,
+            failure: Some(reason.into()),
+        }
+    }
+}
+
+fn truncate_for_job_log(text: &str, max_chars: usize) -> String {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if trimmed.len() <= max_chars {
+        return trimmed.to_string();
+    }
+    format!("{}…", &trimmed[..max_chars])
+}
+
+fn summarize_chromium_stderr(stderr: &str) -> String {
+    let lines: Vec<&str> = stderr
+        .lines()
+        .map(str::trim)
+        .filter(|line| {
+            !line.is_empty()
+                && !line.contains("Failed to connect to the bus")
+                && !line.contains("org.freedesktop.DBus")
+                && !line.contains("object_proxy.cc")
+        })
+        .collect();
+    let joined = lines.join(" | ");
+    truncate_for_job_log(&joined, 400)
+}
+
 fn safe_link_id(link_id: &str) -> Option<String> {
     let trimmed = link_id.trim();
     if trimmed.is_empty() || trimmed.len() > 64 {
@@ -123,14 +183,20 @@ fn safe_link_id(link_id: &str) -> Option<String> {
 }
 
 // Human: Produces a stable API path for the link's prerender PNG, overwriting any previous capture for the same id.
-// Agent: REQUIRES url_safe_for_outbound_fetch; SPAWNS chromium; WRITES screenshots_dir; RETURNS /screenshots/... or None.
+// Agent: REQUIRES url_safe_for_outbound_fetch; SPAWNS chromium; WRITES screenshots_dir; RETURNS ScreenshotCaptureOutcome.
 
-pub async fn capture_link_screenshot(page_url: &str, link_id: &str) -> Option<String> {
+pub async fn capture_link_screenshot(page_url: &str, link_id: &str) -> ScreenshotCaptureOutcome {
     if !url_safe_for_outbound_fetch(page_url) {
-        return None;
+        return ScreenshotCaptureOutcome::fail("URL blocked by outbound fetch safety rules");
     }
-    let link_id = safe_link_id(link_id)?;
-    let chromium = chromium_executable()?;
+    let Some(link_id) = safe_link_id(link_id) else {
+        return ScreenshotCaptureOutcome::fail("Invalid link id for screenshot file name");
+    };
+    let Some(chromium) = chromium_executable() else {
+        return ScreenshotCaptureOutcome::fail(
+            "Chromium not available (set LINK_SCREENSHOT_CHROMIUM_PATH or install Chromium)",
+        );
+    };
     let filename = format!("screenshot-{link_id}.png");
     let disk_path = screenshots_dir().join(&filename);
 
@@ -140,27 +206,34 @@ pub async fn capture_link_screenshot(page_url: &str, link_id: &str) -> Option<St
             error = %e,
             "could not create screenshot upload directory"
         );
-        return None;
+        return ScreenshotCaptureOutcome::fail(format!("Could not create screenshot directory: {e}"));
     }
 
     let (width, height) = screenshot_dimensions();
     let window_size = format!("{width},{height}");
     let timeout = screenshot_timeout();
+    let virtual_time_budget = screenshot_virtual_time_budget_ms();
 
     let mut cmd = Command::new(&chromium);
     // Human: When our outer timeout fires, drop must kill Chromium so a hung capture cannot hold a worker slot for minutes.
     // Agent: kill_on_drop true; timeout on cmd.output; ORPHAN subprocess prevented on Duration expiry.
     cmd.kill_on_drop(true);
+    // Human: Headless containers often lack D-Bus; pointing at /dev/null avoids noisy failures on startup.
+    // Agent: ENV DBUS_SESSION_BUS_ADDRESS=/dev/null; REDUCES dbus connection errors in Docker.
+    cmd.env("DBUS_SESSION_BUS_ADDRESS", "/dev/null");
     cmd.arg("--headless=new")
         .arg("--disable-gpu")
         .arg("--no-sandbox")
+        .arg("--disable-setuid-sandbox")
         .arg("--disable-dev-shm-usage")
+        .arg("--no-zygote")
         .arg("--hide-scrollbars")
         .arg("--window-size")
         .arg(&window_size)
+        .arg("--run-all-compositor-stages-before-draw")
         .arg("--screenshot")
         .arg(&disk_path)
-        .arg("--virtual-time-budget=8000")
+        .arg(format!("--virtual-time-budget={virtual_time_budget}"))
         .arg(page_url);
 
     debug!(
@@ -180,7 +253,7 @@ pub async fn capture_link_screenshot(page_url: &str, link_id: &str) -> Option<St
                 error = %e,
                 "chromium screenshot process failed to start"
             );
-            return None;
+            return ScreenshotCaptureOutcome::fail(format!("Chromium failed to start: {e}"));
         }
         Err(_) => {
             warn!(
@@ -189,12 +262,16 @@ pub async fn capture_link_screenshot(page_url: &str, link_id: &str) -> Option<St
                 "chromium screenshot timed out"
             );
             let _ = tokio::fs::remove_file(&disk_path).await;
-            return None;
+            return ScreenshotCaptureOutcome::fail(format!(
+                "Chromium timed out after {}s",
+                timeout.as_secs()
+            ));
         }
     };
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        let detail = summarize_chromium_stderr(&stderr);
         warn!(
             event = "link_screenshot.failed",
             link_id = %link_id,
@@ -203,7 +280,17 @@ pub async fn capture_link_screenshot(page_url: &str, link_id: &str) -> Option<St
             "chromium screenshot exited with error"
         );
         let _ = tokio::fs::remove_file(&disk_path).await;
-        return None;
+        let exit = output
+            .status
+            .code()
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "signal".into());
+        let reason = if detail.is_empty() {
+            format!("Chromium exited with code {exit}")
+        } else {
+            format!("Chromium exited with code {exit}: {detail}")
+        };
+        return ScreenshotCaptureOutcome::fail(reason);
     }
 
     if tokio::fs::metadata(&disk_path).await.is_err() {
@@ -212,15 +299,25 @@ pub async fn capture_link_screenshot(page_url: &str, link_id: &str) -> Option<St
             link_id = %link_id,
             "chromium did not write screenshot file"
         );
-        return None;
+        return ScreenshotCaptureOutcome::fail(
+            "Chromium finished but did not write a screenshot file (page may need more load time)",
+        );
     }
 
-    Some(format!("/screenshots/{filename}"))
+    ScreenshotCaptureOutcome::ok(format!("/screenshots/{filename}"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn summarize_chromium_stderr_skips_dbus_noise() {
+        let raw = "Failed to connect to the bus\n[ERROR: something real happened]\n";
+        let s = summarize_chromium_stderr(raw);
+        assert!(s.contains("something real"));
+        assert!(!s.contains("Failed to connect to the bus"));
+    }
 
     #[test]
     fn safe_link_id_rejects_bad_chars() {
