@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { api } from "@/api/client";
 import { LocationAutocompleteInput } from "@/components/ui/LocationAutocompleteInput";
-import { TagAutocompleteInput } from "@/components/ui/TagAutocompleteInput";
+import { TimeEntryTagsField } from "../TimeEntryTagsDialog";
 import { DateTimeFields } from "@/components/ui/DateTimeFields";
 import { useAuth } from "@/components/providers/AuthProvider";
 import { canUseCustomerBillingOnTimeEntries } from "@/lib/time-entry-customers";
@@ -43,7 +43,6 @@ export function StartTimerDialog({ open, onOpenChange, onCreated }: StartTimerDi
   const [location, setLocation] = React.useState("");
   const [startedAt, setStartedAt] = React.useState<Date | null>(null);
   const [tags, setTags] = React.useState<string[]>([]);
-  const [tagInput, setTagInput] = React.useState("");
   const [billing, setBilling] = React.useState<TimeEntryBillingState>({
     customerId: null,
     customerContactId: null,
@@ -58,7 +57,6 @@ export function StartTimerDialog({ open, onOpenChange, onCreated }: StartTimerDi
       setLocation("");
       setStartedAt(null);
       setTags([]);
-      setTagInput("");
       setBilling({ customerId: null, customerContactId: null, customerDisplayName: null, hourlyRate: null });
       setServerError(null);
     }
@@ -69,18 +67,6 @@ export function StartTimerDialog({ open, onOpenChange, onCreated }: StartTimerDi
       setStartedAt(new Date());
     }
   }, [open]);
-
-  const handleAddTag = () => {
-    const trimmed = tagInput.trim();
-    if (trimmed && !tags.includes(trimmed)) {
-      setTags([...tags, trimmed]);
-      setTagInput("");
-    }
-  };
-
-  const handleRemoveTag = (tagToRemove: string) => {
-    setTags(tags.filter((tag) => tag !== tagToRemove));
-  };
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -201,43 +187,7 @@ export function StartTimerDialog({ open, onOpenChange, onCreated }: StartTimerDi
           </div>
 
           <div className="animate-field-in" style={{ "--field-delay": "280ms" } as React.CSSProperties}>
-            <label htmlFor="start-timer-tags" className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">
-              Tags
-            </label>
-            <div className="flex gap-2 mb-2">
-              <TagAutocompleteInput
-                id="start-timer-tags"
-                value={tagInput}
-                selectedTags={tags}
-                onChange={setTagInput}
-                onSubmitTag={handleAddTag}
-                placeholder="Type a tag and press Enter"
-              />
-              <Button type="button" variant="outline" onClick={handleAddTag} className="flex-shrink-0">
-                Add
-              </Button>
-            </div>
-            {tags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-1">
-                {tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="animate-tag-pop inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-primary-50 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 border border-primary-200/60 dark:border-primary-700/40 transition-all duration-200 hover:bg-primary-100 dark:hover:bg-primary-900/60"
-                  >
-                    {tag}
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveTag(tag)}
-                      className="ml-0.5 p-0.5 rounded hover:bg-primary-200/60 dark:hover:bg-primary-800/60 transition-colors"
-                    >
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
+            <TimeEntryTagsField tags={tags} onChange={setTags} disabled={isSubmitting} />
           </div>
         </div>
 

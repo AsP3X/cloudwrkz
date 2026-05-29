@@ -77,7 +77,7 @@ async fn list_tag_suggestions(
             ) t
             GROUP BY tag
             ORDER BY usage_count DESC, tag ASC
-            LIMIT 5
+            LIMIT 20
             "#,
         )
         .bind(&user.id)
