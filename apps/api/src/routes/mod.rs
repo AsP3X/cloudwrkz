@@ -15,6 +15,7 @@ pub mod screenshots;
 pub mod filter_preferences;
 pub mod health;
 pub mod helpers;
+pub mod link_bulk;
 pub mod links;
 pub mod location_history;
 pub mod me;
@@ -101,6 +102,7 @@ pub fn v1_router(config: &AppConfig) -> Router<AppState> {
         .merge(tickets::router())
         .merge(todos::router())
         .merge(links::router())
+        .merge(link_bulk::router())
         .merge(collections::router())
         .merge(time_tracking::router())
         .merge(employees::router())
