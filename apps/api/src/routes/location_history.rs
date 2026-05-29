@@ -35,17 +35,17 @@ async fn list_locations(
     AuthUser(user): AuthUser,
     Query(params): Query<LocationParams>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    // Human: Autocomplete uses a substring filter; omitting `q` returns the first 50 distinct addresses alphabetically.
-    // Agent: READS location_history WHERE user_id AND address ILIKE pattern; pattern is %{q}% or '%'; LIMIT 50 DISTINCT.
+    // Human: Autocomplete uses a substring filter; results are ordered by most recently used so repeat sites surface first.
+    // Agent: READS location_history WHERE user_id AND address ILIKE pattern; pattern is %{q}% or '%'; ORDER BY updated_at DESC LIMIT 50.
     let pattern = params
         .q
         .map(|q| format!("%{q}%"))
         .unwrap_or_else(|| "%".to_string());
 
     let rows = sqlx::query(
-        r#"SELECT DISTINCT address FROM location_history
+        r#"SELECT address FROM location_history
            WHERE user_id = $1 AND address ILIKE $2
-           ORDER BY address ASC LIMIT 50"#,
+           ORDER BY updated_at DESC LIMIT 50"#,
     )
     .bind(&user.id)
     .bind(&pattern)

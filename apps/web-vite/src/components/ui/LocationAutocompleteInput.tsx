@@ -1,60 +1,15 @@
 // Human: Address field that merges OpenStreetMap Nominatim suggestions with server-backed recent locations, debounced fetch, keyboard listbox, and a portaled dropdown anchored to the input.
-// Agent: HTTP GET nominatim + GET /location-history; POST /location-history on select; ABORTABLE debounce 400ms; PORTALS listbox to document.body.
+// Agent: HTTP GET nominatim + GET /location-history; POST /location-history on select; ABORTABLE debounce 400ms; PORTALS listbox to document.body; MERGE via mergeAndRankLocationSuggestions.
 import React from "react";
 import { createPortal } from "react-dom";
 import { Input, type InputProps } from "@/components/ui/Input";
 import { api } from "@/api/client";
-
-interface LocationSuggestion {
-  place_id: number | string;
-  display_name: string;
-  address?: Record<string, unknown>;
-}
-
-interface DecoratedLocationSuggestion {
-  item: LocationSuggestion;
-  source: "history" | "map";
-  label: string;
-}
-
-interface LocationHistoryResponse {
-  locations: string[];
-}
-
-// Human: Prefer a short street/city/postcode line built from structured address parts, and fall back to the raw display name when parts are missing.
-// Agent: READS suggestion.address keys; RETURNS joined string or display_name.
-function buildSuggestionLabel(suggestion: LocationSuggestion): string {
-  const address = suggestion.address ?? {};
-  const get = (key: string): string | undefined => {
-    const value = (address as Record<string, unknown>)[key];
-    return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
-  };
-
-  const houseNumber = get("house_number");
-  const road =
-    get("road") ||
-    get("pedestrian") ||
-    get("footway") ||
-    get("cycleway") ||
-    get("path") ||
-    get("residential") ||
-    get("street");
-  const streetLine = road && houseNumber ? `${road} ${houseNumber}` : road || undefined;
-  const city =
-    get("city") ||
-    get("town") ||
-    get("village") ||
-    get("suburb") ||
-    get("neighbourhood") ||
-    get("county");
-  const state = get("state") || get("region");
-  const postcode = get("postcode");
-  const country = get("country");
-  const parts = [streetLine, city, state, postcode, country].filter(Boolean) as string[];
-
-  if (parts.length > 0) return parts.join(", ");
-  return suggestion.display_name;
-}
+import {
+  mergeAndRankLocationSuggestions,
+  parseLocationHistoryResponse,
+  type DecoratedLocationSuggestion,
+  type LocationSuggestion,
+} from "@/lib/locationAutocomplete";
 
 interface LocationAutocompleteInputProps extends Omit<InputProps, "onChange"> {
   onChange?: (value: string) => void;
@@ -81,6 +36,7 @@ export function LocationAutocompleteInput({
   } | null>(null);
 
   const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const fetchGenerationRef = React.useRef(0);
 
   React.useEffect(() => {
     setQuery(value ?? "");
@@ -97,7 +53,8 @@ export function LocationAutocompleteInput({
       return;
     }
 
-    const controller = new AbortController();
+    const nominatimController = new AbortController();
+    const generation = ++fetchGenerationRef.current;
     setIsLoading(true);
 
     const handle = window.setTimeout(async () => {
@@ -115,66 +72,53 @@ export function LocationAutocompleteInput({
           fetch(nominatimUrl.toString(), {
             method: "GET",
             headers: { Accept: "application/json" },
-            signal: controller.signal,
+            signal: nominatimController.signal,
           }),
-          api.get<LocationHistoryResponse>(
-            `/location-history?q=${encodeURIComponent(trimmedQuery)}`,
-            { signal: controller.signal },
-          ),
+          api.get<unknown>(`/location-history?q=${encodeURIComponent(trimmedQuery)}`),
         ]);
 
-        let combined: DecoratedLocationSuggestion[] = [];
+        if (generation !== fetchGenerationRef.current) {
+          return;
+        }
 
+        let mapItems: LocationSuggestion[] = [];
         if (nominatimRes.status === "fulfilled" && nominatimRes.value.ok) {
-          const osmData = (await nominatimRes.value.json()) as LocationSuggestion[];
-          combined = combined.concat(
-            osmData.map((item) => ({
-              item,
-              source: "map",
-              label: buildSuggestionLabel(item),
-            }))
-          );
+          mapItems = (await nominatimRes.value.json()) as LocationSuggestion[];
         }
 
-        if (historyRes.status === "fulfilled") {
-          combined = combined.concat(
-            historyRes.value.locations.map((address) => ({
-              item: {
-                place_id: `history-${address}`,
-                display_name: address,
-                address: {},
-              },
-              source: "history",
-              label: address,
-            }))
-          );
-        }
+        const historyAddresses =
+          historyRes.status === "fulfilled"
+            ? parseLocationHistoryResponse(historyRes.value)
+            : [];
 
-        const seen = new Set<string>();
-        const unique: DecoratedLocationSuggestion[] = [];
-        for (const item of combined) {
-          if (seen.has(item.label)) continue;
-          seen.add(item.label);
-          unique.push(item);
-        }
+        const unique = mergeAndRankLocationSuggestions(
+          historyAddresses,
+          mapItems,
+          trimmedQuery,
+        );
 
         setSuggestions(unique);
         setIsOpen(unique.length > 0);
         setHighlightedIndex(unique.length > 0 ? 0 : null);
-      } catch (error: any) {
-        if (error.name !== "AbortError") {
+      } catch (error: unknown) {
+        if (error instanceof Error && error.name === "AbortError") {
+          return;
+        }
+        if (generation === fetchGenerationRef.current) {
           setSuggestions([]);
           setIsOpen(false);
           setHighlightedIndex(null);
         }
       } finally {
-        setIsLoading(false);
+        if (generation === fetchGenerationRef.current) {
+          setIsLoading(false);
+        }
       }
     }, 400);
 
     return () => {
       window.clearTimeout(handle);
-      controller.abort();
+      nominatimController.abort();
     };
   }, [query, disabled, suppressSuggestions]);
 

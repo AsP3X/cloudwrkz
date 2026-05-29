@@ -1179,6 +1179,55 @@ async fn list_customers_with_time_tracking_customers_view_succeeds(pool: PgPool)
     assert_eq!(res.status(), StatusCode::OK);
 }
 
+// Human: Location autocomplete must return saved addresses for the authenticated user, newest first, filtered by query substring.
+// Agent: POST /api/v1/location-history saves; GET ?q= filters; ORDER BY updated_at DESC; 401 without bearer.
+#[sqlx::test(migrations = "./migrations")]
+async fn location_history_lists_saved_addresses_by_recency(pool: PgPool) {
+    let app = build_http_app(test_app_state(pool.clone()));
+    let token = seed_user_with_session(&pool, "location-history@example.com", "USER")
+        .await
+        .expect("seed user");
+
+    let save_old = req_post_json(
+        "/api/v1/location-history",
+        &token,
+        r#"{"address":"Berlin Office"}"#,
+    );
+    let res_old = app.clone().oneshot(save_old).await.expect("save old");
+    assert_eq!(res_old.status(), StatusCode::CREATED);
+
+    sqlx::query(
+        "UPDATE location_history SET updated_at = NOW() - interval '2 days' WHERE address = $1",
+    )
+    .bind("Berlin Office")
+    .execute(&pool)
+    .await
+    .expect("age old row");
+
+    let save_new = req_post_json(
+        "/api/v1/location-history",
+        &token,
+        r#"{"address":"Home Studio"}"#,
+    );
+    let res_new = app.clone().oneshot(save_new).await.expect("save new");
+    assert_eq!(res_new.status(), StatusCode::CREATED);
+
+    let list = req_get_bearer("/api/v1/location-history?q=stu", &token);
+    let res = app.clone().oneshot(list).await.expect("list");
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).expect("json body");
+    let locations = json["locations"]
+        .as_array()
+        .expect("locations array");
+    assert_eq!(locations.len(), 1);
+    assert_eq!(locations[0].as_str(), Some("Home Studio"));
+
+    let unauth = req_get("/api/v1/location-history?q=stu");
+    let res_unauth = app.oneshot(unauth).await.expect("unauth");
+    assert_eq!(res_unauth.status(), StatusCode::UNAUTHORIZED);
+}
+
 #[sqlx::test(migrations = "./migrations")]
 async fn baseline_security_headers_on_responses(pool: PgPool) {
     let app = build_http_app(test_app_state(pool.clone()));

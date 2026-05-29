@@ -16,6 +16,7 @@
     "preview:vite": "pnpm --filter web-vite preview",
     "lint": "pnpm --filter web lint",
     "lint:vite": "pnpm --filter web-vite lint",
+    "test:vite": "pnpm --filter web-vite test",
     "cli": "pnpm --filter web cli",
     "db:generate": "pnpm --filter web db:generate",
     "db:push": "pnpm --filter web db:push",
