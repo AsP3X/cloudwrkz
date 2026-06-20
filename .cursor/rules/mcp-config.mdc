@@ -1,0 +1,34 @@
+---
+alwaysApply: true
+---
+
+# MCP configuration (mandatory)
+
+## Pencil MCP — do not remove or replace
+
+This project requires the **Pencil** MCP server for all `.pen` design work. The canonical config lives in **`.cursor/mcp.json`** (project) and should match the user's global `~/.cursor/mcp.json`.
+
+**Required `pencil` entry (do not change paths or args unless the user explicitly asks):**
+
+```json
+{
+  "mcpServers": {
+    "pencil": {
+      "command": "C:\\Program Files\\Pencil\\resources\\app.asar.unpacked\\out\\mcp-server-windows-x64.exe",
+      "args": ["--app", "desktop"],
+      "env": {}
+    }
+  }
+}
+```
+
+## Agent behavior
+
+- **Never** set `mcpServers` to `{}` or delete the `pencil` entry when editing MCP config.
+- **Never** substitute a different Pencil binary path (e.g. `AppData\\Local\\Programs\\Pencil`, extension `highagency.pencildev` paths, or `--app cursor`) unless the user explicitly requests a change.
+- **Do not** edit `~/.cursor/mcp.json` or `.cursor/mcp.json` except when the user explicitly asks to fix or update MCP setup.
+- For **all** changes to `docs/designs/*.pen`, use Pencil MCP tools (`get_editor_state`, `batch_design`, `batch_get`, etc.) — **not** direct Read/Grep/Write on `.pen` files.
+
+## If Pencil MCP is unavailable in chat
+
+Tell the user to reload Cursor (`Developer: Reload Window`), confirm `pencil` is enabled under **Settings → MCP**, open the `.pen` file in Pencil, and start a **new** agent chat. Do not fall back to editing `.pen` JSON on disk.
