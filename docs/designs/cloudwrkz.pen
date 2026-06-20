@@ -10233,8 +10233,8 @@
     {
       "type": "rectangle",
       "id": "a5I1r",
-      "x": 15850,
-      "y": 1645,
+      "x": 5723,
+      "y": -3103,
       "fill": "#CCCCCC",
       "width": 150,
       "height": 150
@@ -98415,8 +98415,8 @@
     {
       "type": "frame",
       "id": "tcMhM",
-      "x": 100,
-      "y": 8637,
+      "x": 16000,
+      "y": 7533,
       "name": "User Employees – Delete Employee",
       "clip": true,
       "width": 1440,
@@ -101617,8 +101617,8 @@
     {
       "type": "frame",
       "id": "q1gX6M",
-      "x": 100,
-      "y": 9741,
+      "x": 17590,
+      "y": 7533,
       "name": "User Employees – Link Existing User",
       "clip": true,
       "width": 1440,
@@ -121749,8 +121749,8 @@
     {
       "type": "frame",
       "id": "cY0o0",
-      "x": 1620,
-      "y": -4580,
+      "x": 9640,
+      "y": 479,
       "name": "User Dashboard – Global Search Enhanced",
       "clip": true,
       "width": 1440,
@@ -125137,8 +125137,8 @@
     {
       "type": "frame",
       "id": "X68Up",
-      "x": 3140,
-      "y": -4580,
+      "x": 11230,
+      "y": 479,
       "name": "User Dashboard – Global Search Keyboard Nav",
       "clip": true,
       "width": 1440,
@@ -128651,8 +128651,8 @@
     {
       "type": "frame",
       "id": "CyCEt",
-      "x": 4660,
-      "y": -4580,
+      "x": 12820,
+      "y": 479,
       "name": "User Dashboard – Global Search Expanded Ticket",
       "clip": true,
       "width": 1440,
@@ -132117,8 +132117,8 @@
     {
       "type": "frame",
       "id": "KYumT",
-      "x": 4660,
-      "y": -3476,
+      "x": 14410,
+      "y": 479,
       "name": "User Dashboard – Global Search All Types",
       "clip": true,
       "width": 1440,
@@ -135970,7 +135970,7 @@
     {
       "type": "frame",
       "id": "M6BJ9",
-      "x": 9640,
+      "x": 16000,
       "y": 479,
       "name": "User Dashboard – Search Page Results",
       "clip": true,
@@ -139116,7 +139116,7 @@
     {
       "type": "frame",
       "id": "t7IpGd",
-      "x": 11230,
+      "x": 17590,
       "y": 479,
       "name": "User Dashboard – Search Page Empty",
       "clip": true,
@@ -140362,7 +140362,7 @@
     {
       "type": "frame",
       "id": "u2hfq",
-      "x": 14410,
+      "x": 20770,
       "y": 479,
       "name": "User Dashboard – Search Page Loading",
       "clip": true,
@@ -142005,7 +142005,7 @@
     {
       "type": "frame",
       "id": "ldobr",
-      "x": 12820,
+      "x": 19180,
       "y": 479,
       "name": "User Dashboard – Search Page No Results",
       "clip": true,
@@ -143419,7 +143419,7 @@
     {
       "type": "frame",
       "id": "Bcdgn",
-      "x": 16000,
+      "x": 22360,
       "y": 479,
       "name": "User Dashboard – Search Page Expanded Filters",
       "clip": true,
@@ -146765,6 +146765,2365 @@
                       "width": "fill_container",
                       "height": "fill_container",
                       "layout": "vertical"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "BCL3g",
+      "x": 100,
+      "y": 8663,
+      "name": "User Profile",
+      "clip": true,
+      "width": 1440,
+      "height": 1136,
+      "fill": "$bg-app",
+      "children": [
+        {
+          "type": "frame",
+          "id": "UhpC8",
+          "name": "Sidebar",
+          "width": 256,
+          "height": "fill_container",
+          "fill": "$bg-sidebar",
+          "stroke": "$border",
+          "strokeWidth": {
+            "right": 1
+          },
+          "layout": "vertical",
+          "gap": 24,
+          "padding": [
+            20,
+            16
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "k25YSp",
+              "name": "Logo Row",
+              "gap": 10,
+              "padding": [
+                0,
+                6
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "w8MDiF",
+                  "name": "Logo Mark",
+                  "width": 30,
+                  "height": 30,
+                  "fill": "$accent",
+                  "cornerRadius": 9,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "TSH6e",
+                      "name": "Logo Icon",
+                      "width": 17,
+                      "height": 17,
+                      "icon": "cloud",
+                      "library": "lucide",
+                      "fill": "#FFFFFF"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "k56doC",
+                  "name": "Logo Text",
+                  "fill": "$text-primary",
+                  "content": "cloudwrkz",
+                  "fontFamily": "$font",
+                  "fontSize": 16.5,
+                  "fontWeight": "650",
+                  "letterSpacing": -0.2
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "nKjd2",
+              "name": "Workspace Nav",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 6,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "rvure",
+                  "name": "Workspace Header",
+                  "fill": "$text-muted",
+                  "content": "WORKSPACE",
+                  "fontFamily": "$font",
+                  "fontSize": 11,
+                  "fontWeight": "600",
+                  "letterSpacing": 0.8
+                },
+                {
+                  "type": "frame",
+                  "id": "cjrlz",
+                  "name": "Workspace Items",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "id": "dI4BP",
+                      "type": "ref",
+                      "ref": "rtTbj",
+                      "name": "Nav Dashboard",
+                      "width": "fill_container",
+                      "fill": [],
+                      "descendants": {
+                        "vUGSh": {
+                          "fill": "$text-secondary",
+                          "icon": "layout-dashboard"
+                        },
+                        "HiebT": {
+                          "content": "Dashboard",
+                          "fill": "$text-secondary",
+                          "fontWeight": "500"
+                        }
+                      }
+                    },
+                    {
+                      "id": "R80J0",
+                      "type": "ref",
+                      "ref": "dRVbf",
+                      "name": "Section Work",
+                      "width": "fill_container",
+                      "descendants": {
+                        "KwbLA": {
+                          "content": "Work"
+                        },
+                        "cs0cE": {
+                          "children": [
+                            {
+                              "id": "Bvlt2",
+                              "type": "ref",
+                              "ref": "rtTbj",
+                              "name": "Nav Tickets",
+                              "width": "fill_container",
+                              "fill": [],
+                              "descendants": {
+                                "vUGSh": {
+                                  "fill": "$text-secondary",
+                                  "icon": "ticket"
+                                },
+                                "HiebT": {
+                                  "content": "Tickets",
+                                  "fill": "$text-secondary",
+                                  "fontWeight": "500"
+                                }
+                              }
+                            },
+                            {
+                              "id": "xlmvu",
+                              "type": "ref",
+                              "ref": "rtTbj",
+                              "name": "Nav Time Tracking",
+                              "width": "fill_container",
+                              "fill": [],
+                              "descendants": {
+                                "vUGSh": {
+                                  "fill": "$text-secondary",
+                                  "icon": "timer"
+                                },
+                                "HiebT": {
+                                  "content": "Time Tracking",
+                                  "fill": "$text-secondary",
+                                  "fontWeight": "500"
+                                }
+                              }
+                            },
+                            {
+                              "id": "K8YSAb",
+                              "type": "ref",
+                              "ref": "rtTbj",
+                              "name": "Nav Todos",
+                              "width": "fill_container",
+                              "fill": [],
+                              "descendants": {
+                                "vUGSh": {
+                                  "fill": "$text-secondary",
+                                  "icon": "check-square"
+                                },
+                                "HiebT": {
+                                  "content": "Todos",
+                                  "fill": "$text-secondary",
+                                  "fontWeight": "500"
+                                }
+                              }
+                            },
+                            {
+                              "id": "d7UbFP",
+                              "type": "ref",
+                              "ref": "rtTbj",
+                              "name": "Nav Links",
+                              "width": "fill_container",
+                              "fill": [],
+                              "descendants": {
+                                "vUGSh": {
+                                  "fill": "$text-secondary",
+                                  "icon": "link"
+                                },
+                                "HiebT": {
+                                  "content": "Links",
+                                  "fill": "$text-secondary",
+                                  "fontWeight": "500"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "id": "I4hcD",
+                      "type": "ref",
+                      "ref": "dRVbf",
+                      "name": "Section People",
+                      "width": "fill_container",
+                      "descendants": {
+                        "KwbLA": {
+                          "content": "People"
+                        },
+                        "cs0cE": {
+                          "children": [
+                            {
+                              "id": "X4WemJ",
+                              "type": "ref",
+                              "ref": "rtTbj",
+                              "name": "Nav Customers",
+                              "width": "fill_container",
+                              "fill": [],
+                              "descendants": {
+                                "vUGSh": {
+                                  "fill": "$text-secondary",
+                                  "icon": "users"
+                                },
+                                "HiebT": {
+                                  "content": "Customers",
+                                  "fill": "$text-secondary",
+                                  "fontWeight": "500"
+                                }
+                              }
+                            },
+                            {
+                              "id": "r7vDlq",
+                              "type": "ref",
+                              "ref": "rtTbj",
+                              "name": "Nav Employees",
+                              "width": "fill_container",
+                              "fill": [],
+                              "descendants": {
+                                "vUGSh": {
+                                  "fill": "$text-secondary",
+                                  "icon": "contact"
+                                },
+                                "HiebT": {
+                                  "content": "Employees",
+                                  "fill": "$text-secondary",
+                                  "fontWeight": "500"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "a7Qk4P",
+              "name": "Sidebar Spacer",
+              "width": "fill_container",
+              "height": "fill_container",
+              "layout": "vertical"
+            },
+            {
+              "type": "frame",
+              "id": "WLdNb",
+              "name": "Help Card",
+              "width": "fill_container",
+              "fill": "$accent-soft",
+              "cornerRadius": 10,
+              "layout": "vertical",
+              "gap": 6,
+              "padding": 14,
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "n5h04k",
+                  "name": "Help Icon",
+                  "width": 16,
+                  "height": 16,
+                  "icon": "sparkles",
+                  "library": "lucide",
+                  "fill": "$accent"
+                },
+                {
+                  "type": "text",
+                  "id": "vjNLO",
+                  "name": "Help Title",
+                  "fill": "$text-primary",
+                  "content": "Need a hand?",
+                  "fontFamily": "$font",
+                  "fontSize": 13,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "oK5RL",
+                  "name": "Help Body",
+                  "fill": "$text-secondary",
+                  "textGrowth": "fixed-width",
+                  "width": "fill_container",
+                  "content": "Browse the knowledge base or open a support ticket.",
+                  "lineHeight": 1.45,
+                  "fontFamily": "$font",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "zeNU3",
+              "name": "Profile Row",
+              "width": "fill_container",
+              "fill": "$accent-soft",
+              "cornerRadius": 8,
+              "stroke": "$border",
+              "strokeWidth": {
+                "top": 1
+              },
+              "gap": 10,
+              "padding": [
+                8,
+                6
+              ],
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "g6JdA",
+                  "name": "Avatar",
+                  "width": 32,
+                  "height": 32,
+                  "fill": "#D9E2F4",
+                  "cornerRadius": 99,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "TVpQm",
+                      "name": "Avatar Initials",
+                      "fill": "#3B5BA5",
+                      "content": "MK",
+                      "fontFamily": "$font",
+                      "fontSize": 12,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "OjzK2",
+                  "name": "Profile Info",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 1,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "HI5Lt",
+                      "name": "Profile Name",
+                      "fill": "$text-primary",
+                      "content": "Mara Kessler",
+                      "fontFamily": "$font",
+                      "fontSize": 13,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Z0042",
+                      "name": "Profile Role",
+                      "fill": "$text-muted",
+                      "content": "Support Agent",
+                      "fontFamily": "$font",
+                      "fontSize": 11.5,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "icon",
+                  "id": "kNYcd",
+                  "name": "Profile Chevron",
+                  "width": 14,
+                  "height": 14,
+                  "icon": "chevrons-up-down",
+                  "library": "lucide",
+                  "fill": "$text-muted"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "smXex",
+          "name": "Main",
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "children": [
+            {
+              "type": "frame",
+              "id": "yFHL7",
+              "name": "Topbar",
+              "width": "fill_container",
+              "height": 64,
+              "fill": "$bg-surface",
+              "stroke": "$border",
+              "strokeWidth": {
+                "bottom": 1
+              },
+              "padding": [
+                0,
+                32
+              ],
+              "justifyContent": "space_between",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "O3jA4",
+                  "name": "Search",
+                  "width": 320,
+                  "fill": "$bg-app",
+                  "cornerRadius": 8,
+                  "gap": 8,
+                  "padding": [
+                    8,
+                    12
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "ECVfk",
+                      "name": "Search Icon",
+                      "width": 15,
+                      "height": 15,
+                      "icon": "search",
+                      "library": "lucide",
+                      "fill": "$text-muted"
+                    },
+                    {
+                      "type": "text",
+                      "id": "sWmv1",
+                      "name": "Search Placeholder",
+                      "fill": "$text-muted",
+                      "content": "Search tickets, customers...",
+                      "fontFamily": "$font",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "kPG6D",
+                  "name": "Top Actions",
+                  "gap": 12,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "a4R4h",
+                      "name": "Timer Chip",
+                      "fill": "$success-soft",
+                      "cornerRadius": 99,
+                      "gap": 7,
+                      "padding": [
+                        6,
+                        12
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "ellipse",
+                          "id": "X6FMC",
+                          "name": "Timer Dot",
+                          "fill": "$success",
+                          "width": 7,
+                          "height": 7
+                        },
+                        {
+                          "type": "text",
+                          "id": "pCVC4",
+                          "name": "Timer Text",
+                          "fill": "$success",
+                          "content": "02:14:36",
+                          "fontFamily": "$font",
+                          "fontSize": 12.5,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "K4nHI",
+                      "name": "Bell Wrap",
+                      "width": 36,
+                      "height": 36,
+                      "cornerRadius": 8,
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "Q3GRcy",
+                          "name": "Bell Icon",
+                          "width": 17,
+                          "height": 17,
+                          "icon": "bell",
+                          "library": "lucide",
+                          "fill": "$text-secondary"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "JqgIy",
+                      "name": "New Ticket Button",
+                      "fill": "$accent",
+                      "cornerRadius": 8,
+                      "gap": 7,
+                      "padding": [
+                        9,
+                        16
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "e6dK6",
+                          "name": "Plus Icon",
+                          "width": 15,
+                          "height": 15,
+                          "icon": "plus",
+                          "library": "lucide",
+                          "fill": "#FFFFFF"
+                        },
+                        {
+                          "type": "text",
+                          "id": "GJOIQ",
+                          "name": "New Ticket Label",
+                          "fill": "#FFFFFF",
+                          "content": "New ticket",
+                          "fontFamily": "$font",
+                          "fontSize": 13,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "dGVrd",
+              "name": "Body",
+              "width": "fill_container",
+              "height": "fill_container",
+              "layout": "vertical",
+              "gap": 14,
+              "padding": [
+                20,
+                24
+              ],
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "i0gE6",
+                  "name": "Page Header",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 4,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "VZjIn",
+                      "fill": "$text-primary",
+                      "content": "My profile",
+                      "fontFamily": "$font",
+                      "fontSize": 22,
+                      "fontWeight": "650",
+                      "letterSpacing": -0.3
+                    },
+                    {
+                      "type": "text",
+                      "id": "n4FSm",
+                      "fill": "$text-secondary",
+                      "content": "Account settings, performance, and your employment record in one place.",
+                      "fontFamily": "$font",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "PaBHw",
+                  "name": "Profile Hero",
+                  "width": "fill_container",
+                  "fill": "$bg-surface",
+                  "cornerRadius": "$radius-card",
+                  "stroke": "$border",
+                  "strokeWidth": 1,
+                  "gap": 16,
+                  "padding": 16,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "G6pOCI",
+                      "name": "Avatar Wrap",
+                      "width": 56,
+                      "height": 56,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "muGJb",
+                          "name": "Avatar",
+                          "width": 56,
+                          "height": 56,
+                          "fill": "#D9E2F4",
+                          "cornerRadius": 12,
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "a5GiJH",
+                              "fill": "#3B5BA5",
+                              "content": "MK",
+                              "fontFamily": "$font",
+                              "fontSize": 18,
+                              "fontWeight": "650"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "iERq8",
+                          "layoutPosition": "absolute",
+                          "x": 44,
+                          "y": 44,
+                          "name": "Active Dot",
+                          "width": 14,
+                          "height": 14,
+                          "fill": "$success",
+                          "cornerRadius": 99,
+                          "stroke": "#FFFFFF",
+                          "strokeWidth": 2
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "q9eqs4",
+                      "name": "Hero Identity",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 6,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "VUY66",
+                          "fill": "$text-primary",
+                          "content": "Mara Kessler",
+                          "fontFamily": "$font",
+                          "fontSize": 18,
+                          "fontWeight": "650"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "OnQhi",
+                          "name": "Badge Row",
+                          "gap": 6,
+                          "children": [
+                            {
+                              "id": "TnTqm",
+                              "type": "ref",
+                              "ref": "Dl88N",
+                              "fill": "$accent-soft",
+                              "padding": [
+                                3,
+                                8
+                              ],
+                              "descendants": {
+                                "X0k7x": {
+                                  "content": "AGENT",
+                                  "fill": "$accent"
+                                }
+                              }
+                            },
+                            {
+                              "id": "rvU4g",
+                              "type": "ref",
+                              "ref": "Dl88N",
+                              "fill": "$success-soft",
+                              "padding": [
+                                3,
+                                8
+                              ],
+                              "descendants": {
+                                "X0k7x": {
+                                  "content": "ACTIVE",
+                                  "fill": "$success"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "Q4XSo",
+                          "fill": "$text-secondary",
+                          "content": "mara.kessler@company.com · Support Agent · Operations",
+                          "fontFamily": "$font",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "lkJvQ",
+                          "name": "Meta Chips",
+                          "gap": 6,
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "uUG94",
+                              "fill": "$bg-app",
+                              "cornerRadius": 99,
+                              "padding": [
+                                4,
+                                8
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "QIpXm",
+                                  "fill": "$text-muted",
+                                  "content": "Member since Jan 2024",
+                                  "fontFamily": "$font",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "zB0dC",
+                              "fill": "$bg-app",
+                              "cornerRadius": 99,
+                              "padding": [
+                                4,
+                                8
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "e4xRG",
+                                  "fill": "$text-muted",
+                                  "content": "Last login Jun 20, 2026",
+                                  "fontFamily": "$font",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "N4PYmh",
+                      "name": "Hero Health",
+                      "width": 220,
+                      "gap": 8,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "KPZzB",
+                          "name": "Health Tile",
+                          "width": 106,
+                          "fill": "$bg-app",
+                          "cornerRadius": 8,
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "layout": "vertical",
+                          "gap": 2,
+                          "padding": 10,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "q3xzLz",
+                              "fill": "$text-primary",
+                              "content": "80%",
+                              "fontFamily": "$font",
+                              "fontSize": 20,
+                              "fontWeight": "650"
+                            },
+                            {
+                              "type": "text",
+                              "id": "QrynJ",
+                              "fill": "$text-muted",
+                              "content": "Profile health",
+                              "fontFamily": "$font",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "ihc1K",
+                          "name": "Verified Tile",
+                          "width": 106,
+                          "fill": "$bg-app",
+                          "cornerRadius": 8,
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "layout": "vertical",
+                          "gap": 2,
+                          "padding": 10,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "sOQOl",
+                              "fill": "$text-primary",
+                              "content": "Yes",
+                              "fontFamily": "$font",
+                              "fontSize": 20,
+                              "fontWeight": "650"
+                            },
+                            {
+                              "type": "text",
+                              "id": "I6Ztq",
+                              "fill": "$text-muted",
+                              "content": "Email verified",
+                              "fontFamily": "$font",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "UmmMi",
+                  "name": "Statistics Card",
+                  "width": "fill_container",
+                  "fill": "$bg-surface",
+                  "cornerRadius": "$radius-card",
+                  "stroke": "$border",
+                  "strokeWidth": 1,
+                  "layout": "vertical",
+                  "gap": 12,
+                  "padding": 16,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "d0vL3",
+                      "name": "Stats Header",
+                      "width": "fill_container",
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "weHhe",
+                          "fill": "$text-primary",
+                          "content": "My statistics",
+                          "fontFamily": "$font",
+                          "fontSize": 14,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "o9AkA",
+                          "fill": "$text-muted",
+                          "content": "Last 30 days",
+                          "fontFamily": "$font",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "thPDo",
+                      "name": "Stats Row",
+                      "width": "fill_container",
+                      "gap": 12,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "z87UE",
+                          "name": "Stat Assigned tickets",
+                          "width": "fill_container",
+                          "fill": "$bg-app",
+                          "cornerRadius": 8,
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "layout": "vertical",
+                          "gap": 2,
+                          "padding": 12,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "yahkB",
+                              "fill": "$text-primary",
+                              "content": "24",
+                              "fontFamily": "$font",
+                              "fontSize": 22,
+                              "fontWeight": "650"
+                            },
+                            {
+                              "type": "text",
+                              "id": "u8Xnz",
+                              "fill": "$text-muted",
+                              "content": "Assigned tickets",
+                              "fontFamily": "$font",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "ZfkhS",
+                              "fill": "$text-secondary",
+                              "content": "6 currently open",
+                              "fontFamily": "$font",
+                              "fontSize": 10,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Nt2QO",
+                          "name": "Stat Resolved / closed",
+                          "width": "fill_container",
+                          "fill": "$bg-app",
+                          "cornerRadius": 8,
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "layout": "vertical",
+                          "gap": 2,
+                          "padding": 12,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "OgQyB",
+                              "fill": "$text-primary",
+                              "content": "18",
+                              "fontFamily": "$font",
+                              "fontSize": 22,
+                              "fontWeight": "650"
+                            },
+                            {
+                              "type": "text",
+                              "id": "CqZSr",
+                              "fill": "$text-muted",
+                              "content": "Resolved / closed",
+                              "fontFamily": "$font",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "Gjfba",
+                              "fill": "$text-secondary",
+                              "content": "Avg. 4.2h resolution",
+                              "fontFamily": "$font",
+                              "fontSize": 10,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "r4aIYp",
+                          "name": "Stat Hours (7 days)",
+                          "width": "fill_container",
+                          "fill": "$bg-app",
+                          "cornerRadius": 8,
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "layout": "vertical",
+                          "gap": 2,
+                          "padding": 12,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "jWYd0",
+                              "fill": "$text-primary",
+                              "content": "31.5h",
+                              "fontFamily": "$font",
+                              "fontSize": 22,
+                              "fontWeight": "650"
+                            },
+                            {
+                              "type": "text",
+                              "id": "Y3F8X",
+                              "fill": "$text-muted",
+                              "content": "Hours (7 days)",
+                              "fontFamily": "$font",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "BsOiy",
+                              "fill": "$text-secondary",
+                              "content": "From time entries",
+                              "fontFamily": "$font",
+                              "fontSize": 10,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "ymJ4Y",
+                          "name": "Stat Hours (30 days)",
+                          "width": "fill_container",
+                          "fill": "$bg-app",
+                          "cornerRadius": 8,
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "layout": "vertical",
+                          "gap": 2,
+                          "padding": 12,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "C3xgJT",
+                              "fill": "$text-primary",
+                              "content": "128h",
+                              "fontFamily": "$font",
+                              "fontSize": 22,
+                              "fontWeight": "650"
+                            },
+                            {
+                              "type": "text",
+                              "id": "Xn1eJ",
+                              "fill": "$text-muted",
+                              "content": "Hours (30 days)",
+                              "fontFamily": "$font",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "jZn3V",
+                              "fill": "$text-secondary",
+                              "content": "86% of goal",
+                              "fontFamily": "$font",
+                              "fontSize": 10,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "yfS63",
+                  "name": "Main Grid",
+                  "width": "fill_container",
+                  "height": "fill_container",
+                  "gap": 14,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "VqG92",
+                      "name": "Main Left Column",
+                      "width": "fill_container",
+                      "height": 447,
+                      "layout": "vertical",
+                      "gap": 16,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "KQp4r",
+                          "name": "Work Activity Card",
+                          "width": "fill_container",
+                          "fill": "$bg-surface",
+                          "cornerRadius": "$radius-card",
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "layout": "vertical",
+                          "gap": 12,
+                          "padding": 16,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "mIChO",
+                              "fill": "$text-primary",
+                              "content": "Work activity",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "f9e6PL",
+                              "name": "Activity Subtitle",
+                              "fill": "$text-muted",
+                              "content": "Time, tasks, and workspace actions across modules you use.",
+                              "fontFamily": "$font",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "De8fQ",
+                              "name": "Activity Charts",
+                              "width": "fill_container",
+                              "height": 100,
+                              "gap": 12,
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "xiTxw",
+                                  "name": "Chart Activity Mix",
+                                  "width": "fill_container",
+                                  "height": "fill_container",
+                                  "fill": "$bg-app",
+                                  "cornerRadius": 8,
+                                  "layout": "vertical",
+                                  "gap": 8,
+                                  "padding": 12,
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "vd0P0",
+                                      "fill": "$text-muted",
+                                      "content": "By activity type",
+                                      "fontFamily": "$font",
+                                      "fontSize": 11,
+                                      "fontWeight": "600"
+                                    },
+                                    {
+                                      "type": "frame",
+                                      "id": "ZFWpf",
+                                      "name": "Activity Bars",
+                                      "width": "fill_container",
+                                      "gap": 8,
+                                      "alignItems": "center",
+                                      "children": [
+                                        {
+                                          "type": "frame",
+                                          "id": "ExFeF",
+                                          "name": "Labels Column",
+                                          "width": 112,
+                                          "layout": "vertical",
+                                          "gap": 11,
+                                          "justifyContent": "center",
+                                          "children": [
+                                            {
+                                              "type": "text",
+                                              "id": "kd3Sh",
+                                              "name": "Label Time",
+                                              "fill": "$text-muted",
+                                              "textGrowth": "fixed-width",
+                                              "width": 112,
+                                              "content": "Time tracked",
+                                              "fontFamily": "$font",
+                                              "fontSize": 10,
+                                              "fontWeight": "normal"
+                                            },
+                                            {
+                                              "type": "text",
+                                              "id": "iFP52",
+                                              "name": "Label Todos",
+                                              "fill": "$text-muted",
+                                              "textGrowth": "fixed-width",
+                                              "width": 112,
+                                              "content": "Todos completed",
+                                              "fontFamily": "$font",
+                                              "fontSize": 10,
+                                              "fontWeight": "normal"
+                                            },
+                                            {
+                                              "type": "text",
+                                              "id": "E3YTa6",
+                                              "name": "Label Links",
+                                              "fill": "$text-muted",
+                                              "textGrowth": "fixed-width",
+                                              "width": 112,
+                                              "content": "Links & resources",
+                                              "fontFamily": "$font",
+                                              "fontSize": 10,
+                                              "fontWeight": "normal"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "frame",
+                                          "id": "SKOWX",
+                                          "name": "Tracks Column",
+                                          "width": "fill_container",
+                                          "layout": "vertical",
+                                          "gap": 11,
+                                          "justifyContent": "center",
+                                          "children": [
+                                            {
+                                              "type": "frame",
+                                              "id": "SqkI9",
+                                              "name": "Track Time",
+                                              "clip": true,
+                                              "width": "fill_container",
+                                              "height": 6,
+                                              "fill": "$bg-surface",
+                                              "cornerRadius": 99,
+                                              "children": [
+                                                {
+                                                  "type": "frame",
+                                                  "id": "gzDZZ",
+                                                  "name": "Fill Time",
+                                                  "width": 120,
+                                                  "height": 6,
+                                                  "fill": "$info",
+                                                  "cornerRadius": 99
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "type": "frame",
+                                              "id": "u0mYxF",
+                                              "name": "Track Todos",
+                                              "clip": true,
+                                              "width": "fill_container",
+                                              "height": 6,
+                                              "fill": "$bg-surface",
+                                              "cornerRadius": 99,
+                                              "children": [
+                                                {
+                                                  "type": "frame",
+                                                  "id": "hXpj4",
+                                                  "name": "Fill Todos",
+                                                  "width": 72,
+                                                  "height": 6,
+                                                  "fill": "$accent",
+                                                  "cornerRadius": 99
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "type": "frame",
+                                              "id": "pwPHh",
+                                              "name": "Track Links",
+                                              "clip": true,
+                                              "width": "fill_container",
+                                              "height": 6,
+                                              "fill": "$bg-surface",
+                                              "cornerRadius": 99,
+                                              "children": [
+                                                {
+                                                  "type": "frame",
+                                                  "id": "ujS50",
+                                                  "name": "Fill Links",
+                                                  "width": 44,
+                                                  "height": 6,
+                                                  "fill": "$warning",
+                                                  "cornerRadius": 99
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "BX86I",
+                                  "name": "Chart Hours Week",
+                                  "width": "fill_container",
+                                  "height": "fill_container",
+                                  "fill": "$bg-app",
+                                  "cornerRadius": 8,
+                                  "layout": "vertical",
+                                  "gap": 8,
+                                  "padding": 12,
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "P3DdS",
+                                      "fill": "$text-muted",
+                                      "content": "Hours logged (7 days)",
+                                      "fontFamily": "$font",
+                                      "fontSize": 11,
+                                      "fontWeight": "600"
+                                    },
+                                    {
+                                      "type": "frame",
+                                      "id": "t4GA3",
+                                      "name": "Day Bars",
+                                      "width": "fill_container",
+                                      "height": 72,
+                                      "gap": 4,
+                                      "justifyContent": "space_between",
+                                      "alignItems": "end",
+                                      "children": [
+                                        {
+                                          "type": "frame",
+                                          "id": "NIQND",
+                                          "width": 28,
+                                          "layout": "vertical",
+                                          "gap": 3,
+                                          "alignItems": "center",
+                                          "children": [
+                                            {
+                                              "type": "frame",
+                                              "id": "WXIM1",
+                                              "width": 16,
+                                              "height": 48,
+                                              "fill": "$accent",
+                                              "cornerRadius": 4
+                                            },
+                                            {
+                                              "type": "text",
+                                              "id": "bSfey",
+                                              "fill": "$text-muted",
+                                              "content": "M",
+                                              "fontFamily": "$font",
+                                              "fontSize": 9,
+                                              "fontWeight": "normal"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "frame",
+                                          "id": "JhaNG",
+                                          "width": 28,
+                                          "layout": "vertical",
+                                          "gap": 3,
+                                          "alignItems": "center",
+                                          "children": [
+                                            {
+                                              "type": "frame",
+                                              "id": "Asxfu",
+                                              "width": 16,
+                                              "height": 62,
+                                              "fill": "$accent",
+                                              "cornerRadius": 4
+                                            },
+                                            {
+                                              "type": "text",
+                                              "id": "qBOJh",
+                                              "fill": "$text-muted",
+                                              "content": "T",
+                                              "fontFamily": "$font",
+                                              "fontSize": 9,
+                                              "fontWeight": "normal"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "frame",
+                                          "id": "Pt81r",
+                                          "width": 28,
+                                          "layout": "vertical",
+                                          "gap": 3,
+                                          "alignItems": "center",
+                                          "children": [
+                                            {
+                                              "type": "frame",
+                                              "id": "cudAQ",
+                                              "width": 16,
+                                              "height": 36,
+                                              "fill": "$accent",
+                                              "cornerRadius": 4
+                                            },
+                                            {
+                                              "type": "text",
+                                              "id": "R0wudQ",
+                                              "fill": "$text-muted",
+                                              "content": "W",
+                                              "fontFamily": "$font",
+                                              "fontSize": 9,
+                                              "fontWeight": "normal"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "frame",
+                                          "id": "D3YUWw",
+                                          "width": 28,
+                                          "layout": "vertical",
+                                          "gap": 3,
+                                          "alignItems": "center",
+                                          "children": [
+                                            {
+                                              "type": "frame",
+                                              "id": "mKHeP",
+                                              "width": 16,
+                                              "height": 58,
+                                              "fill": "$accent",
+                                              "cornerRadius": 4
+                                            },
+                                            {
+                                              "type": "text",
+                                              "id": "Z2nFje",
+                                              "fill": "$text-muted",
+                                              "content": "T",
+                                              "fontFamily": "$font",
+                                              "fontSize": 9,
+                                              "fontWeight": "normal"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "frame",
+                                          "id": "S7HgD",
+                                          "width": 28,
+                                          "layout": "vertical",
+                                          "gap": 3,
+                                          "alignItems": "center",
+                                          "children": [
+                                            {
+                                              "type": "frame",
+                                              "id": "eMj23",
+                                              "width": 16,
+                                              "height": 44,
+                                              "fill": "$accent",
+                                              "cornerRadius": 4
+                                            },
+                                            {
+                                              "type": "text",
+                                              "id": "ZIzfA",
+                                              "fill": "$text-muted",
+                                              "content": "F",
+                                              "fontFamily": "$font",
+                                              "fontSize": 9,
+                                              "fontWeight": "normal"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "frame",
+                                          "id": "H4PCsP",
+                                          "width": 28,
+                                          "layout": "vertical",
+                                          "gap": 3,
+                                          "alignItems": "center",
+                                          "children": [
+                                            {
+                                              "type": "frame",
+                                              "id": "L43PW",
+                                              "width": 16,
+                                              "height": 14,
+                                              "fill": "$accent",
+                                              "cornerRadius": 4
+                                            },
+                                            {
+                                              "type": "text",
+                                              "id": "G0YWt",
+                                              "fill": "$text-muted",
+                                              "content": "S",
+                                              "fontFamily": "$font",
+                                              "fontSize": 9,
+                                              "fontWeight": "normal"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "frame",
+                                          "id": "B1TiKH",
+                                          "width": 28,
+                                          "layout": "vertical",
+                                          "gap": 3,
+                                          "alignItems": "center",
+                                          "children": [
+                                            {
+                                              "type": "frame",
+                                              "id": "WMf7d",
+                                              "width": 16,
+                                              "height": 12,
+                                              "fill": "$accent",
+                                              "cornerRadius": 4
+                                            },
+                                            {
+                                              "type": "text",
+                                              "id": "eyhaG",
+                                              "fill": "$text-muted",
+                                              "content": "S",
+                                              "fontFamily": "$font",
+                                              "fontSize": 9,
+                                              "fontWeight": "normal"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "eWhmZ",
+                          "name": "Personal Information",
+                          "width": "fill_container",
+                          "height": "fill_container",
+                          "fill": "$bg-surface",
+                          "cornerRadius": "$radius-card",
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "layout": "vertical",
+                          "gap": 12,
+                          "padding": 16,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "dc15N",
+                              "fill": "$text-primary",
+                              "content": "Personal information",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "cUcVm",
+                              "fill": "$text-muted",
+                              "content": "Edit display name and bio used across the platform.",
+                              "fontFamily": "$font",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "QAEdD",
+                              "name": "Field Name",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 4,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "TO8dI",
+                                  "fill": "$text-muted",
+                                  "content": "FULL NAME",
+                                  "fontFamily": "$font",
+                                  "fontSize": 10,
+                                  "fontWeight": "600",
+                                  "letterSpacing": 0.4
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "nQvBn",
+                                  "name": "Input",
+                                  "width": "fill_container",
+                                  "cornerRadius": 8,
+                                  "stroke": "$border",
+                                  "strokeWidth": 1,
+                                  "padding": [
+                                    8,
+                                    10
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "JOge3",
+                                      "fill": "$text-primary",
+                                      "content": "Mara Kessler",
+                                      "fontFamily": "$font",
+                                      "fontSize": 13,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "RVnyu",
+                              "name": "Field Bio",
+                              "width": "fill_container",
+                              "height": 52,
+                              "layout": "vertical",
+                              "gap": 4,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "N26HTK",
+                                  "fill": "$text-muted",
+                                  "content": "BIO",
+                                  "fontFamily": "$font",
+                                  "fontSize": 10,
+                                  "fontWeight": "600",
+                                  "letterSpacing": 0.4
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "Q0rt18",
+                                  "name": "Textarea",
+                                  "width": "fill_container",
+                                  "height": 40,
+                                  "cornerRadius": 8,
+                                  "stroke": "$border",
+                                  "strokeWidth": 1,
+                                  "layout": "vertical",
+                                  "padding": [
+                                    8,
+                                    10
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "MHXtw",
+                                      "fill": "$text-primary",
+                                      "textGrowth": "fixed-width",
+                                      "width": "fill_container",
+                                      "content": "Support agent focused on enterprise SSO and customer onboarding.",
+                                      "fontFamily": "$font",
+                                      "fontSize": 13,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "BE8UG",
+                              "name": "Form Footer",
+                              "width": "fill_container",
+                              "justifyContent": "space_between",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "bA7Sq",
+                                  "fill": "$text-muted",
+                                  "content": "Account email & password → Settings",
+                                  "fontFamily": "$font",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "vDOi3",
+                                  "name": "Save Button",
+                                  "fill": "$accent",
+                                  "cornerRadius": 8,
+                                  "padding": [
+                                    8,
+                                    14
+                                  ],
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "X64Lz",
+                                      "fill": "#FFFFFF",
+                                      "content": "Save changes",
+                                      "fontFamily": "$font",
+                                      "fontSize": 12,
+                                      "fontWeight": "600"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "bfPp2",
+                      "name": "Main Right Column",
+                      "width": 320,
+                      "height": "fill_container",
+                      "layout": "vertical",
+                      "gap": 14,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "Vt71Y",
+                          "name": "Profile Completeness",
+                          "width": "fill_container",
+                          "fill": "$bg-surface",
+                          "cornerRadius": "$radius-card",
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "layout": "vertical",
+                          "gap": 10,
+                          "padding": 16,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "usUmo",
+                              "fill": "$text-primary",
+                              "content": "Profile completeness",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "hWwNp",
+                              "name": "Progress Track",
+                              "clip": true,
+                              "width": "fill_container",
+                              "height": 6,
+                              "fill": "$bg-app",
+                              "cornerRadius": 99,
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "YPkx0",
+                                  "name": "Progress Fill",
+                                  "width": 200,
+                                  "height": 6,
+                                  "fill": "$accent",
+                                  "cornerRadius": 99
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "id": "nnCR6",
+                              "fill": "$text-muted",
+                              "content": "4 of 5 complete · 80%",
+                              "fontFamily": "$font",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "T2sAsF",
+                              "name": "Checklist",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 6,
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "IzvPK",
+                                  "width": "fill_container",
+                                  "gap": 6,
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "icon",
+                                      "id": "yTRK7",
+                                      "width": 12,
+                                      "height": 12,
+                                      "icon": "check",
+                                      "library": "lucide",
+                                      "fill": "$success"
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "VbgHj",
+                                      "fill": "$text-secondary",
+                                      "content": "Add your name",
+                                      "fontFamily": "$font",
+                                      "fontSize": 11,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "H8ONN",
+                                  "width": "fill_container",
+                                  "gap": 6,
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "icon",
+                                      "id": "UWnAI",
+                                      "width": 12,
+                                      "height": 12,
+                                      "icon": "circle",
+                                      "library": "lucide",
+                                      "fill": "$text-muted"
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "jbv9R",
+                                      "fill": "$text-primary",
+                                      "content": "Upload an avatar",
+                                      "fontFamily": "$font",
+                                      "fontSize": 11,
+                                      "fontWeight": "500"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "YQx3B",
+                                  "width": "fill_container",
+                                  "gap": 6,
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "icon",
+                                      "id": "FrCBt",
+                                      "width": 12,
+                                      "height": 12,
+                                      "icon": "check",
+                                      "library": "lucide",
+                                      "fill": "$success"
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "Y2Y0Wc",
+                                      "fill": "$text-secondary",
+                                      "content": "Verify your email",
+                                      "fontFamily": "$font",
+                                      "fontSize": 11,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "mXp7J",
+                                  "width": "fill_container",
+                                  "gap": 6,
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "icon",
+                                      "id": "nuYxU",
+                                      "width": 12,
+                                      "height": 12,
+                                      "icon": "check",
+                                      "library": "lucide",
+                                      "fill": "$success"
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "Xj7co",
+                                      "fill": "$text-secondary",
+                                      "content": "Write a short bio",
+                                      "fontFamily": "$font",
+                                      "fontSize": 11,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "OyaUK",
+                                  "width": "fill_container",
+                                  "gap": 6,
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "icon",
+                                      "id": "dzDME",
+                                      "width": 12,
+                                      "height": 12,
+                                      "icon": "circle",
+                                      "library": "lucide",
+                                      "fill": "$text-muted"
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "jpZ06",
+                                      "fill": "$text-primary",
+                                      "content": "Set your timezone",
+                                      "fontFamily": "$font",
+                                      "fontSize": 11,
+                                      "fontWeight": "500"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "u4WjL",
+                          "name": "Employee Record",
+                          "width": "fill_container",
+                          "fill": "$bg-surface",
+                          "cornerRadius": "$radius-card",
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "layout": "vertical",
+                          "gap": 8,
+                          "padding": 16,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "lCMHr",
+                              "fill": "$text-primary",
+                              "content": "My employee record",
+                              "fontFamily": "$font",
+                              "fontSize": 14,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "C5cpZ",
+                              "fill": "$text-muted",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "Linked employment data (read-only).",
+                              "fontFamily": "$font",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "lFjGB",
+                              "name": "Leave Tiles",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 8,
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "slxEr",
+                                  "name": "Leave Row 1",
+                                  "width": "fill_container",
+                                  "gap": 8,
+                                  "children": [
+                                    {
+                                      "type": "frame",
+                                      "id": "otTXe",
+                                      "width": "fill_container",
+                                      "fill": "$bg-app",
+                                      "cornerRadius": 8,
+                                      "stroke": "$border",
+                                      "strokeWidth": 1,
+                                      "layout": "vertical",
+                                      "gap": 2,
+                                      "padding": 6,
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "CmNsa",
+                                          "fill": "$text-primary",
+                                          "content": "18",
+                                          "fontFamily": "$font",
+                                          "fontSize": 15,
+                                          "fontWeight": "650"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "V2nkd",
+                                          "fill": "$text-muted",
+                                          "textGrowth": "fixed-width",
+                                          "width": "fill_container",
+                                          "content": "Vacation left",
+                                          "fontFamily": "$font",
+                                          "fontSize": 9,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "frame",
+                                      "id": "ylXrq",
+                                      "width": "fill_container",
+                                      "fill": "$bg-app",
+                                      "cornerRadius": 8,
+                                      "stroke": "$border",
+                                      "strokeWidth": 1,
+                                      "layout": "vertical",
+                                      "gap": 2,
+                                      "padding": 6,
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "R3MHOF",
+                                          "fill": "$text-primary",
+                                          "content": "7",
+                                          "fontFamily": "$font",
+                                          "fontSize": 15,
+                                          "fontWeight": "650"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "qtrzt",
+                                          "fill": "$text-muted",
+                                          "textGrowth": "fixed-width",
+                                          "width": "fill_container",
+                                          "content": "Vacation used",
+                                          "fontFamily": "$font",
+                                          "fontSize": 9,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "QQdhp",
+                                  "name": "Leave Row 2",
+                                  "width": "fill_container",
+                                  "gap": 8,
+                                  "children": [
+                                    {
+                                      "type": "frame",
+                                      "id": "I3nx5y",
+                                      "width": "fill_container",
+                                      "fill": "$bg-app",
+                                      "cornerRadius": 8,
+                                      "stroke": "$border",
+                                      "strokeWidth": 1,
+                                      "layout": "vertical",
+                                      "gap": 2,
+                                      "padding": 6,
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "Mjjqk",
+                                          "fill": "$text-primary",
+                                          "content": "5/10",
+                                          "fontFamily": "$font",
+                                          "fontSize": 15,
+                                          "fontWeight": "650"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "g8Nri3",
+                                          "fill": "$text-muted",
+                                          "textGrowth": "fixed-width",
+                                          "width": "fill_container",
+                                          "content": "Sick days left",
+                                          "fontFamily": "$font",
+                                          "fontSize": 9,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "frame",
+                                      "id": "bdwo2",
+                                      "width": "fill_container",
+                                      "fill": "$bg-app",
+                                      "cornerRadius": 8,
+                                      "stroke": "$border",
+                                      "strokeWidth": 1,
+                                      "layout": "vertical",
+                                      "gap": 2,
+                                      "padding": 6,
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "S2kvl",
+                                          "fill": "$text-primary",
+                                          "content": "142h",
+                                          "fontFamily": "$font",
+                                          "fontSize": 15,
+                                          "fontWeight": "650"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "U7pqQS",
+                                          "fill": "$text-muted",
+                                          "textGrowth": "fixed-width",
+                                          "width": "fill_container",
+                                          "content": "Hours / month",
+                                          "fontFamily": "$font",
+                                          "fontSize": 9,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "cAr93",
+                              "name": "Row Job title",
+                              "width": "fill_container",
+                              "stroke": "$border",
+                              "strokeWidth": {
+                                "top": 1
+                              },
+                              "layout": "vertical",
+                              "gap": 2,
+                              "padding": [
+                                6,
+                                0
+                              ],
+                              "justifyContent": "space_between",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "JWoq9",
+                                  "fill": "$text-muted",
+                                  "content": "Job title",
+                                  "fontFamily": "$font",
+                                  "fontSize": 10,
+                                  "fontWeight": "600",
+                                  "letterSpacing": 0.3
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "rLxIf",
+                                  "fill": "$text-primary",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "Support Agent",
+                                  "fontFamily": "$font",
+                                  "fontSize": 12,
+                                  "fontWeight": "500"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "LqiNl",
+                              "name": "Row Department",
+                              "width": "fill_container",
+                              "stroke": "$border",
+                              "strokeWidth": {
+                                "top": 1
+                              },
+                              "layout": "vertical",
+                              "gap": 2,
+                              "padding": [
+                                6,
+                                0
+                              ],
+                              "justifyContent": "space_between",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "EaDsl",
+                                  "fill": "$text-muted",
+                                  "content": "Department",
+                                  "fontFamily": "$font",
+                                  "fontSize": 10,
+                                  "fontWeight": "600",
+                                  "letterSpacing": 0.3
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "JsGRq",
+                                  "fill": "$text-primary",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "Operations",
+                                  "fontFamily": "$font",
+                                  "fontSize": 12,
+                                  "fontWeight": "500"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "TrnQk",
+                              "name": "Row Work email",
+                              "width": "fill_container",
+                              "stroke": "$border",
+                              "strokeWidth": {
+                                "top": 1
+                              },
+                              "layout": "vertical",
+                              "gap": 2,
+                              "padding": [
+                                6,
+                                0
+                              ],
+                              "justifyContent": "space_between",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "mLebT",
+                                  "fill": "$text-muted",
+                                  "content": "Work email",
+                                  "fontFamily": "$font",
+                                  "fontSize": 10,
+                                  "fontWeight": "600",
+                                  "letterSpacing": 0.3
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "WtGZk",
+                                  "fill": "$text-primary",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "mara.kessler@company.com",
+                                  "fontFamily": "$font",
+                                  "fontSize": 12,
+                                  "fontWeight": "500"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "j8cr5",
+                              "name": "Row Manager",
+                              "width": "fill_container",
+                              "stroke": "$border",
+                              "strokeWidth": {
+                                "top": 1
+                              },
+                              "layout": "vertical",
+                              "gap": 2,
+                              "padding": [
+                                6,
+                                0
+                              ],
+                              "justifyContent": "space_between",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "xohoZ",
+                                  "fill": "$text-muted",
+                                  "content": "Manager",
+                                  "fontFamily": "$font",
+                                  "fontSize": 10,
+                                  "fontWeight": "600",
+                                  "letterSpacing": 0.3
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "QgS8r",
+                                  "fill": "$text-primary",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "Lucas Meyer",
+                                  "fontFamily": "$font",
+                                  "fontSize": 12,
+                                  "fontWeight": "500"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "EGBJM",
+                              "name": "Row Monthly salary",
+                              "width": "fill_container",
+                              "stroke": "$border",
+                              "strokeWidth": {
+                                "top": 1
+                              },
+                              "layout": "vertical",
+                              "gap": 2,
+                              "padding": [
+                                6,
+                                0
+                              ],
+                              "justifyContent": "space_between",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "jULRu",
+                                  "fill": "$text-muted",
+                                  "content": "Monthly salary",
+                                  "fontFamily": "$font",
+                                  "fontSize": 10,
+                                  "fontWeight": "600",
+                                  "letterSpacing": 0.3
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "fQjbe",
+                                  "fill": "$text-primary",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "€4,850.00",
+                                  "fontFamily": "$font",
+                                  "fontSize": 12,
+                                  "fontWeight": "500"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "QwkUC",
+                              "name": "Row Status",
+                              "width": "fill_container",
+                              "stroke": "$border",
+                              "strokeWidth": {
+                                "top": 1
+                              },
+                              "layout": "vertical",
+                              "gap": 4,
+                              "padding": [
+                                6,
+                                0
+                              ],
+                              "justifyContent": "space_between",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "KOq0X",
+                                  "fill": "$text-muted",
+                                  "content": "Status",
+                                  "fontFamily": "$font",
+                                  "fontSize": 10,
+                                  "fontWeight": "600",
+                                  "letterSpacing": 0.3
+                                },
+                                {
+                                  "id": "U3Tri",
+                                  "type": "ref",
+                                  "ref": "Dl88N",
+                                  "fill": "$success-soft",
+                                  "descendants": {
+                                    "X0k7x": {
+                                      "content": "Active",
+                                      "fill": "$success"
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
                     }
                   ]
                 }
